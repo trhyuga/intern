@@ -226,7 +226,7 @@ const UPGRADES = [
   { id:'power',   name:'火力',           max:6, base:140, desc:(l)=> l>=6?'Lv6★最終: 火力大幅上昇':'Lv'+l+' 1発ダメージ上昇' },
   { id:'wing',    name:'僚機ウイングマン', max:2, base:520, desc:(l)=> l+'機 随伴して追加射撃' },
   { id:'hp',      name:'装甲(最大HP)',   max:5, base:190, desc:(l)=> '最大HP '+(100+l*40) },
-  { id:'shield',  name:'シールド',       max:3, base:320, desc:(l)=> l>0?('自動回復バリア x'+l):'なし' },
+  { id:'shield',  name:'シールド',       max:3, base:320, desc:(l)=> l>0?('バリア'+(l*40)+' / 回復速度Lv'+l+(l>=3?'★':'')):'なし' },
   { id:'bomb',    name:'ボム所持数',     max:3, base:260, desc:(l)=> '出撃時ボム '+l+' 個' },
   { id:'missile', name:'ホーミング',     max:3, base:280, desc:(l)=> l>0?('追尾ミサイル x'+l):'なし' },
   { id:'greed',   name:'クレジット獲得', max:4, base:170, desc:(l)=> '+'+(l*20)+'% 取得' },
@@ -239,13 +239,17 @@ function upMaxed(u){ return upLevel(u.id) >= u.max; }
 function playerStats(){
   const w=upLevel('weapon'), r=upLevel('rate'), p=upLevel('power');
   /* v4: 最終レベルだけ大きく伸びる（最後の1個がパワースパイク） */
+  const sl = upLevel('shield');
   return {
     maxHP: 100 + upLevel('hp')*40,
     fireInterval: Math.max(78, 210 - r*24 - (r>=5?12:0)),
     dmg: 9 + p*6 + (p>=6?10:0),
     weapon: w,
     wings: upLevel('wing'),
-    shield: upLevel('shield'),
+    shield: sl,
+    /* v7: シールド自動回復はレベル依存。Lv1は遅く、Lv3(最大)で従来の約8割の性能 */
+    shieldDelay: [0, 360, 300, 225][sl],          // 回復開始までのフレーム数(6s/5s/3.75s)
+    shieldRegenRate: [0, 0.10, 0.20, 0.32][sl],   // 毎フレーム回復量(6/12/19 per 秒)
     bombs: upLevel('bomb'),
     missiles: upLevel('missile'),
     speed: 5.0,
@@ -1036,7 +1040,7 @@ function updatePlayer(dt){
   }
   if(p.inv>0) p.inv-=dt;
   if(p.bombFlash>0) p.bombFlash-=0.04*dt;
-  if(p.shieldMax>0 && p.shieldHP<p.shieldMax){ p.shieldRegen+=dt; if(p.shieldRegen>180){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+0.4*dt); } }
+  if(p.shieldMax>0 && p.shieldHP<p.shieldMax){ p.shieldRegen+=dt; if(p.shieldRegen>p.st.shieldDelay){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+p.st.shieldRegenRate*dt); } }
   p.fireCd-=dt;
   if(p.fireCd<=0){ playerFire(); p.fireCd=p.st.fireInterval/16.67; }
   if(p.st.missiles>0){ p.missileCd-=dt; if(p.missileCd<=0){ for(let i=0;i<p.st.missiles;i++){ setTimeout(()=>{ if(Game.player===p && Game.state===STATE.PLAY) fireHoming(p.x+rand(-10,10),p.y,p.st.dmg*1.4);},i*80);} p.missileCd=90; } }
@@ -1066,7 +1070,8 @@ function playerFire(){
 function playerHit(dmg){
   const p=Game.player; if(p.inv>0) return;
   if(p.shieldHP>0){ p.shieldHP-=dmg; if(p.shieldHP<0){ p.hp+=p.shieldHP; p.shieldHP=0; } p.shieldRegen=0; Sound.hit(); Game.doFlash('#7ff',0.4); p.inv=20; Game.screenShake(5); }
-  else { p.hp-=dmg; p.inv=50; Sound.hit(); Game.doFlash('#f66',0.5); Game.screenShake(10); burst(p.x,p.y,'#f88',14,4); }
+  else { p.hp-=dmg; p.inv=50; p.shieldRegen=0; Sound.hit(); Game.doFlash('#f66',0.5); Game.screenShake(10); burst(p.x,p.y,'#f88',14,4); }
+  /* ↑ v7: 本体被弾でも回復タイマーをリセット（戦闘中にシールドが復活し続ける抜け穴を修正） */
   if(p.hp<=0){ p.hp=0; playerDeath(); }
 }
 function playerDeath(){
