@@ -257,6 +257,43 @@ function playerStats(){
   };
 }
 
+/* ---------------- v8: 威力レベル別の弾ビジュアル ----------------
+   火力Lv(+武器最終Lv)に応じて 色・太さ・長さ・発光・紫のプラズマ光輪 が段階的に強化される */
+const BULLET_TIERS = [
+  {c:'#3f9bff', core:'#cfefff', w:3.0, len:10.0, glow:8,  halo:0},
+  {c:'#4fc4ff', core:'#dff6ff', w:3.5, len:11.5, glow:11, halo:0},
+  {c:'#6bdcff', core:'#eafcff', w:4.0, len:13.0, glow:14, halo:0},
+  {c:'#8af0ff', core:'#ffffff', w:4.6, len:15.0, glow:17, halo:0.35},
+  {c:'#a9f6ff', core:'#ffffff', w:5.3, len:17.0, glow:21, halo:0.55},
+  {c:'#d6f2ff', core:'#ffffff', w:6.1, len:19.5, glow:26, halo:0.8},
+  {c:'#ffffff', core:'#ffffff', w:7.0, len:22.0, glow:32, halo:1.0},
+];
+function bulletTier(){
+  return clamp(upLevel('power') + (upLevel('weapon')>=6?1:0), 0, 6);
+}
+/* 弾の形（先端が尖り、後方が丸いエネルギーボルト） */
+function bulletShape(w,len){
+  const hw=w/2, h=len/2;
+  ctx.beginPath();
+  ctx.moveTo(0,-h);
+  ctx.lineTo(hw,-h*0.3);
+  ctx.lineTo(hw, h*0.62);
+  ctx.quadraticCurveTo(0, h*1.1, -hw, h*0.62);
+  ctx.lineTo(-hw,-h*0.3);
+  ctx.closePath();
+}
+function drawBoltAt(x,y,tier,color){
+  const T=BULLET_TIERS[tier]||BULLET_TIERS[0];
+  ctx.save(); ctx.translate(x,y);
+  if(T.halo>0){ ctx.globalAlpha=0.32*T.halo; ctx.shadowBlur=T.glow*1.3; ctx.shadowColor='#b58cff'; ctx.fillStyle='#b58cff';
+    bulletShape(T.w*1.95,T.len*1.12); ctx.fill(); ctx.globalAlpha=1; }
+  ctx.shadowBlur=T.glow; ctx.shadowColor=color||T.c; ctx.fillStyle=color||T.c;
+  bulletShape(T.w,T.len); ctx.fill();
+  ctx.shadowBlur=T.glow*0.5; ctx.shadowColor=T.core; ctx.fillStyle=T.core;
+  bulletShape(T.w*0.42,T.len*0.72); ctx.fill();
+  ctx.restore(); ctx.shadowBlur=0;
+}
+
 /* ---------------- パーティクル ---------------- */
 const particles = [];
 function spawnParticle(x,y,color,opt={}){
@@ -269,6 +306,16 @@ function spawnParticle(x,y,color,opt={}){
     r: opt.r||rand(1.5,3.5), color, glow: opt.glow!==false,
     fric: opt.fric||0.94
   });
+}
+/* v8: 着弾スパーク（威力レベルが高いほど派手に散る） */
+function hitSpark(b){
+  const t=b.tier||0, T=BULLET_TIERS[t];
+  const n=1+Math.floor(t/2);
+  for(let i=0;i<n;i++){
+    spawnParticle(b.x,b.y, i%2?T.core:T.c,
+      {vx:rand(-1.4,1.4)*(1+t*0.18), vy:rand(-1.4,0.6)*(1+t*0.18),
+       life:rand(8,15)+t, r:rand(1.4,2.4)+t*0.22});
+  }
 }
 function burst(x,y,color,count,speed=3){
   for(let i=0;i<count;i++){
@@ -297,19 +344,24 @@ function drawParticles(){
 
 /* ---------------- フローティングテキスト ---------------- */
 const floats=[];
-function addFloat(x,y,text,color='#9fe'){ if(floats.length>60)return; floats.push({x,y,text,color,life:50,max:50}); }
+function addFloat(x,y,text,color='#9fe',size=13){ if(floats.length>60)return; floats.push({x,y,text,color,size,life:50,max:50}); }
 function updateFloats(dt){ for(let i=floats.length-1;i>=0;i--){ const f=floats[i]; f.y-=0.6*dt; f.life-=dt; if(f.life<=0) floats.splice(i,1); } }
 function drawFloats(){
-  ctx.textAlign='center'; ctx.font='bold 13px system-ui';
-  for(const f of floats){ ctx.globalAlpha=clamp(f.life/f.max,0,1); ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y); }
+  ctx.textAlign='center';
+  for(const f of floats){
+    ctx.globalAlpha=clamp(f.life/f.max,0,1);
+    ctx.font='bold '+(f.size||13)+'px system-ui';
+    if((f.size||13)>15){ ctx.shadowBlur=10; ctx.shadowColor=f.color; }
+    ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y); ctx.shadowBlur=0;
+  }
   ctx.globalAlpha=1;
 }
 
 /* ---------------- 弾 ---------------- */
 const pBullets=[]; // プレイヤー弾
 const eBullets=[]; // 敵弾
-function firePlayer(x,y,vx,vy,dmg,r=4,color='#7df',type='shot'){
-  pBullets.push({x,y,vx,vy,dmg,r,color,type,life:120, homing:false});
+function firePlayer(x,y,vx,vy,dmg,r=4,color='#7df',type='shot',tier=0){
+  pBullets.push({x,y,vx,vy,dmg,r,color,type,life:120, homing:false, tier});
 }
 function fireHoming(x,y,dmg){
   pBullets.push({x,y,vx:0,vy:-3,dmg,r:5,color:'#ff9be6',type:'missile',life:160,homing:true,turn:0.08,speed:6});
@@ -630,9 +682,12 @@ function ringShot(e,count,speed){
   for(let i=0;i<count;i++){ const a=i/count*TAU + e.t*0.02; eb(e.x,e.y,Math.cos(a)*speed,Math.sin(a)*speed,{r:5,color:'#c9f',dmg:Math.round(e.dmg*0.5)}); }
 }
 
+/* v8: ダメージ表示も威力に応じて大きく・熱く */
+function dmgSize(d){ return clamp(11 + d*0.09, 11, 21); }
+function dmgColor(d){ return d>=90?'#fff3b0' : d>=55?'#ffe9a8' : d>=30?'#eafcff' : '#ffffff'; }
 function damageEnemy(e, dmg, hx, hy){
   e.hp -= dmg; e.hitFlash=4;
-  addFloat(hx, hy-6, Math.round(dmg), '#fff');
+  addFloat(hx, hy-6, Math.round(dmg), dmgColor(dmg), dmgSize(dmg));
   if(e.hp<=0 && !e.dead){ killEnemy(e); }
 }
 function killEnemy(e){
@@ -858,7 +913,7 @@ function spawnGreatBoss(x,y){
 function damageBoss(dmg, hx, hy){
   const b=Game.boss; if(!b||b.dead||b.entering) return;
   b.hp-=dmg; b.hitFlash=3;
-  if(hx!==undefined) addFloat(hx,hy-8,Math.round(dmg),'#fff');
+  if(hx!==undefined) addFloat(hx,hy-8,Math.round(dmg),dmgColor(dmg),dmgSize(dmg));
   const alive=b.parts.filter(p=>p.alive);
   if(alive.length){ const idx=randi(0,alive.length-1); alive[idx].hp-=dmg; if(alive[idx].hp<=0){ alive[idx].alive=false; burst(b.x+Math.cos(alive[idx].a)*b.r, b.y+Math.sin(alive[idx].a)*b.r, '#fff',20,4); Sound.hit(); } }
   if(b.hp<=0) defeatBoss();
@@ -1039,6 +1094,7 @@ function updatePlayer(dt){
     p.x=clamp(p.x,16,VW-16); p.y=clamp(p.y,40,VH-30);
   }
   if(p.inv>0) p.inv-=dt;
+  if(p.muzzle>0) p.muzzle-=0.16*dt;
   if(p.bombFlash>0) p.bombFlash-=0.04*dt;
   if(p.shieldMax>0 && p.shieldHP<p.shieldMax){ p.shieldRegen+=dt; if(p.shieldRegen>p.st.shieldDelay){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+p.st.shieldRegenRate*dt); } }
   p.fireCd-=dt;
@@ -1048,7 +1104,7 @@ function updatePlayer(dt){
   for(const w of Game.wingmen){
     const tx=p.x+w.side*34, ty=p.y+16;
     w.x=lerp(w.x,tx,0.2); w.y=lerp(w.y,ty,0.2);
-    w.fireCd-=dt; if(w.fireCd<=0){ firePlayer(w.x,w.y-8,0,-10,p.st.dmg*0.6,3,'#9fd'); w.fireCd=p.st.fireInterval/16.67*1.2; }
+    w.fireCd-=dt; if(w.fireCd<=0){ firePlayer(w.x,w.y-8,0,-10,p.st.dmg*0.6,3,'#8fe8b8','shot',Math.max(0,bulletTier()-2)); w.fireCd=p.st.fireInterval/16.67*1.2; }
   }
 }
 /* v2: レベルに応じて扇形に大きく拡散するメインショット */
@@ -1058,13 +1114,22 @@ function playerFire(){
   const spreads = [0, 10, 22, 38, 58, 80, 100];   // 扇の全角(度)
   const n = counts[lv], spreadRad = spreads[lv]*Math.PI/180;
   const speed = 10.5;
-  /* v4: 武器最終Lvは弾自体も強化（ダメージ1.3倍・大型弾） */
+  /* v4: 武器最終Lvは弾自体も強化（ダメージ1.3倍） */
   const boost = lv>=6 ? 1.3 : 1;
-  const br = lv>=6 ? 5 : 4;
+  /* v8: 威力レベルで弾の見た目と当たり判定が育つ */
+  const tier = bulletTier(), T = BULLET_TIERS[tier];
+  const br = 4 + tier*0.3;
+  p.tier = tier; p.muzzle = 1;
   for(let i=0;i<n;i++){
     const off = n>1 ? (i/(n-1) - 0.5)*spreadRad : 0;
     const a = -Math.PI/2 + off;
-    firePlayer(p.x, p.y-12, Math.cos(a)*speed, Math.sin(a)*speed, Math.round(d*boost), br, lv>=6?'#aef':'#7df');
+    firePlayer(p.x, p.y-12, Math.cos(a)*speed, Math.sin(a)*speed, Math.round(d*boost), br, T.c, 'shot', tier);
+  }
+  /* マズルフラッシュ（威力が上がるほど派手に） */
+  const mf = 1 + tier*0.3;
+  for(let i=0;i<1+Math.floor(tier/2);i++){
+    spawnParticle(p.x+rand(-3,3), p.y-15, i%2?T.core:T.c,
+      {vx:rand(-1,1)*mf, vy:rand(-1.6,-0.2)*mf, life:rand(6,13), r:rand(1.2,2.2)*mf});
   }
 }
 function playerHit(dmg){
@@ -1087,8 +1152,8 @@ function collisions(){
   const p=Game.player;
   for(let i=pBullets.length-1;i>=0;i--){
     const b=pBullets[i]; let hit=false;
-    for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(b,e)){ damageEnemy(e,b.dmg,b.x,b.y); spawnParticle(b.x,b.y,'#cff',{life:10,r:2}); hit=true; break; } }
-    if(!hit && Game.boss && !Game.boss.dead && !Game.boss.entering){ if(circleHit(b,Game.boss)){ damageBoss(b.dmg,b.x,b.y); spawnParticle(b.x,b.y,'#cff',{life:10,r:2}); hit=true; } }
+    for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(b,e)){ damageEnemy(e,b.dmg,b.x,b.y); hitSpark(b); hit=true; break; } }
+    if(!hit && Game.boss && !Game.boss.dead && !Game.boss.entering){ if(circleHit(b,Game.boss)){ damageBoss(b.dmg,b.x,b.y); hitSpark(b); hit=true; } }
     if(hit) pBullets.splice(i,1);
   }
   if(!p) return;
@@ -1178,6 +1243,14 @@ function drawPlayer(){
     neonPoly([[0,-8],[5,6],[-5,6]],'#eaffff','rgba(200,255,255,0.5)',1.5,10);
     ctx.shadowBlur=16; ctx.shadowColor='#4cf'; ctx.fillStyle='#8df';
     ctx.beginPath(); ctx.arc(-5,12,2.5,0,TAU); ctx.arc(5,12,2.5,0,TAU); ctx.fill();
+    /* v8: 砲口の閃光（威力レベルで大きくなる） */
+    if(p.muzzle>0){
+      const tt=p.tier||0, T=BULLET_TIERS[tt];
+      ctx.globalAlpha=clamp(p.muzzle,0,1)*0.85;
+      ctx.shadowBlur=T.glow; ctx.shadowColor=T.c; ctx.fillStyle=T.core;
+      ctx.beginPath(); ctx.ellipse(0,-17, 2.5+tt*0.85, 5+tt*1.5, 0,0,TAU); ctx.fill();
+      ctx.globalAlpha=1;
+    }
   }
   ctx.restore(); ctx.shadowBlur=0;
   for(const w of Game.wingmen){ ctx.save(); ctx.translate(w.x,w.y); neonPoly([[0,-9],[7,7],[-7,7]],'#9fffd0','rgba(80,255,180,0.2)',1.5,10); ctx.restore(); }
@@ -1498,6 +1571,13 @@ function drawHangar(){
     ctx.textAlign='left'; ctx.fillStyle='#eaffff'; ctx.font='bold 14px system-ui'; ctx.fillText(u.name, lx+12, y+20);
     ctx.fillStyle='#9bd'; ctx.font='11px system-ui'; ctx.fillText(u.desc(lvl), lx+12, y+38);
     for(let k=0;k<u.max;k++){ ctx.beginPath(); ctx.arc(lx+165+k*12, y+34, 4, 0, TAU); if(k<lvl){ctx.fillStyle='#6cf';ctx.shadowBlur=6;ctx.shadowColor='#6cf';ctx.fill();ctx.shadowBlur=0;} else {ctx.strokeStyle='#456';ctx.lineWidth=1;ctx.stroke();} }
+    /* v8: 火力の行に、いまの弾の見た目プレビューを表示 */
+    if(u.id==='power'){
+      const pv=clamp(lvl + (upLevel('weapon')>=6?1:0),0,6);
+      drawBoltAt(lx+258, y+24, pv);
+      if(!maxed){ ctx.save(); ctx.globalAlpha=0.45; drawBoltAt(lx+292, y+24, clamp(pv+1,0,6)); ctx.restore();
+        ctx.fillStyle='#5a7f9c'; ctx.font='11px system-ui'; ctx.textAlign='center'; ctx.fillText('→', lx+275, y+28); ctx.textAlign='left'; }
+    }
     const btw=90, btx=lx+lw-btw-8, bty=y+8;
     if(maxed){ drawButton(btx,bty,btw,rh-24,'MAX',false,'#7f8'); }
     else { drawButton(btx,bty,btw,rh-24,'◈'+fmt(cost),afford,afford?'#6cf':'#456'); addBtn(btx,bty,btw,rh-24,'buy:'+u.id); }
@@ -1635,14 +1715,24 @@ function drawWorld(){
   drawStarfield();
   for(const pu of powerups) drawPowerup(pu);
   for(const b of eBullets){ ctx.save(); ctx.shadowBlur=10; ctx.shadowColor=b.color; ctx.fillStyle=b.color; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill(); ctx.restore(); }
-  for(const b of pBullets){ ctx.save(); ctx.shadowBlur=10; ctx.shadowColor=b.color; ctx.strokeStyle=b.color; ctx.fillStyle=b.color;
-    if(b.type==='missile'){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill(); }
-    else {
+  for(const b of pBullets){
+    if(b.type==='missile'){
+      ctx.save(); ctx.shadowBlur=12; ctx.shadowColor=b.color; ctx.fillStyle=b.color;
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill(); ctx.restore();
+    } else {
+      const T=BULLET_TIERS[b.tier||0];
       const ang=Math.atan2(b.vy,b.vx);
-      ctx.translate(b.x,b.y); ctx.rotate(ang+Math.PI/2);
-      ctx.fillRect(-1.5,-6,3,10);
+      ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(ang+Math.PI/2);
+      if(T.halo>0){ ctx.globalAlpha=0.3*T.halo; ctx.shadowBlur=T.glow*1.3; ctx.shadowColor='#b58cff'; ctx.fillStyle='#b58cff';
+        bulletShape(T.w*1.95,T.len*1.12); ctx.fill(); ctx.globalAlpha=1; }
+      ctx.shadowBlur=T.glow; ctx.shadowColor=b.color; ctx.fillStyle=b.color;
+      bulletShape(T.w,T.len); ctx.fill();
+      ctx.shadowBlur=T.glow*0.5; ctx.shadowColor=T.core; ctx.fillStyle=T.core;
+      bulletShape(T.w*0.42,T.len*0.72); ctx.fill();
+      ctx.restore();
     }
-    ctx.restore(); }
+  }
+  ctx.shadowBlur=0;
   for(const e of Game.enemies) drawEnemy(e);
   if(Game.boss && !Game.boss.dead) drawBoss(Game.boss);
   drawParticles();
