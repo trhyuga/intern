@@ -137,26 +137,38 @@ const Sound = {
   transform(){ this.blip(110,1.2,'sawtooth',0.3,400); this.noise(1.0,0.4,2000); }
 };
 
-/* ---------------- BGM (bgm/ フォルダの mp3) ---------------- */
+/* ---------------- BGM (bgm/ フォルダの mp3) ----------------
+   v6: モバイル対応強化
+   - warmup: 最初のタップで全トラックを無音再生→即停止して「解錠」
+     (iOS/Androidはユーザー操作内で一度playしたAudioしか後から鳴らせないため、
+      中ボス/ラスボスなど途中で切り替わる曲が鳴らない問題の根本対策)
+   - ミュート: iOSはvolume変更が効かないため、停止/再開方式に変更 */
 const Music = {
-  vol:0.55, cur:null, name:null, pending:null, cache:{},
+  vol:0.55, cur:null, name:null, pending:null, cache:{}, warmed:false,
   files:{
     opening:'bgm/opening.mp3',
     stage0:'bgm/stage1.mp3', stage1:'bgm/stage2.mp3', stage2:'bgm/stage3.mp3',
     boss0:'bgm/boss1.mp3', boss1:'bgm/boss2.mp3', boss2:'bgm/boss3.mp3',
+    midboss:'bgm/chuboss.mp3',
     final:'bgm/boss_final.mp3', ending:'bgm/ending.mp3'
   },
-  play(name){
-    if(this.name===name && this.cur && !this.cur.paused) return;
-    this.stopCur(); this.name=name;
-    const src=this.files[name]; if(!src) return;
+  get(name){
     let a=this.cache[name];
     if(!a){
-      try{ a=new Audio(src); }catch(e){ return; }
+      const src=this.files[name]; if(!src) return null;
+      try{ a=new Audio(src); }catch(e){ return null; }
       a.loop=true; a.preload='auto'; a.onerror=()=>{};
       this.cache[name]=a;
     }
-    a.volume = Sound.muted?0:this.vol;
+    return a;
+  },
+  play(name){
+    this.name=name;                          // ミュート中でも「今の曲」は覚えておく
+    if(Sound.muted){ this.stopCur(); return; }
+    const a=this.get(name); if(!a) return;
+    if(this.cur===a && !a.paused) return;
+    this.stopCur();
+    a.muted=false; try{ a.volume=this.vol; }catch(e){}
     try{ a.currentTime=0; }catch(e){}
     this.cur=a;
     const pr=a.play();
@@ -165,10 +177,27 @@ const Music = {
   stopCur(){ if(this.cur){ try{ this.cur.pause(); }catch(e){} } this.cur=null; },
   stop(){ this.stopCur(); this.name=null; this.pending=null; },
   unlock(){
-    if(this.pending){ const n=this.pending; this.pending=null; this.name=null; this.play(n); }
-    else if(this.cur && this.cur.paused){ const pr=this.cur.play(); if(pr&&pr.catch) pr.catch(()=>{}); }
+    this.warmup();
+    if(Sound.muted) return;
+    if(this.pending){ const n=this.pending; this.pending=null; this.play(n); }
+    else if(this.name && (!this.cur || this.cur.paused)){ const n=this.name; this.name=null; this.play(n); }
   },
-  setMuted(m){ if(this.cur) this.cur.volume = m?0:this.vol; }
+  warmup(){
+    if(this.warmed) return; this.warmed=true;
+    for(const k in this.files){
+      const a=this.get(k); if(!a || a===this.cur) continue;
+      a.muted=true;
+      const pr=a.play();
+      if(pr && pr.then){
+        pr.then(()=>{ try{ a.pause(); a.currentTime=0; }catch(e){} a.muted=false; })
+          .catch(()=>{ a.muted=false; });
+      } else { try{ a.pause(); }catch(e){} a.muted=false; }
+    }
+  },
+  setMuted(m){
+    if(m){ this.stopCur(); }
+    else if(this.name){ const n=this.name; this.name=null; this.play(n); }
+  }
 };
 
 /* ---------------- セーブ (localStorage) ---------------- */
@@ -810,7 +839,7 @@ function makeBoss(kind, stage){
 function spawnMidboss(stage){
   const b=makeBoss('mid',stage); Game.boss=b;
   Game.setMessage('WARNING', MID_NAMES[stage]+' APPROACHING', 110); Sound.boss();
-  Music.play('boss'+stage);
+  Music.play('midboss');   // v6: 中ボス専用曲 (chuboss.mp3・3ステージ共通)
 }
 function spawnBoss(stage){
   const b=makeBoss('boss',stage); Game.boss=b;
