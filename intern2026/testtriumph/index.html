@@ -279,7 +279,7 @@ function fireHoming(x,y,dmg){
 /* 敵弾: wave(蛇行)/加速 対応 */
 function eb(x,y,vx,vy,opt){
   opt=opt||{};
-  eBullets.push({x,y,vx,vy, r:opt.r||5, color:opt.color||'#ff5a7a', dmg:opt.dmg||16,
+  eBullets.push({x,y,vx,vy, r:opt.r||5, color:opt.color||'#ff5a7a', dmg:Math.round((opt.dmg||16)*dmgScale()),
     life:opt.life||300, t:0, wave:opt.wave||null, ax:opt.ax||0, ay:opt.ay||0});
 }
 function enemyBullet(x,y,vx,vy,r,color,dmg){ eb(x,y,vx,vy,{r:r,color:color,dmg:dmg}); }
@@ -363,7 +363,8 @@ const Game = {
     this.lastGain = gain;
     this.midRun=false;
     this.state = win?STATE.WIN:STATE.OVER;
-    if(win) Music.play('ending'); else Music.stop();
+    if(win){ Music.play('ending'); this.winT=0; this.fwCd=0; this.doFlash('#ffd76a',0.7); }
+    else Music.stop();
   },
 
   setMessage(a,b,dur){ this.message={a,b}; this.messageT=dur; },
@@ -451,8 +452,11 @@ const ENEMY_DEF = {
 };
 function makeEnemy(kind, x, y, opt={}){
   const base = ENEMY_DEF[kind];
+  /* v3: 同一ステージ内でも後半ウェーブほど少し固くなる */
+  const ramp = 1 + Math.min(Director.step||0,20)*0.022;
+  const hp0 = base.hp*(opt.hpMul||1)*ramp;
   return {
-    kind, x, y, r:base.r, hp:base.hp*(opt.hpMul||1), maxHp:base.hp*(opt.hpMul||1),
+    kind, x, y, r:base.r, hp:hp0, maxHp:hp0,
     color:base.color, credit:base.credit, dmg:base.dmg||20,
     t:0, fireCd:rand(50,110), vx:0, vy:0, angle:0,
     entered:false, targetY: opt.targetY!==undefined?opt.targetY: rand(80,220),
@@ -587,7 +591,7 @@ function damageEnemy(e, dmg, hx, hy){
 function killEnemy(e){
   e.dead=true;
   burst(e.x,e.y,e.color,18,4); Sound.explode(); Game.screenShake(3);
-  Game.score += e.scoreV; const g=Game.addCredits(e.credit);
+  Game.score += e.scoreV; const g=Game.addCredits(e.credit*credScale());
   addFloat(e.x,e.y,'+'+Math.round(g)+'c','#ffd76a');
   if(Math.random()<e.drop) spawnPowerup(e.x,e.y);
   if(e.kind==='splitter'){ for(let i=0;i<4;i++){ const m=makeEnemy('mini',e.x,e.y); m.homeX=e.x; m.phase=rand(0,TAU); Game.enemies.push(m); } }
@@ -613,7 +617,7 @@ function updatePowerups(dt){
 }
 function applyPowerup(type){
   const p=Game.player; Sound.pickup();
-  if(type==='heal'){ p.hp=Math.min(p.maxHP,p.hp+30); addFloat(p.x,p.y-20,'+HP','#7fffa8'); }
+  if(type==='heal'){ p.hp=Math.min(p.maxHP,p.hp+Math.max(30,p.maxHP*0.2)); addFloat(p.x,p.y-20,'+HP','#7fffa8'); }
   else if(type==='shield'){ if(p.shieldMax>0){ p.shieldHP=p.shieldMax; addFloat(p.x,p.y-20,'SHIELD','#7ff'); } else { const g=Game.addCredits(15); addFloat(p.x,p.y-20,'+'+Math.round(g)+'c','#ffd76a'); } }
   else if(type==='credit'){ const g=Game.addCredits(30); addFloat(p.x,p.y-20,'+'+Math.round(g)+'c','#ffd76a'); }
   else if(type==='bomb'){ p.bombs=Math.min(9,p.bombs+1); addFloat(p.x,p.y-20,'+BOMB','#bff'); }
@@ -640,6 +644,15 @@ const STAGES = [
 ];
 const BOSS_NAMES = ['AZURE CRUSHER','CRIMSON MOTH','GOLD SENTINEL'];
 const MID_NAMES  = ['RAZOR','PHANTOM','WARDEN'];
+
+/* v3 難易度カーブ: 終盤ほど敵が固く・痛くなる。クレジット収入も増える。
+   フル強化時のプレイヤー火力/防御が大きく上回る設計なので、
+   最後まで強化すれば初心者でも爽快にクリアできる。 */
+const HP_MUL   = [1.0, 2.4, 4.8];   // 敵HP倍率(ステージ別)
+const DMG_MUL  = [1.0, 1.5, 2.1];   // 敵攻撃力倍率(ステージ別)
+const CRED_MUL = [1.0, 1.4, 1.8];   // クレジット倍率(ステージ別)
+function dmgScale(){ return DMG_MUL[Game.stageIndex]||1; }
+function credScale(){ return CRED_MUL[Game.stageIndex]||1; }
 
 function formationRow(kind, count, y, hpMul){
   const gap=VW/(count+1);
@@ -701,7 +714,7 @@ const Director = {
 /* v2 ステージ台本: 各ステージ約3倍・3面はさらに長く中ボス2体 */
 function buildScript(stage){
   const S=[];
-  const m = 1 + stage*0.8;   // 敵HP倍率
+  const m = HP_MUL[stage];   // 敵HP倍率（v3: 終盤ほど大幅強化）
   if(stage===0){
     S.push(W(()=>{ formationRow('grunt',5,80,m); formationRow('grunt',5,130,m); }));
     S.push(W(()=>{ formationRow('weaver',5,90,m); }));
@@ -771,9 +784,10 @@ function makeBoss(kind, stage){
     isGreat:(kind==='great'), isMid:(kind==='mid'),
     parts:[], anim:0, baseY:VH*0.22, tx:VW/2, dashT:0,
   };
-  if(kind==='mid'){ B.r=38; B.maxHp=850 + stage*750; B.name=MID_NAMES[stage]; }
-  else if(kind==='great'){ B.r=64; B.maxHp=9000; B.name='OMEGA CORE'; B.baseY=VH*0.24; }
-  else { B.r=52; B.maxHp=2000 + stage*1200; B.name=BOSS_NAMES[stage]; }
+  /* v3: ボスHPを終盤急カーブに（フル強化DPSなら短時間で溶かせる値） */
+  if(kind==='mid'){ B.r=38; B.maxHp=[900,2600,6000][stage]; B.name=MID_NAMES[stage]; }
+  else if(kind==='great'){ B.r=64; B.maxHp=26000; B.name='OMEGA CORE'; B.baseY=VH*0.24; }
+  else { B.r=52; B.maxHp=[2400,7000,15000][stage]; B.name=BOSS_NAMES[stage]; }
   B.hp=B.maxHp;
   const pc = kind==='great'?10:(kind==='mid'?5:7);
   for(let i=0;i<pc;i++){ B.parts.push({a:i/pc*TAU, hp: kind==='great'?220:130, alive:true}); }
@@ -806,7 +820,7 @@ function defeatBoss(){
   const b=Game.boss; if(b.dead) return; b.dead=true;
   Sound.bigExplode(); Game.screenShake(22); Game.doFlash('#fff',0.8);
   for(let i=0;i<40;i++) setTimeout(()=>{ burst(b.x+rand(-b.r,b.r), b.y+rand(-b.r,b.r), i%2?'#fd6':'#f6c', 8, 5); }, i*20);
-  const bonus = b.isGreat?2600: b.isMid?220:800;
+  const bonus = Math.round((b.isGreat?3200: b.isMid?240:850)*(1+b.stage*0.35));
   Game.score += bonus*4; const g=Game.addCredits(bonus);
   addFloat(b.x,b.y,'+'+Math.round(g)+'c','#ffd76a');
   eBullets.length=0;   // ボス撃破で弾消し（爽快感）
@@ -851,7 +865,7 @@ function fAccelRain(n){ return (b)=>{ for(let i=0;i<n;i++){ const x=rand(30,VW-3
   eb(x, b.y+rand(-10,20), rand(-0.4,0.4), 1.2, {r:5,color:'#fd9',dmg:16, ay:0.06}); } }; }
 function fSummon(kinds){ return (b)=>{ if(Game.enemies.length>14) return;
   const kind=kinds[randi(0,kinds.length-1)];
-  const e=makeEnemy(kind, rand(60,VW-60), b.y+30, {targetY:rand(130,210), hpMul:1+b.stage*0.6});
+  const e=makeEnemy(kind, rand(60,VW-60), b.y+30, {targetY:rand(130,210), hpMul:HP_MUL[b.stage]*0.8});
   e.entered = (kind!=='kamikaze'); e.fireCd=rand(30,70);
   Game.enemies.push(e); }; }
 function fSnake(dur){ return (b)=>{ b.beam=dur; b.beamAcc=0; }; }
@@ -1028,8 +1042,8 @@ function collisions(){
     const b=eBullets[i];
     if(dist2(b.x,b.y,p.x,p.y) < (b.r+p.r)*(b.r+p.r)){ playerHit(b.dmg); eBullets.splice(i,1); }
   }
-  for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(e,p)){ playerHit(e.dmg); damageEnemy(e,40,e.x,e.y); } }
-  if(Game.boss && !Game.boss.entering && !Game.boss.dead){ if(circleHit(Game.boss,p)){ playerHit(22); } }
+  for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(e,p)){ playerHit(Math.round(e.dmg*dmgScale())); damageEnemy(e,40,e.x,e.y); } }
+  if(Game.boss && !Game.boss.entering && !Game.boss.dead){ if(circleHit(Game.boss,p)){ playerHit(Math.round(24*dmgScale())); } }
 }
 
 /* =========================================================================
@@ -1305,21 +1319,59 @@ function drawButton(x,y,w,h,label,active=true,accent='#6cf'){
 }
 function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
-/* --- タイトル --- */
+/* --- 星雲（タイトル/エンディング共用の背景演出） --- */
+function drawNebula(){
+  const T=Game.t;
+  const blobs=[
+    [VW*0.25+Math.sin(T*0.004)*30, 180+Math.cos(T*0.003)*20, 190,'rgba(40,90,200,0.12)'],
+    [VW*0.78+Math.cos(T*0.0035)*26, 330+Math.sin(T*0.0042)*24, 160,'rgba(150,40,160,0.10)'],
+    [VW*0.5+Math.sin(T*0.0028)*20, 610+Math.cos(T*0.0036)*30, 210,'rgba(30,140,160,0.09)'],
+  ];
+  for(const bl of blobs){
+    const g=ctx.createRadialGradient(bl[0],bl[1],0,bl[0],bl[1],bl[2]);
+    g.addColorStop(0,bl[3]); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(bl[0]-bl[2],bl[1]-bl[2],bl[2]*2,bl[2]*2);
+  }
+}
+
+/* --- タイトル（v3: 動く演出） --- */
 function drawTitle(){
   Game.buttons=[];
+  drawNebula();
   drawStarfield();
+  const T=Game.t;
+  /* 流れ星 */
+  if(Math.random()<0.025){ spawnParticle(rand(30,VW-30), -5, '#cfe', {vx:rand(-0.5,0.5), vy:rand(7,10), life:rand(30,45), r:1.6, fric:1}); }
+  drawParticles();
+
   ctx.textAlign='center';
-  const gy=210;
-  ctx.save(); ctx.shadowBlur=30; ctx.shadowColor='#6cf'; ctx.fillStyle='#dffbff';
-  ctx.font='bold 46px system-ui'; ctx.fillText('NEON', VW/2, gy);
-  ctx.shadowColor='#f6c'; ctx.fillStyle='#ffe'; ctx.fillText('VANGUARD', VW/2, gy+50);
-  ctx.restore();
-  ctx.fillStyle='#8ac'; ctx.font='13px system-ui'; ctx.fillText('- ネオンベクター シューティング -', VW/2, gy+82);
+  const gy=200;
+  /* ロゴ: 鼓動グロー＋エコーストローク */
+  const pulse=1+Math.sin(T*0.04)*0.03;
+  ctx.save(); ctx.translate(VW/2, gy); ctx.scale(pulse,pulse);
+  ctx.shadowBlur=34+10*Math.sin(T*0.06); ctx.shadowColor='#6cf'; ctx.fillStyle='#dffbff';
+  ctx.font='bold 48px system-ui'; ctx.fillText('NEON', 0, 0);
+  ctx.shadowColor='#f6c'; ctx.fillStyle='#fff0fb'; ctx.fillText('VANGUARD', 0, 52);
+  ctx.shadowBlur=0; ctx.globalAlpha=0.35; ctx.lineWidth=1;
+  ctx.strokeStyle='#9ef'; ctx.strokeText('NEON',0,0);
+  ctx.strokeStyle='#f9d'; ctx.strokeText('VANGUARD',0,52);
+  ctx.globalAlpha=1; ctx.restore();
+
+  const sh=0.55+0.45*Math.sin(T*0.05);
+  ctx.fillStyle='rgba(150,190,230,'+(0.45+0.4*sh).toFixed(2)+')';
+  ctx.font='13px system-ui'; ctx.fillText('- ネオンベクター シューティング -', VW/2, gy+84);
 
   ctx.fillStyle='#ffd76a'; ctx.font='12px system-ui';
-  ctx.fillText('所持クレジット ◈ '+fmt(Save.data.credits)+'c   /   最高到達 STAGE '+(Save.data.best||0), VW/2, gy+112);
-  if(Save.data.cleared){ ctx.fillStyle='#9fffd0'; ctx.fillText('★ 全ステージ制覇済み ★', VW/2, gy+132); }
+  ctx.fillText('所持クレジット ◈ '+fmt(Save.data.credits)+'c   /   最高到達 STAGE '+(Save.data.best||0), VW/2, gy+108);
+  if(Save.data.cleared){ ctx.fillStyle='#9fffd0'; ctx.fillText('★ 全ステージ制覇済み ★', VW/2, gy+128); }
+
+  /* ホバーする自機（エンジン光つき） */
+  const sy=364+Math.sin(T*0.05)*6;
+  if(Math.random()<0.7) spawnParticle(VW/2+rand(-4,4), sy+16, '#4cf', {vx:rand(-.3,.3), vy:rand(1.5,2.6), life:rand(14,24), r:rand(1.5,3)});
+  ctx.save(); ctx.translate(VW/2, sy);
+  neonPoly([[0,-18],[13,14],[0,7],[-13,14]],'#bfefff','rgba(60,180,255,0.25)',2,18);
+  neonPoly([[0,-9],[6,7],[-6,7]],'#eaffff','rgba(200,255,255,0.5)',1.5,10);
+  ctx.restore(); ctx.shadowBlur=0;
 
   const bw=200,bx=VW/2-bw/2;
   drawButton(bx, 430, bw, 46, 'スタート', true, '#6cf'); addBtn(bx,430,bw,46,'start');
@@ -1327,7 +1379,7 @@ function drawTitle(){
   drawButton(bx, 538, bw, 40, Sound.muted?'サウンド: OFF':'サウンド: ON', true, '#fc8'); addBtn(bx,538,bw,40,'mute');
   drawButton(bx, 588, bw, 34, 'データ初期化', true, '#f88'); addBtn(bx,588,bw,34,'reset');
 
-  ctx.fillStyle='#567'; ctx.font='11px system-ui';
+  ctx.fillStyle='rgba(90,120,150,'+(0.5+0.4*sh).toFixed(2)+')'; ctx.font='11px system-ui';
   ctx.fillText('Enter / タップ でスタート', VW/2, 700);
 }
 
@@ -1403,27 +1455,104 @@ function drawHangar(){
   if(Game.shopMsgT>0){ Game.shopMsgT--; ctx.fillStyle='#f88'; ctx.font='bold 13px system-ui'; ctx.fillText(Game.shopMsg, VW/2, by-4); }
 }
 
-/* --- ゲームオーバー / クリア --- */
-function drawOver(win){
+/* --- ゲームオーバー --- */
+function drawOver(){
   Game.buttons=[];
   drawStarfield();
   ctx.fillStyle='rgba(4,6,15,0.7)'; ctx.fillRect(0,0,VW,VH);
   ctx.textAlign='center';
   ctx.save(); ctx.shadowBlur=24;
-  if(win){ ctx.shadowColor='#fd6'; ctx.fillStyle='#ffe9a8'; ctx.font='bold 40px system-ui'; ctx.fillText('MISSION', VW/2, 250); ctx.fillText('COMPLETE', VW/2, 296); }
-  else { ctx.shadowColor='#f66'; ctx.fillStyle='#ffd0d0'; ctx.font='bold 42px system-ui'; ctx.fillText('SHIP DOWN', VW/2, 270); }
+  ctx.shadowColor='#f66'; ctx.fillStyle='#ffd0d0'; ctx.font='bold 42px system-ui'; ctx.fillText('SHIP DOWN', VW/2, 270);
   ctx.restore();
   ctx.fillStyle='#cfe'; ctx.font='15px system-ui';
   ctx.fillText('今回のスコア: '+fmt(Game.score), VW/2, 360);
   ctx.fillStyle='#ffd76a'; ctx.fillText('獲得クレジット: ◈ '+fmt(Game.lastGain||0)+'c', VW/2, 388);
   ctx.fillStyle='#9fd'; ctx.fillText('総クレジット: ◈ '+fmt(Save.data.credits)+'c', VW/2, 414);
-  if(!win){ ctx.fillStyle='#8ac'; ctx.font='13px system-ui'; ctx.fillText('強化して もう一度挑もう！', VW/2, 448); }
-  else { ctx.fillStyle='#9fffd0'; ctx.font='14px system-ui'; ctx.fillText('★ NEON VANGUARD 制覇 ★', VW/2, 448); }
+  ctx.fillStyle='#8ac'; ctx.font='13px system-ui'; ctx.fillText('強化して もう一度挑もう！', VW/2, 448);
 
   const bw=200,bx=VW/2-bw/2;
   drawButton(bx, 500, bw, 46, '格納庫へ', true, '#6cf'); addBtn(bx,500,bw,46,'hangar');
   drawButton(bx, 558, bw, 40, 'タイトルへ', true, '#9f8'); addBtn(bx,558,bw,40,'title');
   ctx.fillStyle='#567'; ctx.font='11px system-ui'; ctx.fillText('Enter / タップ で格納庫', VW/2, 620);
+}
+
+/* --- エンディング（v3: 花火・ランク表彰・凱旋） --- */
+function drawWin(){
+  Game.buttons=[];
+  drawNebula();
+  drawStarfield();
+  const T=Game.winT||0;
+
+  /* 花火 */
+  Game.fwCd=(Game.fwCd||0)-Game.dt;
+  if(Game.fwCd<=0){
+    Game.fwCd=rand(16,38);
+    const fx=rand(60,VW-60), fy=rand(80,VH*0.55);
+    const cols=['#ffd76a','#7df','#f6c','#9fffd0','#fff','#ff9be6'];
+    burst(fx,fy,cols[randi(0,cols.length-1)],28,4.6);
+    Sound.blip(rand(400,900),0.12,'triangle',0.04,-200);
+  }
+  /* 金の紙吹雪 */
+  if(Math.random()<0.55) spawnParticle(rand(0,VW),-4, Math.random()<0.5?'#ffd76a':'#fff', {vx:rand(-0.3,0.3),vy:rand(1.2,2.4),life:rand(70,120),r:rand(1.5,3),fric:1});
+  drawParticles();
+
+  /* 凱旋する自機（上昇していく） */
+  const sy=VH*0.88 - Math.min(T*0.4, VH*0.34);
+  if(Math.random()<0.85) spawnParticle(VW/2+rand(-4,4), sy+16,'#4cf',{vx:rand(-.4,.4),vy:rand(2,3.4),life:rand(16,28),r:rand(1.5,3)});
+  ctx.save(); ctx.translate(VW/2,sy);
+  neonPoly([[0,-16],[11,12],[0,6],[-11,12]],'#bfefff','rgba(60,180,255,0.25)',2,16);
+  neonPoly([[0,-8],[5,6],[-5,6]],'#eaffff','rgba(200,255,255,0.5)',1.5,10);
+  ctx.restore(); ctx.shadowBlur=0;
+
+  /* 文字用の薄い帯 */
+  ctx.fillStyle='rgba(4,6,15,0.38)'; ctx.fillRect(0,150,VW,410);
+
+  /* MISSION COMPLETE: 拡大インしてから鼓動 */
+  const appear=clamp(T/40,0,1);
+  const sc=(0.6+0.4*appear) + Math.sin(T*0.05)*0.02;
+  ctx.save(); ctx.translate(VW/2,240); ctx.scale(sc,sc); ctx.globalAlpha=appear;
+  ctx.textAlign='center';
+  ctx.shadowBlur=30+12*Math.sin(T*0.08); ctx.shadowColor='#fd6';
+  ctx.fillStyle='#ffe9a8'; ctx.font='bold 44px system-ui';
+  ctx.fillText('MISSION',0,0); ctx.fillText('COMPLETE',0,50);
+  ctx.shadowBlur=0; ctx.globalAlpha=0.4; ctx.lineWidth=1; ctx.strokeStyle='#fff';
+  ctx.strokeText('MISSION',0,0); ctx.strokeText('COMPLETE',0,50);
+  ctx.restore(); ctx.globalAlpha=1;
+  ctx.textAlign='center';
+
+  if(T>50){
+    ctx.fillStyle='#9fffd0'; ctx.font='bold 16px system-ui';
+    ctx.shadowBlur=12; ctx.shadowColor='#5f8';
+    ctx.fillText('OMEGA CORE 撃破 — 銀河に平和が戻った', VW/2, 332); ctx.shadowBlur=0;
+  }
+  /* ランクメダル */
+  if(T>70){
+    const sc2=Game.score;
+    const rank = sc2>=65000?'S': sc2>=50000?'A': sc2>=35000?'B':'C';
+    const rc = rank==='S'?'#ffd76a': rank==='A'?'#f6c': rank==='B'?'#7df':'#9fd';
+    const rp=1+Math.sin(T*0.1)*0.05;
+    ctx.save(); ctx.translate(VW/2, 396); ctx.scale(rp,rp);
+    ctx.shadowBlur=26; ctx.shadowColor=rc; ctx.strokeStyle=rc; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(0,0,34,0,TAU); ctx.stroke();
+    ctx.globalAlpha=0.5; ctx.beginPath(); ctx.arc(0,0,42,0,TAU); ctx.stroke(); ctx.globalAlpha=1;
+    ctx.fillStyle=rc; ctx.font='bold 40px system-ui'; ctx.textBaseline='middle'; ctx.fillText(rank,0,2); ctx.textBaseline='alphabetic';
+    ctx.restore();
+    ctx.fillStyle='#8ac'; ctx.font='11px system-ui'; ctx.fillText('RANK', VW/2, 448);
+  }
+  if(T>85){
+    ctx.fillStyle='#cfe'; ctx.font='14px system-ui';
+    ctx.fillText('SCORE '+fmt(Game.score), VW/2, 480);
+    ctx.fillStyle='#ffd76a';
+    ctx.fillText('獲得 ◈ '+fmt(Game.lastGain||0)+'c ／ 総資産 ◈ '+fmt(Save.data.credits)+'c', VW/2, 504);
+  }
+  if(T>110){
+    const tw=0.6+0.4*Math.sin(T*0.06);
+    ctx.fillStyle='rgba(255,255,255,'+tw.toFixed(2)+')'; ctx.font='bold 15px system-ui';
+    ctx.fillText('THANK YOU FOR PLAYING', VW/2, 545);
+    const bw=200,bx=VW/2-bw/2;
+    drawButton(bx, 590, bw, 46, '格納庫へ', true, '#6cf'); addBtn(bx,590,bw,46,'hangar');
+    drawButton(bx, 648, bw, 40, 'タイトルへ', true, '#9f8'); addBtn(bx,648,bw,40,'title');
+  }
 }
 
 /* --- ポーズ --- */
@@ -1479,7 +1608,11 @@ function loop(ts){
   Game.dt = clamp(raw,0.1,2.5); Game.t += Game.dt;
 
   if(Game.state===STATE.PLAY){ updatePlay(Game.dt); }
-  else { updateStarfield(Game.dt); if(Game.flash>0) Game.flash-=0.03*Game.dt; if(Game.shake>0) Game.shake*=0.9; }
+  else {
+    updateStarfield(Game.dt); updateParticles(Game.dt); updateFloats(Game.dt);
+    if(Game.state===STATE.WIN) Game.winT=(Game.winT||0)+Game.dt;
+    if(Game.flash>0) Game.flash-=0.03*Game.dt; if(Game.shake>0) Game.shake*=0.9;
+  }
 
   const dpr=Math.min(window.devicePixelRatio||1,2);
   ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -1493,8 +1626,8 @@ function loop(ts){
     case STATE.HANGAR: drawBackdrop(); drawHangar(); break;
     case STATE.PLAY: drawWorld(); break;
     case STATE.PAUSE: drawPause(); break;
-    case STATE.OVER: drawOver(false); break;
-    case STATE.WIN: drawOver(true); break;
+    case STATE.OVER: drawOver(); break;
+    case STATE.WIN: drawWin(); break;
   }
   ctx.restore();
   if(Game.flash>0){ ctx.globalAlpha=clamp(Game.flash,0,1); ctx.fillStyle=Game.flashColor; ctx.fillRect(0,0,VW,VH); ctx.globalAlpha=1; }
