@@ -188,9 +188,9 @@ const Save = {
 /* ---------------- 強化 (ショップ定義) v2: speed廃止・扇形武器 ---------------- */
 const UPGRADES = [
   { id:'weapon',  name:'メインショット', max:6, base:150,
-    desc:(l)=> ['単発','2連射','3way扇','5way扇','7way扇','9way扇','11way大扇'][l] },
-  { id:'rate',    name:'連射速度',       max:5, base:130, desc:(l)=> 'Lv'+l+' 発射間隔短縮' },
-  { id:'power',   name:'火力',           max:6, base:140, desc:(l)=> 'Lv'+l+' 1発ダメージ上昇' },
+    desc:(l)=> ['単発','2連射','3way扇','5way扇','7way扇','9way扇','11way大扇★強化弾'][l] },
+  { id:'rate',    name:'連射速度',       max:5, base:130, desc:(l)=> l>=5?'Lv5★最終: 超連射':'Lv'+l+' 発射間隔短縮' },
+  { id:'power',   name:'火力',           max:6, base:140, desc:(l)=> l>=6?'Lv6★最終: 火力大幅上昇':'Lv'+l+' 1発ダメージ上昇' },
   { id:'wing',    name:'僚機ウイングマン', max:2, base:520, desc:(l)=> l+'機 随伴して追加射撃' },
   { id:'hp',      name:'装甲(最大HP)',   max:5, base:190, desc:(l)=> '最大HP '+(100+l*40) },
   { id:'shield',  name:'シールド',       max:3, base:320, desc:(l)=> l>0?('自動回復バリア x'+l):'なし' },
@@ -205,10 +205,11 @@ function upMaxed(u){ return upLevel(u.id) >= u.max; }
 /* プレイヤー派生ステータス */
 function playerStats(){
   const w=upLevel('weapon'), r=upLevel('rate'), p=upLevel('power');
+  /* v4: 最終レベルだけ大きく伸びる（最後の1個がパワースパイク） */
   return {
     maxHP: 100 + upLevel('hp')*40,
-    fireInterval: Math.max(90, 210 - r*24),
-    dmg: 9 + p*6,
+    fireInterval: Math.max(78, 210 - r*24 - (r>=5?12:0)),
+    dmg: 9 + p*6 + (p>=6?10:0),
     weapon: w,
     wings: upLevel('wing'),
     shield: upLevel('shield'),
@@ -309,6 +310,7 @@ const Game = {
   launch(){
     Sound.init(); Sound.resume();
     this.midRun=false;
+    this.carryHP=null; this.carryShield=null;   // v4: 新規出撃は満タン
     this.score=0; this.runCredits=0;
     Save.data.runs++;
     this.beginStage(0);
@@ -318,16 +320,21 @@ const Game = {
   resumeNext(){
     Sound.init(); Sound.resume();
     this.midRun=false;
-    this.beginStage(this.pendingStage);
+    this.beginStage(this.pendingStage, true);
   },
 
-  beginStage(stage){
+  beginStage(stage, carry){
     const st = playerStats();
     this.player = {
       x:VW/2, y:VH*0.82, r:9, hp:st.maxHP, maxHP:st.maxHP,
       inv:0, fireCd:0, missileCd:0, bombs:st.bombs, bombFlash:0,
       shieldHP: st.shield*40, shieldMax: st.shield*40, shieldRegen:0, st
     };
+    /* v4: ステージ間はHP/シールドを持ち越し（全回復しない） */
+    if(carry && this.carryHP!=null){
+      this.player.hp = Math.min(st.maxHP, this.carryHP);
+      this.player.shieldHP = Math.min(this.player.shieldMax, this.carryShield||0);
+    }
     this.wingmen=[];
     for(let i=0;i<st.wings;i++){
       this.wingmen.push({x:VW/2, y:VH*0.9, side: i===0?-1:1, r:7, fireCd:0});
@@ -343,6 +350,9 @@ const Game = {
 
   /* ---- ステージクリア → 格納庫（強化タイム） ---- */
   stageClear(nextStage){
+    /* v4: 現在のHP/シールドを記録して持ち越す */
+    this.carryHP = this.player ? this.player.hp : null;
+    this.carryShield = this.player ? this.player.shieldHP : 0;
     const gain = Math.round(this.runCredits);
     Save.data.credits += gain; this.runCredits=0;
     if(nextStage+1 > Save.data.best) Save.data.best = nextStage+1;
@@ -453,7 +463,7 @@ const ENEMY_DEF = {
 function makeEnemy(kind, x, y, opt={}){
   const base = ENEMY_DEF[kind];
   /* v3: 同一ステージ内でも後半ウェーブほど少し固くなる */
-  const ramp = 1 + Math.min(Director.step||0,20)*0.022;
+  const ramp = 1 + Math.min(Director.step||0,20)*0.03;
   const hp0 = base.hp*(opt.hpMul||1)*ramp;
   return {
     kind, x, y, r:base.r, hp:hp0, maxHp:hp0,
@@ -648,7 +658,7 @@ const MID_NAMES  = ['RAZOR','PHANTOM','WARDEN'];
 /* v3 難易度カーブ: 終盤ほど敵が固く・痛くなる。クレジット収入も増える。
    フル強化時のプレイヤー火力/防御が大きく上回る設計なので、
    最後まで強化すれば初心者でも爽快にクリアできる。 */
-const HP_MUL   = [1.0, 2.4, 4.8];   // 敵HP倍率(ステージ別)
+const HP_MUL   = [1.0, 3.2, 7.5];   // 敵HP倍率(ステージ別) v4: さらに急カーブ
 const DMG_MUL  = [1.0, 1.5, 2.1];   // 敵攻撃力倍率(ステージ別)
 const CRED_MUL = [1.0, 1.4, 1.8];   // クレジット倍率(ステージ別)
 function dmgScale(){ return DMG_MUL[Game.stageIndex]||1; }
@@ -785,9 +795,9 @@ function makeBoss(kind, stage){
     parts:[], anim:0, baseY:VH*0.22, tx:VW/2, dashT:0,
   };
   /* v3: ボスHPを終盤急カーブに（フル強化DPSなら短時間で溶かせる値） */
-  if(kind==='mid'){ B.r=38; B.maxHp=[900,2600,6000][stage]; B.name=MID_NAMES[stage]; }
-  else if(kind==='great'){ B.r=64; B.maxHp=26000; B.name='OMEGA CORE'; B.baseY=VH*0.24; }
-  else { B.r=52; B.maxHp=[2400,7000,15000][stage]; B.name=BOSS_NAMES[stage]; }
+  if(kind==='mid'){ B.r=38; B.maxHp=[1100,3600,9000][stage]; B.name=MID_NAMES[stage]; }
+  else if(kind==='great'){ B.r=64; B.maxHp=36000; B.name='OMEGA CORE'; B.baseY=VH*0.24; }
+  else { B.r=52; B.maxHp=[3000,10000,22000][stage]; B.name=BOSS_NAMES[stage]; }
   B.hp=B.maxHp;
   const pc = kind==='great'?10:(kind==='mid'?5:7);
   for(let i=0;i<pc;i++){ B.parts.push({a:i/pc*TAU, hp: kind==='great'?220:130, alive:true}); }
@@ -1008,10 +1018,13 @@ function playerFire(){
   const spreads = [0, 10, 22, 38, 58, 80, 100];   // 扇の全角(度)
   const n = counts[lv], spreadRad = spreads[lv]*Math.PI/180;
   const speed = 10.5;
+  /* v4: 武器最終Lvは弾自体も強化（ダメージ1.3倍・大型弾） */
+  const boost = lv>=6 ? 1.3 : 1;
+  const br = lv>=6 ? 5 : 4;
   for(let i=0;i<n;i++){
     const off = n>1 ? (i/(n-1) - 0.5)*spreadRad : 0;
     const a = -Math.PI/2 + off;
-    firePlayer(p.x, p.y-12, Math.cos(a)*speed, Math.sin(a)*speed, d, 4, '#7df');
+    firePlayer(p.x, p.y-12, Math.cos(a)*speed, Math.sin(a)*speed, Math.round(d*boost), br, lv>=6?'#aef':'#7df');
   }
 }
 function playerHit(dmg){
@@ -1451,6 +1464,9 @@ function drawHangar(){
   const lbl = Game.midRun ? ('STAGE '+(Game.pendingStage+1)+' へ ▶') : '出撃 ▶';
   drawButton(bx, by, bw, 48, lbl, true, '#f6c'); addBtn(bx,by,bw,48,'launch');
   ctx.textAlign='center'; ctx.fillStyle='#567'; ctx.font='11px system-ui'; ctx.fillText('Enter / タップ で出撃', VW/2, by+66);
+  if(Game.midRun && Game.carryHP!=null){
+    ctx.fillStyle='#f9a'; ctx.fillText('※ 機体ダメージは持ち越し（現在HP '+Math.ceil(Game.carryHP)+'）', VW/2, by+84);
+  }
 
   if(Game.shopMsgT>0){ Game.shopMsgT--; ctx.fillStyle='#f88'; ctx.font='bold 13px system-ui'; ctx.fillText(Game.shopMsg, VW/2, by-4); }
 }
