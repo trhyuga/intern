@@ -103,7 +103,13 @@ const Sound = {
       this.master.gain.value = 0.32; this.master.connect(this.ac.destination);
     }catch(e){ this.ac=null; }
   },
-  resume(){ if(this.ac && this.ac.state==='suspended') this.ac.resume(); },
+  resume(){ if(this.ac && this.ac.state==='suspended'){ try{ this.ac.resume(); }catch(e){} } },
+  /* v11: 効果音が鳴らなくなる主因＝AudioContextのsuspend。定期的に復帰させる */
+  _et:0,
+  ensure(){
+    if(++this._et < 40) return; this._et=0;
+    if(this.ac && this.ac.state!=='running'){ try{ this.ac.resume(); }catch(e){} }
+  },
   blip(freq, dur, type='square', vol=0.3, slide=0){
     if(!this.ac || this.muted) return;
     const t=this.ac.currentTime;
@@ -249,40 +255,79 @@ const Music = {
     }
     return a;
   },
+  /* v11: 世代番号(gen)で「古い再生要求」を無効化し、二重再生を根絶する */
+  gen:0, _tick:0,
+  /* キャッシュ内の全トラックを確実に停止（cur以外の鳴り残しも潰す） */
+  stopAll(){
+    for(const k in this.cache){
+      const a=this.cache[k];
+      try{ if(!a.paused) a.pause(); }catch(e){}
+    }
+    this.cur=null;
+  },
   play(name){
-    this.name=name;                          // ミュート中でも「今の曲」は覚えておく
-    if(Sound.muted){ this.stopCur(); return; }
+    if(!this.files[name]) return;
+    this.name=name;                 // ミュート中でも「今の曲」は覚えておく
+    this.pending=null;
+    const gen=++this.gen;
+    if(Sound.muted){ this.stopAll(); return; }
     const a=this.get(name); if(!a) return;
-    if(this.cur===a && !a.paused) return;
-    this.stopCur();
+    if(this.cur===a && !a.paused) return;   // 同じ曲が既に鳴っていれば何もしない
+    this.stopAll();
+    if(this.gen!==gen) return;              // 待っている間に別の曲が要求されたら中止
     a.muted=false; try{ a.volume=this.vol; }catch(e){}
     try{ a.currentTime=0; }catch(e){}
     this.cur=a;
     const pr=a.play();
-    if(pr && pr.catch) pr.catch(()=>{ this.pending=name; });
+    if(pr && pr.catch) pr.catch(()=>{
+      /* 自動再生ブロック時だけ「後で鳴らす曲」に登録。
+         曲の切り替えで中断された古い再生は gen が古いので無視される */
+      if(this.gen===gen && this.name===name) this.pending=name;
+    });
   },
-  stopCur(){ if(this.cur){ try{ this.cur.pause(); }catch(e){} } this.cur=null; },
-  stop(){ this.stopCur(); this.name=null; this.pending=null; },
+  stopCur(){ this.stopAll(); },
+  stop(){ this.gen++; this.stopAll(); this.name=null; this.pending=null; },
   unlock(){
     this.warmup();
     if(Sound.muted) return;
-    if(this.pending){ const n=this.pending; this.pending=null; this.play(n); }
-    else if(this.name && (!this.cur || this.cur.paused)){ const n=this.name; this.name=null; this.play(n); }
+    const want = this.pending || this.name;
+    this.pending = null;
+    if(!want) return;
+    const a=this.cache[want];
+    if(!a || a.paused) this.play(want);
   },
   warmup(){
     if(this.warmed) return; this.warmed=true;
     for(const k in this.files){
       const a=this.get(k); if(!a || a===this.cur) continue;
       a.muted=true;
-      const pr=a.play();
+      let pr; try{ pr=a.play(); }catch(e){ a.muted=false; continue; }
       if(pr && pr.then){
-        pr.then(()=>{ try{ a.pause(); a.currentTime=0; }catch(e){} a.muted=false; })
-          .catch(()=>{ a.muted=false; });
-      } else { try{ a.pause(); }catch(e){} a.muted=false; }
+        pr.then(()=>{
+          /* 解錠が目的。いま流すべき曲なら止めない */
+          if(this.cur===a || this.name===k){ a.muted=false; return; }
+          try{ a.pause(); a.currentTime=0; }catch(e){}
+          a.muted=false;
+        }).catch(()=>{ a.muted=false; });
+      } else { try{ a.pause(); a.currentTime=0; }catch(e){} a.muted=false; }
+    }
+  },
+  /* 毎フレーム呼ぶ保険: 二重再生の掃除と、止まってしまった曲の復帰 */
+  tick(){
+    if(++this._tick < 45) return;
+    this._tick=0;
+    if(Sound.muted) return;
+    for(const k in this.cache){
+      const a=this.cache[k];
+      if(a!==this.cur && !a.paused){ try{ a.pause(); }catch(e){} }
+    }
+    if(this.name && !this.pending && (!this.cur || this.cur.paused)){
+      const a=this.cache[this.name];
+      if(a && a.readyState>=2) this.play(this.name);
     }
   },
   setMuted(m){
-    if(m){ this.stopCur(); }
+    if(m){ this.gen++; this.stopAll(); }
     else if(this.name){ const n=this.name; this.name=null; this.play(n); }
   }
 };
@@ -593,7 +638,7 @@ const Game = {
     else if(id==='pause'){ this.state = this.state===STATE.PLAY?STATE.PAUSE:STATE.PLAY; }
   },
 
-  gotoHangar(){ this.state=STATE.HANGAR; if(Music.name!=='opening') Music.play('opening'); },
+  gotoHangar(){ this.state=STATE.HANGAR; Music.play('opening'); },
 
   buy(uid){
     const u = UPGRADES.find(x=>x.id===uid); if(!u) return;
@@ -1968,6 +2013,7 @@ function drawWorld(){
 function loop(ts){
   const raw=(ts-Game.last)/16.67; Game.last=ts;
   Game.dt = clamp(raw,0.1,2.5); Game.t += Game.dt;
+  Sound.ensure(); Music.tick();
 
   if(Game.state===STATE.PLAY){ updatePlay(Game.dt); }
   else {
@@ -1997,6 +2043,16 @@ function loop(ts){
   requestAnimationFrame(loop);
 }
 function drawBackdrop(){ const grd=ctx.createLinearGradient(0,0,0,VH); grd.addColorStop(0,'#050a18'); grd.addColorStop(1,'#05060f'); ctx.fillStyle=grd; ctx.fillRect(0,0,VW,VH); }
+
+/* v11: バックグラウンド復帰時に音を確実に戻す（スマホでの無音対策） */
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){
+    Sound.resume();
+    if(!Sound.muted && Music.name && (!Music.cur || Music.cur.paused)) Music.play(Music.name);
+  } else {
+    Music.stopAll();   // 裏に回ったら全部止めて、戻った時の重なりを防ぐ
+  }
+});
 
 /* ---------------- 起動 ---------------- */
 Game.start();
