@@ -56,7 +56,8 @@ function fmt(n){ return Math.floor(n).toLocaleString('en-US'); }
 
 /* ---------------- 入力 ---------------- */
 const keys = {};
-const pointer = { active:false, px:VW/2, py:VH*0.8 };
+/* v5: 相対ドラッグ操作 — 指を置いた場所からの移動量ぶんだけ自機が動く */
+const pointer = { active:false, px:VW/2, py:VH*0.8, dxAcc:0, dyAcc:0 };
 addEventListener('keydown', e=>{
   keys[e.code]=true;
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
@@ -72,14 +73,17 @@ function canvasPos(clientX, clientY){
 function pointerDown(x,y){
   const p = canvasPos(x,y);
   pointer.active = true; pointer.px = p.x; pointer.py = p.y;
+  pointer.dxAcc = 0; pointer.dyAcc = 0;
   Game.onPointer(p.x, p.y, 'down');
 }
 function pointerMove(x,y){
   if(!pointer.active) return;
   const p = canvasPos(x,y);
+  pointer.dxAcc += p.x - pointer.px;
+  pointer.dyAcc += p.y - pointer.py;
   pointer.px = p.x; pointer.py = p.y;
 }
-function pointerUp(){ pointer.active=false; }
+function pointerUp(){ pointer.active=false; pointer.dxAcc=0; pointer.dyAcc=0; }
 
 canvas.addEventListener('mousedown', e=> pointerDown(e.clientX,e.clientY));
 addEventListener('mousemove', e=> pointerMove(e.clientX,e.clientY));
@@ -987,10 +991,13 @@ function updateBoss(b, dt){
    ========================================================================= */
 function updatePlayer(dt){
   const p=Game.player; if(!p) return;
-  if(pointer.active){
-    p.x = lerp(p.x, clamp(pointer.px, 16, VW-16), 0.4);
-    p.y = lerp(p.y, clamp(pointer.py-24, 40, VH-30), 0.4);
-  } else {
+  /* v5: 相対ドラッグ — 指の移動量ぶんだけ動く（自機が指で隠れない） */
+  if(pointer.dxAcc!==0 || pointer.dyAcc!==0){
+    p.x = clamp(p.x + pointer.dxAcc*1.15, 16, VW-16);
+    p.y = clamp(p.y + pointer.dyAcc*1.15, 40, VH-30);
+    pointer.dxAcc=0; pointer.dyAcc=0;
+  }
+  if(!pointer.active){
     const s=p.st.speed;
     if(keys.ArrowLeft||keys.KeyA) p.x-=s*dt;
     if(keys.ArrowRight||keys.KeyD) p.x+=s*dt;
@@ -1405,7 +1412,9 @@ function drawHowto(){
   ctx.textAlign='left'; ctx.fillStyle='#cfe'; ctx.font='14px system-ui';
   const lines=[
     '■ 操作',
-    '  ・画面をドラッグ / 矢印・WASD で移動',
+    '  ・画面のどこでもドラッグ → その方向に自機が動く',
+    '  　（指の下に自機が隠れない相対操作）',
+    '  ・キーボード: 矢印 / WASD',
     '  ・弾は自動発射（レベルで扇形に拡散）',
     '  ・ボム: Bキー または BOMBボタン',
     '  ・ポーズ: Pキー / ミュート: Mキー',
