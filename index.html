@@ -1,14 +1,221 @@
 <!DOCTYPE html>
-  <html lang="ja">
-  <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>intern</title>
-  </head>
-  <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:#0f172a;color:#f8fafc">
-  <div style="text-align:center;padding:2rem">
-  <h1 style="font-size:2.5rem;margin:0 0 .5rem">intern できた！</h1>
-  <p style="color:#94a3b8;margin:0">GitHub と Vercel の自動公開、動いてます。</p>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="インターン生がClaudeと一緒につくった成果物を紹介するショーケースです。">
+<title>INTERN WORKS — つくって、公開して、届ける。</title>
+<style>
+  :root{
+    --ink:#2b3a4a;
+    --ink-soft:#5d7186;
+    --sky:#eaf4ff;
+    --mint:#e9fbf3;
+    --accent:#4a9de0;
+    --accent2:#3ec99a;
+    --card:#ffffff;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{
+    font-family:"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    color:var(--ink);
+    background:linear-gradient(160deg, #f2f8ff 0%, #eef9f4 55%, #f7f4ff 100%);
+    min-height:100vh;
+    overflow-x:hidden;
+    line-height:1.7;
+  }
+  /* ふわっと浮かぶ淡い玉 */
+  .blob{ position:fixed; border-radius:50%; filter:blur(70px); opacity:.45; pointer-events:none; z-index:0; }
+  .blob.b1{ width:420px; height:420px; background:#cfe6ff; top:-120px; left:-120px; animation:float1 16s ease-in-out infinite; }
+  .blob.b2{ width:360px; height:360px; background:#d3f5e6; top:40%; right:-140px; animation:float2 20s ease-in-out infinite; }
+  .blob.b3{ width:300px; height:300px; background:#eadfff; bottom:-100px; left:20%; animation:float1 24s ease-in-out infinite; }
+  @keyframes float1{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(34px)} }
+  @keyframes float2{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-30px)} }
+
+  .wrap{ position:relative; z-index:1; max-width:960px; margin:0 auto; padding:0 22px; }
+
+  /* ヘッダー */
+  header{ padding:26px 0 0; display:flex; align-items:center; justify-content:space-between; }
+  .brand{ font-weight:800; letter-spacing:.06em; font-size:15px; color:var(--ink); }
+  .brand span{ color:var(--accent); }
+  .gh{ font-size:12.5px; color:var(--ink-soft); text-decoration:none; border:1px solid #d8e6f2; padding:7px 14px; border-radius:999px; background:rgba(255,255,255,.7); transition:.2s; }
+  .gh:hover{ border-color:var(--accent); color:var(--accent); }
+
+  /* ヒーロー */
+  .hero{ padding:74px 0 46px; text-align:center; }
+  .hero .badge{ display:inline-block; font-size:12px; letter-spacing:.14em; color:var(--accent); background:#e3f1ff; border-radius:999px; padding:6px 16px; margin-bottom:22px; font-weight:700; }
+  .hero h1{ font-size:clamp(30px, 6vw, 52px); font-weight:800; letter-spacing:.02em; line-height:1.35; }
+  .hero h1 .grad{ background:linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .hero p{ margin-top:18px; color:var(--ink-soft); font-size:15.5px; }
+  .hero .cta{ margin-top:30px; }
+  .hero .cta a{ display:inline-block; text-decoration:none; font-weight:700; font-size:15px; color:#fff; background:linear-gradient(90deg, var(--accent), var(--accent2)); padding:13px 34px; border-radius:999px; box-shadow:0 10px 24px rgba(74,157,224,.28); transition:.2s; }
+  .hero .cta a:hover{ transform:translateY(-2px); box-shadow:0 14px 30px rgba(74,157,224,.36); }
+
+  /* セクション見出し */
+  .sec{ padding:36px 0 10px; }
+  .sec h2{ font-size:20px; font-weight:800; letter-spacing:.05em; display:flex; align-items:center; gap:10px; }
+  .sec h2::before{ content:""; width:26px; height:4px; border-radius:2px; background:linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .sec .note{ font-size:13px; color:var(--ink-soft); margin-top:6px; }
+
+  /* 作品カード */
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:22px; padding:22px 0 10px; }
+  .card{
+    background:var(--card); border-radius:20px; overflow:hidden;
+    box-shadow:0 8px 28px rgba(70,110,150,.10);
+    border:1px solid #edf3f9;
+    transition:.25s; display:flex; flex-direction:column;
+  }
+  .card:hover{ transform:translateY(-4px); box-shadow:0 16px 36px rgba(70,110,150,.16); }
+
+  /* ゲームのサムネイル（CSSだけのネオン宇宙） */
+  .thumb{
+    position:relative; height:190px; overflow:hidden;
+    background:
+      radial-gradient(1.6px 1.6px at 15% 30%, #cfe9ff 60%, transparent 61%),
+      radial-gradient(1.4px 1.4px at 70% 20%, #ffffff 60%, transparent 61%),
+      radial-gradient(1.8px 1.8px at 85% 60%, #bfe0ff 60%, transparent 61%),
+      radial-gradient(1.2px 1.2px at 40% 75%, #ffffff 60%, transparent 61%),
+      radial-gradient(1.6px 1.6px at 55% 45%, #d5ecff 60%, transparent 61%),
+      radial-gradient(1.2px 1.2px at 25% 85%, #ffffff 60%, transparent 61%),
+      radial-gradient(circle at 75% 110%, rgba(90,60,160,.45), transparent 55%),
+      radial-gradient(circle at 20% -10%, rgba(30,90,180,.5), transparent 50%),
+      linear-gradient(160deg, #0a1226 0%, #101a33 60%, #1a1030 100%);
+  }
+  .thumb .ship{
+    position:absolute; left:50%; bottom:26px; transform:translateX(-50%);
+    width:0; height:0;
+    border-left:13px solid transparent; border-right:13px solid transparent;
+    border-bottom:26px solid #bfefff;
+    filter:drop-shadow(0 0 8px #4cc3ff);
+    animation:hover 2.6s ease-in-out infinite;
+  }
+  @keyframes hover{ 0%,100%{transform:translateX(-50%) translateY(0)} 50%{transform:translateX(-50%) translateY(-8px)} }
+  .thumb .logo{
+    position:absolute; top:34px; left:0; right:0; text-align:center;
+    font-weight:800; letter-spacing:.12em; color:#e6fbff; font-size:21px;
+    text-shadow:0 0 14px rgba(80,200,255,.9), 0 0 30px rgba(255,100,200,.5);
+  }
+  .thumb .logo small{ display:block; font-size:10px; letter-spacing:.3em; color:#9fd2ff; margin-top:4px; text-shadow:0 0 8px rgba(80,160,255,.8); }
+
+  .card .body{ padding:20px 22px 22px; display:flex; flex-direction:column; gap:10px; flex:1; }
+  .card .meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .tag{ font-size:11px; font-weight:700; letter-spacing:.06em; padding:4px 10px; border-radius:999px; }
+  .tag.t1{ color:#2e7fc2; background:#e3f1ff; }
+  .tag.t2{ color:#1f9e74; background:#e2f8ee; }
+  .tag.t3{ color:#8a63c9; background:#f0e9fc; }
+  .card h3{ font-size:19px; font-weight:800; letter-spacing:.03em; }
+  .card .creator{ font-size:13px; color:var(--ink-soft); display:flex; align-items:center; gap:8px; }
+  .card .creator .avatar{
+    width:26px; height:26px; border-radius:50%; flex:none;
+    background:linear-gradient(135deg, var(--accent), var(--accent2));
+    color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center;
+  }
+  .card p.desc{ font-size:13.5px; color:var(--ink-soft); flex:1; }
+  .card .actions{ display:flex; gap:10px; margin-top:6px; }
+  .btn-play{
+    flex:1; text-align:center; text-decoration:none; color:#fff; font-weight:700; font-size:14px;
+    background:linear-gradient(90deg, var(--accent), var(--accent2));
+    padding:11px 0; border-radius:12px; box-shadow:0 6px 16px rgba(74,157,224,.25); transition:.2s;
+  }
+  .btn-play:hover{ transform:translateY(-2px); }
+  .btn-sub{
+    text-decoration:none; color:var(--ink-soft); font-size:12.5px; font-weight:600;
+    border:1px solid #dbe7f1; border-radius:12px; padding:11px 16px; background:#fbfdff; transition:.2s;
+  }
+  .btn-sub:hover{ color:var(--accent); border-color:var(--accent); }
+
+  /* coming soon カード */
+  .card.soon{ border:2px dashed #d5e3ef; background:rgba(255,255,255,.55); box-shadow:none; align-items:center; justify-content:center; min-height:330px; text-align:center; }
+  .card.soon:hover{ transform:none; }
+  .card.soon .inner{ padding:30px; color:#9db2c6; }
+  .card.soon .plus{ font-size:34px; line-height:1; margin-bottom:12px; color:#c3d5e5; }
+  .card.soon b{ color:#7e95ab; font-size:14px; letter-spacing:.05em; }
+  .card.soon p{ font-size:12.5px; margin-top:6px; }
+
+  /* 流れの説明 */
+  .flow{ display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:14px; padding:18px 0 10px; }
+  .step{ background:rgba(255,255,255,.75); border:1px solid #eaf1f8; border-radius:16px; padding:18px 18px 16px; }
+  .step .num{ font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--accent); }
+  .step b{ display:block; margin-top:4px; font-size:14.5px; }
+  .step p{ font-size:12.5px; color:var(--ink-soft); margin-top:4px; }
+
+  footer{ margin-top:60px; padding:28px 0 34px; text-align:center; font-size:12px; color:#93a8bc; border-top:1px solid #e6eef5; background:rgba(255,255,255,.5); }
+  footer a{ color:#7ba7cc; text-decoration:none; }
+</style>
+</head>
+<body>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+
+<div class="wrap">
+  <header>
+    <div class="brand">INTERN <span>WORKS</span></div>
+    <a class="gh" href="https://github.com/trhyuga/intern" target="_blank" rel="noopener">GitHub ↗</a>
+  </header>
+
+  <section class="hero">
+    <div class="badge">INTERNSHIP SHOWCASE</div>
+    <h1>つくって、公開して、<br><span class="grad">世界に届ける。</span></h1>
+    <p>ここは、インターン生が Claude と一緒につくった成果物のショーケース。<br>
+       アイデアがかたちになって、その日のうちに世界に公開されます。</p>
+    <div class="cta"><a href="#works">作品を見る ▼</a></div>
+  </section>
+
+  <section class="sec" id="works">
+    <h2>作品ギャラリー</h2>
+    <div class="note">インターン生の成果物がここに並んでいきます。</div>
+  </section>
+
+  <div class="grid">
+    <!-- 日向社長: NEON VANGUARD -->
+    <div class="card">
+      <div class="thumb">
+        <div class="logo">NEON VANGUARD<small>NEON VECTOR SHOOTING</small></div>
+        <div class="ship"></div>
+      </div>
+      <div class="body">
+        <div class="meta">
+          <span class="tag t1">GAME</span>
+          <span class="tag t2">Canvas / JS</span>
+          <span class="tag t3">オリジナルBGM</span>
+        </div>
+        <h3>NEON VANGUARD</h3>
+        <div class="creator"><span class="avatar">日</span>制作: 日向社長（intern2026）</div>
+        <p class="desc">
+          死に戻りで機体を強化しながら挑む、ネオンベクター縦スクロールSTG。
+          全3ステージ＋個性豊かなボス7体、扇形に広がるショット、
+          そして自作BGM9曲。3面ボスは倒すと大ボスに変身…！
+          スマホでもPCでも遊べます。
+        </p>
+        <div class="actions">
+          <a class="btn-play" href="intern2026/testtriumph/">▶ あそぶ</a>
+          <a class="btn-sub" href="https://github.com/trhyuga/intern/tree/main/intern2026/testtriumph" target="_blank" rel="noopener">コード</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 次のインターン生の枠 -->
+    <div class="card soon">
+      <div class="inner">
+        <div class="plus">＋</div>
+        <b>NEXT CREATOR</b>
+        <p>次の作品を待っています。<br>あなたのアイデアがここに並ぶかも。</p>
+      </div>
+    </div>
+  </div>
+
+  <section class="sec">
+    <h2>公開までの流れ</h2>
+  </section>
+  <div class="flow">
+    <div class="step"><div class="num">STEP 1</div><b>Claudeと話してつくる</b><p>アイデアを伝えると、コードもデザインも一緒に組み上げてくれます。</p></div>
+    <div class="step"><div class="num">STEP 2</div><b>GitHubに置く</b><p>自分のフォルダ（intern2026/あなたの名前）に成果物をコミット。</p></div>
+    <div class="step"><div class="num">STEP 3</div><b>自動で世界に公開</b><p>コミットするとVercelが自動デプロイ。数十秒後にはURLで共有できます。</p></div>
+  </div>
+
+  <footer>
+    INTERN WORKS — <a href="https://github.com/trhyuga/intern" target="_blank" rel="noopener">trhyuga/intern</a> ／ Powered by GitHub + Vercel + Claude
+  </footer>
 </div>
 </body>
 </html>
