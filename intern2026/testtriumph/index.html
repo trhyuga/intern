@@ -515,8 +515,16 @@ function fireHoming(x,y,dmg){
   pBullets.push({x,y,vx:0,vy:-3,dmg,r:5,color:'#ff9be6',type:'missile',life:160,homing:true,turn:0.08,speed:6});
 }
 /* 敵弾: wave(蛇行)/加速 対応 */
+/* v14: ボス戦が長引くほど敵弾が速くなる（ステージ2以降のボス／最終ボス） */
+function rageSpeedMul(){
+  const b=Game.boss;
+  if(!b || b.entering || b.dead) return 1;
+  if(!b.isGreat && Game.stageIndex<1) return 1;
+  return 1 + (b.rage||0)*0.5;
+}
 function eb(x,y,vx,vy,opt){
   opt=opt||{};
+  const rm=rageSpeedMul(); vx*=rm; vy*=rm;
   eBullets.push({x,y,vx,vy, r:opt.r||5, color:opt.color||'#ff5a7a', dmg:Math.round((opt.dmg||16)*dmgScale()),
     life:opt.life||300, t:0, wave:opt.wave||null, ax:opt.ax||0, ay:opt.ay||0,
     acc: opt.acc!==undefined?opt.acc:(ACC_MUL[Game.stageIndex]||0),
@@ -530,7 +538,7 @@ const STATE = { TITLE:'title', HOWTO:'howto', HANGAR:'hangar', PLAY:'play', PAUS
 const Game = {
   state: STATE.TITLE,
   t:0, dt:1, last:0, shake:0, flash:0, flashColor:'#fff',
-  player:null, wingmen:[], enemies:[], boss:null,
+  player:null, wingmen:[], enemies:[], boss:null, helpers:[], helperIdx:0,
   stageIndex:0, score:0, runCredits:0, message:null, messageT:0,
   midRun:false, pendingStage:0, stageClearMsgT:0,
   buttons:[], bg:null, lastGain:0, shopMsg:'', shopMsgT:0,
@@ -578,7 +586,8 @@ const Game = {
     for(let i=0;i<st.wings;i++){
       this.wingmen.push({x:VW/2, y:VH*0.9, side: i===0?-1:1, r:7, fireCd:0});
     }
-    this.enemies=[]; this.boss=null; pBullets.length=0; eBullets.length=0;
+    this.enemies=[]; this.boss=null; this.helpers=[]; this.helperIdx=0;
+    pBullets.length=0; eBullets.length=0;
     particles.length=0; floats.length=0;
     this.stageIndex=stage;
     Director.begin(stage);
@@ -629,6 +638,7 @@ const Game = {
     eBullets.length=0;
     for(const e of this.enemies){ damageEnemy(e, 130, e.x,e.y); }
     if(this.boss) damageBoss(240);
+    for(const h of this.helpers.slice()) damageBossObj(h, 240);
     for(let i=0;i<60;i++) burst(rand(0,VW),rand(0,VH*0.8), '#8ff', 3, 4);
   },
 
@@ -1069,22 +1079,55 @@ function spawnGreatBoss(x,y){
   Game.setMessage('FINAL FORM', 'OMEGA CORE AWAKENS', 150); Sound.boss();
 }
 
-function damageBoss(dmg, hx, hy){
-  const b=Game.boss; if(!b||b.dead||b.entering) return;
+/* =========================================================================
+   v14: お助けボス — 最終ボスのHPが減るほど強い援軍が現れる
+   中ボス → 1面ボス → 2面ボス → 3面ボス の順。倒すと次が控える。
+   最終ボスを倒せば、援軍が残っていてもクリア。
+   ========================================================================= */
+const HELPERS = [
+  {kind:'mid',  stage:2, hp: 6000, th:0.82, side:-1},
+  {kind:'boss', stage:0, hp: 9000, th:0.62, side: 1},
+  {kind:'boss', stage:1, hp:14000, th:0.42, side:-1},
+  {kind:'boss', stage:2, hp:20000, th:0.22, side: 1},
+];
+function spawnHelper(i){
+  const H=HELPERS[i]; if(!H) return;
+  const b=makeBoss(H.kind, H.stage);
+  b.isHelper=true; b.helperIdx=i;
+  b.maxHp=H.hp; b.hp=H.hp;
+  b.r=Math.round(b.r*0.8);
+  b.homeX = clamp(VW/2 + H.side*VW*0.25, 90, VW-90);
+  b.x=b.homeX; b.y=-120; b.baseY = VH*0.40 + (i%2)*36;
+  b.entering=true;
+  Game.helpers.push(b);
+  Game.setMessage('SUPPORT', b.name+' 参戦', 110);
+  Sound.boss(); Game.screenShake(12); Game.doFlash('#f6c',0.5);
+}
+
+function damageBossObj(b, dmg, hx, hy){
+  if(!b || b.dead || b.entering) return;
   b.hp-=dmg; b.hitFlash=3;
   if(hx!==undefined) addFloat(hx,hy-8,Math.round(dmg),dmgColor(dmg),dmgSize(dmg));
   if(b.hp>0) Sound.bossHit(dmg, b);
   const alive=b.parts.filter(p=>p.alive);
   if(alive.length){ const idx=randi(0,alive.length-1); alive[idx].hp-=dmg; if(alive[idx].hp<=0){ alive[idx].alive=false; burst(b.x+Math.cos(alive[idx].a)*b.r, b.y+Math.sin(alive[idx].a)*b.r, '#fff',20,4); Sound.panelBreak(); Game.screenShake(6); } }
-  if(b.hp<=0) defeatBoss();
+  if(b.hp<=0) defeatBossObj(b);
 }
-function defeatBoss(){
-  const b=Game.boss; if(b.dead) return; b.dead=true;
+function damageBoss(dmg, hx, hy){ damageBossObj(Game.boss, dmg, hx, hy); }
+
+function defeatBossObj(b){
+  if(!b || b.dead) return; b.dead=true;
   Sound.bigExplode(); Game.screenShake(22); Game.doFlash('#fff',0.8);
   for(let i=0;i<40;i++) setTimeout(()=>{ burst(b.x+rand(-b.r,b.r), b.y+rand(-b.r,b.r), i%2?'#fd6':'#f6c', 8, 5); }, i*20);
-  const bonus = Math.round((b.isGreat?3200: b.isMid?240:850)*(1+b.stage*0.35));
+  const bonus = Math.round((b.isGreat?3200: b.isMid?240:850)*(1+b.stage*0.35)*(b.isHelper?0.7:1));
   Game.score += bonus*4; const g=Game.addCredits(bonus);
   addFloat(b.x,b.y,'+'+Math.round(g)+'c','#ffd76a');
+
+  if(b.isHelper){
+    /* 援軍を撃破 → 次の援軍が控える（出現は最終ボスのHP次第） */
+    Game.helperIdx = Math.max(Game.helperIdx, b.helperIdx+1);
+    return;
+  }
   eBullets.length=0;   // ボス撃破で弾消し（爽快感）
 
   if(b.isMid){
@@ -1092,7 +1135,9 @@ function defeatBoss(){
     Game.boss=null;
     Music.play('stage'+Director.stage);
   } else if(b.isGreat){
-    Game.boss=null; setTimeout(()=>{ if(Game.state===STATE.PLAY) Game.endRun(true); }, 1200);
+    /* 最終ボス撃破 → 援軍が残っていてもクリア */
+    Game.boss=null; Game.helpers.length=0; Game.enemies.length=0;
+    setTimeout(()=>{ if(Game.state===STATE.PLAY) Game.endRun(true); }, 1200);
   } else {
     const bx=b.x, by=b.y;
     Game.boss=null;
@@ -1125,11 +1170,30 @@ function fCross(n,speed){ return (b)=>{ for(let i=0;i<n;i++){ const a=b.spin*2.2
   eb(b.x,b.y,Math.cos(a)*speed,Math.sin(a)*speed,{r:6,color:'#ffd76a',dmg:18}); } }; }
 function fAccelRain(n){ return (b)=>{ for(let i=0;i<n;i++){ const x=rand(30,VW-30);
   eb(x, b.y+rand(-10,20), rand(-0.4,0.4), 1.2, {r:5,color:'#fd9',dmg:16, ay:0.06}); } }; }
-function fSummon(kinds){ return (b)=>{ if(Game.enemies.length>14) return;
+function fSummon(kinds){ return (b)=>{ if(Game.enemies.length>16) return;
   const kind=kinds[randi(0,kinds.length-1)];
-  const e=makeEnemy(kind, rand(60,VW-60), b.y+30, {targetY:rand(130,210), hpMul:HP_MUL[b.stage]*0.8});
+  /* v14: 画面上部だけでなく中央付近まで配置される */
+  const e=makeEnemy(kind, rand(60,VW-60), b.y+30, {targetY:rand(130,VH*0.5), hpMul:HP_MUL[b.stage]*0.8});
   e.entered = (kind!=='kamikaze'); e.fireCd=rand(30,70);
   Game.enemies.push(e); }; }
+
+/* v14: 激化した時の増援。時間が経つほど数も頻度も増え、中央付近まで展開する */
+function bossSummon(b){
+  if(Game.enemies.length>18) return;
+  const n = 1 + Math.floor((b.rage||0)*2.4);
+  const pool = b.isGreat ? ['kamikaze','sniper','turret','dasher','orbiter']
+                         : ['grunt','weaver','kamikaze','sniper','turret','dasher'];
+  for(let i=0;i<n;i++){
+    const kind = pool[randi(0,pool.length-1)];
+    const ty = rand(110, VH*0.5);
+    const e = makeEnemy(kind, rand(50,VW-50), rand(-50,40), {targetY:ty, hpMul:HP_MUL[Game.stageIndex]*0.7});
+    if(kind==='dasher'){ e.vx = Math.random()<0.5?3.7:-3.7; e.x = e.vx>0?-30:VW+30; e.y = rand(110, VH*0.5); }
+    e.fireCd = rand(25,70);
+    Game.enemies.push(e);
+    burst(e.x, Math.max(e.y,0), '#f9c', 10, 3);
+  }
+  Sound.blip(180,0.22,'sawtooth',0.09,140);
+}
 function fSnake(dur){ return (b)=>{ b.beam=dur; b.beamAcc=0; }; }
 
 /* 各ボスのフェーズ別パターンリスト {f, cd, reps} */
@@ -1213,8 +1277,21 @@ function updateBoss(b, dt){
   }
   b.moveT+=dt;
 
+  /* --- v14: 長期戦になるほど激化（弾速アップ＋増援） --- */
+  if(b.isGreat || Game.stageIndex>=1){
+    b.rageT=(b.rageT||0)+dt;
+    b.rage = Math.min(1, b.rageT/3300);          // 約55秒でMAX
+    if(!b.isHelper){
+      b.summonCd = (b.summonCd===undefined?300:b.summonCd) - dt;
+      if(b.summonCd<=0){ b.summonCd = lerp(420,130,b.rage); bossSummon(b); }
+    }
+  }
+
   /* --- 移動（ボスごとに個性 / moveT基準なのでワープしない） --- */
-  if(b.id==='mid1'){ // PHANTOM: ダッシュ移動
+  if(b.isHelper){ // お助けボスは左右に分かれて陣取る
+    b.x = b.homeX + Math.sin(b.moveT*0.016)*66;
+    b.y = b.baseY + Math.sin(b.moveT*0.026)*18;
+  } else if(b.id==='mid1'){ // PHANTOM: ダッシュ移動
     b.dashT-=dt;
     if(b.dashT<=0){ b.tx=rand(70,VW-70); b.dashT=rand(85,130); }
     b.x = lerp(b.x, b.tx, 0.055*dt);
@@ -1350,6 +1427,7 @@ function collisions(){
     const b=pBullets[i]; let hit=false;
     for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(b,e)){ damageEnemy(e,b.dmg,b.x,b.y); hitSpark(b); hit=true; break; } }
     if(!hit && Game.boss && !Game.boss.dead && !Game.boss.entering){ if(circleHit(b,Game.boss)){ damageBoss(b.dmg,b.x,b.y); hitSpark(b); hit=true; } }
+    if(!hit){ for(const h of Game.helpers){ if(h.dead||h.entering) continue; if(circleHit(b,h)){ damageBossObj(h,b.dmg,b.x,b.y); hitSpark(b); hit=true; break; } } }
     if(hit) pBullets.splice(i,1);
   }
   if(!p) return;
@@ -1359,6 +1437,7 @@ function collisions(){
   }
   for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(e,p)){ playerHit(Math.round(e.dmg*dmgScale())); damageEnemy(e,40,e.x,e.y); } }
   if(Game.boss && !Game.boss.entering && !Game.boss.dead){ if(circleHit(Game.boss,p)){ playerHit(Math.round(24*dmgScale())); } }
+  for(const h of Game.helpers){ if(!h.dead && !h.entering && circleHit(h,p)) playerHit(Math.round(22*dmgScale())); }
 }
 
 /* =========================================================================
@@ -1391,6 +1470,18 @@ function updatePlay(dt){
   }
   for(let i=Game.enemies.length-1;i>=0;i--){ const e=Game.enemies[i]; if(e.hitFlash>0)e.hitFlash-=dt; updateEnemy(e,dt); if(e.dead) Game.enemies.splice(i,1); }
   if(Game.boss) updateBoss(Game.boss,dt);
+  /* v14: お助けボスの出現管理と更新 */
+  if(Game.boss && Game.boss.isGreat && !Game.boss.dead && !Game.boss.entering){
+    const ratio=Game.boss.hp/Game.boss.maxHp;
+    if(Game.helpers.length===0 && Game.helperIdx<HELPERS.length && ratio<=HELPERS[Game.helperIdx].th){
+      spawnHelper(Game.helperIdx);
+    }
+  }
+  for(let i=Game.helpers.length-1;i>=0;i--){
+    const h=Game.helpers[i];
+    if(h.dead){ Game.helpers.splice(i,1); continue; }
+    updateBoss(h,dt);
+  }
   updatePowerups(dt);
   updateParticles(dt); updateFloats(dt);
   collisions();
@@ -1745,6 +1836,23 @@ function drawHUD(){
     ctx.fillStyle=b.isGreat?'#fd6':(b.isMid?'#c9f':'#ff6a8a'); ctx.fillRect(40,66,(VW-80)*clamp(b.hp/b.maxHp,0,1),10);
     ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.strokeRect(40,66,VW-80,10);
     ctx.textAlign='center'; ctx.fillStyle='#fff'; ctx.font='bold 10px system-ui'; ctx.fillText(label, VW/2, 63);
+    /* v14: 激化ゲージ */
+    if(b.rage>0.02){
+      ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(40,78,VW-80,4);
+      ctx.fillStyle='#ff7a3a'; ctx.fillRect(40,78,(VW-80)*b.rage,4);
+      ctx.textAlign='right'; ctx.fillStyle='#ff9a5a'; ctx.font='8px system-ui'; ctx.fillText('RAGE', VW-42, 76);
+    }
+  }
+  /* お助けボスのHPバー */
+  let hy=98;
+  for(const h of Game.helpers){
+    if(h.dead||h.entering) continue;
+    ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(90,hy,VW-180,7);
+    ctx.fillStyle='#9fe8b8'; ctx.fillRect(90,hy,(VW-180)*clamp(h.hp/h.maxHp,0,1),7);
+    ctx.strokeStyle='#cfe'; ctx.lineWidth=1; ctx.strokeRect(90,hy,VW-180,7);
+    ctx.textAlign='center'; ctx.fillStyle='#cfe'; ctx.font='bold 9px system-ui';
+    ctx.fillText('SUPPORT: '+h.name, VW/2, hy-2);
+    hy+=20;
   }
   Game.buttons=[];
   addBtn(VW-44, VH-40, 34, 30, 'pause');
@@ -2051,6 +2159,7 @@ function drawWorld(){
   }
   ctx.shadowBlur=0;
   for(const e of Game.enemies) drawEnemy(e);
+  for(const h of Game.helpers) if(!h.dead) drawBoss(h);
   if(Game.boss && !Game.boss.dead) drawBoss(Game.boss);
   drawParticles();
   drawPlayer();
