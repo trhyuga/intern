@@ -229,6 +229,8 @@ const Sound = {
   hullHit(){ this.noise(0.16,0.32,700); this.osc(150,0.18,{type:'sawtooth',vol:0.19,to:58,filter:800}); this.osc(320,0.10,{type:'square',vol:0.10,to:120}); },
   /* --- 強化の手応え --- */
   powerUp(){ this.osc(300,0.26,{type:'sawtooth',vol:0.11,to:1250,filter:4200}); this.osc(600,0.30,{type:'triangle',vol:0.07,to:2400}); },
+  /* v15: 僚機ビームが敵に当たっている間の連続音 */
+  beamHum(){ this.osc(520,0.16,{type:'sawtooth',vol:0.05,to:640,filter:2600}); this.noise(0.10,0.05,3000); },
   buyMax(){ [523,659,784,1047].forEach((f,i)=> setTimeout(()=>this.osc(f,0.18,{type:'triangle',vol:0.15,filter:5200}), i*70)); },
   bigExplode(){ this.noise(0.7, 0.6, 500); this.blip(80,0.6,'sawtooth',0.2,-40); },
   pickup(){ this.blip(660,0.08,'triangle',0.18,300); this.blip(990,0.09,'triangle',0.14,300); },
@@ -366,7 +368,8 @@ const UPGRADES = [
     desc:(l)=> ['単発','2連射','3way扇','5way扇','7way扇','9way扇','11way大扇★強化弾'][l] },
   { id:'rate',    name:'連射速度',       max:5, base:150, desc:(l)=> l>=5?'Lv5★最終: 超連射':'Lv'+l+' 発射間隔短縮' },
   { id:'power',   name:'火力',           max:6, base:150, desc:(l)=> l>=6?'Lv6★最終: 火力大幅上昇':'Lv'+l+' 1発ダメージ上昇' },
-  { id:'wing',    name:'僚機ウイングマン', max:2, base:900, desc:(l)=> l+'機 随伴して追加射撃' },
+  { id:'wing',    name:'僚機ウイングマン', max:2, base:900,
+    desc:(l)=> l>=2?'2機★ 貫通ビーム(火力1.3倍)':(l+'機 随伴して追加射撃') },
   { id:'hp',      name:'装甲(最大HP)',   max:5, base:220, desc:(l)=> '最大HP '+(100+l*40) },
   { id:'shield',  name:'シールド',       max:3, base:950, desc:(l)=> l>0?('バリア'+(l*40)+' / 回復速度Lv'+l+(l>=3?'★':'')):'なし' },
   { id:'bomb',    name:'ボム所持数',     max:3, base:300, desc:(l)=> '出撃時ボム '+l+' 個' },
@@ -374,6 +377,10 @@ const UPGRADES = [
   { id:'greed',   name:'クレジット獲得', max:4, base:260, desc:(l)=> '+'+(l*20)+'% 取得' },
 ];
 function upLevel(id){ return Save.data.up[id]||0; }
+/* v15: 全項目カンストしているか（最終決戦のオーバードライブ条件） */
+function isFullyUpgraded(){ return UPGRADES.every(u=> upLevel(u.id) >= u.max); }
+/* オーバードライブ中は火力2割増し */
+function powerMul(){ return Game.overdrive ? 1.2 : 1; }
 /* v13: 強化コストを急カーブ化。最終段階だけさらに重くして「最後の一押し」を目標にする
    （全項目カンストまでの総額は約7.4万c ＝ 従来の約3倍） */
 function upCost(u){
@@ -538,7 +545,7 @@ const STATE = { TITLE:'title', HOWTO:'howto', HANGAR:'hangar', PLAY:'play', PAUS
 const Game = {
   state: STATE.TITLE,
   t:0, dt:1, last:0, shake:0, flash:0, flashColor:'#fff',
-  player:null, wingmen:[], enemies:[], boss:null, helpers:[], helperIdx:0,
+  player:null, wingmen:[], enemies:[], boss:null, helpers:[], helperIdx:0, overdrive:false,
   stageIndex:0, score:0, runCredits:0, message:null, messageT:0,
   midRun:false, pendingStage:0, stageClearMsgT:0,
   buttons:[], bg:null, lastGain:0, shopMsg:'', shopMsgT:0,
@@ -586,7 +593,7 @@ const Game = {
     for(let i=0;i<st.wings;i++){
       this.wingmen.push({x:VW/2, y:VH*0.9, side: i===0?-1:1, r:7, fireCd:0});
     }
-    this.enemies=[]; this.boss=null; this.helpers=[]; this.helperIdx=0;
+    this.enemies=[]; this.boss=null; this.helpers=[]; this.helperIdx=0; this.overdrive=false;
     pBullets.length=0; eBullets.length=0;
     particles.length=0; floats.length=0;
     this.stageIndex=stage;
@@ -848,10 +855,10 @@ function ringShot(e,count,speed){
 /* v8: ダメージ表示も威力に応じて大きく・熱く */
 function dmgSize(d){ return clamp(11 + d*0.09, 11, 21); }
 function dmgColor(d){ return d>=90?'#fff3b0' : d>=55?'#ffe9a8' : d>=30?'#eafcff' : '#ffffff'; }
-function damageEnemy(e, dmg, hx, hy){
+function damageEnemy(e, dmg, hx, hy, silent){
   e.hp -= dmg; e.hitFlash=4;
-  addFloat(hx, hy-6, Math.round(dmg), dmgColor(dmg), dmgSize(dmg));
-  if(e.hp>0) Sound.enemyHit(e, dmg);
+  if(hx!==undefined) addFloat(hx, hy-6, Math.round(dmg), dmgColor(dmg), dmgSize(dmg));
+  if(e.hp>0 && !silent) Sound.enemyHit(e, dmg);
   if(e.hp<=0 && !e.dead){ killEnemy(e); }
 }
 function killEnemy(e){
@@ -1077,6 +1084,19 @@ function spawnGreatBoss(x,y){
   const b=makeBoss('great',2); Game.boss=b;
   b.x = x!==undefined?x:VW/2; b.y = y!==undefined?y:VH*0.1;
   Game.setMessage('FINAL FORM', 'OMEGA CORE AWAKENS', 150); Sound.boss();
+  /* v15: フル強化済みなら最終決戦だけ金色のオーバードライブ（火力・シールド2割増し） */
+  if(isFullyUpgraded() && Game.player){
+    const p=Game.player;
+    Game.overdrive = true;
+    p.shieldMax = Math.round(p.st.shield*40*1.2);
+    p.shieldHP  = p.shieldMax;
+    setTimeout(()=>{
+      if(Game.state!==STATE.PLAY || !Game.overdrive) return;
+      Game.setMessage('OVERDRIVE','GOLD VANGUARD', 130);
+      Game.doFlash('#ffd76a',0.9); Game.screenShake(14); Sound.buyMax();
+      for(let i=0;i<40;i++) burst(p.x+rand(-20,20), p.y+rand(-20,20), '#ffd76a', 6, 4);
+    }, 1600);
+  }
 }
 
 /* =========================================================================
@@ -1104,11 +1124,11 @@ function spawnHelper(i){
   Sound.boss(); Game.screenShake(12); Game.doFlash('#f6c',0.5);
 }
 
-function damageBossObj(b, dmg, hx, hy){
+function damageBossObj(b, dmg, hx, hy, silent){
   if(!b || b.dead || b.entering) return;
   b.hp-=dmg; b.hitFlash=3;
   if(hx!==undefined) addFloat(hx,hy-8,Math.round(dmg),dmgColor(dmg),dmgSize(dmg));
-  if(b.hp>0) Sound.bossHit(dmg, b);
+  if(b.hp>0 && !silent) Sound.bossHit(dmg, b);
   const alive=b.parts.filter(p=>p.alive);
   if(alive.length){ const idx=randi(0,alive.length-1); alive[idx].hp-=dmg; if(alive[idx].hp<=0){ alive[idx].alive=false; burst(b.x+Math.cos(alive[idx].a)*b.r, b.y+Math.sin(alive[idx].a)*b.r, '#fff',20,4); Sound.panelBreak(); Game.screenShake(6); } }
   if(b.hp<=0) defeatBossObj(b);
@@ -1368,16 +1388,82 @@ function updatePlayer(dt){
   if(p.inv>0) p.inv-=dt;
   if(p.muzzle>0) p.muzzle-=0.16*dt;
   if(p.bombFlash>0) p.bombFlash-=0.04*dt;
-  if(p.shieldMax>0 && p.shieldHP<p.shieldMax){ p.shieldRegen+=dt; if(p.shieldRegen>p.st.shieldDelay){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+p.st.shieldRegenRate*dt); } }
+  if(p.shieldMax>0 && p.shieldHP<p.shieldMax){ p.shieldRegen+=dt; if(p.shieldRegen>p.st.shieldDelay){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+p.st.shieldRegenRate*powerMul()*dt); } }
   p.fireCd-=dt;
   if(p.fireCd<=0){ playerFire(); p.fireCd=p.st.fireInterval/16.67; }
-  if(p.st.missiles>0){ p.missileCd-=dt; if(p.missileCd<=0){ for(let i=0;i<p.st.missiles;i++){ setTimeout(()=>{ if(Game.player===p && Game.state===STATE.PLAY) fireHoming(p.x+rand(-10,10),p.y,p.st.dmg*1.4);},i*80);} p.missileCd=90; } }
+  if(p.st.missiles>0){ p.missileCd-=dt; if(p.missileCd<=0){ for(let i=0;i<p.st.missiles;i++){ setTimeout(()=>{ if(Game.player===p && Game.state===STATE.PLAY) fireHoming(p.x+rand(-10,10),p.y,p.st.dmg*1.4*powerMul());},i*80);} p.missileCd=90; } }
   if(Math.random()<0.6) spawnParticle(p.x+rand(-4,4),p.y+14,'#4cf',{vx:rand(-.4,.4),vy:rand(1,2.4),life:rand(10,18),r:rand(1.5,3)});
   for(const w of Game.wingmen){
     const tx=p.x+w.side*34, ty=p.y+16;
     w.x=lerp(w.x,tx,0.2); w.y=lerp(w.y,ty,0.2);
-    w.fireCd-=dt; if(w.fireCd<=0){ firePlayer(w.x,w.y-8,0,-10,p.st.dmg*0.6,3,'#8fe8b8','shot',Math.max(0,bulletTier()-2)); w.fireCd=p.st.fireInterval/16.67*1.2; }
+    /* 1機なら通常弾、2機（最終Lv）なら貫通ビームに変化 */
+    if(p.st.wings<2){
+      w.fireCd-=dt; if(w.fireCd<=0){ firePlayer(w.x,w.y-8,0,-10,p.st.dmg*0.6*powerMul(),3,'#8fe8b8','shot',Math.max(0,bulletTier()-2)); w.fireCd=p.st.fireInterval/16.67*1.2; }
+    }
   }
+  if(p.st.wings>=2) updateWingBeams(dt);
+}
+
+/* =========================================================================
+   v15: 僚機ビーム（ウイングマン最終Lv）
+   貫通する連続ビーム。DPSは従来の僚機ショットの約1.3倍。
+   ========================================================================= */
+function wingBeamDps(){
+  const st=Game.player.st;
+  const perShot = st.dmg*0.6*powerMul();
+  const shotsPerSec = 1000/(st.fireInterval*1.2);
+  return perShot*shotsPerSec*1.3;
+}
+function updateWingBeams(dt){
+  const p=Game.player; if(!p) return;
+  const dmg = wingBeamDps()/60*dt;
+  Game.beamT=(Game.beamT||0)+dt;
+  const showFloat = Game.beamT>=11;
+  if(showFloat) Game.beamT=0;
+  let connected=false;
+  const HALF=6;
+  for(const w of Game.wingmen){
+    for(let i=Game.enemies.length-1;i>=0;i--){
+      const e=Game.enemies[i];
+      if(e.dead || e.y>=w.y) continue;
+      if(Math.abs(e.x-w.x) < e.r+HALF){
+        connected=true;
+        damageEnemy(e, dmg, showFloat?e.x:undefined, showFloat?e.y:undefined, true);
+        if(Math.random()<0.25) spawnParticle(e.x+rand(-6,6), e.y+e.r*0.5, '#9fffd0', {life:rand(6,12), r:rand(1,2)});
+      }
+    }
+    const targets=[Game.boss].concat(Game.helpers);
+    for(const t of targets){
+      if(!t || t.dead || t.entering || t.y>=w.y) continue;
+      if(Math.abs(t.x-w.x) < t.r+HALF){
+        connected=true;
+        damageBossObj(t, dmg, showFloat?t.x:undefined, showFloat?t.y:undefined, true);
+        if(Math.random()<0.3) spawnParticle(t.x+rand(-10,10), t.y+t.r*0.5, '#9fffd0', {life:rand(6,12), r:rand(1,2.2)});
+      }
+    }
+  }
+  Game.beamHit=connected;
+  if(connected){ Game.beamSnd=(Game.beamSnd||0)+dt; if(Game.beamSnd>9){ Game.beamSnd=0; Sound.beamHum(); } }
+}
+function drawWingBeams(){
+  const p=Game.player; if(!p || p.st.wings<2) return;
+  const flick = 0.85 + 0.15*Math.sin(Game.t*0.6);
+  const gold = Game.overdrive;
+  const outer = gold?'rgba(255,215,106,0.30)':'rgba(90,255,190,0.28)';
+  const core  = gold?'rgba(255,248,220,0.92)':'rgba(225,255,240,0.9)';
+  for(const w of Game.wingmen){
+    const top = 0, h = w.y-11;
+    if(h<=0) continue;
+    ctx.save();
+    ctx.shadowBlur=20; ctx.shadowColor=gold?'#ffd76a':'#7fffd0';
+    ctx.fillStyle=outer; ctx.fillRect(w.x-5.5*flick, top, 11*flick, h);
+    ctx.shadowBlur=10;
+    ctx.fillStyle=core;  ctx.fillRect(w.x-1.7*flick, top, 3.4*flick, h);
+    ctx.restore();
+    if(Math.random()<0.5) spawnParticle(w.x+rand(-3,3), w.y-12, gold?'#ffe9a8':'#9fffd0',
+      {vx:rand(-.4,.4), vy:rand(-2.4,-0.8), life:rand(6,12), r:rand(1,2.2)});
+  }
+  ctx.shadowBlur=0;
 }
 /* v2: レベルに応じて扇形に大きく拡散するメインショット */
 function playerFire(){
@@ -1396,7 +1482,8 @@ function playerFire(){
   for(let i=0;i<n;i++){
     const off = n>1 ? (i/(n-1) - 0.5)*spreadRad : 0;
     const a = -Math.PI/2 + off;
-    firePlayer(p.x, p.y-12, Math.cos(a)*speed, Math.sin(a)*speed, Math.round(d*boost), br, T.c, 'shot', tier);
+    firePlayer(p.x, p.y-12, Math.cos(a)*speed, Math.sin(a)*speed, Math.round(d*boost*powerMul()), br,
+      Game.overdrive?'#ffe9a8':T.c, 'shot', tier);
   }
   /* マズルフラッシュ（威力が上がるほど派手に） */
   const mf = 1 + tier*0.3;
@@ -1621,14 +1708,15 @@ function drawShipBody(anim, accent, opt){
 /* シールド: 回転する六角バリア */
 function drawShieldBarrier(p){
   const a=clamp(p.shieldHP/p.shieldMax,0,1), r=25;
+  const gc = Game.overdrive?'#ffd76a':'#7ff';
   ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(Game.t*0.012);
-  ctx.shadowBlur=16; ctx.shadowColor='#7ff'; ctx.strokeStyle='#7ff'; ctx.lineWidth=2;
+  ctx.shadowBlur=16; ctx.shadowColor=gc; ctx.strokeStyle=gc; ctx.lineWidth=2;
   ctx.globalAlpha=0.25+0.45*a;
   ctx.beginPath();
   for(let i=0;i<6;i++){ const ang=i/6*TAU; const x=Math.cos(ang)*r, y=Math.sin(ang)*r; i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
   ctx.closePath(); ctx.stroke();
-  ctx.globalAlpha=0.12*a; ctx.fillStyle='#7ff'; ctx.fill();
-  ctx.globalAlpha=0.55*a; ctx.fillStyle='#cff';
+  ctx.globalAlpha=0.12*a; ctx.fillStyle=gc; ctx.fill();
+  ctx.globalAlpha=0.55*a; ctx.fillStyle=Game.overdrive?'#fff0c0':'#cff';
   for(let i=0;i<6;i++){ const ang=i/6*TAU; ctx.beginPath(); ctx.arc(Math.cos(ang)*r,Math.sin(ang)*r,2.2,0,TAU); ctx.fill(); }
   ctx.restore(); ctx.globalAlpha=1; ctx.shadowBlur=0;
 }
@@ -1638,12 +1726,26 @@ function drawPlayer(){
   const blink = p.inv>0 && Math.floor(p.inv/4)%2===0;
   const accent = BULLET_TIERS[p.tier!==undefined?p.tier:bulletTier()].c;
 
+  const od = Game.overdrive;
   if(!blink){
     if(p.shieldHP>0) drawShieldBarrier(p);
+    /* v15: オーバードライブの金色オーラ */
+    if(od){
+      const pulse=0.5+0.5*Math.sin(Game.t*0.08);
+      ctx.save(); ctx.translate(p.x,p.y);
+      ctx.globalAlpha=0.22+0.20*pulse; ctx.shadowBlur=30; ctx.shadowColor='#ffd76a';
+      ctx.strokeStyle='#ffd76a'; ctx.lineWidth=2.5;
+      ctx.beginPath(); ctx.arc(0,0,27+pulse*5,0,TAU); ctx.stroke();
+      ctx.restore(); ctx.globalAlpha=1; ctx.shadowBlur=0;
+      if(Math.random()<0.45) spawnParticle(p.x+rand(-16,16), p.y+rand(-16,16), '#ffd76a',
+        {vx:rand(-.5,.5), vy:rand(-1.4,-.2), life:rand(16,30), r:rand(1.2,2.6)});
+    }
     ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.bank||0);
-    drawShipBody(Game.t, accent, {
+    drawShipBody(Game.t, od?'#fff4c4':accent, {
       weapon:p.st.weapon, armor:upLevel('hp'),
-      thrust: 1 + clamp(Math.abs(p.bank||0)*1.2, 0, 0.5)
+      thrust: 1 + clamp(Math.abs(p.bank||0)*1.2, 0, 0.5),
+      hull: od?'#fff6d8':undefined, wing: od?'#ffd76a':undefined,
+      tail: od?'#f5a83c':undefined, flame: od?'#fd8':undefined
     });
     /* 砲口の閃光（威力レベルで大きくなる） */
     if(p.muzzle>0){
@@ -1658,9 +1760,10 @@ function drawPlayer(){
   /* ウイングマン: 本機のミニチュア版 */
   for(const w of Game.wingmen){
     ctx.save(); ctx.translate(w.x,w.y); ctx.scale(0.58,0.58);
-    drawShipBody(Game.t+w.side*4, '#9fffd0', {
+    drawShipBody(Game.t+w.side*4, od?'#fff4c4':'#9fffd0', {
       weapon:0, armor:0, thrust:0.85,
-      hull:'#c9ffe4', wing:'#8fe8b8', tail:'#6fd0a0', flame:'#5fd'
+      hull: od?'#fff2cc':'#c9ffe4', wing: od?'#ffd76a':'#8fe8b8',
+      tail: od?'#e8a03c':'#6fd0a0', flame: od?'#fd8':'#5fd'
     });
     ctx.restore();
   }
@@ -1822,7 +1925,12 @@ function drawHUD(){
   ctx.fillStyle=hpc; ctx.fillRect(12,14,180*clamp(p.hp/p.maxHP,0,1),12);
   ctx.strokeStyle='#8fb'; ctx.lineWidth=1; ctx.strokeRect(12,14,180,12);
   ctx.fillStyle='#cff'; ctx.font='10px system-ui'; ctx.textAlign='left'; ctx.fillText('HP '+Math.ceil(p.hp)+'/'+p.maxHP,14,36);
-  if(p.shieldMax>0){ ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.fillRect(12,40,180,6); ctx.fillStyle='#7ff'; ctx.fillRect(12,40,180*clamp(p.shieldHP/p.shieldMax,0,1),6); }
+  if(p.shieldMax>0){ ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.fillRect(12,40,180,6); ctx.fillStyle=Game.overdrive?'#ffd76a':'#7ff'; ctx.fillRect(12,40,180*clamp(p.shieldHP/p.shieldMax,0,1),6); }
+  if(Game.overdrive){
+    const g=0.6+0.4*Math.sin(Game.t*0.09);
+    ctx.textAlign='left'; ctx.fillStyle='rgba(255,215,106,'+g.toFixed(2)+')'; ctx.font='bold 11px system-ui';
+    ctx.shadowBlur=10; ctx.shadowColor='#ffd76a'; ctx.fillText('★ OVERDRIVE', 12, 60); ctx.shadowBlur=0;
+  }
   ctx.textAlign='right'; ctx.fillStyle='#ffd76a'; ctx.font='bold 13px system-ui';
   ctx.fillText('◈ '+fmt(Game.runCredits)+'c', VW-12, 24);
   ctx.fillStyle='#9fd'; ctx.font='11px system-ui'; ctx.fillText('SCORE '+fmt(Game.score), VW-12, 40);
@@ -2158,6 +2266,7 @@ function drawWorld(){
     }
   }
   ctx.shadowBlur=0;
+  drawWingBeams();
   for(const e of Game.enemies) drawEnemy(e);
   for(const h of Game.helpers) if(!h.dead) drawBoss(h);
   if(Game.boss && !Game.boss.dead) drawBoss(Game.boss);
