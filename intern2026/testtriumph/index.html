@@ -362,19 +362,25 @@ const Save = {
 
 /* ---------------- 強化 (ショップ定義) v2: speed廃止・扇形武器 ---------------- */
 const UPGRADES = [
-  { id:'weapon',  name:'メインショット', max:6, base:150,
+  { id:'weapon',  name:'メインショット', max:6, base:160,
     desc:(l)=> ['単発','2連射','3way扇','5way扇','7way扇','9way扇','11way大扇★強化弾'][l] },
-  { id:'rate',    name:'連射速度',       max:5, base:130, desc:(l)=> l>=5?'Lv5★最終: 超連射':'Lv'+l+' 発射間隔短縮' },
-  { id:'power',   name:'火力',           max:6, base:140, desc:(l)=> l>=6?'Lv6★最終: 火力大幅上昇':'Lv'+l+' 1発ダメージ上昇' },
-  { id:'wing',    name:'僚機ウイングマン', max:2, base:520, desc:(l)=> l+'機 随伴して追加射撃' },
-  { id:'hp',      name:'装甲(最大HP)',   max:5, base:190, desc:(l)=> '最大HP '+(100+l*40) },
-  { id:'shield',  name:'シールド',       max:3, base:320, desc:(l)=> l>0?('バリア'+(l*40)+' / 回復速度Lv'+l+(l>=3?'★':'')):'なし' },
-  { id:'bomb',    name:'ボム所持数',     max:3, base:260, desc:(l)=> '出撃時ボム '+l+' 個' },
-  { id:'missile', name:'ホーミング',     max:3, base:280, desc:(l)=> l>0?('追尾ミサイル x'+l):'なし' },
-  { id:'greed',   name:'クレジット獲得', max:4, base:170, desc:(l)=> '+'+(l*20)+'% 取得' },
+  { id:'rate',    name:'連射速度',       max:5, base:150, desc:(l)=> l>=5?'Lv5★最終: 超連射':'Lv'+l+' 発射間隔短縮' },
+  { id:'power',   name:'火力',           max:6, base:150, desc:(l)=> l>=6?'Lv6★最終: 火力大幅上昇':'Lv'+l+' 1発ダメージ上昇' },
+  { id:'wing',    name:'僚機ウイングマン', max:2, base:900, desc:(l)=> l+'機 随伴して追加射撃' },
+  { id:'hp',      name:'装甲(最大HP)',   max:5, base:220, desc:(l)=> '最大HP '+(100+l*40) },
+  { id:'shield',  name:'シールド',       max:3, base:950, desc:(l)=> l>0?('バリア'+(l*40)+' / 回復速度Lv'+l+(l>=3?'★':'')):'なし' },
+  { id:'bomb',    name:'ボム所持数',     max:3, base:300, desc:(l)=> '出撃時ボム '+l+' 個' },
+  { id:'missile', name:'ホーミング',     max:3, base:340, desc:(l)=> l>0?('追尾ミサイル x'+l):'なし' },
+  { id:'greed',   name:'クレジット獲得', max:4, base:260, desc:(l)=> '+'+(l*20)+'% 取得' },
 ];
 function upLevel(id){ return Save.data.up[id]||0; }
-function upCost(u){ const l=upLevel(u.id); return Math.round(u.base*Math.pow(1.75,l)); }
+/* v13: 強化コストを急カーブ化。最終段階だけさらに重くして「最後の一押し」を目標にする
+   （全項目カンストまでの総額は約7.4万c ＝ 従来の約3倍） */
+function upCost(u){
+  const l=upLevel(u.id);
+  const finalMul = (l === u.max-1) ? 2.2 : 1;
+  return Math.round(u.base*Math.pow(1.95,l)*finalMul);
+}
 function upMaxed(u){ return upLevel(u.id) >= u.max; }
 
 /* プレイヤー派生ステータス */
@@ -512,7 +518,9 @@ function fireHoming(x,y,dmg){
 function eb(x,y,vx,vy,opt){
   opt=opt||{};
   eBullets.push({x,y,vx,vy, r:opt.r||5, color:opt.color||'#ff5a7a', dmg:Math.round((opt.dmg||16)*dmgScale()),
-    life:opt.life||300, t:0, wave:opt.wave||null, ax:opt.ax||0, ay:opt.ay||0});
+    life:opt.life||300, t:0, wave:opt.wave||null, ax:opt.ax||0, ay:opt.ay||0,
+    acc: opt.acc!==undefined?opt.acc:(ACC_MUL[Game.stageIndex]||0),
+    accMax: opt.accMax!==undefined?opt.accMax:(ACC_CAP[Game.stageIndex]||1.8), mult:1});
 }
 function enemyBullet(x,y,vx,vy,r,color,dmg){ eb(x,y,vx,vy,{r:r,color:color,dmg:dmg}); }
 
@@ -697,7 +705,7 @@ const ENEMY_DEF = {
 function makeEnemy(kind, x, y, opt={}){
   const base = ENEMY_DEF[kind];
   /* v3: 同一ステージ内でも後半ウェーブほど少し固くなる */
-  const ramp = 1 + Math.min(Director.step||0,20)*0.03;
+  const ramp = 1 + Math.min(Director.step||0,20)*0.04;
   const hp0 = base.hp*(opt.hpMul||1)*ramp;
   return {
     kind, x, y, r:base.r, hp:hp0, maxHp:hp0,
@@ -896,9 +904,13 @@ const MID_NAMES  = ['RAZOR','PHANTOM','WARDEN'];
 /* v3 難易度カーブ: 終盤ほど敵が固く・痛くなる。クレジット収入も増える。
    フル強化時のプレイヤー火力/防御が大きく上回る設計なので、
    最後まで強化すれば初心者でも爽快にクリアできる。 */
-const HP_MUL   = [1.0, 3.2, 7.5];   // 敵HP倍率(ステージ別) v4: さらに急カーブ
+const HP_MUL   = [1.0, 4.5, 13.0];  // 敵HP倍率(ステージ別) v13: さらに急カーブ
 const DMG_MUL  = [1.0, 1.5, 2.1];   // 敵攻撃力倍率(ステージ別)
 const CRED_MUL = [1.0, 1.4, 1.8];   // クレジット倍率(ステージ別)
+/* v13: 敵弾の加速。遠くまで飛ぶほど速くなるので、離れていても避けにくい
+   （撃ち出しの初速は同じ。低速弾ほどよく伸び、元から速い弾は伸びない） */
+const ACC_MUL  = [0.005, 0.009, 0.014];
+const ACC_CAP  = [1.70, 2.05, 2.45];   // 到達できる最大倍率（終盤ほど伸びる）
 function dmgScale(){ return DMG_MUL[Game.stageIndex]||1; }
 function credScale(){ return CRED_MUL[Game.stageIndex]||1; }
 
@@ -1033,9 +1045,10 @@ function makeBoss(kind, stage){
     parts:[], anim:0, baseY:VH*0.22, tx:VW/2, dashT:0,
   };
   /* v3: ボスHPを終盤急カーブに（フル強化DPSなら短時間で溶かせる値） */
-  if(kind==='mid'){ B.r=38; B.maxHp=[1100,3600,9000][stage]; B.name=MID_NAMES[stage]; }
-  else if(kind==='great'){ B.r=64; B.maxHp=36000; B.name='OMEGA CORE'; B.baseY=VH*0.24; }
-  else { B.r=52; B.maxHp=[3000,10000,22000][stage]; B.name=BOSS_NAMES[stage]; }
+  /* v13: ボスHPを大幅に引き上げ。特に最終ボスは長期戦の総力戦にする */
+  if(kind==='mid'){ B.r=38; B.maxHp=[1300,5200,15000][stage]; B.name=MID_NAMES[stage]; }
+  else if(kind==='great'){ B.r=64; B.maxHp=95000; B.name='OMEGA CORE'; B.baseY=VH*0.24; }
+  else { B.r=52; B.maxHp=[3400,14000,42000][stage]; B.name=BOSS_NAMES[stage]; }
   B.hp=B.maxHp;
   const pc = kind==='great'?10:(kind==='mid'?5:7);
   for(let i=0;i<pc;i++){ B.parts.push({a:i/pc*TAU, hp: kind==='great'?220:130, alive:true}); }
@@ -1149,11 +1162,42 @@ function bossPatterns(b){
     if(ph===1) return [ {f:fCross(10,3.8),cd:28,reps:4}, {f:fAccelRain(12),cd:40,reps:3}, {f:fWallGap(3.6),cd:80,reps:2}, {f:fSummon(['turret','sniper']),cd:50,reps:2} ];
     return       [ {f:fCross(12,4.0),cd:24,reps:4}, {f:fRing(22,3.6),cd:44,reps:2}, {f:fAccelRain(15),cd:34,reps:3}, {f:fAimN(7,0.16,5.6),cd:26,reps:3} ];
   }
-  // GREAT: OMEGA CORE
-  if(ph===0) return [ {f:fRing(22,3.2),cd:44,reps:2}, {f:fAimN(5,0.18,5.2),cd:28,reps:4}, {f:fCross(10,3.8),cd:30,reps:3}, {f:fWaveFan(9,3.4,2.0),cd:50,reps:2} ];
-  if(ph===1) return [ {f:fSpiral(4,3.8,1),cd:8,reps:18}, {f:fWallGap(3.8),cd:70,reps:2}, {f:fScatter(14,4.0),cd:32,reps:3}, {f:fSummon(['kamikaze','sniper','turret']),cd:44,reps:2}, {f:fCross(12,4.2),cd:26,reps:3} ];
-  /* 最終フェーズ: 蛇行レーザー乱舞 */
-  return [ {f:fSnake(110),cd:150,reps:1}, {f:fSpiral(5,4.0,-1),cd:7,reps:16}, {f:fRing(26,3.8),cd:40,reps:2}, {f:fSnake(130),cd:170,reps:1}, {f:fWaveFan(13,3.8,2.8),cd:40,reps:2} ];
+  /* GREAT: OMEGA CORE — 全ボスの技を受け継ぐ総力戦。長丁場なので手数を多く */
+  if(ph===0) return [
+    {f:fRing(22,3.2),cd:44,reps:2},
+    {f:fAimN(5,0.18,5.2),cd:28,reps:4},
+    {f:fClaws(4.8),cd:34,reps:4},              // AZURE CRUSHER の挟撃
+    {f:fCross(10,3.8),cd:30,reps:3},           // GOLD SENTINEL の十字砲
+    {f:fWaveFan(9,3.4,2.0),cd:50,reps:2},      // CRIMSON MOTH の波状扇
+    {f:fWallGap(3.4),cd:78,reps:2},            // RAZOR の壁
+    {f:fScatter(11,3.6),cd:38,reps:3},
+  ];
+  if(ph===1) return [
+    {f:fSpiral(4,3.8,1),cd:8,reps:18},
+    {f:fWallGap(3.8),cd:70,reps:2},
+    {f:fClaws(5.2),cd:28,reps:5},
+    {f:fAccelRain(13),cd:38,reps:3},           // WARDEN の加速弾雨
+    {f:fScatter(14,4.0),cd:32,reps:3},
+    {f:fSummon(['kamikaze','sniper','turret']),cd:44,reps:2},
+    {f:fCross(12,4.2),cd:26,reps:3},
+    {f:fWaveFan(11,3.6,2.4),cd:44,reps:2},
+    {f:fRing(24,3.5),cd:46,reps:2},
+  ];
+  /* 最終フェーズ: 蛇行レーザーを軸に全パターンを畳みかける */
+  return [
+    {f:fSnake(110),cd:150,reps:1},
+    {f:fSpiral(5,4.0,-1),cd:7,reps:16},
+    {f:fCross(14,4.4),cd:22,reps:4},
+    {f:fRing(26,3.8),cd:40,reps:2},
+    {f:fClaws(5.6),cd:24,reps:5},
+    {f:fSnake(130),cd:170,reps:1},
+    {f:fAccelRain(16),cd:32,reps:3},
+    {f:fWaveFan(13,3.8,2.8),cd:40,reps:2},
+    {f:fSpiral(5,4.0,1),cd:7,reps:16},
+    {f:fScatter(16,4.4),cd:28,reps:3},
+    {f:fSummon(['kamikaze','sniper','shield']),cd:40,reps:2},
+    {f:fWallGap(4.2),cd:64,reps:2},
+  ];
 }
 
 function updateBoss(b, dt){
@@ -1335,6 +1379,11 @@ function updatePlay(dt){
   for(let i=eBullets.length-1;i>=0;i--){ const b=eBullets[i];
     b.t+=dt;
     if(b.ax) b.vx+=b.ax*dt; if(b.ay) b.vy+=b.ay*dt;
+    /* v13: 飛翔中に加速（上限2.2倍かつ絶対速度9px/f まで＝元々速い弾は伸びない） */
+    if(b.acc && b.mult<b.accMax){
+      const sp=Math.abs(b.vx)+Math.abs(b.vy);
+      if(sp<11){ const f=1+b.acc*dt; b.vx*=f; b.vy*=f; b.mult*=f; }
+    }
     b.x+=b.vx*dt; b.y+=b.vy*dt;
     if(b.wave){ b.x += Math.sin(b.t*b.wave.f + b.wave.p)*b.wave.a*dt; }
     b.life-=dt;
