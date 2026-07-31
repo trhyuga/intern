@@ -369,7 +369,7 @@ const UPGRADES = [
   { id:'rate',    name:'連射速度',       max:5, base:150, desc:(l)=> l>=5?'Lv5★最終: 超連射':'Lv'+l+' 発射間隔短縮' },
   { id:'power',   name:'火力',           max:6, base:150, desc:(l)=> l>=6?'Lv6★最終: 火力大幅上昇':'Lv'+l+' 1発ダメージ上昇' },
   { id:'wing',    name:'僚機ウイングマン', max:2, base:900,
-    desc:(l)=> l>=2?'2機★ 貫通ビーム(火力1.3倍)':(l+'機 随伴して追加射撃') },
+    desc:(l)=> l>=2?'2機★ 貫通ビームに変化':(l+'機 随伴して追加射撃') },
   { id:'hp',      name:'装甲(最大HP)',   max:5, base:220, desc:(l)=> '最大HP '+(100+l*40) },
   { id:'shield',  name:'シールド',       max:3, base:950, desc:(l)=> l>0?('バリア'+(l*40)+' / 回復速度Lv'+l+(l>=3?'★':'')):'なし' },
   { id:'bomb',    name:'ボム所持数',     max:3, base:300, desc:(l)=> '出撃時ボム '+l+' 個' },
@@ -379,8 +379,8 @@ const UPGRADES = [
 function upLevel(id){ return Save.data.up[id]||0; }
 /* v15: 全項目カンストしているか（最終決戦のオーバードライブ条件） */
 function isFullyUpgraded(){ return UPGRADES.every(u=> upLevel(u.id) >= u.max); }
-/* オーバードライブ中は火力2割増し */
-function powerMul(){ return Game.overdrive ? 1.2 : 1; }
+/* オーバードライブ中は火力・シールド3割増し */
+function powerMul(){ return Game.overdrive ? 1.3 : 1; }
 /* v13: 強化コストを急カーブ化。最終段階だけさらに重くして「最後の一押し」を目標にする
    （全項目カンストまでの総額は約7.4万c ＝ 従来の約3倍） */
 function upCost(u){
@@ -1088,7 +1088,7 @@ function spawnGreatBoss(x,y){
   if(isFullyUpgraded() && Game.player){
     const p=Game.player;
     Game.overdrive = true;
-    p.shieldMax = Math.round(p.st.shield*40*1.2);
+    p.shieldMax = Math.round(p.st.shield*40*1.3);
     p.shieldHP  = p.shieldMax;
     setTimeout(()=>{
       if(Game.state!==STATE.PLAY || !Game.overdrive) return;
@@ -1412,7 +1412,7 @@ function wingBeamDps(){
   const st=Game.player.st;
   const perShot = st.dmg*0.6*powerMul();
   const shotsPerSec = 1000/(st.fireInterval*1.2);
-  return perShot*shotsPerSec*1.3;
+  return perShot*shotsPerSec*1.15;
 }
 function updateWingBeams(dt){
   const p=Game.player; if(!p) return;
