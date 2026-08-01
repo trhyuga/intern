@@ -656,7 +656,7 @@ function updateDebris(dt){
     d.x+=d.vx*dt; d.y+=d.vy*dt; d.vy+=0.035*dt; d.vx*=0.995; d.rot+=d.rotSpd*dt;
     d.life-=dt;
     if(d.hot && Math.random()<0.28) spawnParticle(d.x,d.y,d.color,{vx:rand(-.3,.3),vy:rand(-.3,.3),life:rand(6,14),r:rand(1,2)});
-    if(d.dmg>0 && p && !p.dying && p.inv<=0 && dist2(d.x,d.y,p.x,p.y) < (d.r*0.7+p.r)*(d.r*0.7+p.r)){
+    if(d.dmg>0 && p && !p.dying && p.inv<=0 && !cineLock() && dist2(d.x,d.y,p.x,p.y) < (d.r*0.7+p.r)*(d.r*0.7+p.r)){
       playerHit(d.dmg); d.life=0;
       burst(d.x,d.y,d.color,10,3);
     }
@@ -736,7 +736,14 @@ function rageSpeedMul(){
   if(!b.isGreat && Game.stageIndex<1) return 1;
   return 1 + (b.rage||0)*0.5;
 }
+/* v25: ボス登場カットイン／変身演出のあいだは戦闘を完全停止する。
+   敵は弾を撃たず、こちらの攻撃もボスに通らない。演出が終わってから戦闘再開。 */
+function cineLock(){
+  const c=Game.cine;
+  return !!c && (c.type==='boss' || c.type==='final' || c.type==='od');
+}
 function eb(x,y,vx,vy,opt){
+  if(cineLock()) return;                 // 演出中は敵弾を出さない
   opt=opt||{};
   const rm=rageSpeedMul(); vx*=rm; vy*=rm;
   eBullets.push({x,y,vx,vy, r:opt.r||5, color:opt.color||'#ff5a7a', dmg:Math.round((opt.dmg||16)*dmgScale()),
@@ -825,6 +832,7 @@ const Game = {
     this.lastGain = gain;
     this.midRun = true; this.pendingStage = nextStage;
     this.stageClearMsgT = 200;
+    this.cine=null;
     this.state = STATE.HANGAR;
     Music.play('opening');
   },
@@ -856,7 +864,11 @@ const Game = {
 
   setMessage(a,b,dur){ this.message={a,b}; this.messageT=dur; },
   /* v23: 登場カットイン（ステージ開始 / ボス登場 / ラスボス降臨） */
-  startCine(type,a,b,dur){ this.cine={type,a,b,t:0,dur:dur||150}; },
+  startCine(type,a,b,dur){
+    this.cine={type,a,b,t:0,dur:dur||150};
+    /* 戦闘停止系の演出に入るときは、画面に残っている敵弾も消して完全に手を止める */
+    if(type==='boss'||type==='final'||type==='od') eBullets.length=0;
+  },
   addCredits(v){ const g=v*(this.player?this.player.st.greed:1); this.runCredits+=g; return g; },
   screenShake(v){ this.shake=Math.min(this.shake+v, 26); },
   doFlash(c,v){ this.flashColor=c; this.flash=Math.max(this.flash,v); },
@@ -952,40 +964,52 @@ function makeEnemy(kind, x, y, opt={}){
   return {
     kind, x, y, r:base.r, hp:hp0, maxHp:hp0,
     color:base.color, credit:base.credit, dmg:base.dmg||20,
-    t:0, fireCd:rand(50,110), vx:0, vy:0, angle:0,
+    t:0, mt:0, fireCd:rand(50,110), vx:0, vy:0, angle:0,
     entered:false, targetY: opt.targetY!==undefined?opt.targetY: rand(80,220),
     homeX:x, phase:rand(0,TAU), scoreV:base.score||100, drop:base.drop||0.12,
     opt
   };
 }
 
+/* =========================================================================
+   v25: 「定位置に着いた瞬間に左右へワープする」不具合の対策
+   降下中も e.t が進むため、着地した途端に sin(e.t*k) が一気に大きな値になり
+   横位置が飛んでいた。着地時に専用タイマー e.mt を 0 に戻し、
+   さらに振幅を 0 から立ち上げる（wobRamp）ことで必ず滑らかに揺れ始める。
+   ========================================================================= */
+function wobRamp(e){ return Math.min(1, (e.mt||0)/26); }
+function enterDone(e){ e.entered=true; e.mt=0; }
+
 function updateEnemy(e, dt){
   e.t += dt;
   const p = Game.player;
   switch(e.kind){
     case 'grunt': {
-      if(!e.entered){ e.y += 2.4*dt; if(e.y>=e.targetY){ e.entered=true; e.fireCd=rand(120,220); } }
+      if(!e.entered){ e.y += 2.4*dt; if(e.y>=e.targetY){ enterDone(e); e.fireCd=rand(120,220); } }
       else {
-        e.x = e.homeX + Math.sin(e.t*0.03+e.phase)*36; e.y = e.targetY + Math.sin(e.t*0.02)*10;
+        e.mt+=dt; const s=wobRamp(e);
+        e.x = e.homeX + Math.sin(e.mt*0.03+e.phase)*36*s;
+        e.y = e.targetY + Math.sin(e.mt*0.02)*10*s;
         e.fireCd-=dt; if(e.fireCd<=0){ e.fireCd=rand(150,240); aimShot(e,3.8); }
       }
       break;
     }
     case 'weaver': {
-      e.y += 1.6*dt; e.x = e.homeX + Math.sin(e.t*0.05+e.phase)*95;
+      e.mt+=dt;
+      e.y += 1.6*dt; e.x = e.homeX + Math.sin(e.mt*0.05+e.phase)*95*wobRamp(e);
       e.fireCd-=dt; if(e.fireCd<=0 && e.y<VH*0.7){ e.fireCd=rand(65,95); aimShot(e,4.0); }
       if(e.y>VH+30) e.dead=true;
       break;
     }
     case 'turret': {
-      if(!e.entered){ e.y+=1.9*dt; if(e.y>=e.targetY) e.entered=true; }
-      else { e.x = e.homeX + Math.sin(e.t*0.02+e.phase)*22; }
+      if(!e.entered){ e.y+=1.9*dt; if(e.y>=e.targetY) enterDone(e); }
+      else { e.mt+=dt; e.x = e.homeX + Math.sin(e.mt*0.02+e.phase)*22*wobRamp(e); }
       e.fireCd-=dt; if(e.fireCd<=0 && e.entered){ e.fireCd=rand(52,78); aimSpread(e,4,0.24,4.2); }
       break;
     }
     case 'bomber': {
-      if(!e.entered){ e.y+=1.3*dt; if(e.y>=e.targetY) e.entered=true; }
-      else { e.x += Math.sin(e.t*0.015)*1.2*dt; }
+      if(!e.entered){ e.y+=1.3*dt; if(e.y>=e.targetY) enterDone(e); }
+      else { e.mt+=dt; e.x += Math.sin(e.mt*0.015)*1.2*dt*wobRamp(e); }
       e.fireCd-=dt; if(e.fireCd<=0 && e.entered){ e.fireCd=rand(80,115); ringShot(e,12,2.9); }
       break;
     }
@@ -996,19 +1020,20 @@ function updateEnemy(e, dt){
       break;
     }
     case 'splitter': {
-      if(!e.entered){ e.y+=1.7*dt; if(e.y>=e.targetY) e.entered=true; }
-      else { e.x=e.homeX+Math.sin(e.t*0.03+e.phase)*55; }
+      if(!e.entered){ e.y+=1.7*dt; if(e.y>=e.targetY) enterDone(e); }
+      else { e.mt+=dt; e.x=e.homeX+Math.sin(e.mt*0.03+e.phase)*55*wobRamp(e); }
       e.fireCd-=dt; if(e.fireCd<=0 && e.entered){ e.fireCd=rand(90,120); aimSpread(e,3,0.3,3.6); }
       break;
     }
     case 'mini': {
-      e.y += 2.8*dt; e.x += Math.sin(e.t*0.08+e.phase)*1.7*dt;
+      e.mt+=dt;
+      e.y += 2.8*dt; e.x += Math.sin(e.mt*0.08+e.phase)*1.7*dt*wobRamp(e);
       if(e.y>VH+30) e.dead=true;
       break;
     }
     case 'shield': {
-      if(!e.entered){ e.y+=1.1*dt; if(e.y>=e.targetY) e.entered=true; }
-      else { e.x=e.homeX+Math.sin(e.t*0.018+e.phase)*75; }
+      if(!e.entered){ e.y+=1.1*dt; if(e.y>=e.targetY) enterDone(e); }
+      else { e.mt+=dt; e.x=e.homeX+Math.sin(e.mt*0.018+e.phase)*75*wobRamp(e); }
       e.fireCd-=dt; if(e.fireCd<=0&&e.entered){ e.fireCd=rand(75,105); aimSpread(e,5,0.22,3.8); }
       break;
     }
@@ -1018,9 +1043,10 @@ function updateEnemy(e, dt){
       break;
     }
     case 'sniper': {
-      if(!e.entered){ e.y+=2.0*dt; if(e.y>=e.targetY) e.entered=true; }
+      if(!e.entered){ e.y+=2.0*dt; if(e.y>=e.targetY) enterDone(e); }
       else {
-        e.x = e.homeX + Math.sin(e.t*0.012+e.phase)*16;
+        e.mt+=dt;
+        e.x = e.homeX + Math.sin(e.mt*0.012+e.phase)*16*wobRamp(e);
         e.fireCd-=dt;
         e.charging = e.fireCd<45 && e.fireCd>0;
         if(e.fireCd<=0){
@@ -1034,17 +1060,18 @@ function updateEnemy(e, dt){
       break;
     }
     case 'orbiter': {
+      e.mt+=dt; const s=wobRamp(e);
       e.cy = e.cy===undefined? e.y : Math.min(e.targetY, e.cy+1.3*dt);
       e.oa = (e.oa===undefined? e.phase : e.oa) + 0.035*dt;
-      e.x = e.homeX + Math.cos(e.oa)*60;
-      e.y = e.cy + Math.sin(e.oa)*38;
+      e.x = e.homeX + (Math.cos(e.oa)-Math.cos(e.phase))*60*s;
+      e.y = e.cy + Math.sin(e.oa)*38*s;
       if(e.cy>=e.targetY) e.entered=true;
       e.fireCd-=dt; if(e.fireCd<=0 && e.entered){ e.fireCd=rand(120,160); ringShot(e,8,2.8); }
       break;
     }
     case 'carrier': {
-      if(!e.entered){ e.y+=0.9*dt; if(e.y>=e.targetY) e.entered=true; }
-      else { e.x=e.homeX+Math.sin(e.t*0.01+e.phase)*30; }
+      if(!e.entered){ e.y+=0.9*dt; if(e.y>=e.targetY) enterDone(e); }
+      else { e.mt+=dt; e.x=e.homeX+Math.sin(e.mt*0.01+e.phase)*30*wobRamp(e); }
       e.fireCd-=dt;
       if(e.fireCd<=0 && e.entered){
         e.fireCd=rand(120,160);
@@ -1369,6 +1396,7 @@ function spawnHelper(i){
 
 function damageBossObj(b, dmg, hx, hy, silent){
   if(!b || b.dead || b.entering) return;
+  if(cineLock()) return;                 // v25: 演出中はダメージも通らない
   b.hp-=dmg; b.hitFlash=3;
   if(hx!==undefined) addFloat(hx,hy-8,Math.round(dmg),dmgColor(dmg),dmgSize(dmg));
   if(b.hp>0 && !silent) Sound.bossHit(dmg, b);
@@ -1601,11 +1629,19 @@ function updateBoss(b, dt){
   const p=Game.player;
 
   if(b.entering){
+    /* v25: X も収束を待つ（お助けボスは自分の持ち場へ）。
+       片方だけ見て entering を解除すると、解除の瞬間に横へワープしていた。 */
+    const hx = b.isHelper ? b.homeX : VW/2;
+    b.enterT=(b.enterT||0)+dt;
     b.y += (b.baseY - b.y)*0.035*dt;
-    b.x += (VW/2 - b.x)*0.035*dt;
-    if(Math.abs(b.y-b.baseY)<3){ b.entering=false; b.moveT=0; }
+    b.x += (hx - b.x)*0.035*dt;
+    if((Math.abs(b.y-b.baseY)<3 && Math.abs(b.x-hx)<3) || b.enterT>300){
+      b.x=hx; b.y=b.baseY; b.entering=false; b.moveT=0;
+    }
     return;
   }
+  /* 登場演出・変身演出の最中は、その場で待機して攻撃しない */
+  if(cineLock()) return;
   b.moveT+=dt;
 
   /* --- v14: 長期戦になるほど激化（弾速アップ＋増援） --- */
@@ -1854,6 +1890,7 @@ function updatePlayerDeath(dt){
    ========================================================================= */
 function collisions(){
   const p=Game.player;
+  if(cineLock()) return;                 // v25: 演出中は攻守ともに当たり判定を止める
   for(let i=pBullets.length-1;i>=0;i--){
     const b=pBullets[i]; let hit=false;
     for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(b,e)){ damageEnemy(e,b.dmg,b.x,b.y); hitSpark(b); hit=true; break; } }
