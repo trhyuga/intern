@@ -875,7 +875,9 @@ function killEnemy(e){
 const powerups=[];
 const PU_TYPES=['heal','shield','credit','bomb'];
 function spawnPowerup(x,y){
-  const type = PU_TYPES[randi(0,PU_TYPES.length-1)];
+  /* v17: シールド未強化ではSアイテムが実質無意味なので、Lv1以上になるまで出さない */
+  const pool = upLevel('shield')>=1 ? PU_TYPES : PU_TYPES.filter(t=>t!=='shield');
+  const type = pool[randi(0,pool.length-1)];
   powerups.push({x,y,vy:1.4,r:11,type,t:0});
 }
 function updatePowerups(dt){
@@ -1935,9 +1937,13 @@ function drawHUD(){
   ctx.fillText('◈ '+fmt(Game.runCredits)+'c', VW-12, 24);
   ctx.fillStyle='#9fd'; ctx.font='11px system-ui'; ctx.fillText('SCORE '+fmt(Game.score), VW-12, 40);
   ctx.fillStyle='#8ac'; ctx.fillText('STAGE '+(Game.stageIndex+1), VW-12, 56);
-  ctx.textAlign='left'; ctx.fillStyle='#bff'; ctx.font='12px system-ui';
-  ctx.fillText('BOMB', 12, VH-16);
-  for(let i=0;i<p.bombs;i++){ ctx.beginPath(); ctx.arc(58+i*16, VH-20, 5, 0, TAU); ctx.fillStyle='#bff'; ctx.shadowBlur=8; ctx.shadowColor='#bff'; ctx.fill(); } ctx.shadowBlur=0;
+  /* v17: ボム残弾（左下・ボタンの真下に横並び） */
+  {
+    const n=p.bombs, sx=BOMB_BTN.x - (n-1)*8;
+    for(let i=0;i<n;i++){ ctx.beginPath(); ctx.arc(sx+i*16, VH-16, 5, 0, TAU); ctx.fillStyle='#bff'; ctx.shadowBlur=8; ctx.shadowColor='#bff'; ctx.fill(); }
+    ctx.shadowBlur=0;
+    if(n===0){ ctx.textAlign='center'; ctx.fillStyle='#4a6a86'; ctx.font='10px system-ui'; ctx.fillText('EMPTY', BOMB_BTN.x, VH-12); }
+  }
   if(Game.boss && !Game.boss.entering && !Game.boss.dead){
     const b=Game.boss; const label=(b.isGreat?'FINAL: ':(b.isMid?'MID: ':'BOSS: '))+b.name;
     ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(40,66,VW-80,10);
@@ -1963,10 +1969,49 @@ function drawHUD(){
     hy+=20;
   }
   Game.buttons=[];
-  addBtn(VW-44, VH-40, 34, 30, 'pause');
-  ctx.textAlign='center'; ctx.fillStyle='#8ac'; ctx.font='16px system-ui'; ctx.fillText('❚❚', VW-27, VH-19);
-  addBtn(VW-90, VH-40, 40, 30, 'bomb');
-  ctx.fillStyle='#bff'; ctx.font='11px system-ui'; ctx.fillText('BOMB', VW-70, VH-19);
+  addBtn(VW-46, VH-46, 36, 34, 'pause');
+  ctx.textAlign='center'; ctx.fillStyle='#8ac'; ctx.font='16px system-ui'; ctx.fillText('❚❚', VW-28, VH-24);
+  drawBombButton(p);
+}
+
+/* v17: 左下の大型ボムボタン（左手の親指で押しやすい位置・サイズ） */
+const BOMB_BTN = { x:62, y:0, r:36 };
+function drawBombButton(p){
+  BOMB_BTN.y = VH-74;
+  const bx=BOMB_BTN.x, by=BOMB_BTN.y, br=BOMB_BTN.r;
+  addBtn(bx-br-4, by-br-4, (br+4)*2, (br+4)*2, 'bomb');   // 判定は見た目より少し広め
+  const ready = p.bombs>0;
+  const pulse = ready ? 0.5+0.5*Math.sin(Game.t*0.07) : 0;
+  const col = ready ? '#8fe8ff' : '#3d5468';
+  ctx.save(); ctx.textAlign='center';
+  /* 外周のパルスリング */
+  if(ready){
+    ctx.globalAlpha=0.18+0.22*pulse; ctx.shadowBlur=22; ctx.shadowColor='#8fe8ff';
+    ctx.strokeStyle='#8fe8ff'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(bx,by,br+4+pulse*3,0,TAU); ctx.stroke(); ctx.globalAlpha=1;
+  }
+  /* 本体 */
+  ctx.shadowBlur=ready?16:4; ctx.shadowColor=col;
+  ctx.fillStyle = ready?'rgba(24,64,96,0.62)':'rgba(18,26,38,0.5)';
+  ctx.strokeStyle=col; ctx.lineWidth=2.6;
+  ctx.beginPath(); ctx.arc(bx,by,br,0,TAU); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur=0; ctx.globalAlpha=0.45; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.arc(bx,by,br-7,0,TAU); ctx.stroke(); ctx.globalAlpha=1;
+  /* 爆弾アイコン */
+  ctx.shadowBlur=ready?10:0; ctx.shadowColor=col;
+  ctx.fillStyle=col;
+  ctx.beginPath(); ctx.arc(bx, by-7, 8.5, 0, TAU); ctx.fill();
+  ctx.strokeStyle=col; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(bx+6, by-13); ctx.quadraticCurveTo(bx+13, by-20, bx+9, by-24); ctx.stroke();
+  if(ready){ ctx.fillStyle='#fff'; ctx.globalAlpha=0.6+0.4*pulse;
+    ctx.beginPath(); ctx.arc(bx+9, by-26, 2.4, 0, TAU); ctx.fill(); ctx.globalAlpha=1; }
+  ctx.shadowBlur=0;
+  /* ラベルと残数 */
+  ctx.fillStyle = ready?'#dff6ff':'#5a7286';
+  ctx.font='bold 12px system-ui'; ctx.fillText('BOMB', bx, by+12);
+  ctx.font='bold 13px system-ui'; ctx.fillStyle = ready?'#8fe8ff':'#4a6076';
+  ctx.fillText('×'+p.bombs, bx, by+26);
+  ctx.restore();
 }
 
 function addBtn(x,y,w,h,id){ Game.buttons.push({x,y,w,h,id}); }
