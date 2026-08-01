@@ -2020,77 +2020,128 @@ function neonCircle(x,y,r,color,lw=2,glow=14,fill){
    ・キャノピーとエネルギーラインは威力レベルの色で光る
    ・タイトル/エンディング画面とも共用
    ========================================================================= */
+/* v27: 攻撃系の強化度から「機体形式(MK-I〜MK-V)」を決める。
+   メインショット×2＋火力＋連射 の合計で 5 段階に進化する。 */
+function shipMark(wl,pw,rt){
+  const atk = (wl||0)*2 + (pw||0) + (rt||0);      // 0 〜 23
+  return atk>=19?4 : atk>=13?3 : atk>=8?2 : atk>=3?1 : 0;
+}
+const SHIP_MARKS = [
+  {n:'MK-I',   t:'FALCON'},
+  {n:'MK-II',  t:'RAPTOR'},
+  {n:'MK-III', t:'LANCER'},
+  {n:'MK-IV',  t:'CRUSADER'},
+  {n:'MK-V',   t:'SOVEREIGN'},
+];
+function currentMark(){ return shipMark(upLevel('weapon'), upLevel('power'), upLevel('rate')); }
+/* 各画面で共通に使う機体オプション */
+function shipOpts(extra){
+  return Object.assign({
+    weapon: upLevel('weapon'), armor: upLevel('hp'),
+    power: upLevel('power'), rate: upLevel('rate'), missiles: upLevel('missile')
+  }, extra||{});
+}
+
 function drawShipBody(anim, accent, opt){
   opt = opt||{};
-  const wl = opt.weapon||0, ar = opt.armor||0;
+  const wl = opt.weapon||0, ar = opt.armor||0, pw = opt.power||0, rt = opt.rate||0, ms = opt.missiles||0;
+  const mk = opt.mk!==undefined ? opt.mk : shipMark(wl,pw,rt);
   const thrust = opt.thrust!==undefined?opt.thrust:1;
   const hull = opt.hull||'#dffbff', wing = opt.wing||'#bfefff', tail = opt.tail||'#7fd4ff';
   const flameC = opt.flame||'#4cf';
 
-  /* --- エンジン炎（機体の後ろに描く） --- */
+  /* 形式ごとの寸法 */
+  const WSPAN = [13.5, 16, 18, 20, 22][mk];      // 主翼の張り出し
+  const WBACK = [8.5, 9.5, 10, 10.5, 11][mk];    // 翼端の後退量
+  const BODY  = [1.0, 1.03, 1.08, 1.14, 1.20][mk]; // 胴体の太さ
+  const NOSE  = [-19, -19.5, -20.5, -21.5, -23][mk];
+
+  /* --- エンジン炎（機体の後ろに描く / スプライトなので軽い） --- */
   const fl = (13 + Math.sin(anim*0.45)*3.2) * thrust;
+  const nozzles = mk>=2 ? [[-4.6,1],[4.6,1],[-11.5,0.62],[11.5,0.62]] : [[-4.6,1],[4.6,1]];
   if(fl>0){
-    for(const sx of [-4.6, 4.6]){
-      const g=ctx.createLinearGradient(0,12,0,12+fl);
-      g.addColorStop(0,'rgba(215,250,255,0.95)');
-      g.addColorStop(0.4,'rgba(90,205,255,0.55)');
-      g.addColorStop(1,'rgba(60,120,255,0)');
-      ctx.save(); ctx.shadowBlur=16; ctx.shadowColor=flameC; ctx.fillStyle=g;
-      ctx.beginPath();
-      ctx.moveTo(sx-2.9,11.5); ctx.lineTo(sx+2.9,11.5);
-      ctx.quadraticCurveTo(sx+1.4, 12+fl*0.72, sx, 12+fl);
-      ctx.quadraticCurveTo(sx-1.4, 12+fl*0.72, sx-2.9, 11.5);
-      ctx.closePath(); ctx.fill(); ctx.restore();
-    }
+    for(const nz of nozzles) eFlame(nz[0], 12*nz[1], fl*nz[1]*1.55, 3.6*nz[1], flameC, anim, 1);
   }
 
   /* --- 尾翼（後退翼） --- */
-  neonPoly([[-4.5,3],[-11,12],[-13,16.5],[-5.5,10]], tail,'rgba(40,140,220,0.20)',1.5,9);
-  neonPoly([[ 4.5,3],[ 11,12],[ 13,16.5],[ 5.5,10]], tail,'rgba(40,140,220,0.20)',1.5,9);
+  const tf = 1+mk*0.06;
+  neonPoly([[-4.5,3],[-11*tf,12],[-13*tf,16.5],[-5.5,10]], tail,'rgba(40,140,220,0.20)',1.5,9);
+  neonPoly([[ 4.5,3],[ 11*tf,12],[ 13*tf,16.5],[ 5.5,10]], tail,'rgba(40,140,220,0.20)',1.5,9);
 
-  /* --- 主翼 --- */
-  neonPoly([[-4,-5],[-15,3],[-17,9.5],[-5,5]], wing,'rgba(60,180,255,0.22)',1.8,12);
-  neonPoly([[ 4,-5],[ 15,3],[ 17,9.5],[ 5,5]], wing,'rgba(60,180,255,0.22)',1.8,12);
+  /* --- 主翼（形式が上がるほど大きく張り出す） --- */
+  neonPoly([[-4,-5],[-WSPAN,3],[-WSPAN-2,WBACK],[-5,5]], wing,'rgba(60,180,255,0.22)',1.8,12);
+  neonPoly([[ 4,-5],[ WSPAN,3],[ WSPAN+2,WBACK],[ 5,5]], wing,'rgba(60,180,255,0.22)',1.8,12);
 
-  /* --- 翼端キャノン（武器レベルで増える） --- */
-  if(wl>=2){
-    for(const s of [-1,1]){
-      ctx.save(); ctx.shadowBlur=10; ctx.shadowColor=accent; ctx.strokeStyle=accent; ctx.lineWidth=1.6;
-      ctx.beginPath(); ctx.moveTo(s*14.5,-1); ctx.lineTo(s*14.5,7); ctx.stroke();
-      ctx.restore();
-    }
+  /* --- MK-II〜: 翼端キャノン --- */
+  if(mk>=1){
+    ctx.save(); ctx.shadowBlur=gq(10); ctx.shadowColor=accent; ctx.strokeStyle=accent; ctx.lineWidth=1.7;
+    ctx.beginPath();
+    for(const s of [-1,1]){ ctx.moveTo(s*(WSPAN-0.5),-1.5); ctx.lineTo(s*(WSPAN-0.5),7.5); }
+    ctx.stroke(); ctx.restore();
   }
-  if(wl>=4){
-    for(const s of [-1,1]){
-      ctx.save(); ctx.shadowBlur=10; ctx.shadowColor=accent; ctx.strokeStyle=accent; ctx.lineWidth=1.4;
-      ctx.beginPath(); ctx.moveTo(s*9.5,-3); ctx.lineTo(s*9.5,5); ctx.stroke();
-      ctx.restore();
-    }
+  /* --- MK-III〜: 前進カナード＋インテーク --- */
+  if(mk>=2){
+    neonPoly([[-3.6,-12],[-11,-14.5],[-12.5,-9.5],[-4.6,-7.5]], wing,'rgba(60,180,255,0.26)',1.3,9);
+    neonPoly([[ 3.6,-12],[ 11,-14.5],[ 12.5,-9.5],[ 4.6,-7.5]], wing,'rgba(60,180,255,0.26)',1.3,9);
+    ctx.save(); ctx.shadowBlur=gq(7); ctx.shadowColor=tail; ctx.strokeStyle=tail; ctx.lineWidth=1.1; ctx.globalAlpha=0.8;
+    ctx.beginPath();
+    for(const s of [-1,1]){ ctx.moveTo(s*7.5,-1); ctx.lineTo(s*10.5,4); ctx.lineTo(s*10.5,8); }
+    ctx.stroke(); ctx.restore(); ctx.globalAlpha=1;
   }
-  if(wl>=6){
+  /* --- MK-IV〜: 上段の副翼＋背びれ --- */
+  if(mk>=3){
+    neonPoly([[-5,-3],[-WSPAN+2,-6],[-WSPAN,-1.5],[-5.5,1]], tail,'rgba(120,210,255,0.24)',1.2,8);
+    neonPoly([[ 5,-3],[ WSPAN-2,-6],[ WSPAN,-1.5],[ 5.5,1]], tail,'rgba(120,210,255,0.24)',1.2,8);
+    neonPoly([[0,-9],[2.2,-1],[0,7],[-2.2,-1]], hull,'rgba(160,230,255,0.22)',1.1,9);
+  }
+  /* --- MK-V: 機首ブレード＋翼端オーブ --- */
+  if(mk>=4){
     for(const s of [-1,1]){
-      ctx.save(); ctx.shadowBlur=16; ctx.shadowColor=accent; ctx.fillStyle=accent;
-      ctx.beginPath(); ctx.arc(s*16,8,2.4,0,TAU); ctx.fill(); ctx.restore();
+      neonPoly([[s*3.2,-14],[s*4.6,-26],[s*2.4,-25],[s*1.8,-14]], accent,'rgba(180,240,255,0.30)',1.2,12);
     }
+    const orb=0.6+0.4*Math.sin(anim*0.1);
+    ctx.save(); ctx.shadowBlur=gq(16); ctx.shadowColor=accent; ctx.fillStyle=accent; ctx.globalAlpha=0.7+0.3*orb;
+    ctx.beginPath();
+    for(const s of [-1,1]){ ctx.moveTo(s*(WSPAN+2)+2.8,WBACK-1); ctx.arc(s*(WSPAN+2),WBACK-1,2.4+orb*0.7,0,TAU); }
+    ctx.fill(); ctx.restore(); ctx.globalAlpha=1;
+  }
+  /* --- ホーミング弾のポッド（所持数だけ翼下に付く） --- */
+  if(ms>0){
+    ctx.save(); ctx.shadowBlur=gq(6); ctx.shadowColor='#9fd8ff'; ctx.strokeStyle='#9fd8ff'; ctx.lineWidth=1.1;
+    ctx.fillStyle='rgba(140,210,255,0.22)';
+    ctx.beginPath();
+    for(let i=0;i<Math.min(ms,4);i++){
+      const s = i%2? 1:-1, off = 9 + ((i/2)|0)*4.4;
+      ctx.moveTo(s*off-1.5, 3); ctx.rect(s*off-1.5, 3, 3, 6.5);
+    }
+    ctx.fill(); ctx.stroke(); ctx.restore();
   }
 
-  /* --- 胴体 --- */
-  neonPoly([[0,-19],[4.5,-6],[6,8],[3.5,13],[-3.5,13],[-6,8],[-4.5,-6]], hull,'rgba(80,190,255,0.28)',2,16);
+  /* --- 胴体（形式が上がるほど厚みが増す） --- */
+  neonPoly([[0,NOSE],[4.5*BODY,-6],[6*BODY,8],[3.5*BODY,13],[-3.5*BODY,13],[-6*BODY,8],[-4.5*BODY,-6]],
+    hull,'rgba(80,190,255,0.28)',2,16);
 
   /* --- 増加装甲（装甲レベルで厚くなる） --- */
   if(ar>=2){
-    ctx.save(); ctx.shadowBlur=8; ctx.shadowColor='#9fd8ff'; ctx.strokeStyle='#9fd8ff'; ctx.lineWidth=1.3;
+    ctx.save(); ctx.shadowBlur=gq(8); ctx.shadowColor='#9fd8ff'; ctx.strokeStyle='#9fd8ff'; ctx.lineWidth=1.3;
     ctx.beginPath(); ctx.moveTo(-3.4,-3); ctx.lineTo(-4.6,7); ctx.moveTo(3.4,-3); ctx.lineTo(4.6,7); ctx.stroke();
     ctx.restore();
   }
   if(ar>=4){
-    neonPoly([[-6,-2],[-8.6,1],[-8,7],[-5.6,6]], '#9fd8ff','rgba(120,200,255,0.25)',1.3,8);
-    neonPoly([[ 6,-2],[ 8.6,1],[ 8,7],[ 5.6,6]], '#9fd8ff','rgba(120,200,255,0.25)',1.3,8);
+    neonPoly([[-6*BODY,-2],[-8.6*BODY,1],[-8*BODY,7],[-5.6*BODY,6]], '#9fd8ff','rgba(120,200,255,0.25)',1.3,8);
+    neonPoly([[ 6*BODY,-2],[ 8.6*BODY,1],[ 8*BODY,7],[ 5.6*BODY,6]], '#9fd8ff','rgba(120,200,255,0.25)',1.3,8);
   }
 
-  /* --- 機首のエネルギーライン --- */
-  ctx.save(); ctx.shadowBlur=12; ctx.shadowColor=accent; ctx.strokeStyle=accent; ctx.lineWidth=1.4;
-  ctx.beginPath(); ctx.moveTo(0,-17); ctx.lineTo(0,-11); ctx.stroke(); ctx.restore();
+  /* --- 機首のエネルギーライン（形式が上がるほど長く強く光る） --- */
+  ctx.save(); ctx.shadowBlur=gq(12+mk*3); ctx.shadowColor=accent; ctx.strokeStyle=accent; ctx.lineWidth=1.4+mk*0.15;
+  ctx.beginPath(); ctx.moveTo(0,NOSE+2); ctx.lineTo(0,-11+mk*0.8); ctx.stroke(); ctx.restore();
+  /* MK-IV〜: 背骨のエネルギーライン */
+  if(mk>=3){
+    const sp=0.45+0.55*Math.abs(Math.sin(anim*0.08));
+    ctx.save(); ctx.globalAlpha=0.35+0.4*sp; ctx.shadowBlur=gq(10); ctx.shadowColor=accent;
+    ctx.strokeStyle=accent; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(0,11); ctx.stroke(); ctx.restore(); ctx.globalAlpha=1;
+  }
 
   /* --- キャノピー（威力レベルの色で脈動） --- */
   const cp = 0.75+0.25*Math.sin(anim*0.09);
@@ -2100,9 +2151,11 @@ function drawShipBody(anim, accent, opt){
   ctx.beginPath(); ctx.ellipse(0,-9.5,1.1,2.2,0,0,TAU); ctx.fill();
   ctx.restore();
 
-  /* --- エンジンノズルの光 --- */
-  ctx.save(); ctx.shadowBlur=14; ctx.shadowColor=flameC; ctx.fillStyle='#bfefff';
-  ctx.beginPath(); ctx.arc(-4.6,12,2.1,0,TAU); ctx.arc(4.6,12,2.1,0,TAU); ctx.fill(); ctx.restore();
+  /* --- エンジンノズルの光（形式が上がると4基になる） --- */
+  ctx.save(); ctx.shadowBlur=gq(14); ctx.shadowColor=flameC; ctx.fillStyle='#bfefff';
+  ctx.beginPath();
+  for(const nz of nozzles){ const r=2.1*nz[1]; ctx.moveTo(nz[0]+r,12*nz[1]); ctx.arc(nz[0],12*nz[1],r,0,TAU); }
+  ctx.fill(); ctx.restore();
   ctx.shadowBlur=0;
 
   /* --- v23: オーバードライブ形態（見た目をハッキリ変える） --- */
@@ -2205,8 +2258,8 @@ function drawPlayer(){
       for(let i=0;i<p.odTrail.length-1;i++){
         const tr=p.odTrail[i];
         ctx.save(); ctx.globalAlpha=0.06+0.05*i; ctx.translate(tr.x,tr.y); ctx.rotate(tr.b); ctx.scale(0.94,0.94);
-        drawShipBody(Game.t, '#fff4c4', {weapon:p.st.weapon, armor:upLevel('hp'), thrust:0,
-          hull:'#ffd76a', wing:'#ffd76a', tail:'#f5a83c', flame:'#fd8'});
+        drawShipBody(Game.t, '#fff4c4', shipOpts({thrust:0,
+          hull:'#ffd76a', wing:'#ffd76a', tail:'#f5a83c', flame:'#fd8'}));
         ctx.restore();
       }
       ctx.globalAlpha=1;
@@ -2218,13 +2271,13 @@ function drawPlayer(){
       ctx.rotate(q*q*TAU*2.2);
       const s2=1+q*0.55; ctx.scale(s2,s2);
     } else ctx.rotate(p.bank||0);
-    drawShipBody(Game.t, od?'#fff4c4':accent, {
-      weapon:p.st.weapon, armor:upLevel('hp'),
+    drawShipBody(Game.t, od?'#fff4c4':accent, shipOpts({
+      weapon:p.st.weapon,
       thrust: 1 + clamp(Math.abs(p.bank||0)*1.2, 0, 0.5) + (od?0.35:0),
       od: od,
       hull: od?'#fff6d8':undefined, wing: od?'#ffd76a':undefined,
       tail: od?'#f5a83c':undefined, flame: od?'#fd8':undefined
-    });
+    }));
     /* 砲口の閃光（威力レベルで大きくなる） */
     if(p.muzzle>0){
       const tt=p.tier||0, T=BULLET_TIERS[tt];
@@ -2240,7 +2293,7 @@ function drawPlayer(){
   for(const w of Game.wingmen){
     ctx.save(); ctx.translate(w.x,w.y); ctx.scale(0.58,0.58);
     drawShipBody(Game.t+w.side*4, od?'#fff4c4':'#9fffd0', {
-      weapon:0, armor:0, thrust:0.85,
+      weapon:0, armor:0, mk:0, thrust:0.85,
       hull: od?'#fff2cc':'#c9ffe4', wing: od?'#ffd76a':'#8fe8b8',
       tail: od?'#e8a03c':'#6fd0a0', flame: od?'#fd8':'#5fd'
     });
@@ -2279,13 +2332,15 @@ function flameSprite(color){
   FLAME_SPR.set(color, cv);
   return cv;
 }
-function eFlame(x,y,len,w,color,anim){
+/* dir=-1: 上に伸びる（敵） / dir=+1: 下に伸びる（自機） */
+function eFlame(x,y,len,w,color,anim,dir){
   const f = len*(0.72+0.28*Math.sin(anim*0.5));
   const spr = flameSprite(color);
   ctx.save();
   ctx.globalCompositeOperation='lighter';       // 加算合成で暗い背景でもしっかり光る
   ctx.globalAlpha=0.92;
-  ctx.drawImage(spr, x-w*2.1, y-f, w*4.2, f);
+  ctx.translate(x,y); if(dir>0) ctx.scale(1,-1);
+  ctx.drawImage(spr, -w*2.1, -f, w*4.2, f);
   ctx.restore();
 }
 /* 脈動するコア（機体の“目”） */
@@ -2779,18 +2834,13 @@ function drawBombButton(p){
   const pulse = ready ? 0.5+0.5*Math.sin(Game.t*0.07) : 0;
   const col = ready ? '#8fe8ff' : '#3d5468';
   ctx.save(); ctx.textAlign='center';
-  /* v24: ドラッグ中は「ここを2本目の指でタップすればボム」の範囲をうっすら示す */
+  /* v27: 判定エリアの枠は表示しない（見た目はボタンだけ、判定だけ広い）。
+     ドラッグ中はボタン自体を少し強調して「押せる」ことだけ伝える。 */
   if(pointer.active && ready){
-    const zx=0, zy=VH-BOMB_ZONE.h, zw=BOMB_ZONE.w, zh=BOMB_ZONE.h;
-    const zg=ctx.createRadialGradient(bx,by,10,bx,by,BOMB_ZONE.w);
-    zg.addColorStop(0,'rgba(120,220,255,'+(0.13+0.07*pulse).toFixed(3)+')');
-    zg.addColorStop(1,'rgba(120,220,255,0)');
-    ctx.fillStyle=zg; ctx.fillRect(zx,zy,zw,zh);
-    ctx.globalAlpha=0.16+0.10*pulse; ctx.strokeStyle='#8fe8ff'; ctx.lineWidth=1.2;
-    ctx.setLineDash([6,6]);
-    ctx.beginPath(); ctx.moveTo(zw, VH); ctx.lineTo(zw, zy+16);
-    ctx.quadraticCurveTo(zw, zy, zw-16, zy); ctx.lineTo(0, zy); ctx.stroke();
-    ctx.setLineDash([]); ctx.globalAlpha=1;
+    ctx.globalAlpha=0.10+0.08*pulse; ctx.fillStyle='#8fe8ff';
+    ctx.shadowBlur=gq(26); ctx.shadowColor='#8fe8ff';
+    ctx.beginPath(); ctx.arc(bx,by,br+10+pulse*3,0,TAU); ctx.fill();
+    ctx.shadowBlur=0; ctx.globalAlpha=1;
   }
   /* 外周のパルスリング */
   if(ready){
@@ -2931,8 +2981,15 @@ function drawTitle(){
   const sy=368+Math.sin(T*0.05)*6;
   if(Math.random()<0.7) spawnParticle(VW/2+rand(-5,5), sy+22, '#4cf', {vx:rand(-.3,.3), vy:rand(1.5,2.6), life:rand(14,24), r:rand(1.5,3)});
   ctx.save(); ctx.translate(VW/2, sy); ctx.rotate(Math.sin(T*0.024)*0.09); ctx.scale(1.25,1.25);
-  drawShipBody(T, BULLET_TIERS[bulletTier()].c, {weapon:upLevel('weapon'), armor:upLevel('hp'), thrust:1.05});
+  drawShipBody(T, BULLET_TIERS[bulletTier()].c, shipOpts({thrust:1.05}));
   ctx.restore(); ctx.shadowBlur=0;
+  /* v27: 現在の機体形式を表示 */
+  {
+    const M=SHIP_MARKS[currentMark()];
+    ctx.fillStyle='#8fd4ff'; ctx.font='bold 12px system-ui';
+    ctx.shadowBlur=gq(10); ctx.shadowColor='#6cf';
+    ctx.fillText(M.n+'  '+M.t, VW/2, 408); ctx.shadowBlur=0;
+  }
 
   const bw=200,bx=VW/2-bw/2;
   drawButton(bx, 430, bw, 46, 'スタート', true, '#6cf'); addBtn(bx,430,bw,46,'start');
@@ -3001,6 +3058,16 @@ function drawHangar(){
     ctx.shadowBlur=16; ctx.shadowColor='#6cf'; ctx.fillText('格納庫 / 強化', VW/2, 56); ctx.shadowBlur=0;
   }
   ctx.fillStyle='#ffd76a'; ctx.font='bold 16px system-ui'; ctx.fillText('◈ '+fmt(Save.data.credits)+'c', VW/2, 90);
+  /* v27: 現在の機体を実物プレビュー＋形式名（強化で姿が変わるのが分かる） */
+  {
+    const mk=currentMark(), M=SHIP_MARKS[mk];
+    ctx.save(); ctx.translate(40, 44); ctx.scale(0.92,0.92);
+    drawShipBody(Game.t, BULLET_TIERS[bulletTier()].c, shipOpts({thrust:0}));
+    ctx.restore(); ctx.shadowBlur=0;
+    ctx.textAlign='center'; ctx.fillStyle='#8fd4ff'; ctx.font='bold 11px system-ui';
+    ctx.fillText(M.n, 40, 80);
+    ctx.fillStyle='#5f88aa'; ctx.font='9px system-ui'; ctx.fillText(M.t, 40, 91);
+  }
   if(extOn()){
     ctx.fillStyle=isExtMaxed()?'#9fffd0':'#ffd76a'; ctx.font='bold 10px system-ui';
     ctx.fillText(isExtMaxed()?'★★ 限界突破 完了 — OVERDRIVE+ 発動可能':'★ 限界突破 解放中（金の枠を埋めよう）', VW/2, 101);
@@ -3132,7 +3199,7 @@ function drawWin(){
     if(Math.random()<0.85) spawnParticle(VW/2+rand(-4,4), sy+16,'#4cf',{vx:rand(-.4,.4),vy:rand(2,3.4),life:rand(16,28),r:rand(1.5,3)});
     const boost = T>150 ? 2.6 : 1.6;
     ctx.save(); ctx.translate(VW/2,sy); ctx.scale(1.15,1.15);
-    drawShipBody(T*1.4, BULLET_TIERS[bulletTier()].c, {weapon:upLevel('weapon'), armor:upLevel('hp'), thrust:boost});
+    drawShipBody(T*1.4, BULLET_TIERS[bulletTier()].c, shipOpts({thrust:boost}));
     ctx.restore(); ctx.shadowBlur=0;
   }
 
