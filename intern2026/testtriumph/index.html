@@ -1597,7 +1597,7 @@ function wingBeamDps(){
   const st=Game.player.st;
   const perShot = st.dmg*0.6*powerMul();
   const shotsPerSec = 1000/(st.fireInterval*1.2);
-  return perShot*shotsPerSec*1.15;
+  return perShot*shotsPerSec*1.10;
 }
 function updateWingBeams(dt){
   const p=Game.player; if(!p) return;
