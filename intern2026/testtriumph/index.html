@@ -77,13 +77,26 @@ function canvasPos(clientX, clientY){
    移動用の基準座標 pointer.px/py を絶対に書き換えない。
    → 別の指のタップで自機がワープする不具合を防ぐ。 */
 const btnTouches = new Set();   /* ボタンを押した指の identifier */
+/* v24: ドラッグ中に「2本目の指」で押せるボム用の広いエリア（左下の角） */
+const BOMB_ZONE = { w:176, h:176 };
+function inBombZone(x,y){ return x < BOMB_ZONE.w && y > VH - BOMB_ZONE.h; }
 function pointerDown(x,y,id){
   const p = canvasPos(x,y);
+  /* すでに別の指がドラッグ中か？ */
+  const secondary = pointer.active && pointer.id !== null && pointer.id !== id;
+  /* 2本目の指が左下エリアに触れたら、ボタンを外していてもボム発射。
+     移動用の基準座標には一切触れないので、ドラッグ中の自機は動かない。 */
+  if(secondary && Game.state===STATE.PLAY && inBombZone(p.x,p.y)){
+    btnTouches.add(id);
+    Sound.init(); Sound.resume(); Music.unlock();
+    Game.click('bomb');
+    return;
+  }
   const hitBtn = Game.onPointer(p.x, p.y, 'down');
   /* ボタンを押した指はドラッグ担当にしない */
   if(hitBtn){ btnTouches.add(id); return; }
-  /* すでに別の指がドラッグ中なら、その指の基準を壊さない */
-  if(pointer.active && pointer.id !== null && pointer.id !== id) return;
+  /* ドラッグ中なら、担当外の指では基準を壊さない */
+  if(secondary) return;
   pointer.active = true; pointer.id = (id===undefined? null : id);
   pointer.px = p.x; pointer.py = p.y;
   pointer.dxAcc = 0; pointer.dyAcc = 0;
@@ -2420,11 +2433,25 @@ const BOMB_BTN = { x:62, y:0, r:36 };
 function drawBombButton(p){
   BOMB_BTN.y = VH-74;
   const bx=BOMB_BTN.x, by=BOMB_BTN.y, br=BOMB_BTN.r;
-  addBtn(bx-br-4, by-br-4, (br+4)*2, (br+4)*2, 'bomb');   // 判定は見た目より少し広め
+  /* v24: 左手の親指で確実に押せるよう、判定を見た目よりかなり広く取る */
+  addBtn(bx-br-18, by-br-18, (br+18)*2, (br+18)*2, 'bomb');
   const ready = p.bombs>0;
   const pulse = ready ? 0.5+0.5*Math.sin(Game.t*0.07) : 0;
   const col = ready ? '#8fe8ff' : '#3d5468';
   ctx.save(); ctx.textAlign='center';
+  /* v24: ドラッグ中は「ここを2本目の指でタップすればボム」の範囲をうっすら示す */
+  if(pointer.active && ready){
+    const zx=0, zy=VH-BOMB_ZONE.h, zw=BOMB_ZONE.w, zh=BOMB_ZONE.h;
+    const zg=ctx.createRadialGradient(bx,by,10,bx,by,BOMB_ZONE.w);
+    zg.addColorStop(0,'rgba(120,220,255,'+(0.13+0.07*pulse).toFixed(3)+')');
+    zg.addColorStop(1,'rgba(120,220,255,0)');
+    ctx.fillStyle=zg; ctx.fillRect(zx,zy,zw,zh);
+    ctx.globalAlpha=0.16+0.10*pulse; ctx.strokeStyle='#8fe8ff'; ctx.lineWidth=1.2;
+    ctx.setLineDash([6,6]);
+    ctx.beginPath(); ctx.moveTo(zw, VH); ctx.lineTo(zw, zy+16);
+    ctx.quadraticCurveTo(zw, zy, zw-16, zy); ctx.lineTo(0, zy); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+  }
   /* 外周のパルスリング */
   if(ready){
     ctx.globalAlpha=0.18+0.22*pulse; ctx.shadowBlur=22; ctx.shadowColor='#8fe8ff';
