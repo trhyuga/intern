@@ -1269,7 +1269,7 @@ function updateBossDeath(b, dt){
       const alive=b.parts.filter(pp=>pp.alive);
       if(alive.length && Math.random()<0.45){
         alive[0].alive=false;
-        spawnDebris(ex, ey, 1, {dmg:0, speed:2.6, scale:0.75});
+        if(!b.isGreat) spawnDebris(ex, ey, 1, {dmg:0, speed:2.6, scale:0.75});
       }
     }
   }
@@ -1289,9 +1289,11 @@ function updateBossDeath(b, dt){
       if(i%4===0){ spawnSmoke(b.x+rand(-b.r,b.r), b.y+rand(-b.r,b.r), 2); Game.screenShake(b.isGreat?6:3); }
       if(b.isGreat && i%12===0) Sound.finalBoom(0.6);
     }, i*(b.isGreat?20:11));
-    /* 破片ばらまき（当たるとダメージ） */
-    spawnDebris(b.x, b.y, b.isGreat?24:(b.isMid?15:17),
-      {dmg: b.isMid?18:(b.isGreat?24:16), speed: b.isGreat?5.2:4.2, color:b.isGreat?'#ffd76a':'#ffb86a'});
+    /* 破片ばらまき（当たるとダメージ）— 大ボスは破片なしで純粋な大爆発に */
+    if(!b.isGreat){
+      spawnDebris(b.x, b.y, b.isMid?15:17,
+        {dmg: b.isMid?18:16, speed:4.2, color:'#ffb86a'});
+    }
   }
   return b.deathT >= b.deathDur;
 }
@@ -2545,16 +2547,25 @@ function drawWorld(){
   drawParticles();
   drawDebris();
   drawShocks();
-  /* v18: 敵弾は自弾・僚機ビーム・爆発より前面に描いて視認性を最優先にする */
-  for(const b of eBullets){
-    ctx.save();
-    ctx.globalAlpha=0.85; ctx.fillStyle='#180008';                 // 暗い縁取りで背景から浮かせる
-    ctx.beginPath(); ctx.arc(b.x,b.y,b.r+2.2,0,TAU); ctx.fill();
-    ctx.globalAlpha=1; ctx.shadowBlur=12; ctx.shadowColor=b.color; ctx.fillStyle=b.color;
-    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill();
-    ctx.shadowBlur=0; ctx.fillStyle='rgba(255,255,255,0.75)';
-    ctx.beginPath(); ctx.arc(b.x-b.r*0.28, b.y-b.r*0.28, b.r*0.34, 0, TAU); ctx.fill();
-    ctx.restore();
+  /* v19: 敵弾は常に最前面。装飾はステージが進むほど段階的に足す
+     ステージ1=素の発光 / ステージ2=＋暗い縁取り / ステージ3=＋白いハイライト */
+  {
+    const st=Game.stageIndex;
+    for(const b of eBullets){
+      ctx.save();
+      if(st>=1){
+        ctx.globalAlpha=0.85; ctx.fillStyle='#180008';
+        ctx.beginPath(); ctx.arc(b.x,b.y,b.r+2.2,0,TAU); ctx.fill();
+        ctx.globalAlpha=1;
+      }
+      ctx.shadowBlur=12; ctx.shadowColor=b.color; ctx.fillStyle=b.color;
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill();
+      if(st>=2){
+        ctx.shadowBlur=0; ctx.fillStyle='rgba(255,255,255,0.75)';
+        ctx.beginPath(); ctx.arc(b.x-b.r*0.28, b.y-b.r*0.28, b.r*0.34, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+    }
   }
   drawPlayer();
   drawFloats();
