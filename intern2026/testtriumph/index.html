@@ -398,7 +398,9 @@ const UPGRADES = [
     desc:(l)=> l>=2?'2機★ 貫通ビームに変化':(l+'機 随伴して追加射撃') },
   { id:'hp',      name:'装甲(最大HP)',   max:5, base:220, desc:(l)=> '最大HP '+(100+l*40) },
   { id:'shield',  name:'シールド',       max:3, base:950, ext:true,
-    desc:(l)=> l>0?('バリア'+(l*40)+' / 回復速度Lv'+l+(l>=4?'★★':(l>=3?'★':''))):'なし' },
+    desc:(l)=> l===0 ? 'なし'
+      : ('バリア'+(l*40)+' / '+(l===1 ? '自動回復ごく遅い'
+        : ('回復速度Lv'+l+(l>=4?'★★':(l>=3?'★':''))))) },
   { id:'bomb',    name:'ボム所持数',     max:3, base:300, desc:(l)=> '出撃時ボム '+l+' 個' },
   { id:'missile', name:'ホーミング',     max:3, base:340, ext:true,
     desc:(l)=> l>0?('追尾ミサイル x'+l+(l>=4?' ★★':'')):'なし' },
@@ -439,8 +441,9 @@ function playerStats(){
     wings: upLevel('wing'),
     shield: sl,
     /* v7: シールド自動回復はレベル依存。Lv1は遅く、Lv3(最大)で従来の約8割の性能 */
-    shieldDelay: [0, 360, 300, 225, 185][sl],          // 回復開始までのフレーム数
-    shieldRegenRate: [0, 0.10, 0.20, 0.32, 0.44][sl],  // 毎フレーム回復量
+    /* v22: Lv1は自動回復をごく僅かに（実質1回きりの盾）。Lv2以降は据え置き */
+    shieldDelay: [0, 660, 300, 225, 185][sl],          // 回復開始までのフレーム数
+    shieldRegenRate: [0, 0.045, 0.20, 0.32, 0.44][sl], // 毎フレーム回復量
     bombs: upLevel('bomb'),
     missiles: upLevel('missile'),
     speed: 5.0,
