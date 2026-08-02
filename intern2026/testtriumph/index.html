@@ -885,6 +885,10 @@ const Game = {
     Save.data.credits += gain; this.runCredits=0;
     if(this.stageIndex+1 > Save.data.best) Save.data.best = this.stageIndex+1;
     if(win){ Save.data.cleared=true; }
+    /* v32: ランク判定用に、撃破時点の状態を記録しておく */
+    this.odAtClear  = !!this.overdrive;        // オーバードライブ状態で倒したか
+    this.extAtClear = isExtMaxed();            // OVERDRIVE+（限界突破カンスト）だったか
+    this.rollWatched = false;                  // エンドロールを最後まで見たか
     /* v20: フル強化でラスボスに敗れると「限界突破」が解放される */
     this.extUnlocked = false;
     if(!win && this.overdrive && !(Save.data.ext>0)){
@@ -909,9 +913,11 @@ const Game = {
     }
   },
 
-  /* v28: エンドロール終了 → エンディング画面 */
-  finishCredits(){
+  /* v28: エンドロール終了 → エンディング画面
+     v32: 最後まで見たか（skipped=false）で最高ランク Z が決まる */
+  finishCredits(skipped){
     if(this.state!==STATE.CREDITS) return;
+    this.rollWatched = !skipped;
     this.state = STATE.WIN;
     this.winT=0; this.fwCd=0;
     this.doFlash('#fff8dc',1.0); this.screenShake(20);
@@ -965,7 +971,7 @@ const Game = {
     else if(id==='resume'){ this.state=STATE.PLAY; }
     else if(id.startsWith('buy:')){ this.buy(id.slice(4)); }
     else if(id==='buyod'){ this.buyOverdrive(); }
-    else if(id==='skiproll'){ this.finishCredits(); }
+    else if(id==='skiproll'){ this.finishCredits(true); }
     else if(id==='bomb'){ this.bombBlast(); }
     else if(id==='pause'){ this.state = this.state===STATE.PLAY?STATE.PAUSE:STATE.PLAY; }
   },
@@ -1001,7 +1007,7 @@ function handleKeyPress(code){
   if(code==='Enter' || code==='Space'){
     if(Game.state===STATE.TITLE){ Game.gotoHangar(); }
     else if(Game.state===STATE.HANGAR){ Game.click('launch'); }
-    else if(Game.state===STATE.CREDITS){ Game.finishCredits(); }
+    else if(Game.state===STATE.CREDITS){ Game.finishCredits(true); }
     else if(Game.state===STATE.OVER || Game.state===STATE.WIN){ Game.click('hangar'); }
     else if(Game.state===STATE.HOWTO){ Game.state=STATE.TITLE; }
   }
@@ -3313,6 +3319,15 @@ function buildCreditRoll(){
   add('lv','大ボス','OMEGA CORE');
   add('sp');
 
+  add('h2','― クリアランク ―');
+  add('txt','エンディングのメダルは以下で決まる');
+  add('lv','Z', 'エンドロールを最後まで見て FIN に到達');
+  add('lv','S', 'OVERDRIVE+ の状態で大ボス撃破');
+  add('lv','A', 'OVERDRIVE の状態で大ボス撃破');
+  add('lv','B', '通常形態で撃破 かつ 50,000点以上');
+  add('lv','C', '50,000点未満');
+  add('sp');
+
   add('h2','― 戦績 ―');
   add('lv','SCORE', fmt(Game.score));
   add('lv','総資産','◈ '+fmt(Save.data.credits)+'c');
@@ -3331,7 +3346,7 @@ const CR_SPEED = 1.32;            // スクロール速度(px/frame) — 全体�
 
 function drawCreditRoll(){
   Game.buttons=[];
-  const R=Game.roll; if(!R){ Game.finishCredits(); return; }
+  const R=Game.roll; if(!R){ Game.finishCredits(true); return; }
   drawNebula(); drawStarfield();
   /* 上下の黒帯（シネマスコープ） */
   ctx.fillStyle='rgba(3,5,12,0.55)'; ctx.fillRect(0,0,VW,VH);
@@ -3403,7 +3418,32 @@ function drawCreditRoll(){
   ctx.fillStyle='rgba(120,160,190,0.55)'; ctx.font='10px system-ui'; ctx.textAlign='left';
   ctx.fillText('END ROLL', 16, VH-30); ctx.textAlign='center';
 
-  if(R.t > endT + 40) Game.finishCredits();
+  if(R.t > endT + 40) Game.finishCredits(false);   // 最後まで見た → Zランク
+}
+
+/* =========================================================================
+   v32: クリアランクの判定
+   Z … エンドロールを最後まで見て FIN にたどり着いた（最高位）
+   S … OVERDRIVE+（限界突破カンスト）の状態で大ボス撃破
+   A … オーバードライブ状態で大ボス撃破
+   B … オーバードライブなしで撃破 かつ 50,000点以上
+   C … 50,000点未満
+   ========================================================================= */
+const RANK_INFO = {
+  Z:{color:'#ffd76a', label:'END ROLL 完走 — 真の到達者'},
+  S:{color:'#ffffff', label:'OVERDRIVE+ で撃破'},
+  A:{color:'#ff9be6', label:'OVERDRIVE で撃破'},
+  B:{color:'#7ddfff', label:'通常形態で撃破 / 50,000点以上'},
+  C:{color:'#9fffd0', label:'通常形態で撃破'},
+};
+function clearRank(){
+  let r;
+  if(Game.rollWatched)                        r='Z';
+  else if(Game.odAtClear && Game.extAtClear)  r='S';
+  else if(Game.odAtClear)                     r='A';
+  else if(Game.score>=50000)                  r='B';
+  else                                        r='C';
+  return { rank:r, color:RANK_INFO[r].color, label:RANK_INFO[r].label };
 }
 
 /* --- エンディング（v3: 花火・ランク表彰・凱旋） --- */
@@ -3514,10 +3554,8 @@ function drawWin(){
   }
   /* ランクメダル */
   if(T>70){
-    const sc2=Game.score;
-    /* v31: 最高ランクは S ではなく Z（Zenith） */
-    const rank = sc2>=65000?'Z': sc2>=50000?'A': sc2>=35000?'B':'C';
-    const rc = rank==='Z'?'#ffd76a': rank==='A'?'#f6c': rank==='B'?'#7df':'#9fd';
+    const R = clearRank();
+    const rank = R.rank, rc = R.color;
     const rp=1+Math.sin(T*0.1)*0.05;
     const pop = T<86 ? 1.8-0.8*((T-70)/16) : 1;
     ctx.save(); ctx.translate(VW/2, 396); ctx.scale(rp*pop,rp*pop);
@@ -3544,13 +3582,17 @@ function drawWin(){
     ctx.globalAlpha=0.14; ctx.fillStyle=rc; ctx.fill(); ctx.globalAlpha=1;
     ctx.fillStyle=rc; ctx.font='bold 40px system-ui'; ctx.textBaseline='middle'; ctx.fillText(rank,0,2); ctx.textBaseline='alphabetic';
     ctx.restore();
-    ctx.fillStyle='#8ac'; ctx.font='11px system-ui'; ctx.fillText('RANK', VW/2, 448);
+    ctx.fillStyle='#8ac'; ctx.font='11px system-ui'; ctx.fillText('RANK', VW/2, 446);
+    /* v32: なぜこのランクなのかを一行で示す */
+    ctx.fillStyle=rc; ctx.font='bold 11px system-ui';
+    ctx.shadowBlur=gq(8); ctx.shadowColor=rc;
+    ctx.fillText(R.label, VW/2, 462); ctx.shadowBlur=0;
   }
   if(T>85){
     ctx.fillStyle='#cfe'; ctx.font='14px system-ui';
-    ctx.fillText('SCORE '+fmt(Game.score), VW/2, 480);
+    ctx.fillText('SCORE '+fmt(Game.score), VW/2, 486);
     ctx.fillStyle='#ffd76a';
-    ctx.fillText('獲得 ◈ '+fmt(Game.lastGain||0)+'c ／ 総資産 ◈ '+fmt(Save.data.credits)+'c', VW/2, 504);
+    ctx.fillText('獲得 ◈ '+fmt(Game.lastGain||0)+'c ／ 総資産 ◈ '+fmt(Save.data.credits)+'c', VW/2, 508);
   }
   if(T>110){
     const tw=0.6+0.4*Math.sin(T*0.06);
