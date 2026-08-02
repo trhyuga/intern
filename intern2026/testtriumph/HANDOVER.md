@@ -14,7 +14,7 @@
   中身は縦スクロールシューティング **NEON VANGUARD**（単一 `index.html` で動く）。
 - **v1.0 が「一旦の完成形」**。タグ `v1.0` と `testtriumph/v1.0/index.html` で凍結済み。いつでも戻せる。
 - 2026-08-03 は「**1日かけて自由に面白く改造する日**」。
-  v2.0(I1〜I5) / v2.1(I7 演出) / v2.2(I8 実績) / v2.3(I10 ENDLESS) を実装・デプロイ済み。
+  v2.0(I1〜I5) / v2.1(I7 演出) / v2.2(I8 実績) / v2.3(I10 ENDLESS) / v2.4(I11 ボス新パターン) を実装・デプロイ済み。
   締切 **2026-08-03 23:59 JST**。それまで 計画→実装→テスト→評価 のループを回し続ける。
 
 ---
@@ -109,12 +109,13 @@ GitHubのWebエディタに直接タイプすると自動補完でコードが�
 | `t_juice.cjs` | v2.1 演出（スローモー曲線・チェイン節目・グレイズ残像） | 14 |
 | `t_ach.cjs` | v2.2 実績（定義・解除フック・画面・初期化との整合） | 32 |
 | `t_endless.cjs` | v2.3 ENDLESS（解放条件・台本生成・無限性・記録） | 29 |
+| `t_pat.cjs` | v2.4 ボス新パターン4種と新弾挙動（curve / bloom） | 20 |
 | `t_bal.cjs` | バランス実測（PASS/FAILではなく**表を読む**タイプ。約5分） | - |
 | `t_v23.cjs` | 演出スクリーンショット（エラー0確認） | - |
 | `t_smoke2.cjs` | フルクリア通し（**2分近くかかる。timeout 170 で単独実行**） | - |
 
 一括（`t_smoke2` と `t_bal` は時間がかかるので**必ず別実行**）:
-`cd /root && for f in t_endless t_ach t_juice t_feel t_wpn t_mode t_new t_rec t_rank3 t_leak t_v28 t_v25 t_multitouch t_v23; do printf "%-14s " $f; node $f.cjs >/tmp/$f.log 2>&1 && echo PASS || echo FAIL; done`
+`cd /root && for f in t_pat t_endless t_ach t_juice t_feel t_wpn t_mode t_new t_rec t_rank3 t_leak t_v28 t_v25 t_multitouch t_v23; do printf "%-14s " $f; node $f.cjs >/tmp/$f.log 2>&1 && echo PASS || echo FAIL; done`
 
 構文チェック（速い）:
 `node -e "const s=require('fs').readFileSync('/root/testtriumph/index.html','utf8'); new Function(s.split('<script>')[1].split('</script>')[0]); console.log('OK')"`
@@ -247,8 +248,8 @@ OVERDRIVE(+30%) → 限界突破解放 → OVERDRIVE+(+40%) → 常時オーバ�
    → `enterDone(e)` で `e.mt=0` にし、`wobRamp(e)` で振幅を立ち上げること。ボスは `b.moveT`。
 4. **演出中の停戦**: `cineLock()` が true の間は `eb()` が弾を出さず、`collisions()` も早期リターン、
    `updateBoss()` も攻撃しない。新しい攻撃経路を足すときはここを通るか確認する。
-5. **`eb()` は opt を明示的にコピーしている**。新しい弾プロパティ（`split` など）を足したら
-   `eb()` の push オブジェクトにも追加すること。忘れると無言で消える。
+5. **`eb()` は opt を明示的にコピーしている**。新しい弾プロパティ（`split` `curve` `bloom` など）を
+   足したら `eb()` の push オブジェクトにも追加すること。忘れると無言で消える。
 6. **iOSでは `audio.volume` が効かない**。ミュートは stop/resume で実装済み。
 7. **Playwright はソフトウェア描画**なので絶対値のfpsは当てにならない。**相対比較**で判断する。
 8. **`t_smoke2.cjs` は約2分**かかる。他のテストと同じコマンドに混ぜるとタイムアウトする。
@@ -322,10 +323,28 @@ OVERDRIVE(+30%) → 限界突破解放 → OVERDRIVE+(+40%) → 常時オーバ�
 - `Game.endlessWave` は `Director.update()` が毎フレーム `s.n` で上書きする（HUDと倍率の唯一の出どころ）。
 - `Save.data.best`（本編の最高到達ステージ）は ENDLESS では**更新しない**。
 
+### I11 ボスの新パターン4種（v2.4）
+
+弾の挙動を2つ足し（`eb()` の `curve` = 毎フレーム速度ベクトルを回転 /
+`bloom` = fuse フレーム後に小リングへ開花）、その上に工場関数を4つ作った。
+
+| 関数 | 見た目 | 採用先 |
+|---|---|---|
+| `fSweep(speed,arc,period)` | 首を振るように左右へ薙ぐ掃射（cd小・reps大で1本の線に見える） | WARDEN 第2 / OMEGA 第2 |
+| `fVortex(n,speed,curve)` | 左右で巻き方向の違う、曲がりながら広がるリング | PHANTOM 第2 / GOLD SENTINEL 最終 / OMEGA 最終 |
+| `fBloom(n,fuse,petals)` | ゆっくり漂う球が時間差で開く（位置取りの先読みを要求） | CRIMSON MOTH 第2・最終 / OMEGA 最終 |
+| `fLattice(speed,gapW)` | 隙間をずらした上下2段の壁。まっすぐ逃げられない | AZURE CRUSHER 最終 / GOLD SENTINEL 第2 |
+
+**重要**: 新パターンは既存パターンへの**追加ではなく入れ替え**で入れている。
+NORMAL の手応えを変えないためで、実際 `t_bal.cjs` の表は前後でほぼ同じ
+（フル強化 NORMAL はクリア継続、無強化は1面で撃墜）。パターンを足す時も
+同じ方針を守り、必ず `t_bal.cjs` の前後比較を取ること。
+
 ### 追加したテスト
 
 `t_bal.cjs`（バランス実測・出力を読む用）／`t_juice.cjs`（演出14項目）／
-`t_ach.cjs`（実績32項目）／`t_endless.cjs`（ENDLESS 29項目）。
+`t_ach.cjs`（実績32項目）／`t_endless.cjs`（ENDLESS 29項目）／
+`t_pat.cjs`（新ボスパターンと新弾挙動 20項目）。
 
 ---
 
