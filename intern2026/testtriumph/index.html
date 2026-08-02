@@ -3618,8 +3618,9 @@ function drawWin(){
     ctx.fillStyle='rgba(255,255,255,'+tw.toFixed(2)+')'; ctx.font='bold 14px system-ui';
     ctx.fillText('THANK YOU FOR PLAYING', VW/2, 540);
   }
-  /* v28: 大団円の「FIN」 */
-  if(T>130){
+  /* v28: 大団円の「FIN」 — v34: Zランク（真エンディング）の時だけ表示する */
+  const isTrueEnd = clearRank().rank === 'Z';
+  if(isTrueEnd && T>130){
     const a=clamp((T-130)/45,0,1);
     const sc=(0.55+0.45*(1-Math.pow(1-a,3)));
     const gl=0.55+0.45*Math.sin(T*0.05);
@@ -3638,10 +3639,12 @@ function drawWin(){
     ctx.strokeText('F I N', 0, 14);
     ctx.restore(); ctx.globalAlpha=1;
   }
-  if(T>160){
+  /* FIN が無い時はボタンを上に詰めて、早めに操作できるようにする */
+  if(T > (isTrueEnd?160:126)){
+    const by = isTrueEnd ? 634 : 588;
     const bw=200,bx=VW/2-bw/2;
-    drawButton(bx, 634, bw, 44, '格納庫へ', true, '#6cf'); addBtn(bx,634,bw,44,'hangar');
-    drawButton(bx, 688, bw, 38, 'タイトルへ', true, '#9f8'); addBtn(bx,688,bw,38,'title');
+    drawButton(bx, by,    bw, 44, '格納庫へ',  true, '#6cf'); addBtn(bx,by,   bw,44,'hangar');
+    drawButton(bx, by+54, bw, 38, 'タイトルへ', true, '#9f8'); addBtn(bx,by+54,bw,38,'title');
   }
 }
 
