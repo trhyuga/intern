@@ -13,7 +13,8 @@
 - `intern2026/testtriumph/` は**テストケース（テスト用インターン「日向社長」）のフォルダ**。
   中身は縦スクロールシューティング **NEON VANGUARD**（単一 `index.html` で動く）。
 - **v1.0 が「一旦の完成形」**。タグ `v1.0` と `testtriumph/v1.0/index.html` で凍結済み。いつでも戻せる。
-- 2026-08-03 は「**1日かけて自由に面白く改造する日**」。v2.0 として I1〜I5 を実装・デプロイ済み。
+- 2026-08-03 は「**1日かけて自由に面白く改造する日**」。
+  v2.0(I1〜I5) / v2.1(I7 演出) / v2.2(I8 実績) を実装・デプロイ済み。
   締切 **2026-08-03 23:59 JST**。それまで 計画→実装→テスト→評価 のループを回し続ける。
 
 ---
@@ -41,8 +42,8 @@
 
 ```
 intern2026/testtriumph/
-├── index.html          ← ゲーム本体（約4,600行・これ1つで動く）
-├── README.md           ← 仕様書＋ロールバック手順（v1.0時点。v2.0で要更新）
+├── index.html          ← ゲーム本体（約4,900行・これ1つで動く）
+├── README.md           ← 仕様書＋ロールバック手順（v2.x へ更新済み）
 ├── HANDOVER.md         ← このファイル
 ├── bgm/                ← BGM 10曲（ユーザー自作。差し替え不可・追加もしない）
 │   opening.mp3 / stage1-3.mp3 / boss1-3.mp3 / chuboss.mp3 /
@@ -105,10 +106,14 @@ GitHubのWebエディタに直接タイプすると自動補完でコードが�
 | `t_v28.cjs` | 常時オーバードライブ購入・エンドロール | 11 |
 | `t_v25.cjs` | 敵の着地ワープ防止・演出中の停戦 | 18 |
 | `t_multitouch.cjs` | マルチタッチ操作（ボム同時押し） | 12 |
+| `t_juice.cjs` | v2.1 演出（スローモー曲線・チェイン節目・グレイズ残像） | 14 |
+| `t_ach.cjs` | v2.2 実績（定義・解除フック・画面・初期化との整合） | 32 |
+| `t_bal.cjs` | バランス実測（PASS/FAILではなく**表を読む**タイプ。約5分） | - |
 | `t_v23.cjs` | 演出スクリーンショット（エラー0確認） | - |
 | `t_smoke2.cjs` | フルクリア通し（**2分近くかかる。timeout 170 で単独実行**） | - |
 
-一括: `for t in t_rec t_new t_mode t_wpn t_feel t_rank3 t_leak t_v28 t_v25 t_multitouch; do printf "%-12s %sP\n" "$t" "$(node $t.cjs 2>&1|grep -cE '^PASS')"; done`
+一括（`t_smoke2` と `t_bal` は時間がかかるので**必ず別実行**）:
+`cd /root && for f in t_ach t_juice t_feel t_wpn t_mode t_new t_rec t_rank3 t_leak t_v28 t_v25 t_multitouch t_v23; do printf "%-14s " $f; node $f.cjs >/tmp/$f.log 2>&1 && echo PASS || echo FAIL; done`
 
 構文チェック（速い）:
 `node -e "const s=require('fs').readFileSync('/root/testtriumph/index.html','utf8'); new Function(s.split('<script>')[1].split('</script>')[0]); console.log('OK')"`
@@ -223,7 +228,10 @@ OVERDRIVE(+30%) → 限界突破解放 → OVERDRIVE+(+40%) → 常時オーバ�
 | 4026 | `RANK_INFO` / `clearRank()` |
 | 4044 | `drawWin()` — FINはZランクのみ |
 | 4372 | `drawCinematic()` — 登場カットイン |
-| 4564 | `loop()` — ヒットストップと発光品質の自動調整 |
+| 601 | `ACHIEVEMENTS` / `unlockAch()` / `checkPassiveAch()` — 実績（v2.2） |
+| 1425 | `startSlowMo()` / `slowMoScale()` / `chainMilestone()` — 演出（v2.1） |
+| 3760 | `drawAch()` — 実績一覧画面 / `drawAchToast()` — 解除トースト |
+| 4700 | `loop()` — ヒットストップ・スローモー・発光品質の自動調整 |
 
 ---
 
@@ -246,17 +254,62 @@ OVERDRIVE(+30%) → 限界突破解放 → OVERDRIVE+(+40%) → 常時オーバ�
 
 ---
 
-## 10. 残っている計画（優先順）
+## 10. v2.1 / v2.2 で追加したもの（I6〜I9・すべて deployed）
 
-- **I6 バランス実測**: チェイン/グレイズ導入で NORMAL が簡単になりすぎていないか、
-  HARD/NIGHTMARE が理不尽でないかを自動計測（フル強化時・中盤強化時のクリア可否とHP残量）で確認して調整。
-- **I7 演出**: チェイン節目の画面演出、ボス撃破のスローモー、グレイズ多発時の残像など。
-- **I8 仕上げ**: `README.md` を v2.0 用に更新、リリースタグ `v2.0` 作成、全回帰＋実機確認。
+### I6 バランス実測（`t_bal.cjs`）
 
-余力があれば:
+簡易オートパイロット（敵弾から逃げ、敵の下に潜り、瀕死ならボム）で
+強化度3段階 × 難易度3段階 = 9条件を回して計測した結果:
+
+| 強化度 | NORMAL | HARD | NIGHTMARE |
+|---|---|---|---|
+| 無強化 | 1面で撃墜(105秒) | 1面で撃墜(74秒) | 1面で撃墜(44秒) |
+| 中盤 | 3面到達 | 2面到達 | 1面止まり |
+| フル | **クリア**（HP残82%） | 3面到達 | 3面で撃墜 |
+
+→ 難易度の勾配は健全と判断。**NORMAL の数値は指示どおり一切変更していない**。
+今後バランスを触るときは、まず `node t_bal.cjs` で前後を比較すること。
+
+### I7 演出強化（v2.1）
+
+- `startSlowMo(frames, depth)` / `slowMoScale()` — ヒットストップの「後段」に効く時間スケール。
+  開始直後がいちばん遅く、二乗イージングで等速へ戻る。`loop()` で `Game.dt` に掛かる。
+  ボス撃破時に `startBossDeath()` から発火（大ボス 120f/0.76、ボス 70f/0.62、中ボス 30f/0.45）。
+- `CHAIN_MARKS` = 10/25/50/75/100/150/200、`chainMilestone()` で衝撃波＋フラッシュ＋
+  画面ゆれ＋HUDの跳ね（`Game.chainPop`）。50以上はスローモーも入る。
+- グレイズ残像 `Game.trail` — グレイズ中だけ3px以上動いた地点を最大12点記録し、
+  `drawPlayer()` の先頭で淡い菱形として描く。オーバードライブ中は金色。
+
+### I8 実績メダル（v2.2）
+
+- `ACHIEVEMENTS`（16件）と `unlockAch(id)` の**1関数だけ**が解除の入口。
+  重複解除しない・解除時に `Save.save()` とトースト・ジングル（`Sound.achieve()`）。
+- 保存先は `Save.data.ach`（累計グレイズ `grazeAll`、武器クリアのビットマスク `wpnClear` も同居）。
+  **`Save.reset()` で一緒に消える**（データ初期化の一貫性）。
+- 解除フック: `killEnemy()`（初陣・チェイン系）、グレイズ判定（累計）、
+  `startBossDeath()`（面ボス・温存・無傷）、`Game.endRun()`（クリア・難易度・武器・RUSH・Zランク）、
+  `checkPassiveAch()`（MK-V など状態だけで決まるもの。`drawTitle()` から毎フレーム呼ぶが軽い）。
+- 画面: `STATE.ACH` / `drawAch()`。**未獲得でも条件文を表示**するので目標として機能する。
+  タイトルのボタンは「遊び方」と横並び（`実績 n/16`）。
+- 追加する時は `ACHIEVEMENTS` に1行足して、対応する場所で `unlockAch('id')` を呼ぶだけ。
+
+### I9 ドキュメント
+
+`README.md` を v2.x 相当へ全面更新（武器/難易度/BOSS RUSH/新敵/アイテム/演出/実績の表）。
+遊び方画面にも「稼ぎのコツ」「やり込み」を追加（行間を詰めて1画面に収めてある）。
+
+### 追加したテスト
+
+`t_bal.cjs`（バランス実測・出力を読む用）／`t_juice.cjs`（演出14項目）／`t_ach.cjs`（実績32項目）。
+
+---
+
+## 10b. 残っている計画
+
 - ステージ内ウェーブの再構成（新敵を活かした配置の作り込み）
 - ボスに新パターン追加（`bossPatterns()` に工場関数を足すだけで済む）
-- 実績（アチーブメント）システム
+- エンドレス／デイリーなどの追加モード
+- リリースタグ `v2.0` の作成
 
 ---
 
