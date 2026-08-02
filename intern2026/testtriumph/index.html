@@ -891,7 +891,9 @@ function eb(x,y,vx,vy,opt){
     life:opt.life||300, t:0, wave:opt.wave||null, ax:opt.ax||0, ay:opt.ay||0,
     acc: opt.acc!==undefined?opt.acc:(ACC_MUL[Game.stageIndex]||0),
     accMax: opt.accMax!==undefined?opt.accMax:(ACC_CAP[Game.stageIndex]||1.8), mult:1,
-    split: opt.split||0});
+    split: opt.split||0,
+    /* v2.4: curve=毎フレーム速度ベクトルを回す（曲がる弾） / bloom=一定時間後に開花 */
+    curve: opt.curve||0, bloom: opt.bloom||null});
 }
 function enemyBullet(x,y,vx,vy,r,color,dmg){ eb(x,y,vx,vy,{r:r,color:color,dmg:dmg}); }
 
@@ -2136,6 +2138,53 @@ function bossSummon(b){
 }
 function fSnake(dur){ return (b)=>{ b.beam=dur; b.beamAcc=0; }; }
 
+/* =========================================================================
+   v2.4: 新パターン工場4種
+   どれも「見てから避けられるが、位置取りを考えないと詰む」ことを狙っている。
+   ========================================================================= */
+/* 首を振るように左右へ薙ぐ。連射(cd小・reps大)で使うと1本の掃射線に見える */
+function fSweep(speed, arc, period){
+  return (b)=>{
+    b.sweepT = (b.sweepT||0) + 1;
+    const k = Math.sin(b.sweepT * (TAU/(period||46)));     // -1 〜 1 を往復
+    const a = Math.PI/2 + k*(arc||0.85);
+    eb(b.x, b.y+14, Math.cos(a)*speed, Math.sin(a)*speed, {r:6,color:'#9ff',dmg:17});
+  };
+}
+/* 渦: 外へ広がりながら曲がっていくリング。左右で巻き方向が違う */
+function fVortex(n, speed, curve){
+  return (b)=>{
+    for(let i=0;i<n;i++){
+      const a = i/n*TAU + b.t*0.02;
+      eb(b.x, b.y, Math.cos(a)*speed, Math.sin(a)*speed,
+         {r:5,color:'#c0f0ff',dmg:16,curve:(i%2?1:-1)*(curve||0.018),acc:0});
+    }
+  };
+}
+/* 開花: ゆっくり漂う球を撒き、fuse フレーム後に小リングになって開く */
+function fBloom(n, fuse, petals){
+  return (b)=>{
+    for(let i=0;i<n;i++){
+      const a = Math.PI/2 + (i-(n-1)/2)*0.34;
+      eb(b.x, b.y+10, Math.cos(a)*1.5, Math.sin(a)*1.5,
+         {r:7,color:'#ffb0e8',dmg:15,acc:0,
+          bloom:{fuse:fuse||70, n:petals||8, speed:2.9, color:'#ffd0f0'}});
+    }
+  };
+}
+/* 格子: 上下2段の壁を隙間をずらして落とす。まっすぐ逃げられず、必ず横に振られる */
+function fLattice(speed, gapW){
+  return (b)=>{
+    const p=Game.player;
+    const g1 = p? clamp(p.x+rand(-40,40), 46, VW-46) : VW*0.35;
+    const g2 = clamp(VW - g1 + rand(-40,40), 46, VW-46);
+    for(let x=14;x<VW;x+=28){
+      if(Math.abs(x-g1) > (gapW||44)) eb(x, b.y+b.r*0.5,  0, speed,      {r:5,color:'#ffd76a',dmg:16,acc:0});
+      if(Math.abs(x-g2) > (gapW||44)) eb(x, b.y-b.r*0.2, 0, speed*0.78, {r:5,color:'#ffa0c8',dmg:16,acc:0});
+    }
+  };
+}
+
 /* 各ボスのフェーズ別パターンリスト {f, cd, reps} */
 function bossPatterns(b){
   const ph = b.phase;
@@ -2145,26 +2194,26 @@ function bossPatterns(b){
   }
   if(b.id==='mid1'){ // PHANTOM: ダッシュ＋リング
     return ph===0 ? [ {f:fRing(14,3.0),cd:60,reps:2}, {f:fAimN(4,0.3,5.0),cd:36,reps:3} ]
-                  : [ {f:fRing(18,3.2),cd:52,reps:2}, {f:fScatter(10,3.6),cd:46,reps:2}, {f:fAimN(6,0.24,5.2),cd:30,reps:3} ];
+                  : [ {f:fRing(18,3.2),cd:52,reps:2}, {f:fVortex(12,2.9,0.022),cd:56,reps:2}, {f:fAimN(6,0.24,5.2),cd:30,reps:3} ];
   }
   if(b.id==='mid2'){ // WARDEN: 加速弾雨＋十字
     return ph===0 ? [ {f:fAccelRain(9),cd:46,reps:3}, {f:fCross(6,3.4),cd:40,reps:3} ]
-                  : [ {f:fAccelRain(12),cd:38,reps:3}, {f:fCross(8,3.8),cd:32,reps:4}, {f:fAimN(5,0.22,5.4),cd:30,reps:2} ];
+                  : [ {f:fAccelRain(12),cd:38,reps:3}, {f:fCross(8,3.8),cd:32,reps:4}, {f:fSweep(4.3,0.9,42),cd:5,reps:13} ];
   }
   if(b.id==='boss0'){ // AZURE CRUSHER: カニ。壁＋ハサミ集中砲火
     if(ph===0) return [ {f:fClaws(4.4),cd:40,reps:4}, {f:fWallGap(3.0),cd:100,reps:1}, {f:fAimN(3,0.26,4.6),cd:36,reps:3} ];
     if(ph===1) return [ {f:fClaws(4.8),cd:32,reps:4}, {f:fWallGap(3.3),cd:85,reps:2}, {f:fRing(14,3.0),cd:60,reps:2}, {f:fSummon(['grunt','weaver']),cd:50,reps:2} ];
-    return       [ {f:fClaws(5.2),cd:26,reps:5}, {f:fWallGap(3.7),cd:70,reps:2}, {f:fRing(18,3.4),cd:48,reps:2}, {f:fAimN(7,0.18,5.2),cd:30,reps:2} ];
+    return       [ {f:fClaws(5.2),cd:26,reps:5}, {f:fLattice(3.4,46),cd:104,reps:1}, {f:fRing(18,3.4),cd:48,reps:2}, {f:fAimN(7,0.18,5.2),cd:30,reps:2} ];
   }
   if(b.id==='boss1'){ // CRIMSON MOTH: 蛾。鱗粉スキャッター＋波状扇＋二重螺旋
     if(ph===0) return [ {f:fScatter(9,3.4),cd:42,reps:3}, {f:fWaveFan(7,3.2,1.6),cd:60,reps:2}, {f:fAimN(4,0.24,4.8),cd:34,reps:2} ];
-    if(ph===1) return [ {f:fSpiral(3,3.6,1),cd:9,reps:16}, {f:fWaveFan(9,3.4,2.0),cd:52,reps:2}, {f:fScatter(12,3.8),cd:38,reps:3}, {f:fSummon(['kamikaze','sniper']),cd:46,reps:2} ];
-    return       [ {f:fSpiral(3,3.8,1),cd:8,reps:14}, {f:fSpiral(3,3.8,-1),cd:8,reps:14}, {f:fWaveFan(11,3.6,2.4),cd:46,reps:2}, {f:fScatter(14,4.2),cd:32,reps:2} ];
+    if(ph===1) return [ {f:fSpiral(3,3.6,1),cd:9,reps:16}, {f:fWaveFan(9,3.4,2.0),cd:52,reps:2}, {f:fBloom(5,64,8),cd:76,reps:2}, {f:fSummon(['kamikaze','sniper']),cd:46,reps:2} ];
+    return       [ {f:fSpiral(3,3.8,1),cd:8,reps:14}, {f:fBloom(7,58,10),cd:70,reps:2}, {f:fWaveFan(11,3.6,2.4),cd:46,reps:2}, {f:fScatter(14,4.2),cd:32,reps:2} ];
   }
   if(b.id==='boss2'){ // GOLD SENTINEL: 要塞。十字砲＋加速雨＋密リング
     if(ph===0) return [ {f:fCross(8,3.6),cd:34,reps:4}, {f:fRing(16,3.2),cd:58,reps:2}, {f:fAimN(5,0.2,5.0),cd:32,reps:2} ];
-    if(ph===1) return [ {f:fCross(10,3.8),cd:28,reps:4}, {f:fAccelRain(12),cd:40,reps:3}, {f:fWallGap(3.6),cd:80,reps:2}, {f:fSummon(['turret','sniper']),cd:50,reps:2} ];
-    return       [ {f:fCross(12,4.0),cd:24,reps:4}, {f:fRing(22,3.6),cd:44,reps:2}, {f:fAccelRain(15),cd:34,reps:3}, {f:fAimN(7,0.16,5.6),cd:26,reps:3} ];
+    if(ph===1) return [ {f:fCross(10,3.8),cd:28,reps:4}, {f:fAccelRain(12),cd:40,reps:3}, {f:fLattice(3.6,48),cd:110,reps:1}, {f:fSummon(['turret','sniper']),cd:50,reps:2} ];
+    return       [ {f:fCross(12,4.0),cd:24,reps:4}, {f:fVortex(16,3.0,0.020),cd:52,reps:2}, {f:fAccelRain(15),cd:34,reps:3}, {f:fAimN(7,0.16,5.6),cd:26,reps:3} ];
   }
   /* GREAT: OMEGA CORE — 全ボスの技を受け継ぐ総力戦。長丁場なので手数を多く */
   if(ph===0) return [
@@ -2181,7 +2230,7 @@ function bossPatterns(b){
     {f:fWallGap(3.8),cd:70,reps:2},
     {f:fClaws(5.2),cd:28,reps:5},
     {f:fAccelRain(13),cd:38,reps:3},           // WARDEN の加速弾雨
-    {f:fScatter(14,4.0),cd:32,reps:3},
+    {f:fSweep(4.5,1.0,44),cd:5,reps:15},
     {f:fSummon(['kamikaze','sniper','turret']),cd:44,reps:2},
     {f:fCross(12,4.2),cd:26,reps:3},
     {f:fWaveFan(11,3.6,2.4),cd:44,reps:2},
@@ -2192,13 +2241,13 @@ function bossPatterns(b){
     {f:fSnake(110),cd:150,reps:1},
     {f:fSpiral(5,4.0,-1),cd:7,reps:16},
     {f:fCross(14,4.4),cd:22,reps:4},
-    {f:fRing(26,3.8),cd:40,reps:2},
+    {f:fVortex(18,3.2,0.022),cd:46,reps:2},
     {f:fClaws(5.6),cd:24,reps:5},
     {f:fSnake(130),cd:170,reps:1},
     {f:fAccelRain(16),cd:32,reps:3},
     {f:fWaveFan(13,3.8,2.8),cd:40,reps:2},
     {f:fSpiral(5,4.0,1),cd:7,reps:16},
-    {f:fScatter(16,4.4),cd:28,reps:3},
+    {f:fBloom(7,54,10),cd:66,reps:2},
     {f:fSummon(['kamikaze','sniper','shield']),cd:40,reps:2},
     {f:fWallGap(4.2),cd:64,reps:2},
   ];
@@ -2593,9 +2642,27 @@ function updatePlay(dt){
       const sp=Math.abs(b.vx)+Math.abs(b.vy);
       if(sp<11){ const f=1+b.acc*dt; b.vx*=f; b.vy*=f; b.mult*=f; }
     }
+    /* v2.4: 曲がる弾 — 速度ベクトルを毎フレーム回す（渦を巻いて迫ってくる） */
+    if(b.curve){
+      const c=Math.cos(b.curve*dt), s=Math.sin(b.curve*dt);
+      const nx=b.vx*c-b.vy*s, ny=b.vx*s+b.vy*c;
+      b.vx=nx; b.vy=ny;
+    }
     b.x+=b.vx*dt; b.y+=b.vy*dt;
     if(b.wave){ b.x += Math.sin(b.t*b.wave.f + b.wave.p)*b.wave.a*dt; }
     b.life-=dt;
+    /* v2.4: 開花弾 — ゆっくり漂ってから小さなリングになって散る。
+       「今のうちに位置を変えておく」判断を要求する、避けやすいが無視できない弾。 */
+    if(b.bloom && b.t > b.bloom.fuse){
+      const n=b.bloom.n, sp=b.bloom.speed;
+      eBullets.splice(i,1);
+      for(let k=0;k<n;k++){
+        const a=k/n*TAU + b.t*0.05;
+        eb(b.x,b.y,Math.cos(a)*sp,Math.sin(a)*sp,{r:4,color:b.bloom.color||'#ffd0f0',dmg:Math.round(b.dmg*0.8),acc:0});
+      }
+      burst(b.x,b.y,b.bloom.color||'#ffb0e8',10,2.6); Sound.blip(620,0.08,'sine',0.05,-160);
+      continue;
+    }
     /* v2.0: プリズム弾 — 一定時間後に3方向へ割れる */
     if(b.split && b.t>52){
       const sp=Math.hypot(b.vx,b.vy)||3.4, a0=Math.atan2(b.vy,b.vx);
