@@ -764,7 +764,7 @@ function drawParticles(){
   for(const p of particles){
     const a=clamp(p.life/p.max,0,1);
     ctx.globalAlpha = p.smoke ? a*0.45 : a;
-    if(p.glow){ ctx.shadowBlur=12; ctx.shadowColor=p.color; } else { ctx.shadowBlur=0; }
+    if(p.glow){ ctx.shadowBlur=gq(12); ctx.shadowColor=p.color; } else { ctx.shadowBlur=0; }
     ctx.fillStyle=p.color;
     const rr = p.grow ? p.r*(1+(1-a)*p.grow) : p.r;
     ctx.beginPath(); ctx.arc(p.x,p.y,rr,0,TAU); ctx.fill();
@@ -806,7 +806,7 @@ function drawDebris(){
   for(const d of debris){
     const a=clamp(d.life/d.max,0,1);
     ctx.save(); ctx.translate(d.x,d.y); ctx.rotate(d.rot);
-    ctx.globalAlpha=a; ctx.shadowBlur=12; ctx.shadowColor=d.color;
+    ctx.globalAlpha=a; ctx.shadowBlur=gq(12); ctx.shadowColor=d.color;
     ctx.strokeStyle=d.color; ctx.lineWidth=2; ctx.fillStyle='rgba(255,180,90,0.18)';
     ctx.beginPath();
     ctx.moveTo(0,-d.r); ctx.lineTo(d.r*0.72,d.r*0.35); ctx.lineTo(-d.r*0.5,d.r*0.62);
@@ -829,7 +829,7 @@ function updateShocks(dt){
 function drawShocks(){
   for(const s of shocks){
     ctx.save(); ctx.globalAlpha=clamp(s.life,0,1)*0.75;
-    ctx.shadowBlur=24; ctx.shadowColor=s.color; ctx.strokeStyle=s.color;
+    ctx.shadowBlur=gq(24); ctx.shadowColor=s.color; ctx.strokeStyle=s.color;
     ctx.lineWidth=3+6*clamp(s.life,0,1);
     ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,TAU); ctx.stroke(); ctx.restore();
   }
@@ -852,7 +852,7 @@ function drawFloats(){
   for(const f of floats){
     ctx.globalAlpha=clamp(f.life/f.max,0,1);
     ctx.font='bold '+(f.size||13)+'px system-ui';
-    if((f.size||13)>15){ ctx.shadowBlur=10; ctx.shadowColor=f.color; }
+    if((f.size||13)>15){ ctx.shadowBlur=gq(10); ctx.shadowColor=f.color; }
     ctx.fillStyle=f.color; ctx.fillText(f.text,f.x,f.y); ctx.shadowBlur=0;
   }
   ctx.globalAlpha=1;
@@ -1581,7 +1581,7 @@ function drawPowerup(pu){
     : pu.type==='heal'?'#7fffa8': pu.type==='shield'?'#7ff': pu.type==='credit'?'#ffd76a':'#bdf';
   const s=1+Math.sin(pu.t*0.15)*0.12;
   ctx.save(); ctx.translate(pu.x,pu.y); ctx.scale(s,s);
-  ctx.shadowBlur=16; ctx.shadowColor=col; ctx.strokeStyle=col; ctx.lineWidth=2;
+  ctx.shadowBlur=gq(16); ctx.shadowColor=col; ctx.strokeStyle=col; ctx.lineWidth=2;
   ctx.beginPath(); for(let i=0;i<6;i++){ const a=i/6*TAU; const px=Math.cos(a)*pu.r, py=Math.sin(a)*pu.r; i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); ctx.stroke();
   ctx.fillStyle=col; ctx.font='bold 11px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
   const ch = BUFFS[pu.type] ? BUFFS[pu.type].label
@@ -2432,9 +2432,9 @@ function drawWingBeams(){
     const top = 0, h = w.y-11;
     if(h<=0) continue;
     ctx.save();
-    ctx.shadowBlur=20; ctx.shadowColor=gold?'#ffd76a':'#7fffd0';
+    ctx.shadowBlur=gq(20); ctx.shadowColor=gold?'#ffd76a':'#7fffd0';
     ctx.fillStyle=outer; ctx.fillRect(w.x-5.5*flick, top, 11*flick, h);
-    ctx.shadowBlur=10;
+    ctx.shadowBlur=gq(10);
     ctx.fillStyle=core;  ctx.fillRect(w.x-1.7*flick, top, 3.4*flick, h);
     ctx.restore();
     if(Math.random()<0.5) spawnParticle(w.x+rand(-3,3), w.y-12, gold?'#ffe9a8':'#9fffd0',
@@ -2899,9 +2899,9 @@ function drawShipBody(anim, accent, opt){
 
   /* --- キャノピー（威力レベルの色で脈動） --- */
   const cp = 0.75+0.25*Math.sin(anim*0.09);
-  ctx.save(); ctx.shadowBlur=14*cp; ctx.shadowColor=accent; ctx.fillStyle=accent; ctx.globalAlpha=0.55+0.35*cp;
+  ctx.save(); ctx.shadowBlur=gq(14*cp); ctx.shadowColor=accent; ctx.fillStyle=accent; ctx.globalAlpha=0.55+0.35*cp;
   ctx.beginPath(); ctx.ellipse(0,-8.5,2.6,5.2,0,0,TAU); ctx.fill();
-  ctx.globalAlpha=1; ctx.fillStyle='#ffffff'; ctx.shadowBlur=8;
+  ctx.globalAlpha=1; ctx.fillStyle='#ffffff'; ctx.shadowBlur=gq(8);
   ctx.beginPath(); ctx.ellipse(0,-9.5,1.1,2.2,0,0,TAU); ctx.fill();
   ctx.restore();
 
@@ -2927,13 +2927,13 @@ function drawShipBody(anim, accent, opt){
     neonPoly([[0,-6],[2.4,2],[0,9],[-2.4,2]], lit,'rgba(255,240,200,0.35)',1.2,12);
     /* 光輪（ヘイロー） */
     const hp=0.6+0.4*Math.sin(anim*0.07);
-    ctx.save(); ctx.globalAlpha=0.5+0.3*hp; ctx.shadowBlur=18; ctx.shadowColor=gold;
+    ctx.save(); ctx.globalAlpha=0.5+0.3*hp; ctx.shadowBlur=gq(18); ctx.shadowColor=gold;
     ctx.strokeStyle=gold; ctx.lineWidth=1.3;
     ctx.beginPath(); ctx.ellipse(0,-2, 20+hp*2, 7.5+hp*1.2, 0, 0, TAU); ctx.stroke();
     ctx.restore();
     /* 翼端の金の火 */
     for(const s of [-1,1]){
-      ctx.save(); ctx.shadowBlur=16; ctx.shadowColor=gold; ctx.fillStyle=lit; ctx.globalAlpha=0.85;
+      ctx.save(); ctx.shadowBlur=gq(16); ctx.shadowColor=gold; ctx.fillStyle=lit; ctx.globalAlpha=0.85;
       ctx.beginPath(); ctx.arc(s*23.5, 8.5, 1.9+hp*0.8, 0, TAU); ctx.fill(); ctx.restore();
     }
     ctx.shadowBlur=0; ctx.globalAlpha=1;
@@ -2959,7 +2959,7 @@ function drawShieldBarrier(p){
   const a=clamp(p.shieldHP/p.shieldMax,0,1), r=25;
   const gc = Game.overdrive?'#ffd76a':'#7ff';
   ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(Game.t*0.012);
-  ctx.shadowBlur=16; ctx.shadowColor=gc; ctx.strokeStyle=gc; ctx.lineWidth=2;
+  ctx.shadowBlur=gq(16); ctx.shadowColor=gc; ctx.strokeStyle=gc; ctx.lineWidth=2;
   ctx.globalAlpha=0.25+0.45*a;
   ctx.beginPath();
   for(let i=0;i<6;i++){ const ang=i/6*TAU; const x=Math.cos(ang)*r, y=Math.sin(ang)*r; i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
@@ -3007,7 +3007,7 @@ function drawPlayer(){
       const pulse=0.5+0.5*Math.sin(Game.t*0.08);
       ctx.save(); ctx.translate(p.x,p.y);
       /* 二重の金環＋逆回転する六芒星 */
-      ctx.globalAlpha=0.26+0.22*pulse; ctx.shadowBlur=30; ctx.shadowColor='#ffd76a';
+      ctx.globalAlpha=0.26+0.22*pulse; ctx.shadowBlur=gq(30); ctx.shadowColor='#ffd76a';
       ctx.strokeStyle='#ffd76a'; ctx.lineWidth=2.5;
       ctx.beginPath(); ctx.arc(0,0,27+pulse*5,0,TAU); ctx.stroke();
       ctx.globalAlpha=0.16+0.14*pulse; ctx.lineWidth=1.4;
@@ -3532,7 +3532,7 @@ function drawBoss(b){
       ctx.restore();
     }
     for(let i=0;i<3;i++){ neonCircle(0,-R*0.35+i*R*0.34,R*0.2-i*2,c,2,14,'rgba(255,110,200,0.25)'); }
-    for(const s of [-1,1]){ ctx.strokeStyle=c; ctx.shadowBlur=8; ctx.shadowColor=c; ctx.lineWidth=1.5;
+    for(const s of [-1,1]){ ctx.strokeStyle=c; ctx.shadowBlur=gq(8); ctx.shadowColor=c; ctx.lineWidth=1.5;
       ctx.beginPath(); ctx.moveTo(0,-R*0.5); ctx.quadraticCurveTo(s*R*0.35,-R*0.95, s*R*0.5,-R*1.05); ctx.stroke(); }
     neonCircle(0,0,R*0.16,flash?'#fff':'#ff3a7a',2,18,'rgba(255,60,120,0.6)');
   }
@@ -3540,30 +3540,30 @@ function drawBoss(b){
     const c=flash?'#fff':'#fd6';
     ctx.save(); ctx.rotate(b.spin*1.6);
     ctx.beginPath(); for(let i=0;i<6;i++){ const a=i/6*TAU; const x=Math.cos(a)*R, y=Math.sin(a)*R; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.closePath();
-    ctx.shadowBlur=18; ctx.shadowColor=c; ctx.strokeStyle=c; ctx.lineWidth=3; ctx.fillStyle='rgba(255,210,100,0.08)'; ctx.fill(); ctx.stroke();
+    ctx.shadowBlur=gq(18); ctx.shadowColor=c; ctx.strokeStyle=c; ctx.lineWidth=3; ctx.fillStyle='rgba(255,210,100,0.08)'; ctx.fill(); ctx.stroke();
     for(let i=0;i<6;i++){ const a=i/6*TAU; neonCircle(Math.cos(a)*R,Math.sin(a)*R,8,c,2,10,'rgba(255,210,100,0.3)'); }
     ctx.restore();
     ctx.save(); ctx.rotate(-b.spin*2.4);
     ctx.beginPath(); for(let i=0;i<6;i++){ const a=i/6*TAU+Math.PI/6; const x=Math.cos(a)*R*0.6, y=Math.sin(a)*R*0.6; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.closePath();
-    ctx.shadowBlur=10; ctx.shadowColor=c; ctx.strokeStyle=flash?'#fff':'#f83'; ctx.lineWidth=2; ctx.stroke();
+    ctx.shadowBlur=gq(10); ctx.shadowColor=c; ctx.strokeStyle=flash?'#fff':'#f83'; ctx.lineWidth=2; ctx.stroke();
     ctx.restore();
     neonCircle(0,0,R*0.3,flash?'#fff':'#f83',2.5,20,'rgba(255,130,50,0.5)');
   }
   else { /* GREAT: OMEGA CORE */
     const c=flash?'#fff':'#ffcf5a';
     ctx.save(); ctx.rotate(b.spin);
-    ctx.shadowBlur=20; ctx.shadowColor=c; ctx.strokeStyle=c; ctx.lineWidth=3;
+    ctx.shadowBlur=gq(20); ctx.shadowColor=c; ctx.strokeStyle=c; ctx.lineWidth=3;
     b.parts.forEach((pt)=>{ if(!pt.alive) return; const a0=pt.a-0.28, a1=pt.a+0.28;
       ctx.beginPath(); ctx.arc(0,0,R,a0,a1); ctx.arc(0,0,R*0.66,a1,a0,true); ctx.closePath();
       ctx.globalAlpha=0.9; ctx.stroke(); ctx.fillStyle='rgba(255,200,90,0.10)'; ctx.fill(); ctx.globalAlpha=1; });
     ctx.restore();
     ctx.save(); ctx.rotate(-b.spin*1.5);
-    ctx.shadowBlur=12; ctx.shadowColor='#fd6'; ctx.strokeStyle='#ffe'; ctx.lineWidth=2;
+    ctx.shadowBlur=gq(12); ctx.shadowColor='#fd6'; ctx.strokeStyle='#ffe'; ctx.lineWidth=2;
     for(let i=0;i<8;i++){ const a=i/8*TAU; ctx.beginPath(); ctx.moveTo(Math.cos(a)*R*0.75,Math.sin(a)*R*0.75); ctx.lineTo(Math.cos(a)*R*1.3,Math.sin(a)*R*1.3); ctx.stroke(); }
     ctx.restore();
     ctx.save(); ctx.rotate(b.spin*2.2);
     ctx.beginPath(); for(let i=0;i<6;i++){ const a=i/6*TAU; const x=Math.cos(a)*R*0.5,y=Math.sin(a)*R*0.5; i?ctx.lineTo(x,y):ctx.moveTo(x,y);} ctx.closePath();
-    ctx.shadowBlur=10; ctx.shadowColor='#f83'; ctx.strokeStyle=flash?'#fff':'#f83'; ctx.lineWidth=2; ctx.stroke();
+    ctx.shadowBlur=gq(10); ctx.shadowColor='#f83'; ctx.strokeStyle=flash?'#fff':'#f83'; ctx.lineWidth=2; ctx.stroke();
     ctx.restore();
     for(let i=0;i<4;i++){ const a=b.anim*0.03+i/4*TAU; neonCircle(Math.cos(a)*R*1.05,Math.sin(a)*R*1.05,7,flash?'#fff':'#ff8a5a',2,12,'rgba(255,120,70,0.45)'); }
     const coreR=R*0.36*(1+Math.sin(b.anim*0.1)*0.08);
@@ -3573,7 +3573,7 @@ function drawBoss(b){
   /* 共通: 装甲パネル（GREAT以外は薄く重ねる） */
   if(!b.isGreat){
     ctx.save(); ctx.rotate(b.spin);
-    ctx.globalAlpha=0.32; ctx.shadowBlur=6; const pc=flash?'#fff':'#f9c'; ctx.shadowColor=pc; ctx.strokeStyle=pc; ctx.lineWidth=2;
+    ctx.globalAlpha=0.32; ctx.shadowBlur=gq(6); const pc=flash?'#fff':'#f9c'; ctx.shadowColor=pc; ctx.strokeStyle=pc; ctx.lineWidth=2;
     b.parts.forEach((pt)=>{ if(!pt.alive) return; const a0=pt.a-0.26, a1=pt.a+0.26;
       ctx.beginPath(); ctx.arc(0,0,R+9,a0,a1); ctx.stroke(); });
     ctx.restore(); ctx.globalAlpha=1;
@@ -3609,7 +3609,7 @@ function drawHUD(){
     const sh=ctx.createLinearGradient(sx,0,sx+40,0);
     sh.addColorStop(0,'rgba(255,255,255,0)'); sh.addColorStop(0.5,'rgba(255,255,255,0.28)'); sh.addColorStop(1,'rgba(255,255,255,0)');
     ctx.fillStyle=sh; ctx.fillRect(sx,52,40,18); ctx.restore();
-    ctx.shadowBlur=12; ctx.shadowColor='#ffd76a';
+    ctx.shadowBlur=gq(12); ctx.shadowColor='#ffd76a';
     ctx.fillStyle='rgba(255,240,200,'+(0.75+0.25*g).toFixed(2)+')';
     ctx.fillText(label, 20, 65);
     ctx.restore(); ctx.shadowBlur=0;
@@ -3686,7 +3686,7 @@ function drawHUD(){
   /* v17: ボム残弾（左下・ボタンの真下に横並び） */
   {
     const n=p.bombs, sx=BOMB_BTN.x - (n-1)*8;
-    for(let i=0;i<n;i++){ ctx.beginPath(); ctx.arc(sx+i*16, VH-16, 5, 0, TAU); ctx.fillStyle='#bff'; ctx.shadowBlur=8; ctx.shadowColor='#bff'; ctx.fill(); }
+    for(let i=0;i<n;i++){ ctx.beginPath(); ctx.arc(sx+i*16, VH-16, 5, 0, TAU); ctx.fillStyle='#bff'; ctx.shadowBlur=gq(8); ctx.shadowColor='#bff'; ctx.fill(); }
     ctx.shadowBlur=0;
     if(n===0){ ctx.textAlign='center'; ctx.fillStyle='#4a6a86'; ctx.font='10px system-ui'; ctx.fillText('EMPTY', BOMB_BTN.x, VH-12); }
   }
@@ -3741,7 +3741,7 @@ function drawBombButton(p){
   }
   /* 外周のパルスリング */
   if(ready){
-    ctx.globalAlpha=0.18+0.22*pulse; ctx.shadowBlur=22; ctx.shadowColor='#8fe8ff';
+    ctx.globalAlpha=0.18+0.22*pulse; ctx.shadowBlur=gq(22); ctx.shadowColor='#8fe8ff';
     ctx.strokeStyle='#8fe8ff'; ctx.lineWidth=2;
     ctx.beginPath(); ctx.arc(bx,by,br+4+pulse*3,0,TAU); ctx.stroke(); ctx.globalAlpha=1;
   }
@@ -3789,11 +3789,22 @@ function drawNebula(){
     [VW*0.78+Math.cos(T*0.0035)*26, 330+Math.sin(T*0.0042)*24, 160,'rgba(150,40,160,0.10)'],
     [VW*0.5+Math.sin(T*0.0028)*20, 610+Math.cos(T*0.0036)*30, 210,'rgba(30,140,160,0.09)'],
   ];
+  /* v2.5: 放射グラデーションを毎フレーム作り直すと重い。
+     色ごとに1枚だけ焼いておき、位置だけ動かして貼る（見た目は変わらない）。 */
   for(const bl of blobs){
-    const g=ctx.createRadialGradient(bl[0],bl[1],0,bl[0],bl[1],bl[2]);
-    g.addColorStop(0,bl[3]); g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=g; ctx.fillRect(bl[0]-bl[2],bl[1]-bl[2],bl[2]*2,bl[2]*2);
+    const s=nebulaSprite(bl[3]);
+    ctx.drawImage(s, bl[0]-bl[2], bl[1]-bl[2], bl[2]*2, bl[2]*2);
   }
+}
+const NEB_SPR = new Map();
+function nebulaSprite(color){
+  let s=NEB_SPR.get(color); if(s) return s;
+  const R=128, c=document.createElement('canvas'); c.width=c.height=R*2;
+  const g=c.getContext('2d');
+  const gr=g.createRadialGradient(R,R,0,R,R,R);
+  gr.addColorStop(0,color); gr.addColorStop(1,'rgba(0,0,0,0)');
+  g.fillStyle=gr; g.fillRect(0,0,R*2,R*2);
+  NEB_SPR.set(color,c); return c;
 }
 
 /* --- タイトル（v3: 動く演出） --- */
@@ -3807,26 +3818,20 @@ function drawTitle(){
   if(Math.random()<0.025){ spawnParticle(rand(30,VW-30), -5, '#cfe', {vx:rand(-0.5,0.5), vy:rand(7,10), life:rand(30,45), r:1.6, fric:1}); }
   drawParticles();
 
-  /* v23: 地平線グリッド（レトロ・シンセウェーブ） */
+  /* v23: 地平線グリッド（レトロ・シンセウェーブ）
+     v2.5: 発光付きの線を毎フレーム31本 stroke していて、タイトルだけ 44ms/frame 掛かっていた。
+     動かない部分（放射線＋地平線の光）と、光る横線1本ぶんを焼いておいて貼るだけにする。 */
   {
     const hz=VH*0.60;
-    ctx.save(); ctx.globalAlpha=0.30; ctx.strokeStyle='#3ac8ff'; ctx.lineWidth=1;
-    ctx.shadowBlur=8; ctx.shadowColor='#2aa8ff';
+    ctx.drawImage(gridStaticSprite(), 0, 0, VW, VH);
+    const line=glowLineSprite(), lh=GLINE_H;
     for(let i=1;i<=14;i++){
       const q=i/14, y=hz + Math.pow(q,2.3)*(VH-hz)*1.15 - ((T*0.8)%((VH-hz)*0.14));
       if(y<hz||y>VH) continue;
       ctx.globalAlpha=0.22*(1-(y-hz)/(VH-hz)*0.4);
-      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(VW,y); ctx.stroke();
+      ctx.drawImage(line, 0, y-lh/2, VW, lh);
     }
-    ctx.globalAlpha=0.16;
-    for(let i=-8;i<=8;i++){
-      ctx.beginPath(); ctx.moveTo(VW/2 + i*10, hz); ctx.lineTo(VW/2 + i*120, VH); ctx.stroke();
-    }
-    ctx.restore(); ctx.shadowBlur=0; ctx.globalAlpha=1;
-    /* 地平線の光 */
-    const hg=ctx.createLinearGradient(0,hz-40,0,hz+8);
-    hg.addColorStop(0,'rgba(255,110,190,0)'); hg.addColorStop(1,'rgba(255,110,190,0.28)');
-    ctx.fillStyle=hg; ctx.fillRect(0,hz-40,VW,48);
+    ctx.globalAlpha=1;
   }
 
   ctx.textAlign='center';
@@ -3836,7 +3841,7 @@ function drawTitle(){
   for(let i=0;i<3;i++){
     ctx.save(); ctx.rotate(T*0.006*(i%2?-1:1)+i);
     ctx.globalAlpha=0.16; ctx.strokeStyle=i===1?'#f6c':'#6cf'; ctx.lineWidth=1.4;
-    ctx.shadowBlur=14; ctx.shadowColor=i===1?'#f6c':'#6cf';
+    ctx.shadowBlur=gq(14); ctx.shadowColor=i===1?'#f6c':'#6cf';
     ctx.beginPath(); ctx.ellipse(0,0, 150-i*22, 46-i*10, 0, 0, TAU); ctx.stroke();
     ctx.restore();
   }
@@ -3850,7 +3855,7 @@ function drawTitle(){
   ctx.fillStyle='rgba(255,60,170,0.55)'; ctx.fillText('NEON',-3,0); ctx.fillText('VANGUARD',-3,52);
   ctx.fillStyle='rgba(60,200,255,0.50)'; ctx.fillText('NEON',3,0); ctx.fillText('VANGUARD',3,52);
   ctx.globalCompositeOperation='source-over';
-  ctx.shadowBlur=34+10*Math.sin(T*0.06); ctx.shadowColor='#6cf'; ctx.fillStyle='#eaffff';
+  ctx.shadowBlur=gq(34+10*Math.sin(T*0.06)); ctx.shadowColor='#6cf'; ctx.fillStyle='#eaffff';
   ctx.fillText('NEON', 0, 0);
   ctx.shadowColor='#f6c'; ctx.fillStyle='#fff4fd'; ctx.fillText('VANGUARD', 0, 52);
   ctx.shadowBlur=0; ctx.globalAlpha=0.35; ctx.lineWidth=1;
@@ -3922,13 +3927,64 @@ function drawTitle(){
   ctx.fillStyle='rgba(90,120,150,'+(0.5+0.4*sh).toFixed(2)+')'; ctx.font='11px system-ui';
   ctx.fillText('Enter / タップ でスタート', VW/2, 700);
 
-  /* v23: 走査線＋ビネットでアーケードCRT感 */
-  ctx.save(); ctx.globalAlpha=0.055; ctx.fillStyle='#000';
-  for(let y=0;y<VH;y+=3) ctx.fillRect(0,y,VW,1);
-  ctx.restore();
-  const vg=ctx.createRadialGradient(VW/2,VH/2,VH*0.30,VW/2,VH/2,VH*0.72);
-  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.55)');
-  ctx.fillStyle=vg; ctx.fillRect(0,0,VW,VH);
+  /* v23: 走査線＋ビネットでアーケードCRT感
+     v2.5: 毎フレーム 266本の fillRect と createRadialGradient を作り直していて、
+     タイトル画面だけ 50ms/frame かかっていた。中身は動かないので1枚に焼いて貼る。 */
+  /* 重い端末（GLOWQが落ちている）では、装飾でしかないCRT感を省いてフレームレートを優先する */
+  if(GLOWQ===1) ctx.drawImage(crtOverlay(), 0, 0, VW, VH);
+}
+
+/* v2.5: タイトルの地平線グリッドのうち、動かない部分を1枚に焼く（放射線＋地平線の光） */
+const SPR_SS = 2;   /* 焼き込みスプライトの解像度倍率（高DPR端末でぼやけないように） */
+function makeSprite(w,h,draw){
+  const c=document.createElement('canvas');
+  c.width=Math.ceil(w*SPR_SS); c.height=Math.ceil(h*SPR_SS);
+  const g=c.getContext('2d'); g.scale(SPR_SS,SPR_SS); draw(g); return c;
+}
+let GRID_SPR = null;
+function gridStaticSprite(){
+  if(GRID_SPR) return GRID_SPR;
+  const hz=VH*0.60;
+  GRID_SPR = makeSprite(VW, VH, (g)=>{
+    g.save(); g.strokeStyle='#3ac8ff'; g.lineWidth=1;
+    g.shadowBlur=8; g.shadowColor='#2aa8ff'; g.globalAlpha=0.16;
+    for(let i=-8;i<=8;i++){
+      g.beginPath(); g.moveTo(VW/2 + i*10, hz); g.lineTo(VW/2 + i*120, VH); g.stroke();
+    }
+    g.restore();
+    const hg=g.createLinearGradient(0,hz-40,0,hz+8);
+    hg.addColorStop(0,'rgba(255,110,190,0)'); hg.addColorStop(1,'rgba(255,110,190,0.28)');
+    g.fillStyle=hg; g.fillRect(0,hz-40,VW,48);
+  });
+  return GRID_SPR;
+}
+/* 光る横線1本を焼いたもの。y をずらして貼るだけでスクロールが表現できる。
+   元は globalAlpha 0.30 の下に stroke していたので、同じ濃さになるよう2度塗りする */
+const GLINE_H = 18;
+let GLINE_SPR = null;
+function glowLineSprite(){
+  if(GLINE_SPR) return GLINE_SPR;
+  GLINE_SPR = makeSprite(VW, GLINE_H, (g)=>{
+    g.strokeStyle='#3ac8ff'; g.lineWidth=1; g.shadowBlur=8; g.shadowColor='#2aa8ff';
+    g.beginPath(); g.moveTo(0,GLINE_H/2); g.lineTo(VW,GLINE_H/2); g.stroke();
+    g.stroke();
+  });
+  return GLINE_SPR;
+}
+
+/* v2.5: CRT風オーバーレイ（走査線＋ビネット）をオフスクリーンに1回だけ描いて使い回す */
+let CRT_SPR = null;
+function crtOverlay(){
+  if(CRT_SPR) return CRT_SPR;
+  CRT_SPR = makeSprite(VW, VH, (g)=>{
+    g.globalAlpha=0.055; g.fillStyle='#000';
+    for(let y=0;y<VH;y+=3) g.fillRect(0,y,VW,1);
+    g.globalAlpha=1;
+    const vg=g.createRadialGradient(VW/2,VH/2,VH*0.30,VW/2,VH/2,VH*0.72);
+    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.55)');
+    g.fillStyle=vg; g.fillRect(0,0,VW,VH);
+  });
+  return CRT_SPR;
 }
 
 /* --- 遊び方 --- */
@@ -3936,7 +3992,7 @@ function drawHowto(){
   Game.buttons=[];
   drawStarfield();
   ctx.textAlign='center'; ctx.fillStyle='#dffbff'; ctx.font='bold 26px system-ui';
-  ctx.shadowBlur=16; ctx.shadowColor='#6cf'; ctx.fillText('遊び方', VW/2, 80); ctx.shadowBlur=0;
+  ctx.shadowBlur=gq(16); ctx.shadowColor='#6cf'; ctx.fillText('遊び方', VW/2, 80); ctx.shadowBlur=0;
   ctx.textAlign='left'; ctx.fillStyle='#cfe'; ctx.font='14px system-ui';
   const lines=[
     '■ 操作',
@@ -4057,12 +4113,12 @@ function drawHangar(){
   ctx.textAlign='center';
   if(Game.midRun){
     ctx.fillStyle='#9fffd0'; ctx.font='bold 22px system-ui';
-    ctx.shadowBlur=16; ctx.shadowColor='#5f8';
+    ctx.shadowBlur=gq(16); ctx.shadowColor='#5f8';
     ctx.fillText('STAGE '+(Game.pendingStage)+' クリア！', VW/2, 40); ctx.shadowBlur=0;
     ctx.fillStyle='#dffbff'; ctx.font='bold 18px system-ui'; ctx.fillText('格納庫 / 強化タイム', VW/2, 66);
   } else {
     ctx.fillStyle='#dffbff'; ctx.font='bold 24px system-ui';
-    ctx.shadowBlur=16; ctx.shadowColor='#6cf'; ctx.fillText('格納庫 / 強化', VW/2, 56); ctx.shadowBlur=0;
+    ctx.shadowBlur=gq(16); ctx.shadowColor='#6cf'; ctx.fillText('格納庫 / 強化', VW/2, 56); ctx.shadowBlur=0;
   }
   ctx.fillStyle='#ffd76a'; ctx.font='bold 16px system-ui'; ctx.fillText('◈ '+fmt(Save.data.credits)+'c', VW/2, 90);
   /* v27: 現在の機体を実物プレビュー＋形式名（強化で姿が変わるのが分かる） */
@@ -4130,7 +4186,7 @@ function drawHangar(){
     const y=top+i*rh; const lvl=upLevel(u.id); const maxed=upMaxed(u); const cost=upCost(u);
     const afford = Save.data.credits>=cost;
     ctx.save();
-    ctx.strokeStyle=maxed?'#7f8': (afford?'#6cf':'#456'); ctx.lineWidth=1.5; ctx.shadowBlur=8; ctx.shadowColor=ctx.strokeStyle;
+    ctx.strokeStyle=maxed?'#7f8': (afford?'#6cf':'#456'); ctx.lineWidth=1.5; ctx.shadowBlur=gq(8); ctx.shadowColor=ctx.strokeStyle;
     ctx.fillStyle='rgba(16,30,54,0.5)'; roundRect(lx,y,lw,rh-8,8); ctx.fill(); ctx.stroke(); ctx.shadowBlur=0;
     ctx.restore();
     const mx=upMax(u);
@@ -4240,7 +4296,7 @@ function drawOver(){
   drawStarfield();
   ctx.fillStyle='rgba(4,6,15,0.7)'; ctx.fillRect(0,0,VW,VH);
   ctx.textAlign='center';
-  ctx.save(); ctx.shadowBlur=24;
+  ctx.save(); ctx.shadowBlur=gq(24);
   ctx.shadowColor='#f66'; ctx.fillStyle='#ffd0d0'; ctx.font='bold 42px system-ui'; ctx.fillText('SHIP DOWN', VW/2, 270);
   ctx.restore();
   /* v2.3: ENDLESS は「どこまで行けたか」が主役なので大きく出す */
@@ -4267,7 +4323,7 @@ function drawOver(){
   }
   if(Game.extUnlocked){
     const g=0.65+0.35*Math.sin(Game.t*0.09);
-    ctx.save(); ctx.shadowBlur=18; ctx.shadowColor='#ffd76a';
+    ctx.save(); ctx.shadowBlur=gq(18); ctx.shadowColor='#ffd76a';
     ctx.fillStyle='rgba(255,215,106,'+g.toFixed(2)+')'; ctx.font='bold 18px system-ui';
     ctx.fillText('★ 限界突破 UNLOCKED ★', VW/2, 474); ctx.restore();
     ctx.fillStyle='#cfe'; ctx.font='12px system-ui';
@@ -4559,7 +4615,7 @@ function drawWin(){
   ctx.fillStyle='rgba(255,120,40,0.55)'; ctx.fillText('MISSION',-2.5,0); ctx.fillText('COMPLETE',-2.5,50);
   ctx.fillStyle='rgba(120,220,255,0.45)'; ctx.fillText('MISSION',2.5,0); ctx.fillText('COMPLETE',2.5,50);
   ctx.globalCompositeOperation='source-over';
-  ctx.shadowBlur=30+14*Math.sin(T*0.08); ctx.shadowColor='#fd6';
+  ctx.shadowBlur=gq(30+14*Math.sin(T*0.08)); ctx.shadowColor='#fd6';
   ctx.fillStyle='#fff3cf'; ctx.fillText('MISSION',0,0); ctx.fillText('COMPLETE',0,50);
   ctx.shadowBlur=0; ctx.globalAlpha=appear*0.45; ctx.lineWidth=1; ctx.strokeStyle='#fff';
   ctx.strokeText('MISSION',0,0); ctx.strokeText('COMPLETE',0,50);
@@ -4580,14 +4636,14 @@ function drawWin(){
   if(T<34){
     const q=clamp(T/34,0,1);
     ctx.save(); ctx.globalAlpha=(1-q)*0.6; ctx.strokeStyle='#ffd76a'; ctx.lineWidth=4;
-    ctx.shadowBlur=24; ctx.shadowColor='#fd6';
+    ctx.shadowBlur=gq(24); ctx.shadowColor='#fd6';
     ctx.beginPath(); ctx.ellipse(VW/2,252, 40+q*300, 14+q*90, 0,0,TAU); ctx.stroke();
     ctx.restore(); ctx.shadowBlur=0; ctx.globalAlpha=1;
   }
 
   if(T>50){
     ctx.fillStyle='#9fffd0'; ctx.font='bold 16px system-ui';
-    ctx.shadowBlur=12; ctx.shadowColor='#5f8';
+    ctx.shadowBlur=gq(12); ctx.shadowColor='#5f8';
     ctx.fillText('OMEGA CORE 撃破 — 銀河に平和が戻った', VW/2, 332); ctx.shadowBlur=0;
   }
   /* ランクメダル */
@@ -4598,7 +4654,7 @@ function drawWin(){
     const pop = T<86 ? 1.8-0.8*((T-70)/16) : 1;
     ctx.save(); ctx.translate(VW/2, 396); ctx.scale(rp*pop,rp*pop);
     /* 月桂樹（左右の葉） */
-    ctx.save(); ctx.globalAlpha=0.85; ctx.shadowBlur=14; ctx.shadowColor=rc;
+    ctx.save(); ctx.globalAlpha=0.85; ctx.shadowBlur=gq(14); ctx.shadowColor=rc;
     ctx.strokeStyle=rc; ctx.lineWidth=1.6;
     for(const s of [-1,1]){
       ctx.beginPath(); ctx.arc(0,0,48, s>0?-1.05:2.09, s>0?1.05:4.19); ctx.stroke();
@@ -4615,7 +4671,7 @@ function drawWin(){
     for(let i=0;i<12;i++){ const a=i/12*TAU;
       ctx.beginPath(); ctx.moveTo(Math.cos(a)*38, Math.sin(a)*38); ctx.lineTo(Math.cos(a)*43, Math.sin(a)*43); ctx.stroke(); }
     ctx.restore(); ctx.globalAlpha=1;
-    ctx.shadowBlur=26; ctx.shadowColor=rc; ctx.strokeStyle=rc; ctx.lineWidth=3;
+    ctx.shadowBlur=gq(26); ctx.shadowColor=rc; ctx.strokeStyle=rc; ctx.lineWidth=3;
     ctx.beginPath(); ctx.arc(0,0,34,0,TAU); ctx.stroke();
     ctx.globalAlpha=0.14; ctx.fillStyle=rc; ctx.fill(); ctx.globalAlpha=1;
     ctx.fillStyle=rc; ctx.font='bold 40px system-ui'; ctx.textBaseline='middle'; ctx.fillText(rank,0,2); ctx.textBaseline='alphabetic';
@@ -4644,13 +4700,15 @@ function drawWin(){
       ctx.fillText('BOSS RUSH  '+fmtTime(Game.rushT)+(Game.rushRecord?'  ★NEW RECORD':''), VW/2, 563);
     }
   }
-  if(T>110){
-    const tw=0.6+0.4*Math.sin(T*0.06);
-    ctx.fillStyle='rgba(255,255,255,'+tw.toFixed(2)+')'; ctx.font='bold 14px system-ui';
-    ctx.fillText('THANK YOU FOR PLAYING', VW/2, 540);
-  }
   /* v28: 大団円の「FIN」 — v34: Zランク（真エンディング）の時だけ表示する */
   const isTrueEnd = clearRank().rank === 'Z';
+  /* v2.5: BEST 行(546)と重なっていたので下段へ。
+     FIN が出る時と BOSS RUSH のタイム行(563)がある時は締めが二重になるので出さない。 */
+  if(T>110 && !isTrueEnd && Game.mode!=='rush'){
+    const tw=0.6+0.4*Math.sin(T*0.06);
+    ctx.fillStyle='rgba(255,255,255,'+tw.toFixed(2)+')'; ctx.font='bold 14px system-ui';
+    ctx.fillText('THANK YOU FOR PLAYING', VW/2, 566);
+  }
   if(isTrueEnd && T>130){
     const a=clamp((T-130)/45,0,1);
     const sc=(0.55+0.45*(1-Math.pow(1-a,3)));
@@ -4685,7 +4743,7 @@ function drawPause(){
   ctx.fillStyle='rgba(4,6,15,0.6)'; ctx.fillRect(0,0,VW,VH);
   Game.buttons=[];
   ctx.textAlign='center'; ctx.fillStyle='#dffbff'; ctx.font='bold 34px system-ui';
-  ctx.shadowBlur=16; ctx.shadowColor='#6cf'; ctx.fillText('PAUSE', VW/2, 320); ctx.shadowBlur=0;
+  ctx.shadowBlur=gq(16); ctx.shadowColor='#6cf'; ctx.fillText('PAUSE', VW/2, 320); ctx.shadowBlur=0;
   const bw=200,bx=VW/2-bw/2;
   drawButton(bx, 380, bw, 46, '再開', true, '#6cf'); addBtn(bx,380,bw,46,'resume');
   drawButton(bx, 438, bw, 40, 'タイトルへ', true, '#f88'); addBtn(bx,438,bw,40,'title');
@@ -4722,7 +4780,7 @@ function drawWorld(){
       ctx.restore(); continue;
     }
     if(b.type==='missile'){
-      ctx.save(); ctx.shadowBlur=12; ctx.shadowColor=b.color; ctx.fillStyle=b.color;
+      ctx.save(); ctx.shadowBlur=gq(12); ctx.shadowColor=b.color; ctx.fillStyle=b.color;
       ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill(); ctx.restore();
     } else {
       const T=BULLET_TIERS[b.tier||0];
@@ -4756,7 +4814,7 @@ function drawWorld(){
         ctx.beginPath(); ctx.arc(b.x,b.y,b.r+2.2,0,TAU); ctx.fill();
         ctx.globalAlpha=1;
       }
-      ctx.shadowBlur=12; ctx.shadowColor=b.color; ctx.fillStyle=b.color;
+      ctx.shadowBlur=gq(12); ctx.shadowColor=b.color; ctx.fillStyle=b.color;
       ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill();
       /* v2.0: グレイズした弾は一瞬白く縁取られる */
       if(b.gzT>0){
@@ -4776,7 +4834,7 @@ function drawWorld(){
   drawFloats();
   drawHUD();
   if(Game.messageT>0 && Game.message){ const a=clamp(Game.messageT/40,0,1); ctx.globalAlpha=Math.min(1,a);
-    ctx.textAlign='center'; ctx.shadowBlur=20; ctx.shadowColor='#6cf';
+    ctx.textAlign='center'; ctx.shadowBlur=gq(20); ctx.shadowColor='#6cf';
     ctx.fillStyle='#eaffff'; ctx.font='bold 34px system-ui'; ctx.fillText(Game.message.a, VW/2, VH/2-10);
     ctx.fillStyle='#ffd76a'; ctx.font='16px system-ui'; ctx.fillText(Game.message.b, VW/2, VH/2+22);
     ctx.shadowBlur=0; ctx.globalAlpha=1;
@@ -4834,7 +4892,7 @@ function drawCinematic(){
     /* 走るライン */
     for(const s of [-1,1]){
       const lw = VW*clamp(T/18,0,1)*A;
-      ctx.globalAlpha=0.9*A; ctx.strokeStyle=col; ctx.lineWidth=2; ctx.shadowBlur=14; ctx.shadowColor=col;
+      ctx.globalAlpha=0.9*A; ctx.strokeStyle=col; ctx.lineWidth=2; ctx.shadowBlur=gq(14); ctx.shadowColor=col;
       const yy = VH/2 + s*54;
       ctx.beginPath(); ctx.moveTo(VW/2 - lw/2, yy); ctx.lineTo(VW/2 + lw/2, yy); ctx.stroke();
     }
@@ -4849,7 +4907,7 @@ function drawCinematic(){
     /* STAGE 番号: オーバーシュートしながら拡大 */
     const e = T<26 ? 1.9-0.9*(T/26) : 1 + Math.sin((T-26)*0.08)*0.012;
     ctx.save(); ctx.translate(VW/2, VH/2-4); ctx.scale(e,e); ctx.globalAlpha=A;
-    ctx.shadowBlur=28; ctx.shadowColor=col; ctx.fillStyle='#f2ffff';
+    ctx.shadowBlur=gq(28); ctx.shadowColor=col; ctx.fillStyle='#f2ffff';
     ctx.font='bold 42px system-ui'; ctx.fillText(c.a, 0, 0);
     ctx.shadowBlur=0; ctx.globalAlpha=0.35*A; ctx.lineWidth=1; ctx.strokeStyle=col; ctx.strokeText(c.a,0,0);
     ctx.restore(); ctx.globalAlpha=1;
@@ -4858,7 +4916,7 @@ function drawCinematic(){
       const w=clamp((T-22)/26,0,1);
       ctx.save(); ctx.beginPath(); ctx.rect(VW/2-160*w, VH/2+14, 320*w, 40); ctx.clip();
       ctx.globalAlpha=A; ctx.fillStyle=col; ctx.font='bold 17px system-ui';
-      ctx.shadowBlur=12; ctx.shadowColor=col;
+      ctx.shadowBlur=gq(12); ctx.shadowColor=col;
       ctx.fillText(c.b, VW/2, VH/2+42); ctx.restore();
     }
     ctx.globalAlpha=A*0.7; ctx.fillStyle='#8fb6d8'; ctx.font='11px system-ui'; ctx.shadowBlur=0;
@@ -4877,7 +4935,7 @@ function drawCinematic(){
     /* WARNING 点滅 */
     if(T<58){
       const bl = Math.floor(T/7)%2===0 ? 1 : 0.18;
-      ctx.globalAlpha=A*bl; ctx.shadowBlur=26; ctx.shadowColor='#f45';
+      ctx.globalAlpha=A*bl; ctx.shadowBlur=gq(26); ctx.shadowColor='#f45';
       ctx.fillStyle='#ffd7de'; ctx.font='bold 40px system-ui';
       ctx.fillText('WARNING', VW/2, VH/2-4);
       ctx.shadowBlur=0; ctx.globalAlpha=A*bl*0.8; ctx.fillStyle='#ff8fa8'; ctx.font='12px system-ui';
@@ -4895,7 +4953,7 @@ function drawCinematic(){
       ctx.strokeStyle='rgba(255,110,140,0.9)'; ctx.lineWidth=2;
       ctx.beginPath(); ctx.moveTo(0,VH/2-42); ctx.lineTo(VW,VH/2-42); ctx.moveTo(0,VH/2+42); ctx.lineTo(VW,VH/2+42); ctx.stroke();
       ctx.fillStyle='#ff8fa8'; ctx.font='bold 13px system-ui'; ctx.fillText('◆ '+c.a+' ◆', VW/2, VH/2-16);
-      ctx.shadowBlur=20; ctx.shadowColor='#f45'; ctx.fillStyle='#fff0f3'; ctx.font='bold 26px system-ui';
+      ctx.shadowBlur=gq(20); ctx.shadowColor='#f45'; ctx.fillStyle='#fff0f3'; ctx.font='bold 26px system-ui';
       ctx.fillText(c.b, VW/2, VH/2+18);
       ctx.restore(); ctx.shadowBlur=0;
     }
@@ -4909,14 +4967,14 @@ function drawCinematic(){
     for(let i=0;i<3;i++){
       const rt=((T*4 + i*70)%210)/210;
       ctx.globalAlpha=(1-rt)*0.5*A; ctx.strokeStyle='#ff3355'; ctx.lineWidth=3;
-      ctx.shadowBlur=24; ctx.shadowColor='#f04';
+      ctx.shadowBlur=gq(24); ctx.shadowColor='#f04';
       ctx.beginPath(); ctx.arc(VW/2, VH*0.3, 30+rt*330, 0, TAU); ctx.stroke();
     }
     ctx.shadowBlur=0; ctx.globalAlpha=1;
     /* 稲妻の亀裂 */
     if(T>18 && T<120){
       ctx.globalAlpha=(0.35+0.5*Math.abs(Math.sin(T*0.4)))*A;
-      ctx.strokeStyle='#ffd76a'; ctx.lineWidth=1.6; ctx.shadowBlur=16; ctx.shadowColor='#fd6';
+      ctx.strokeStyle='#ffd76a'; ctx.lineWidth=1.6; ctx.shadowBlur=gq(16); ctx.shadowColor='#fd6';
       for(let i=0;i<5;i++){
         const bx=VW*(0.12+0.19*i);
         ctx.beginPath(); ctx.moveTo(bx, 0);
@@ -4931,7 +4989,7 @@ function drawCinematic(){
     hazardBand(VH/2+80, 16, -T*3.2, '#12000a', 'rgba(255,60,90,0.9)', 0.8*A);
     if(T<48){
       const bl = Math.floor(T/5)%2===0 ? 1 : 0.15;
-      ctx.globalAlpha=A*bl; ctx.shadowBlur=30; ctx.shadowColor='#f04';
+      ctx.globalAlpha=A*bl; ctx.shadowBlur=gq(30); ctx.shadowColor='#f04';
       ctx.fillStyle='#ffdde4'; ctx.font='bold 34px system-ui';
       ctx.fillText('DANGER', VW/2, VH/2-16);
       ctx.font='bold 15px system-ui'; ctx.fillStyle='#ff9bb0';
@@ -4948,14 +5006,14 @@ function drawCinematic(){
       ctx.fillText(c.a, jj-3, 0);
       ctx.fillStyle='rgba(90,200,255,0.75)'; ctx.fillText(c.a, jj+3, 0);
       ctx.globalCompositeOperation='source-over';
-      ctx.shadowBlur=30; ctx.shadowColor='#fd6'; ctx.fillStyle='#fff6dc';
+      ctx.shadowBlur=gq(30); ctx.shadowColor='#fd6'; ctx.fillStyle='#fff6dc';
       ctx.fillText(c.a, jj, 0);
       ctx.shadowBlur=0; ctx.globalAlpha=0.4*A; ctx.lineWidth=1; ctx.strokeStyle='#fff';
       ctx.strokeText(c.a, jj, 0);
       ctx.restore(); ctx.globalAlpha=1;
       if(T>70){
         ctx.globalAlpha=A*clamp((T-70)/20,0,1);
-        ctx.fillStyle='#ffd76a'; ctx.font='bold 15px system-ui'; ctx.shadowBlur=14; ctx.shadowColor='#fd6';
+        ctx.fillStyle='#ffd76a'; ctx.font='bold 15px system-ui'; ctx.shadowBlur=gq(14); ctx.shadowColor='#fd6';
         ctx.fillText(c.b, VW/2, VH/2+34);
         ctx.shadowBlur=0; ctx.fillStyle='#ff8fa8'; ctx.font='12px system-ui';
         ctx.fillText('全兵装をもって迎え撃て', VW/2, VH/2+58);
@@ -4988,7 +5046,7 @@ function drawCinematic(){
     }
     const e = T<24 ? 1.7-0.7*(T/24) : 1 + Math.sin((T-24)*0.1)*0.03;
     ctx.save(); ctx.translate(VW/2, VH*0.3); ctx.scale(e,e); ctx.globalAlpha=A;
-    ctx.shadowBlur=34; ctx.shadowColor='#fd6'; ctx.fillStyle='#fff8dc';
+    ctx.shadowBlur=gq(34); ctx.shadowColor='#fd6'; ctx.fillStyle='#fff8dc';
     ctx.font='bold 38px system-ui'; ctx.fillText(c.a, 0, 0);
     ctx.shadowBlur=0; ctx.globalAlpha=0.45*A; ctx.strokeStyle='#ffd76a'; ctx.lineWidth=1;
     ctx.strokeText(c.a,0,0);
