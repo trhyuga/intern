@@ -594,7 +594,7 @@ const OD_COST = 100000;
 function odAlways(){ return (Save.data.od||0) > 0; }
 function odBuyable(){ return isExtMaxed() && !odAlways(); }
 /* オーバードライブ中は火力・シールドが3割（限界突破カンストなら4割）増し */
-function powerMul(){ return Game.overdrive ? odMul() : 1; }
+function powerMul(){ return (Game.overdrive ? odMul() : 1) * buffPower(); }
 /* v13: 強化コストを急カーブ化。最終段階だけさらに重くして「最後の一押し」を目標にする
    （全項目カンストまでの総額は約7.4万c ＝ 従来の約3倍） */
 function upCost(u){
@@ -827,11 +827,12 @@ function cineLock(){
 function eb(x,y,vx,vy,opt){
   if(cineLock()) return;                 // 演出中は敵弾を出さない
   opt=opt||{};
-  const rm=rageSpeedMul()*curDiff().spd; vx*=rm; vy*=rm;
+  const rm=rageSpeedMul()*curDiff().spd*buffSlow(); vx*=rm; vy*=rm;
   eBullets.push({x,y,vx,vy, r:opt.r||5, color:opt.color||'#ff5a7a', dmg:Math.round((opt.dmg||16)*dmgScale()),
     life:opt.life||300, t:0, wave:opt.wave||null, ax:opt.ax||0, ay:opt.ay||0,
     acc: opt.acc!==undefined?opt.acc:(ACC_MUL[Game.stageIndex]||0),
-    accMax: opt.accMax!==undefined?opt.accMax:(ACC_CAP[Game.stageIndex]||1.8), mult:1});
+    accMax: opt.accMax!==undefined?opt.accMax:(ACC_CAP[Game.stageIndex]||1.8), mult:1,
+    split: opt.split||0});
 }
 function enemyBullet(x,y,vx,vy,r,color,dmg){ eb(x,y,vx,vy,{r:r,color:color,dmg:dmg}); }
 
@@ -909,7 +910,7 @@ const Game = {
       this.wingmen.push({x:VW/2, y:VH*0.9, side: i===0?-1:1, r:7, fireCd:0});
     }
     this.enemies=[]; this.boss=null; this.helpers=[]; this.helperIdx=0; this.overdrive=false;
-    this.chain=0; this.chainT=0; this.hitStop=0; this.grazeFx=0;
+    this.chain=0; this.chainT=0; this.hitStop=0; this.grazeFx=0; this.buffs={};
     /* v28: 常時オーバードライブを購入済みなら、最初から金色形態で出撃する */
     if(odAlways()){
       this.overdrive = true;
@@ -1016,7 +1017,7 @@ const Game = {
   clearRunFlags(){
     this.odAtClear=false; this.extAtClear=false; this.odAlwaysAtClear=false;
     this.roll=null; this.overdrive=false; this.odT=0;
-    this.graze=0; this.grazeCharge=0; this.grazeFx=0;
+    this.graze=0; this.grazeCharge=0; this.grazeFx=0; this.buffs={};
     this.chain=0; this.chainT=0; this.chainBest=0; this.hitStop=0;
   },
 
@@ -1141,6 +1142,10 @@ const ENEMY_DEF = {
   orbiter:  { r:14, hp:52, color:'#6fa', credit:18, score:240, dmg:22, drop:0.14 },
   carrier:  { r:24, hp:170,color:'#fa6', credit:40, score:420, dmg:26, drop:0.28 },
   dasher:   { r:13, hp:28, color:'#6ef', credit:12, score:160, dmg:24, drop:0.10 },
+  /* v2.0: 追加3機種 */
+  prism:    { r:15, hp:60, color:'#c9f', credit:22, score:280, dmg:22, drop:0.16 },
+  hunter:   { r:14, hp:44, color:'#f96', credit:19, score:250, dmg:28, drop:0.13 },
+  bulwark:  { r:18, hp:150,color:'#8df', credit:34, score:360, dmg:24, drop:0.24 },
 };
 let ENEMY_UID=0;
 function makeEnemy(kind, x, y, opt={}){
@@ -1268,6 +1273,46 @@ function updateEnemy(e, dt){
       }
       break;
     }
+    /* プリズム: 撃った弾が途中で3つに割れる */
+    case 'prism': {
+      if(!e.entered){ e.y+=1.5*dt; if(e.y>=e.targetY) enterDone(e); }
+      else { e.mt+=dt; e.x=e.homeX+Math.sin(e.mt*0.022+e.phase)*62*wobRamp(e); }
+      e.fireCd-=dt;
+      if(e.fireCd<=0 && e.entered){
+        e.fireCd=rand(95,130);
+        const p2=Game.player; if(p2){
+          const a=Math.atan2(p2.y-e.y,p2.x-e.x);
+          eb(e.x,e.y,Math.cos(a)*3.4,Math.sin(a)*3.4,{r:7,color:'#d9a0ff',dmg:Math.round(e.dmg*0.5),split:1});
+        }
+      }
+      break;
+    }
+    /* ハンター: 自機の少し先を狙って急降下し、離脱して また降りてくる */
+    case 'hunter': {
+      const p2=Game.player;
+      e.hs = e.hs||'dive'; e.hT=(e.hT||0)+dt;
+      if(!e.entered){ e.y+=2.6*dt; if(e.y>=90){ enterDone(e); e.hT=0; } break; }
+      if(e.hs==='dive'){
+        if(!e.locked && p2){ const a=Math.atan2((p2.y-40)-e.y, p2.x-e.x); e.vx=Math.cos(a)*4.6; e.vy=Math.sin(a)*4.6; e.locked=1; }
+        e.x+=e.vx*dt; e.y+=e.vy*dt;
+        if(e.hT>62 || e.y>VH*0.78){ e.hs='back'; e.hT=0; }
+      } else {
+        e.x += (e.homeX-e.x)*0.03*dt; e.y -= 3.0*dt;
+        e.fireCd-=dt;
+        if(e.fireCd<=0){ e.fireCd=rand(40,60); aimShot(e,4.4); }
+        if(e.y<95){ e.y=95; if(e.hT>50){ e.hs='dive'; e.locked=0; e.hT=0; } }
+      }
+      break;
+    }
+    /* バルワーク: 正面に盾。前からの弾は弾かれるので、横か下に回り込む必要がある */
+    case 'bulwark': {
+      if(!e.entered){ e.y+=1.0*dt; if(e.y>=e.targetY) enterDone(e); }
+      else { e.mt+=dt; e.x=e.homeX+Math.sin(e.mt*0.014+e.phase)*80*wobRamp(e); }
+      e.guard = 1;
+      e.fireCd-=dt;
+      if(e.fireCd<=0 && e.entered){ e.fireCd=rand(70,100); aimSpread(e,3,0.26,3.9); ringShot(e,6,2.4); }
+      break;
+    }
     case 'dasher': {
       e.x += e.vx*dt; e.y += Math.sin(e.t*0.06+e.phase)*1.4*dt;
       e.fireCd-=dt;
@@ -1334,10 +1379,23 @@ function killEnemy(e){
 
 /* ---------------- パワーアップ ---------------- */
 const powerups=[];
-const PU_TYPES=['heal','shield','credit','bomb'];
+/* v2.0: 一時強化アイテムを追加。取った瞬間に体感が変わる短時間バフ。
+   POWER=火力1.6倍 / RAPID=連射1.7倍 / SLOW=敵弾が半速 */
+const PU_TYPES=['heal','shield','credit','bomb','power','rapid','slow'];
+const BUFF_DUR = 15*60;                    // 15秒
+const BUFFS = {
+  power:{ label:'P', name:'POWER', color:'#ff9be6', txt:'火力 ×1.6' },
+  rapid:{ label:'R', name:'RAPID', color:'#ffd76a', txt:'連射 ×1.7' },
+  slow: { label:'T', name:'SLOW',  color:'#8fe8ff', txt:'敵弾 半速' },
+};
+function buffOn(k){ return (Game.buffs && Game.buffs[k]>0); }
+function buffPower(){ return buffOn('power') ? 1.6 : 1; }
+function buffRapid(){ return buffOn('rapid') ? 1/1.7 : 1; }
+function buffSlow(){  return buffOn('slow')  ? 0.5 : 1; }
+
 function spawnPowerup(x,y){
   /* v17: シールド未強化ではSアイテムが実質無意味なので、Lv1以上になるまで出さない */
-  const pool = upLevel('shield')>=1 ? PU_TYPES : PU_TYPES.filter(t=>t!=='shield');
+  let pool = upLevel('shield')>=1 ? PU_TYPES : PU_TYPES.filter(t=>t!=='shield');
   const type = pool[randi(0,pool.length-1)];
   powerups.push({x,y,vy:1.4,r:11,type,t:0});
 }
@@ -1357,15 +1415,25 @@ function applyPowerup(type){
   else if(type==='shield'){ if(p.shieldMax>0){ p.shieldHP=p.shieldMax; addFloat(p.x,p.y-20,'SHIELD','#7ff'); } else { const g=Game.addCredits(15); addFloat(p.x,p.y-20,'+'+Math.round(g)+'c','#ffd76a'); } }
   else if(type==='credit'){ const g=Game.addCredits(30); addFloat(p.x,p.y-20,'+'+Math.round(g)+'c','#ffd76a'); }
   else if(type==='bomb'){ p.bombs=Math.min(9,p.bombs+1); addFloat(p.x,p.y-20,'+BOMB','#bff'); }
+  else if(BUFFS[type]){
+    Game.buffs = Game.buffs || {};
+    Game.buffs[type] = BUFF_DUR;
+    const B=BUFFS[type];
+    addFloat(p.x, p.y-24, B.name, B.color, 15);
+    Game.doFlash(B.color, 0.35); Sound.powerUp();
+    for(let i=0;i<18;i++) burst(p.x,p.y,B.color,3,4);
+  }
 }
 function drawPowerup(pu){
-  const col = pu.type==='heal'?'#7fffa8': pu.type==='shield'?'#7ff': pu.type==='credit'?'#ffd76a':'#bdf';
+  const col = BUFFS[pu.type] ? BUFFS[pu.type].color
+    : pu.type==='heal'?'#7fffa8': pu.type==='shield'?'#7ff': pu.type==='credit'?'#ffd76a':'#bdf';
   const s=1+Math.sin(pu.t*0.15)*0.12;
   ctx.save(); ctx.translate(pu.x,pu.y); ctx.scale(s,s);
   ctx.shadowBlur=16; ctx.shadowColor=col; ctx.strokeStyle=col; ctx.lineWidth=2;
   ctx.beginPath(); for(let i=0;i<6;i++){ const a=i/6*TAU; const px=Math.cos(a)*pu.r, py=Math.sin(a)*pu.r; i?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath(); ctx.stroke();
   ctx.fillStyle=col; ctx.font='bold 11px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  const ch = pu.type==='heal'?'H': pu.type==='shield'?'S': pu.type==='credit'?'$':'B';
+  const ch = BUFFS[pu.type] ? BUFFS[pu.type].label
+    : pu.type==='heal'?'H': pu.type==='shield'?'S': pu.type==='credit'?'$':'B';
   ctx.fillText(ch,0,1);
   ctx.restore(); ctx.shadowBlur=0; ctx.textBaseline='alphabetic';
 }
@@ -1515,10 +1583,12 @@ function buildScript(stage){
     S.push({type:'midboss'});
     S.push(W(()=>{ swarm('kamikaze',6,m); formationRow('weaver',4,90,m); }));
     S.push(W(()=>{ formationRow('bomber',2,90,m); formationRow('grunt',5,140,m); }));
+    S.push(W(()=>{ formationRow('prism',2,100,m); formationRow('grunt',4,160,m); }));
     S.push(W(()=>{ formationRow('orbiter',2,130,m); swarm('mine',6,m); }));
     S.push(W(()=>{ swarm('splitter',3,m); dashers(3,-1,130,m); }));
     S.push(W(()=>{ formationRow('shield',2,90,m); formationRow('weaver',5,150,m); }));
     S.push(W(()=>{ const e=makeEnemy('carrier',VW/2,-40,{targetY:110,hpMul:m}); Game.enemies.push(e); formationRow('grunt',5,170,m); }));
+    S.push(W(()=>{ swarm('hunter',3,m); formationRow('turret',3,130,m); }));
     S.push(W(()=>{ formationRow('sniper',2,80,m); formationRow('turret',3,130,m); swarm('kamikaze',4,m); }));
     S.push(W(()=>{ formationRow('bomber',3,90,m); formationRow('weaver',5,150,m); dashers(3,1,200,m); }));
     S.push({type:'boss'});
@@ -1527,9 +1597,12 @@ function buildScript(stage){
     S.push(W(()=>{ swarm('splitter',3,m); formationRow('grunt',5,90,m); }));
     S.push(W(()=>{ formationRow('bomber',3,90,m); swarm('kamikaze',5,m); }));
     S.push(W(()=>{ dashers(4,-1,100,m); formationRow('sniper',2,140,m); }));
+    S.push(W(()=>{ formationRow('prism',3,100,m); formationRow('weaver',4,160,m); }));
     S.push(W(()=>{ formationRow('orbiter',3,130,m); swarm('mine',7,m); }));
     S.push(W(()=>{ formationRow('shield',2,90,m); formationRow('weaver',5,150,m); }));
     S.push({type:'midboss'});
+    S.push(W(()=>{ formationRow('bulwark',2,95,m); formationRow('grunt',5,165,m); }));
+    S.push(W(()=>{ swarm('hunter',4,m); formationRow('turret',4,100,m); }));
     S.push(W(()=>{ formationRow('turret',4,100,m); dashers(4,1,150,m); }));
     S.push(W(()=>{ const e=makeEnemy('carrier',VW*0.3,-40,{targetY:100,hpMul:m}); Game.enemies.push(e); const e2=makeEnemy('carrier',VW*0.7,-60,{targetY:130,hpMul:m}); Game.enemies.push(e2); }));
     S.push(W(()=>{ formationRow('sniper',3,85,m); swarm('kamikaze',6,m); }));
@@ -1544,9 +1617,12 @@ function buildScript(stage){
     S.push(W(()=>{ formationRow('shield',3,90,m); swarm('kamikaze',6,m); }));
     S.push(W(()=>{ dashers(5,1,100,m); formationRow('sniper',2,150,m); }));
     S.push(W(()=>{ formationRow('bomber',4,90,m); formationRow('weaver',5,150,m); }));
+    S.push(W(()=>{ formationRow('bulwark',3,95,m); swarm('hunter',3,m); }));
+    S.push(W(()=>{ formationRow('prism',3,100,m); formationRow('turret',3,160,m); }));
     S.push(W(()=>{ formationRow('orbiter',3,120,m); swarm('mine',8,m); }));
     S.push(W(()=>{ const e=makeEnemy('carrier',VW/2,-40,{targetY:100,hpMul:m}); Game.enemies.push(e); formationRow('turret',4,150,m); }));
     S.push({type:'midboss'});
+    S.push(W(()=>{ swarm('hunter',5,m); formationRow('prism',2,110,m); }));
     S.push(W(()=>{ formationRow('sniper',3,85,m); dashers(4,-1,140,m); }));
     S.push(W(()=>{ formationRow('shield',2,80,m); formationRow('splitter',3,140,m); swarm('mine',6,m); }));
     S.push(W(()=>{ swarm('kamikaze',8,m); formationRow('weaver',5,100,m); }));
@@ -2007,7 +2083,7 @@ function updatePlayer(dt){
   if(p.bombFlash>0) p.bombFlash-=0.04*dt;
   if(p.shieldMax>0 && p.shieldHP<p.shieldMax && !curDiff().noRegen){ p.shieldRegen+=dt; if(p.shieldRegen>p.st.shieldDelay){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+p.st.shieldRegenRate*powerMul()*dt); } }
   p.fireCd-=dt;
-  if(p.fireCd<=0){ playerFire(); p.fireCd=p.st.fireInterval/16.67*curWeapon().rate; }
+  if(p.fireCd<=0){ playerFire(); p.fireCd=p.st.fireInterval/16.67*curWeapon().rate*buffRapid(); }
   if(p.st.missiles>0){ p.missileCd-=dt; if(p.missileCd<=0){ for(let i=0;i<p.st.missiles;i++){ setTimeout(()=>{ if(Game.player===p && Game.state===STATE.PLAY) fireHoming(p.x+rand(-10,10),p.y,p.st.dmg*1.4*powerMul());},i*80);} p.missileCd=90; } }
   if(Math.random()<0.6) spawnParticle(p.x+rand(-4,4),p.y+14,'#4cf',{vx:rand(-.4,.4),vy:rand(1,2.4),life:rand(10,18),r:rand(1.5,3)});
   for(const w of Game.wingmen){
@@ -2195,6 +2271,12 @@ function collisions(){
     for(const e of Game.enemies){
       if(e.dead) continue;
       if(seen && seen[e.uid]) continue;
+      /* v2.0: バルワークの前面シールド — 上から来た弾は弾かれる */
+      if(e.guard && circleHit(b,e) && b.vy<0 && Math.abs(b.x-e.x) < e.r*0.92){
+        burst(b.x,b.y,'#8df',5,2); Sound.blip(1500,0.05,'square',0.04,-500);
+        addFloat(e.x, e.y-e.r-4, 'GUARD', '#8df', 10);
+        e.gFx=8; hit=true; break;   /* hit=true で下の splice に任せる */
+      }
       if(circleHit(b,e)){
         damageEnemy(e,b.dmg,b.x,b.y); hitSpark(b); hit=true;
         if(seen){ seen[e.uid]=1; if(--b.pierce<=0) break; else { hit=false; continue; } }
@@ -2274,6 +2356,17 @@ function updatePlay(dt){
     b.x+=b.vx*dt; b.y+=b.vy*dt;
     if(b.wave){ b.x += Math.sin(b.t*b.wave.f + b.wave.p)*b.wave.a*dt; }
     b.life-=dt;
+    /* v2.0: プリズム弾 — 一定時間後に3方向へ割れる */
+    if(b.split && b.t>52){
+      const sp=Math.hypot(b.vx,b.vy)||3.4, a0=Math.atan2(b.vy,b.vx);
+      eBullets.splice(i,1);
+      for(let k=-1;k<=1;k++){
+        const a=a0+k*0.42;
+        eb(b.x,b.y,Math.cos(a)*sp*1.05,Math.sin(a)*sp*1.05,{r:5,color:'#e2b6ff',dmg:Math.round(b.dmg*0.85)});
+      }
+      burst(b.x,b.y,'#d9a0ff',8,2.4); Sound.blip(900,0.06,'triangle',0.05,-300);
+      continue;
+    }
     if(b.y<-40||b.y>VH+40||b.x<-40||b.x>VW+40||b.life<=0) eBullets.splice(i,1);
   }
   for(let i=Game.enemies.length-1;i>=0;i--){ const e=Game.enemies[i]; if(e.hitFlash>0)e.hitFlash-=dt; updateEnemy(e,dt); if(e.dead) Game.enemies.splice(i,1); }
@@ -2303,6 +2396,9 @@ function updatePlay(dt){
   if(Game.odT>0) Game.odT-=dt;
   /* v2.0: チェインの持続タイマーとグレイズの光 */
   if(Game.mode==='rush' && !Game.cine) Game.rushT+=dt;
+  /* v2.0: 一時強化の残り時間 */
+  if(Game.buffs){ for(const k in Game.buffs){ if(Game.buffs[k]>0){ Game.buffs[k]-=dt;
+    if(Game.buffs[k]<=0){ Game.buffs[k]=0; addFloat(Game.player?Game.player.x:VW/2, Game.player?Game.player.y-24:VH/2, BUFFS[k].name+' END', '#7f9ab0', 11); } } } }
   if(Game.chainT>0){ Game.chainT-=dt; if(Game.chainT<=0) Game.chain=0; }
   if(Game.grazeFx>0) Game.grazeFx-=dt;
   for(const b of eBullets){ if(b.gzT>0) b.gzT-=dt; }
@@ -2956,6 +3052,62 @@ function drawEnemy(e){
       break;
     }
 
+    /* プリズム: 三角プリズムを抱えた砲台。弾を割って撒く */
+    case 'prism': {
+      eFlame(0,-9,10,2.2,'#c9a0ff',e.t);
+      ctx.save(); ctx.rotate(Math.sin(e.t*0.02)*0.25);
+      neonPoly([[0,-11],[10,7],[-10,7]],c,'rgba(190,130,255,0.20)',1.8,13);
+      ctx.restore();
+      neonPoly([[-13,-3],[-7,-6],[-6,3],[-12,4]],c,'rgba(190,130,255,0.26)',1.1,7);
+      neonPoly([[ 13,-3],[ 7,-6],[ 6,3],[ 12,4]],c,'rgba(190,130,255,0.26)',1.1,7);
+      /* 内側の分光ライン */
+      ctx.save(); ctx.globalAlpha=0.7; ctx.lineWidth=1; ctx.shadowBlur=gq(7); ctx.shadowColor='#fff';
+      for(const [cc,dx] of [['#ff8fb0',-3],['#8fffc0',0],['#8fc8ff',3]]){
+        ctx.strokeStyle=cc; ctx.beginPath(); ctx.moveTo(0,-2); ctx.lineTo(dx*2.2,9); ctx.stroke(); }
+      ctx.restore(); ctx.globalAlpha=1;
+      eCore(0,0,2.6,c,e.t,0.16);
+      break;
+    }
+    /* ハンター: 前傾した突撃機。急降下中は炎が伸びる */
+    case 'hunter': {
+      const diving = e.hs==='dive';
+      eFlame(0,-8,diving?24:11,3.4,'#ff7a3a',e.t);
+      neonPoly([[-9,-3],[-14,-8],[-13,0],[-8,2]],c,'rgba(255,150,80,0.26)',1.2,7);
+      neonPoly([[ 9,-3],[ 14,-8],[ 13,0],[ 8,2]],c,'rgba(255,150,80,0.26)',1.2,7);
+      neonPoly([[0,14],[7,-2],[4,-8],[-4,-8],[-7,-2]],c,'rgba(255,140,80,0.22)',1.9,13);
+      if(diving){
+        ctx.save(); ctx.globalAlpha=0.5; ctx.strokeStyle='#ffd0a0'; ctx.lineWidth=1.2;
+        ctx.shadowBlur=gq(8); ctx.shadowColor='#ff9a5a';
+        ctx.beginPath(); ctx.moveTo(-6,-12); ctx.lineTo(0,-20); ctx.lineTo(6,-12); ctx.stroke();
+        ctx.restore(); ctx.globalAlpha=1;
+      }
+      eCore(0,3,2.6,diving?'#ffdd88':c,e.t,diving?0.4:0.12);
+      break;
+    }
+    /* バルワーク: 前面に分厚い盾を構えた重装。上からの弾は通らない */
+    case 'bulwark': {
+      eFlame(-6,-6,9,2.2,'#5fd8ff',e.t); eFlame(6,-6,9,2.2,'#5fd8ff',e.t+2);
+      neonPoly([[0,12],[9,4],[8,-6],[-8,-6],[-9,4]],c,'rgba(120,220,255,0.20)',1.7,11);
+      /* 盾（上面） */
+      const gf = e.gFx>0 ? 1 : 0;
+      if(e.gFx>0) e.gFx-=0.5;
+      ctx.save();
+      ctx.shadowBlur=gq(12+14*gf); ctx.shadowColor= gf?'#ffffff':'#8df';
+      ctx.strokeStyle= gf?'#ffffff':'#8df'; ctx.lineWidth=2.6;
+      ctx.fillStyle='rgba(120,220,255,'+(0.16+0.35*gf).toFixed(2)+')';
+      ctx.beginPath();
+      ctx.moveTo(-e.r*0.95,-4); ctx.quadraticCurveTo(0,-e.r-6, e.r*0.95,-4);
+      ctx.lineTo(e.r*0.72,0); ctx.quadraticCurveTo(0,-e.r*0.9, -e.r*0.72,0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+      /* 盾のリベット */
+      ctx.save(); ctx.fillStyle='#dffcff'; ctx.shadowBlur=gq(6); ctx.shadowColor='#8df';
+      ctx.beginPath();
+      for(const dx of [-9,0,9]){ ctx.moveTo(dx+1.4,-9); ctx.arc(dx,-9,1.4,0,TAU); }
+      ctx.fill(); ctx.restore();
+      eCore(0,3,3,c,e.t,0.09);
+      break;
+    }
     /* ダッシャー: 速度線を引いて横断する高速機 */
     case 'dasher': {
       const dir = e.vx>=0?1:-1;
@@ -3166,6 +3318,24 @@ function drawHUD(){
     ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(gx, gy+5, 74, 4);
     ctx.save(); ctx.shadowBlur=gq(8*gc); ctx.shadowColor='#8fe8ff';
     ctx.fillStyle= gc>0.85?'#bff':'#4aa8d8'; ctx.fillRect(gx, gy+5, 74*gc, 4); ctx.restore();
+  }
+
+  /* v2.0: 一時強化の残り時間バッジ */
+  if(Game.buffs){
+    let bx2=112, by2=VH-76;
+    for(const k of ['power','rapid','slow']){
+      const t=Game.buffs[k]||0; if(t<=0) continue;
+      const B=BUFFS[k], f=clamp(t/BUFF_DUR,0,1);
+      const blink = t<120 && Math.floor(t/6)%2===0;
+      ctx.save(); ctx.globalAlpha= blink?0.35:1;
+      ctx.strokeStyle=B.color; ctx.lineWidth=1.3; ctx.shadowBlur=gq(9); ctx.shadowColor=B.color;
+      ctx.fillStyle='rgba(8,14,26,0.8)'; roundRect(bx2,by2,54,17,5); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur=0; ctx.fillStyle=B.color; ctx.font='bold 9px system-ui'; ctx.textAlign='left';
+      ctx.fillText(B.name, bx2+5, by2+12);
+      ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.fillRect(bx2+2, by2+14.5, 50*f, 2);
+      ctx.restore();
+      bx2+=58; if(bx2>VW-70){ bx2=112; by2-=20; }
+    }
   }
 
   /* v17: ボム残弾（左下・ボタンの真下に横並び） */
@@ -3673,6 +3843,17 @@ function buildCreditRoll(){
   add('lv','SWARM 追尾', '必ず追う誘導弾。散開した敵とチェイン稼ぎに最適');
   add('sp');
 
+  add('h2','― 一時強化アイテム ―');
+  add('lv','P  POWER', '火力 ×1.6（15秒）');
+  add('lv','R  RAPID', '連射 ×1.7（15秒）');
+  add('lv','T  SLOW',  '敵弾の速度が半分（15秒）');
+  add('sp');
+
+  add('h2','― 難易度とモード ―');
+  DIFFS.forEach(d=> add('lv', d.name, d.desc));
+  add('lv','BOSS RUSH', '全7ボス連戦のタイムアタック（クリアで解放）');
+  add('sp');
+
   add('h2','― 立ち回りの報酬 ―');
   add('lv','GRAZE', '敵弾を半径'+GRAZE_R+'px以内でかわすと加算');
   add('lv','', GRAZE_PER_BOMB+'回ごとにボム+1（満載時は+500点）');
@@ -3693,9 +3874,11 @@ function buildCreditRoll(){
   add('sp');
 
   add('h2','― 敵性勢力 ―');
-  add('lv','ザコ 13機種','グラント / ウィーバー / タレット / ボマー');
+  add('lv','ザコ 16機種','グラント / ウィーバー / タレット / ボマー');
   add('lv','','カミカゼ / スプリッター / ミニ / シールド');
   add('lv','','機雷 / スナイパー / オービター / キャリア / ダッシャー');
+  add('lv','','プリズム（弾が割れる） / ハンター（急降下）');
+  add('lv','','バルワーク（正面の盾は弾を弾く）');
   add('lv','中ボス ×3', MID_NAMES.join(' / '));
   add('lv','ステージボス ×3', BOSS_NAMES.join(' / '));
   add('lv','大ボス','OMEGA CORE');
