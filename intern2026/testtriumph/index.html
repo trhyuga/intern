@@ -485,7 +485,7 @@ const Music = {
 /* ---------------- セーブ (localStorage) ---------------- */
 const SAVE_KEY = 'neon_vanguard_save_v1';
 const Save = {
-  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0 },
+  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0 },
   load(){
     try{ const s=localStorage.getItem(SAVE_KEY); if(s) this.data=Object.assign(this.data, JSON.parse(s)); }catch(e){}
     if(!this.data.up) this.data.up={};
@@ -498,7 +498,7 @@ const Save = {
   },
   save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); }catch(e){} },
   reset(){
-    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0 };
+    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0 };
     this.save();
     /* v33: セーブだけでなく、メモリ上のプレイ記録も一緒に捨てる */
     if(typeof Game!=='undefined' && Game.clearRunFlags) Game.clearRunFlags();
@@ -557,6 +557,27 @@ const UPGRADES = [
     spec:(l)=> '取得クレジット +'+(l*20)+'%（1.'+(l*2)+'倍）' },
 ];
 function upLevel(id){ return Save.data.up[id]||0; }
+
+/* =========================================================================
+   v2.0: 武器タイプ（強化レベルは共通、撃ち方だけが変わる）
+   VANGUARD 扇  … 万能。広く薄く当てる
+   LANCE    貫通… 本数を絞った極太弾。1発が重く、敵を貫いて奥まで届く
+   SWARM    追尾… 小粒だが必ず追う。散らばった敵とチェイン稼ぎに強い
+   ========================================================================= */
+const LANCE_N      = [1,1,2,2,3,3,4];   // 武器Lvごとの本数
+const LANCE_DMG    = 2.2;               // 1発のダメージ倍率
+const LANCE_PIERCE = 4;                 // 貫通できる敵の数
+const SWARM_DMG    = 0.63;              // 1発のダメージ倍率（必中ぶん控えめ）
+const WEAPONS = [
+  { id:'vanguard', name:'VANGUARD', jp:'扇',   color:'#7fd4ff', rate:1.00,
+    desc:'標準の扇状ショット。広く薄く、どんな場面でも戦える万能型' },
+  { id:'lance',    name:'LANCE',    jp:'貫通', color:'#c9f0ff', rate:1.25,
+    desc:'本数を絞った極太の貫通弾。1発が重く、縦に並んだ敵をまとめて撃ち抜く' },
+  { id:'swarm',    name:'SWARM',    jp:'追尾', color:'#9fffd0', rate:1.25,
+    desc:'小粒だが敵を追いかける誘導弾。散らばった敵に強く、チェインを繋ぎやすい' },
+];
+function weaponIdx(){ return clamp(Save.data.wpn|0, 0, WEAPONS.length-1); }
+function curWeapon(){ return WEAPONS[weaponIdx()]; }
 /* v15: 全項目カンストしているか（最終決戦のオーバードライブ条件） */
 /* v20: 限界突破（フル強化でラスボスに敗北すると解放される追加レベル）
    火力・ホーミング・シールドの上限が+1され、全部上げ切るとオーバードライブが40%になる */
@@ -780,8 +801,10 @@ function drawFloats(){
 /* ---------------- 弾 ---------------- */
 const pBullets=[]; // プレイヤー弾
 const eBullets=[]; // 敵弾
-function firePlayer(x,y,vx,vy,dmg,r=4,color='#7df',type='shot',tier=0){
-  pBullets.push({x,y,vx,vy,dmg,r,color,type,life:120, homing:false, tier});
+function firePlayer(x,y,vx,vy,dmg,r=4,color='#7df',type='shot',tier=0,opt){
+  const b={x,y,vx,vy,dmg,r,color,type,life:120, homing:false, tier};
+  if(opt) Object.assign(b,opt);
+  pBullets.push(b);
 }
 function fireHoming(x,y,dmg){
   pBullets.push({x,y,vx:0,vy:-3,dmg,r:5,color:'#ff9be6',type:'missile',life:160,homing:true,turn:0.08,speed:6});
@@ -1012,6 +1035,10 @@ const Game = {
     else if(id==='resume'){ this.state=STATE.PLAY; }
     else if(id.startsWith('buy:')){ this.buy(id.slice(4)); }
     else if(id==='buyod'){ this.buyOverdrive(); }
+    else if(id.startsWith('wpn:')){
+      const n=+id.slice(4);
+      if(n!==weaponIdx()){ Save.data.wpn=n; Save.save(); Sound.powerUp(); } else Sound.buy();
+    }
     else if(id==='skiproll'){ this.finishCredits(); }
     else if(id==='bomb'){ this.bombBlast(); }
     else if(id==='pause'){ this.state = this.state===STATE.PLAY?STATE.PAUSE:STATE.PLAY; }
@@ -1076,6 +1103,7 @@ const ENEMY_DEF = {
   carrier:  { r:24, hp:170,color:'#fa6', credit:40, score:420, dmg:26, drop:0.28 },
   dasher:   { r:13, hp:28, color:'#6ef', credit:12, score:160, dmg:24, drop:0.10 },
 };
+let ENEMY_UID=0;
 function makeEnemy(kind, x, y, opt={}){
   const base = ENEMY_DEF[kind];
   /* v3: 同一ステージ内でも後半ウェーブほど少し固くなる */
@@ -1084,6 +1112,7 @@ function makeEnemy(kind, x, y, opt={}){
   return {
     kind, x, y, r:base.r, hp:hp0, maxHp:hp0,
     color:base.color, credit:base.credit, dmg:base.dmg||20,
+    uid: ++ENEMY_UID,
     t:0, mt:0, fireCd:rand(50,110), vx:0, vy:0, angle:0,
     entered:false, targetY: opt.targetY!==undefined?opt.targetY: rand(80,220),
     homeX:x, phase:rand(0,TAU), scoreV:base.score||100, drop:base.drop||0.12,
@@ -1879,7 +1908,7 @@ function updatePlayer(dt){
   if(p.bombFlash>0) p.bombFlash-=0.04*dt;
   if(p.shieldMax>0 && p.shieldHP<p.shieldMax){ p.shieldRegen+=dt; if(p.shieldRegen>p.st.shieldDelay){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+p.st.shieldRegenRate*powerMul()*dt); } }
   p.fireCd-=dt;
-  if(p.fireCd<=0){ playerFire(); p.fireCd=p.st.fireInterval/16.67; }
+  if(p.fireCd<=0){ playerFire(); p.fireCd=p.st.fireInterval/16.67*curWeapon().rate; }
   if(p.st.missiles>0){ p.missileCd-=dt; if(p.missileCd<=0){ for(let i=0;i<p.st.missiles;i++){ setTimeout(()=>{ if(Game.player===p && Game.state===STATE.PLAY) fireHoming(p.x+rand(-10,10),p.y,p.st.dmg*1.4*powerMul());},i*80);} p.missileCd=90; } }
   if(Math.random()<0.6) spawnParticle(p.x+rand(-4,4),p.y+14,'#4cf',{vx:rand(-.4,.4),vy:rand(1,2.4),life:rand(10,18),r:rand(1.5,3)});
   for(const w of Game.wingmen){
@@ -1968,6 +1997,33 @@ function playerFire(){
   const br = 4 + tier*0.3;
   p.tier = tier; p.muzzle = 1;
   Sound.shoot(tier);
+  const W = curWeapon();
+
+  /* ---- LANCE: 本数を絞った極太の貫通弾 ---- */
+  if(W.id==='lance'){
+    const ln = LANCE_N[lv];
+    const dmg = Math.round(d*boost*powerMul()*LANCE_DMG);
+    for(let i=0;i<ln;i++){
+      const off = ln>1 ? (i-(ln-1)/2)*15 : 0;
+      firePlayer(p.x+off, p.y-14, 0, -speed*1.15, dmg, br*1.7,
+        Game.overdrive?'#ffe9a8':'#c9f0ff', 'lance', tier, {pierce:LANCE_PIERCE, life:100});
+    }
+    p.muzzle=1.5;
+    return;
+  }
+  /* ---- SWARM: 小粒だが必ず追ってくる誘導弾 ---- */
+  if(W.id==='swarm'){
+    const dmg = Math.round(d*boost*powerMul()*SWARM_DMG);
+    for(let i=0;i<n;i++){
+      const off = n>1 ? (i/(n-1) - 0.5)*spreadRad*1.6 : 0;
+      const a = -Math.PI/2 + off;
+      firePlayer(p.x, p.y-12, Math.cos(a)*speed*0.7, Math.sin(a)*speed*0.7, dmg, br*0.92,
+        Game.overdrive?'#ffe9a8':'#9fffd0', 'swarm', tier,
+        {homing:true, turn:0.14, speed:speed*0.85, life:105});
+    }
+    return;
+  }
+  /* ---- VANGUARD: 標準の扇 ---- */
   for(let i=0;i<n;i++){
     const off = n>1 ? (i/(n-1) - 0.5)*spreadRad : 0;
     const a = -Math.PI/2 + off;
@@ -2035,9 +2091,28 @@ function collisions(){
   if(cineLock()) return;                 // v25: 演出中は攻守ともに当たり判定を止める
   for(let i=pBullets.length-1;i>=0;i--){
     const b=pBullets[i]; let hit=false;
-    for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(b,e)){ damageEnemy(e,b.dmg,b.x,b.y); hitSpark(b); hit=true; break; } }
-    if(!hit && Game.boss && !Game.boss.dead && !Game.boss.entering){ if(circleHit(b,Game.boss)){ damageBoss(b.dmg,b.x,b.y); hitSpark(b); hit=true; } }
-    if(!hit){ for(const h of Game.helpers){ if(h.dead||h.entering) continue; if(circleHit(b,h)){ damageBossObj(h,b.dmg,b.x,b.y); hitSpark(b); hit=true; break; } } }
+    /* v2.0: 貫通弾(pierce)は同じ相手に二度当たらないよう uid を覚えておく */
+    const seen = b.pierce ? (b.seen || (b.seen={})) : null;
+    for(const e of Game.enemies){
+      if(e.dead) continue;
+      if(seen && seen[e.uid]) continue;
+      if(circleHit(b,e)){
+        damageEnemy(e,b.dmg,b.x,b.y); hitSpark(b); hit=true;
+        if(seen){ seen[e.uid]=1; if(--b.pierce<=0) break; else { hit=false; continue; } }
+        break;
+      }
+    }
+    if(!hit && Game.boss && !Game.boss.dead && !Game.boss.entering){
+      if(circleHit(b,Game.boss) && !(seen && seen.B)){
+        damageBoss(b.dmg,b.x,b.y); hitSpark(b); hit=true;
+        if(seen){ seen.B=1; if(--b.pierce>0) hit=false; }
+      }
+    }
+    if(!hit){ for(const h of Game.helpers){ if(h.dead||h.entering) continue;
+      if(seen && seen['h'+h.helperIdx]) continue;
+      if(circleHit(b,h)){ damageBossObj(h,b.dmg,b.x,b.y); hitSpark(b); hit=true;
+        if(seen){ seen['h'+h.helperIdx]=1; if(--b.pierce<=0) break; else { hit=false; continue; } }
+        break; } } }
     if(hit) pBullets.splice(i,1);
   }
   if(!p) return;
@@ -3188,6 +3263,9 @@ function drawTitle(){
     ctx.fillStyle='#8fd4ff'; ctx.font='bold 12px system-ui';
     ctx.shadowBlur=gq(10); ctx.shadowColor='#6cf';
     ctx.fillText(M.n+'  '+M.t, VW/2, 408); ctx.shadowBlur=0;
+    const W=curWeapon();
+    ctx.fillStyle=W.color; ctx.font='bold 10px system-ui';
+    ctx.fillText('WEAPON: '+W.name+'  '+W.jp, VW/2, 421);
   }
 
   const bw=200,bx=VW/2-bw/2;
@@ -3272,7 +3350,31 @@ function drawHangar(){
     ctx.fillText(isExtMaxed()?'★★ 限界突破 完了 — OVERDRIVE+ 発動可能':'★ 限界突破 解放中（金の枠を埋めよう）', VW/2, 101);
   }
 
-  const top=104, rh=56, lw=VW-32, lx=16;
+  /* v2.0: 武器タイプ選択（強化レベルは共通、撃ち方だけ変わる） */
+  const wtop=104, wh=42;
+  {
+    const cw=(VW-32-12)/3;
+    WEAPONS.forEach((w,i)=>{
+      const x=16+i*(cw+6), sel=(i===weaponIdx());
+      ctx.save();
+      ctx.strokeStyle= sel? w.color : '#3a4a5c'; ctx.lineWidth= sel?2:1.2;
+      ctx.shadowBlur=gq(sel?12:0); ctx.shadowColor=w.color;
+      ctx.fillStyle= sel? 'rgba(30,60,90,0.7)' : 'rgba(14,24,40,0.5)';
+      roundRect(x,wtop,cw,wh,7); ctx.fill(); ctx.stroke(); ctx.restore();
+      ctx.textAlign='center';
+      ctx.fillStyle= sel? '#ffffff' : '#7f9ab0'; ctx.font='bold 12px system-ui';
+      ctx.fillText(w.name, x+cw/2, wtop+18);
+      ctx.fillStyle= sel? w.color : '#54708a'; ctx.font='10px system-ui';
+      ctx.fillText(w.jp, x+cw/2, wtop+32);
+      addBtn(x,wtop,cw,wh,'wpn:'+i);
+    });
+    ctx.textAlign='left'; ctx.fillStyle='#7f9ab0'; ctx.font='9px system-ui';
+    const dw=curWeapon().desc;
+    ctx.fillText(dw.length>46? dw.slice(0,46)+'…' : dw, 18, wtop+wh+11);
+    ctx.textAlign='center';
+  }
+
+  const top=wtop+wh+18, rh=52, lw=VW-32, lx=16;
   UPGRADES.forEach((u,i)=>{
     const y=top+i*rh; const lvl=upLevel(u.id); const maxed=upMaxed(u); const cost=upCost(u);
     const afford = Save.data.credits>=cost;
@@ -3282,32 +3384,32 @@ function drawHangar(){
     ctx.restore();
     const mx=upMax(u);
     /* 上段: 名前 ＋ レベルの丸（右側） */
-    ctx.textAlign='left'; ctx.fillStyle='#eaffff'; ctx.font='bold 14px system-ui'; ctx.fillText(u.name, lx+12, y+16);
+    ctx.textAlign='left'; ctx.fillStyle='#eaffff'; ctx.font='bold 14px system-ui'; ctx.fillText(u.name, lx+12, y+15);
     for(let k=0;k<mx;k++){
       const isExt = k>=u.max;                       // 限界突破ぶんは金色で示す
-      ctx.beginPath(); ctx.arc(lx+165+k*12, y+13, 4, 0, TAU);
+      ctx.beginPath(); ctx.arc(lx+165+k*12, y+12, 4, 0, TAU);
       if(k<lvl){ ctx.fillStyle=isExt?'#ffd76a':'#6cf'; ctx.shadowBlur=gq(6); ctx.shadowColor=ctx.fillStyle; ctx.fill(); ctx.shadowBlur=0; }
       else { ctx.strokeStyle=isExt?'#8a7038':'#456'; ctx.lineWidth=1; ctx.stroke(); }
     }
     /* v30: 下段は「いま」ではなく「次に買うとどうなるか」を主役にする */
     if(maxed){
       ctx.fillStyle='#9bd'; ctx.font='11px system-ui';
-      ctx.fillText(u.desc(lvl), lx+12, y+36);
+      ctx.fillText(u.desc(lvl), lx+12, y+34);
     } else {
       ctx.fillStyle='#5a7f9c'; ctx.font='10px system-ui';
-      ctx.fillText('現在 Lv'+lvl+' '+u.desc(lvl), lx+12, y+30);
+      ctx.fillText('現在 Lv'+lvl+' '+u.desc(lvl), lx+12, y+28);
       ctx.fillStyle= afford ? '#9fffd0' : '#6f8fa6'; ctx.font='bold 11px system-ui';
-      ctx.fillText('▲ Lv'+(lvl+1)+' '+u.desc(lvl+1), lx+12, y+43);
+      ctx.fillText('▲ Lv'+(lvl+1)+' '+u.desc(lvl+1), lx+12, y+41);
     }
     /* v8: 火力の行に、いまの弾と次の弾の見た目プレビューを表示 */
     if(u.id==='power'){
       const pv=clamp(lvl + (upLevel('weapon')>=6?1:0),0,6);
       const px0 = lx+165+mx*12+16;                 // 限界突破で丸が増えても重ならない位置
-      drawBoltAt(px0, y+13, pv);
+      drawBoltAt(px0, y+12, pv);
       if(!maxed){
-        drawBoltAt(px0+34, y+13, clamp(pv+1,0,6));
+        drawBoltAt(px0+34, y+12, clamp(pv+1,0,6));
         ctx.fillStyle='#5a7f9c'; ctx.font='11px system-ui'; ctx.textAlign='center';
-        ctx.fillText('▶', px0+17, y+17); ctx.textAlign='left';
+        ctx.fillText('▶', px0+17, y+16); ctx.textAlign='left';
       }
     }
     const btw=90, btx=lx+lw-btw-8, bty=y+8;
@@ -3416,6 +3518,13 @@ function buildCreditRoll(){
     for(let l=1;l<=mx;l++) add('lv','Lv'+l+(l>u.max?' ★':''), String((u.spec||u.desc)(l)));
     add('sp');
   }
+
+  add('h2','― 武器タイプ ―');
+  add('txt','強化レベルは共通、撃ち方だけが変わる');
+  add('lv','VANGUARD 扇', '広い扇。近づくほど束が集中して最大火力');
+  add('lv','LANCE 貫通', '本数を絞った極太弾。'+LANCE_PIERCE+'体まで貫通、距離に強い');
+  add('lv','SWARM 追尾', '必ず追う誘導弾。散開した敵とチェイン稼ぎに最適');
+  add('sp');
 
   add('h2','― 立ち回りの報酬 ―');
   add('lv','GRAZE', '敵弾を半径'+GRAZE_R+'px以内でかわすと加算');
@@ -3722,7 +3831,8 @@ function drawWin(){
     ctx.fillStyle='#ffd76a';
     ctx.fillText('獲得 ◈ '+fmt(Game.lastGain||0)+'c ／ 総資産 ◈ '+fmt(Save.data.credits)+'c', VW/2, 508);
     ctx.fillStyle='#8fd4ff'; ctx.font='12px system-ui';
-    ctx.fillText('最高 '+(Game.chainBest||0)+' CHAIN ／ GRAZE '+(Game.graze||0), VW/2, 527);
+    ctx.fillText('最高 '+(Game.chainBest||0)+' CHAIN ／ GRAZE '+(Game.graze||0)
+      +' ／ '+curWeapon().name, VW/2, 527);
   }
   if(T>110){
     const tw=0.6+0.4*Math.sin(T*0.06);
@@ -3780,6 +3890,27 @@ function drawWorld(){
   drawStarfield();
   for(const pu of powerups) drawPowerup(pu);
   for(const b of pBullets){
+    if(b.type==='lance'){
+      /* 極太の貫通ランス */
+      ctx.save(); ctx.shadowBlur=gq(20); ctx.shadowColor=b.color;
+      const g=ctx.createLinearGradient(0,b.y-20,0,b.y+8);
+      g.addColorStop(0,'rgba(255,255,255,0)'); g.addColorStop(0.35,b.color); g.addColorStop(1,'rgba(255,255,255,0.95)');
+      ctx.fillStyle=g;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y-22); ctx.lineTo(b.x+b.r, b.y+2);
+      ctx.lineTo(b.x, b.y+9); ctx.lineTo(b.x-b.r, b.y+2);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#ffffff'; ctx.shadowBlur=gq(10);
+      ctx.beginPath(); ctx.ellipse(b.x, b.y-6, b.r*0.32, 9, 0,0,TAU); ctx.fill();
+      ctx.restore(); continue;
+    }
+    if(b.type==='swarm'){
+      ctx.save(); ctx.shadowBlur=gq(13); ctx.shadowColor=b.color; ctx.fillStyle=b.color;
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill();
+      ctx.fillStyle='#ffffff'; ctx.shadowBlur=gq(6);
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.r*0.42,0,TAU); ctx.fill();
+      ctx.restore(); continue;
+    }
     if(b.type==='missile'){
       ctx.save(); ctx.shadowBlur=12; ctx.shadowColor=b.color; ctx.fillStyle=b.color;
       ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill(); ctx.restore();
