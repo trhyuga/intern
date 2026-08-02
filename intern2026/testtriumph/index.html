@@ -294,6 +294,23 @@ const Sound = {
     this.osc(rand(170,220), 0.10, {type:'square', vol:0.20, to:85, filter:2500});
   },
   /* v18: 「ドーン！」の大爆発（scaleで規模を変える）— v23で増量 */
+  /* v2.0: グレイズ（弾すれすれ）— 短く高い「チッ」。連続でも耳障りにならないよう間引く */
+  _gzT:-1,
+  graze(){
+    if(!this.ac || this.muted) return;
+    const now=this.ac.currentTime;
+    if(now - this._gzT < 0.045) return;
+    this._gzT = now;
+    this.osc(2600, 0.05, {type:'triangle', vol:0.05, to:3400, filter:9000});
+  },
+  /* v2.0: チェイン節目のファンファーレ */
+  chainUp(n){
+    const base = 520 + Math.min(4, Math.log2(Math.max(2,n/5)))*130;
+    [0,1,2].forEach(i=> setTimeout(()=>{
+      this.osc(base*Math.pow(1.26,i), 0.20, {type:'triangle', vol:0.13, filter:7000});
+      this.osc(base*Math.pow(1.26,i)*2, 0.14, {type:'sine', vol:0.06});
+    }, i*55));
+  },
   finalBoom(scale){
     const s=scale||1;
     this.noise(0.9*s, 0.85, 360);
@@ -803,6 +820,8 @@ const Game = {
   player:null, wingmen:[], enemies:[], boss:null, helpers:[], helperIdx:0, overdrive:false,
   stageIndex:0, score:0, runCredits:0, message:null, messageT:0,
   midRun:false, pendingStage:0, stageClearMsgT:0, cine:null, odT:0,
+  /* v2.0: 手触りの核 — グレイズ / チェイン / ヒットストップ */
+  graze:0, grazeCharge:0, grazeFx:0, chain:0, chainT:0, chainBest:0, hitStop:0,
   buttons:[], bg:null, lastGain:0, shopMsg:'', shopMsgT:0,
 
   start(){
@@ -851,6 +870,7 @@ const Game = {
       this.wingmen.push({x:VW/2, y:VH*0.9, side: i===0?-1:1, r:7, fireCd:0});
     }
     this.enemies=[]; this.boss=null; this.helpers=[]; this.helperIdx=0; this.overdrive=false;
+    this.chain=0; this.chainT=0; this.hitStop=0; this.grazeFx=0;
     /* v28: 常時オーバードライブを購入済みなら、最初から金色形態で出撃する */
     if(odAlways()){
       this.overdrive = true;
@@ -943,6 +963,8 @@ const Game = {
   clearRunFlags(){
     this.odAtClear=false; this.extAtClear=false; this.odAlwaysAtClear=false;
     this.roll=null; this.overdrive=false; this.odT=0;
+    this.graze=0; this.grazeCharge=0; this.grazeFx=0;
+    this.chain=0; this.chainT=0; this.chainBest=0; this.hitStop=0;
   },
 
   setMessage(a,b,dur){ this.message={a,b}; this.messageT=dur; },
@@ -959,7 +981,7 @@ const Game = {
   bombBlast(){
     const p=this.player;
     if(!p || p.bombs<=0){ Sound.deny(); return; }
-    p.bombs--; p.bombFlash=1; Sound.bomb();
+    p.bombs--; p.bombFlash=1; Sound.bomb(); this.hitStop=Math.max(this.hitStop,5);
     this.doFlash('#bff',0.9); this.screenShake(18);
     eBullets.length=0;
     for(const e of this.enemies){ damageEnemy(e, BOMB_DMG, e.x,e.y); }
@@ -1205,6 +1227,19 @@ function ringShot(e,count,speed){
 /* v8: ダメージ表示も威力に応じて大きく・熱く */
 function dmgSize(d){ return clamp(11 + d*0.09, 11, 21); }
 function dmgColor(d){ return d>=90?'#fff3b0' : d>=55?'#ffe9a8' : d>=30?'#eafcff' : '#ffffff'; }
+/* =========================================================================
+   v2.0: チェイン（連続撃破）とグレイズ（敵弾すれすれ回避）
+   ・チェイン: 撃破が CHAIN_HOLD フレーム以内に続く限り加算。スコア倍率が伸びる
+   ・グレイズ: 敵弾を GRAZE_R 以内でかわすとゲージが貯まり、満タンでボム+1
+   どちらも「前に出て危険な位置で戦う」ほど得をする設計。
+   ========================================================================= */
+const CHAIN_HOLD = 130;          // チェイン維持フレーム（約2.2秒）
+const CHAIN_MAX_MUL = 4.0;       // スコア倍率の上限
+const GRAZE_R = 30;              // グレイズ判定半径
+const GRAZE_PER_BOMB = 70;       // これだけ稼ぐとボム+1
+function chainScoreMul(){ return Math.min(CHAIN_MAX_MUL, 1 + Game.chain*0.05); }
+function chainCredMul(){ return Math.min(1.5, 1 + Game.chain*0.012); }
+
 function damageEnemy(e, dmg, hx, hy, silent){
   e.hp -= dmg; e.hitFlash=4;
   if(hx!==undefined) addFloat(hx, hy-6, Math.round(dmg), dmgColor(dmg), dmgSize(dmg));
@@ -1214,7 +1249,15 @@ function damageEnemy(e, dmg, hx, hy, silent){
 function killEnemy(e){
   e.dead=true;
   burst(e.x,e.y,e.color,18,4); Sound.explodeAt(e); Game.screenShake(2+Math.min(4,e.r/7));
-  Game.score += e.scoreV; const g=Game.addCredits(e.credit*credScale());
+  /* v2.0: 連続撃破でチェイン。スコアに倍率、クレジットは控えめに乗る */
+  Game.chain++; Game.chainT = CHAIN_HOLD;
+  if(Game.chain > Game.chainBest) Game.chainBest = Game.chain;
+  if(Game.chain===10||Game.chain===25||Game.chain===50||Game.chain===100){
+    addFloat(e.x, e.y-22, Game.chain+' CHAIN!', '#ffe9a8', 15); Sound.chainUp(Game.chain);
+  }
+  if(e.r>=19) Game.hitStop = Math.max(Game.hitStop, 2);
+  Game.score += Math.round(e.scoreV * chainScoreMul());
+  const g=Game.addCredits(e.credit*credScale()*chainCredMul());
   addFloat(e.x,e.y,'+'+Math.round(g)+'c','#ffd76a');
   if(Math.random()<e.drop) spawnPowerup(e.x,e.y);
   if(e.kind==='splitter'){ for(let i=0;i<4;i++){ const m=makeEnemy('mini',e.x,e.y); m.homeX=e.x; m.phase=rand(0,TAU); Game.enemies.push(m); } }
@@ -1941,7 +1984,7 @@ function playerFire(){
 function playerHit(dmg){
   const p=Game.player; if(!p || p.dying || p.inv>0) return;
   if(p.shieldHP>0){ p.shieldHP-=dmg; if(p.shieldHP<0){ p.hp+=p.shieldHP; p.shieldHP=0; } p.shieldRegen=0; Sound.shieldHit(); Game.doFlash('#7ff',0.4); p.inv=20; Game.screenShake(5); }
-  else { p.hp-=dmg; p.inv=50; p.shieldRegen=0; Sound.hullHit(); Game.doFlash('#f66',0.5); Game.screenShake(10); burst(p.x,p.y,'#f88',14,4); }
+  else { p.hp-=dmg; p.inv=50; p.shieldRegen=0; Sound.hullHit(); Game.doFlash('#f66',0.5); Game.screenShake(10); burst(p.x,p.y,'#f88',14,4); Game.hitStop=Math.max(Game.hitStop,4); }
   /* ↑ v7: 本体被弾でも回復タイマーをリセット（戦闘中にシールドが復活し続ける抜け穴を修正） */
   if(p.hp<=0){ p.hp=0; playerDeath(); }
 }
@@ -2000,7 +2043,20 @@ function collisions(){
   if(!p) return;
   for(let i=eBullets.length-1;i>=0;i--){
     const b=eBullets[i];
-    if(dist2(b.x,b.y,p.x,p.y) < (b.r+p.r)*(b.r+p.r)){ playerHit(b.dmg); eBullets.splice(i,1); }
+    const d2 = dist2(b.x,b.y,p.x,p.y);
+    if(d2 < (b.r+p.r)*(b.r+p.r)){ playerHit(b.dmg); eBullets.splice(i,1); continue; }
+    /* v2.0: グレイズ — 当たらずにすれ違った弾は1発につき1回だけカウント */
+    if(!b.gz && !p.dying && d2 < (b.r+GRAZE_R)*(b.r+GRAZE_R)){
+      b.gz=1; b.gzT=10;
+      Game.graze++; Game.grazeCharge++; Game.grazeFx = Math.min(14, Game.grazeFx+7);
+      Game.score += Math.round(12 * chainScoreMul());
+      Sound.graze();
+      if(Game.grazeCharge >= GRAZE_PER_BOMB){
+        Game.grazeCharge = 0;
+        if(p.bombs < 9){ p.bombs++; addFloat(p.x, p.y-30, 'BOMB +1', '#bff', 14); Sound.powerUp(); }
+        else { Game.score += 500; addFloat(p.x, p.y-30, '+500', '#ffd76a', 13); }
+      }
+    }
   }
   for(const e of Game.enemies){ if(e.dead) continue; if(circleHit(e,p)){ playerHit(Math.round(e.dmg*dmgScale())); damageEnemy(e,40,e.x,e.y); } }
   if(Game.boss && !Game.boss.entering && !Game.boss.dead){ if(circleHit(Game.boss,p)){ playerHit(Math.round(24*dmgScale())); } }
@@ -2071,6 +2127,10 @@ function updatePlay(dt){
   if(Game.messageT>0) Game.messageT-=dt;
   if(Game.cine){ Game.cine.t+=dt; if(Game.cine.t>=Game.cine.dur) Game.cine=null; }
   if(Game.odT>0) Game.odT-=dt;
+  /* v2.0: チェインの持続タイマーとグレイズの光 */
+  if(Game.chainT>0){ Game.chainT-=dt; if(Game.chainT<=0) Game.chain=0; }
+  if(Game.grazeFx>0) Game.grazeFx-=dt;
+  for(const b of eBullets){ if(b.gzT>0) b.gzT-=dt; }
   if(Game.shake>0) Game.shake*=0.9;
   if(Game.flash>0) Game.flash-=0.03*dt;
 }
@@ -2325,6 +2385,15 @@ function drawPlayer(){
   const od = Game.overdrive;
   if(!blink){
     if(p.shieldHP>0) drawShieldBarrier(p);
+    /* v2.0: グレイズ中の判定圏を光らせる（どこまで近づけたかが見える） */
+    if(Game.grazeFx>0){
+      const gA=clamp(Game.grazeFx/14,0,1);
+      ctx.save(); ctx.globalAlpha=0.55*gA; ctx.strokeStyle='#cffcff'; ctx.lineWidth=2;
+      ctx.shadowBlur=gq(22); ctx.shadowColor='#8fe8ff';
+      ctx.beginPath(); ctx.arc(p.x,p.y,GRAZE_R*(0.84+0.20*(1-gA)),0,TAU); ctx.stroke();
+      ctx.globalAlpha=0.18*gA; ctx.fillStyle='#8fe8ff'; ctx.fill();
+      ctx.restore(); ctx.globalAlpha=1; ctx.shadowBlur=0;
+    }
     /* v15: オーバードライブの金色オーラ */
     if(od){
       const pulse=0.5+0.5*Math.sin(Game.t*0.08);
@@ -2885,6 +2954,37 @@ function drawHUD(){
   ctx.fillText('◈ '+fmt(Game.runCredits)+'c', VW-12, 24);
   ctx.fillStyle='#9fd'; ctx.font='11px system-ui'; ctx.fillText('SCORE '+fmt(Game.score), VW-12, 40);
   ctx.fillStyle='#8ac'; ctx.fillText('STAGE '+(Game.stageIndex+1), VW-12, 56);
+
+  /* v2.0: チェイン表示（右上・残り時間バー付き） */
+  if(Game.chain>=2){
+    const mul=chainScoreMul(), hot=clamp((Game.chain-2)/48,0,1);
+    const col = hot>0.75?'#ffd76a' : hot>0.4?'#ff9be6' : '#9fffd0';
+    const pop = Game.chainT>CHAIN_HOLD-8 ? 1.25 : 1;
+    /* ボスHPバー(y63-82)や増援バー(x90-390)と重ならない右端の帯に置く */
+    ctx.save(); ctx.textAlign='right'; ctx.translate(VW-12, 100); ctx.scale(pop,pop);
+    ctx.shadowBlur=gq(10+12*hot); ctx.shadowColor=col; ctx.fillStyle=col;
+    ctx.font='bold 19px system-ui'; ctx.fillText('×'+mul.toFixed(2), 0, 0);
+    ctx.shadowBlur=0; ctx.font='bold 10px system-ui'; ctx.fillStyle='#cfe';
+    ctx.fillText(Game.chain+' CHAIN', 0, 13);
+    ctx.restore();
+    const bw=74, bx=VW-12-bw;
+    ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(bx,117,bw,3);
+    ctx.fillStyle=col; ctx.fillRect(bx,117,bw*clamp(Game.chainT/CHAIN_HOLD,0,1),3);
+  }
+
+  /* v2.0: グレイズ数とボムチャージ（左下・ボムボタンの右） */
+  {
+    const gx=112, gy=VH-96;
+    const gc=clamp(Game.grazeCharge/GRAZE_PER_BOMB,0,1);
+    ctx.textAlign='left';
+    ctx.fillStyle= Game.grazeFx>0 ? '#dffcff' : '#5f88aa';
+    ctx.font='bold 10px system-ui';
+    ctx.fillText('GRAZE '+Game.graze, gx, gy);
+    ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(gx, gy+5, 74, 4);
+    ctx.save(); ctx.shadowBlur=gq(8*gc); ctx.shadowColor='#8fe8ff';
+    ctx.fillStyle= gc>0.85?'#bff':'#4aa8d8'; ctx.fillRect(gx, gy+5, 74*gc, 4); ctx.restore();
+  }
+
   /* v17: ボム残弾（左下・ボタンの真下に横並び） */
   {
     const n=p.bombs, sx=BOMB_BTN.x - (n-1)*8;
@@ -3317,6 +3417,13 @@ function buildCreditRoll(){
     add('sp');
   }
 
+  add('h2','― 立ち回りの報酬 ―');
+  add('lv','GRAZE', '敵弾を半径'+GRAZE_R+'px以内でかわすと加算');
+  add('lv','', GRAZE_PER_BOMB+'回ごとにボム+1（満載時は+500点）');
+  add('lv','CHAIN', '約2.2秒以内に撃破を繋げると加算');
+  add('lv','', 'スコア最大×'+CHAIN_MAX_MUL.toFixed(1)+' / クレジット最大×1.5');
+  add('sp');
+
   add('h2','― 機体形式 ―');
   add('txt','攻撃系の強化度に応じて機体が進化する');
   SHIP_MARKS.forEach((m,i)=> add('lv', m.n+' '+m.t, ['基本形','主翼延長＋翼端キャノン','前進カナード＋4発エンジン','副翼＋背びれ＋背骨ライン','機首ブレード＋翼端オーブ'][i]));
@@ -3350,6 +3457,8 @@ function buildCreditRoll(){
   add('h2','― 戦績 ―');
   add('lv','SCORE', fmt(Game.score));
   add('lv','総資産','◈ '+fmt(Save.data.credits)+'c');
+  add('lv','最高チェイン', (Game.chainBest||0)+' CHAIN');
+  add('lv','グレイズ', (Game.graze||0)+' 回');
   add('lv','出撃回数', (Save.data.runs||0)+' 回');
   add('lv','機体形式', SHIP_MARKS[currentMark()].n+' '+SHIP_MARKS[currentMark()].t);
   add('sp'); add('sp');
@@ -3612,6 +3721,8 @@ function drawWin(){
     ctx.fillText('SCORE '+fmt(Game.score), VW/2, 486);
     ctx.fillStyle='#ffd76a';
     ctx.fillText('獲得 ◈ '+fmt(Game.lastGain||0)+'c ／ 総資産 ◈ '+fmt(Save.data.credits)+'c', VW/2, 508);
+    ctx.fillStyle='#8fd4ff'; ctx.font='12px system-ui';
+    ctx.fillText('最高 '+(Game.chainBest||0)+' CHAIN ／ GRAZE '+(Game.graze||0), VW/2, 527);
   }
   if(T>110){
     const tw=0.6+0.4*Math.sin(T*0.06);
@@ -3706,6 +3817,13 @@ function drawWorld(){
       }
       ctx.shadowBlur=12; ctx.shadowColor=b.color; ctx.fillStyle=b.color;
       ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fill();
+      /* v2.0: グレイズした弾は一瞬白く縁取られる */
+      if(b.gzT>0){
+        const ga=clamp(b.gzT/10,0,1);
+        ctx.globalAlpha=ga; ctx.strokeStyle='#ffffff'; ctx.lineWidth=2.2;
+        ctx.shadowBlur=gq(18); ctx.shadowColor='#ffffff';
+        ctx.beginPath(); ctx.arc(b.x,b.y,b.r+2.5+(1-ga)*4,0,TAU); ctx.stroke(); ctx.globalAlpha=1;
+      }
       if(st>=2){
         ctx.shadowBlur=0; ctx.fillStyle='rgba(255,255,255,0.75)';
         ctx.beginPath(); ctx.arc(b.x-b.r*0.28, b.y-b.r*0.28, b.r*0.34, 0, TAU); ctx.fill();
@@ -3950,6 +4068,8 @@ function loop(ts){
   const ms = clamp(ts-Game.last, 1, 120);
   const raw=(ts-Game.last)/16.67; Game.last=ts;
   Game.dt = clamp(raw,0.1,2.5); Game.t += Game.dt;
+  /* v2.0: ヒットストップ — 手応えのある瞬間だけ数フレーム時間を止める */
+  if(Game.hitStop>0){ Game.hitStop -= 1; Game.dt *= 0.07; }
   /* v26: 描画が重い端末では発光のぼかしを自動的に弱め、フレームレートを優先する。
      ヒステリシスを付けて境界でチラつかないようにしている。 */
   Game.msAvg = Game.msAvg===undefined ? ms : Game.msAvg*0.94 + ms*0.06;
