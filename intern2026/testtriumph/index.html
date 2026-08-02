@@ -485,7 +485,7 @@ const Music = {
 /* ---------------- セーブ (localStorage) ---------------- */
 const SAVE_KEY = 'neon_vanguard_save_v1';
 const Save = {
-  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0 },
+  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false },
   load(){
     try{ const s=localStorage.getItem(SAVE_KEY); if(s) this.data=Object.assign(this.data, JSON.parse(s)); }catch(e){}
     if(!this.data.up) this.data.up={};
@@ -498,7 +498,7 @@ const Save = {
   },
   save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); }catch(e){} },
   reset(){
-    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0 };
+    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false };
     this.save();
     /* v33: セーブだけでなく、メモリ上のプレイ記録も一緒に捨てる */
     if(typeof Game!=='undefined' && Game.clearRunFlags) Game.clearRunFlags();
@@ -556,6 +556,7 @@ const UPGRADES = [
     desc:(l)=> '+'+(l*20)+'% 取得',
     spec:(l)=> '取得クレジット +'+(l*20)+'%（1.'+(l*2)+'倍）' },
 ];
+function fmtTime(fr){ const t=fr/60, m=Math.floor(t/60), sec=t-m*60; return m+"'"+(sec<10?'0':'')+sec.toFixed(2)+'"'; }
 function upLevel(id){ return Save.data.up[id]||0; }
 
 /* =========================================================================
@@ -826,7 +827,7 @@ function cineLock(){
 function eb(x,y,vx,vy,opt){
   if(cineLock()) return;                 // 演出中は敵弾を出さない
   opt=opt||{};
-  const rm=rageSpeedMul(); vx*=rm; vy*=rm;
+  const rm=rageSpeedMul()*curDiff().spd; vx*=rm; vy*=rm;
   eBullets.push({x,y,vx,vy, r:opt.r||5, color:opt.color||'#ff5a7a', dmg:Math.round((opt.dmg||16)*dmgScale()),
     life:opt.life||300, t:0, wave:opt.wave||null, ax:opt.ax||0, ay:opt.ay||0,
     acc: opt.acc!==undefined?opt.acc:(ACC_MUL[Game.stageIndex]||0),
@@ -845,6 +846,7 @@ const Game = {
   midRun:false, pendingStage:0, stageClearMsgT:0, cine:null, odT:0,
   /* v2.0: 手触りの核 — グレイズ / チェイン / ヒットストップ */
   graze:0, grazeCharge:0, grazeFx:0, chain:0, chainT:0, chainBest:0, hitStop:0,
+  mode:'campaign', rushT:0, rushKills:0,
   buttons:[], bg:null, lastGain:0, shopMsg:'', shopMsgT:0,
 
   start(){
@@ -860,6 +862,7 @@ const Game = {
   /* ---- 新規出撃 ---- */
   launch(){
     Sound.init(); Sound.resume();
+    this.mode='campaign';
     this.midRun=false;
     this.carryHP=null; this.carryShield=null;   // v4: 新規出撃は満タン
     this.score=0; this.runCredits=0;
@@ -867,6 +870,19 @@ const Game = {
     this.clearRunFlags();
     Save.data.runs++;
     this.beginStage(0);
+  },
+
+  /* v2.0: ボスラッシュ開始（クリア後に解放されるタイムアタック） */
+  launchRush(){
+    Sound.init(); Sound.resume();
+    this.mode='rush'; this.midRun=false;
+    this.carryHP=null; this.carryShield=null;
+    this.score=0; this.runCredits=0;
+    this.clearRunFlags();
+    this.rushT=0; this.rushKills=0;
+    Save.data.runs++;
+    this.beginStage(0);
+    this.startCine('stage','BOSS RUSH','全ボス連戦 — タイムアタック',150);
   },
 
   /* ---- ステージ間格納庫から次ステージへ ---- */
@@ -908,9 +924,13 @@ const Game = {
     this.state = STATE.PLAY;
     this.cine=null; this.odT=0; this.message=null; this.messageT=0;
     /* v23: 何ステージに入ったかがハッキリ分かる開幕カットイン */
-    this.startCine('stage', 'STAGE '+(stage+1), STAGES[stage].name, 165);
+    if(this.mode!=='rush'){
+      this.startCine('stage', 'STAGE '+(stage+1), STAGES[stage].name, 165);
+      Music.play('stage'+stage);
+    } else {
+      Music.play('midboss');
+    }
     Sound.stageStart();
-    Music.play('stage'+stage);
   },
 
   /* ---- ステージクリア → 格納庫（強化タイム） ---- */
@@ -934,7 +954,17 @@ const Game = {
     const gain = Math.round(this.runCredits);
     Save.data.credits += gain; this.runCredits=0;
     if(this.stageIndex+1 > Save.data.best) Save.data.best = this.stageIndex+1;
-    if(win){ Save.data.cleared=true; }
+    if(win){
+      Save.data.cleared=true;
+      if(this.mode==='rush'){
+        Save.data.rushCleared=true;
+        const t=Math.round(this.rushT);
+        if(!Save.data.rushBest || t < Save.data.rushBest){ Save.data.rushBest=t; this.rushRecord=true; }
+        else this.rushRecord=false;
+      } else {
+        Save.data.clearedDiff = (Save.data.clearedDiff|0) | (1<<diffIdx());
+      }
+    }
     /* v32: ランク判定用に、撃破時点の状態を記録しておく */
     this.odAtClear      = !!this.overdrive;    // オーバードライブ状態で倒したか
     this.extAtClear     = isExtMaxed();        // OVERDRIVE+（限界突破カンスト）だったか
@@ -1035,6 +1065,15 @@ const Game = {
     else if(id==='resume'){ this.state=STATE.PLAY; }
     else if(id.startsWith('buy:')){ this.buy(id.slice(4)); }
     else if(id==='buyod'){ this.buyOverdrive(); }
+    else if(id.startsWith('diff:')){
+      const n=+id.slice(5);
+      if(!diffUnlocked(n)){ Sound.deny(); this.shopMsg='まだ解放されていません'; this.shopMsgT=110; return; }
+      if(n!==diffIdx()){ Save.data.diff=n; Save.save(); Sound.powerUp(); } else Sound.buy();
+    }
+    else if(id==='rush'){
+      if(!Save.data.cleared){ Sound.deny(); this.shopMsg='本編クリアで解放されます'; this.shopMsgT=110; return; }
+      this.launchRush();
+    }
     else if(id.startsWith('wpn:')){
       const n=+id.slice(4);
       if(n!==weaponIdx()){ Save.data.wpn=n; Save.save(); Sound.powerUp(); } else Sound.buy();
@@ -1108,7 +1147,7 @@ function makeEnemy(kind, x, y, opt={}){
   const base = ENEMY_DEF[kind];
   /* v3: 同一ステージ内でも後半ウェーブほど少し固くなる */
   const ramp = 1 + Math.min(Director.step||0,20)*0.04;
-  const hp0 = base.hp*(opt.hpMul||1)*ramp;
+  const hp0 = base.hp*(opt.hpMul||1)*ramp*curDiff().hp;
   return {
     kind, x, y, r:base.r, hp:hp0, maxHp:hp0,
     color:base.color, credit:base.credit, dmg:base.dmg||20,
@@ -1285,7 +1324,7 @@ function killEnemy(e){
     addFloat(e.x, e.y-22, Game.chain+' CHAIN!', '#ffe9a8', 15); Sound.chainUp(Game.chain);
   }
   if(e.r>=19) Game.hitStop = Math.max(Game.hitStop, 2);
-  Game.score += Math.round(e.scoreV * chainScoreMul());
+  Game.score += Math.round(e.scoreV * chainScoreMul() * curDiff().score);
   const g=Game.addCredits(e.credit*credScale()*chainCredMul());
   addFloat(e.x,e.y,'+'+Math.round(g)+'c','#ffd76a');
   if(Math.random()<e.drop) spawnPowerup(e.x,e.y);
@@ -1342,6 +1381,27 @@ const STAGES = [
 const BOSS_NAMES = ['AZURE CRUSHER','CRIMSON MOTH','GOLD SENTINEL'];
 const MID_NAMES  = ['RAZOR','PHANTOM','WARDEN'];
 
+/* =========================================================================
+   v2.0: 難易度（NORMAL / HARD / NIGHTMARE）
+   本編のバランスは NORMAL のまま。上級者向けは別の段として上に積む。
+   HARD はクリアで、NIGHTMARE は HARD クリアで解放。
+   ========================================================================= */
+const DIFFS = [
+  { id:0, name:'NORMAL',    jp:'標準',   color:'#7fd4ff', hp:1.00, dmg:1.00, spd:1.00, cred:1.00, score:1.0, noRegen:false,
+    desc:'フル強化すれば初心者でも爽快にクリアできるバランス' },
+  { id:1, name:'HARD',      jp:'高難度', color:'#ff9be6', hp:1.55, dmg:1.30, spd:1.10, cred:1.35, score:1.6, noRegen:false,
+    desc:'敵が固く痛い。報酬とスコアも増える（クリアで解放）' },
+  { id:2, name:'NIGHTMARE', jp:'悪夢',   color:'#ff5a6a', hp:2.40, dmg:1.75, spd:1.22, cred:1.80, score:2.6, noRegen:true,
+    desc:'シールドの自動回復なし。避け切る腕が要る（HARDクリアで解放）' },
+];
+function diffIdx(){ return clamp(Save.data.diff|0, 0, DIFFS.length-1); }
+function curDiff(){ return DIFFS[diffIdx()]; }
+function diffUnlocked(i){
+  if(i===0) return true;
+  if(i===1) return !!Save.data.cleared;
+  return ((Save.data.clearedDiff|0) & 2) !== 0;   // HARD クリア済み
+}
+
 /* v3 難易度カーブ: 終盤ほど敵が固く・痛くなる。クレジット収入も増える。
    フル強化時のプレイヤー火力/防御が大きく上回る設計なので、
    最後まで強化すれば初心者でも爽快にクリアできる。 */
@@ -1352,8 +1412,8 @@ const CRED_MUL = [1.0, 1.4, 1.8];   // クレジット倍率(ステージ別)
    （撃ち出しの初速は同じ。低速弾ほどよく伸び、元から速い弾は伸びない） */
 const ACC_MUL  = [0.005, 0.009, 0.014];
 const ACC_CAP  = [1.70, 2.05, 2.45];   // 到達できる最大倍率（終盤ほど伸びる）
-function dmgScale(){ return DMG_MUL[Game.stageIndex]||1; }
-function credScale(){ return CRED_MUL[Game.stageIndex]||1; }
+function dmgScale(){ return (DMG_MUL[Game.stageIndex]||1) * curDiff().dmg; }
+function credScale(){ return (CRED_MUL[Game.stageIndex]||1) * curDiff().cred; }
 
 function formationRow(kind, count, y, hpMul){
   const gap=VW/(count+1);
@@ -1375,7 +1435,8 @@ const Director = {
   stage:0, step:0, timer:0, script:[], phase:'run', bossIntro:0, transformT:0,
   begin(stage){
     this.stage=stage; this.step=0; this.timer=0; this.phase='run';
-    this.script = buildScript(stage);
+    this.rush = (Game.mode==='rush');
+    this.script = this.rush ? buildRushScript() : buildScript(stage);
     Game.stageIndex=stage;
   },
   update(dt){
@@ -1398,6 +1459,16 @@ const Director = {
         this.phase='bossintro'; this.bossIntro=120; s.started=true;
         Music.play('boss'+this.stage);
       }
+    } else if(s.type==='rush'){
+      /* ボスラッシュ: 種別と面を明示して順番に出す */
+      if(!s.started){
+        s.started=true;
+        this.stage = s.stage; Game.stageIndex = s.stage;
+        if(s.kind==='mid'){ spawnMidboss(s.stage); }
+        else if(s.kind==='boss'){ spawnBoss(s.stage); Music.play('boss'+s.stage); }
+        else { spawnGreatBoss(VW/2, -60); Music.play('final'); }
+      }
+      if(s.done) this.next();
     }
   },
   next(){ this.step++; this.timer=0; },
@@ -1413,6 +1484,25 @@ const Director = {
 };
 
 /* v2 ステージ台本: 各ステージ約3倍・3面はさらに長く中ボス2体 */
+/* =========================================================================
+   v2.0: BOSS RUSH — 全ボスを連戦するタイムアタック（クリア後に解放）
+   雑魚ウェーブ無し。中ボス3→ステージボス3→大ボスの順で、間に短い小休止。
+   ========================================================================= */
+const RUSH_ORDER = [
+  {kind:'mid', stage:0}, {kind:'boss', stage:0},
+  {kind:'mid', stage:1}, {kind:'boss', stage:1},
+  {kind:'mid', stage:2}, {kind:'boss', stage:2},
+  {kind:'great', stage:2},
+];
+function buildRushScript(){
+  const S=[];
+  RUSH_ORDER.forEach((r,i)=>{
+    if(i>0) S.push({type:'wait', t:34});
+    S.push({type:'rush', kind:r.kind, stage:r.stage, idx:i});
+  });
+  return S;
+}
+
 function buildScript(stage){
   const S=[];
   const m = HP_MUL[stage];   // 敵HP倍率（v3: 終盤ほど大幅強化）
@@ -1490,6 +1580,7 @@ function makeBoss(kind, stage){
   if(kind==='mid'){ B.r=38; B.maxHp=[1300,5200,15000][stage]; B.name=MID_NAMES[stage]; }
   else if(kind==='great'){ B.r=64; B.maxHp=95000; B.name='OMEGA CORE'; B.baseY=VH*0.24; }
   else { B.r=52; B.maxHp=[3400,14000,42000][stage]; B.name=BOSS_NAMES[stage]; }
+  B.maxHp = Math.round(B.maxHp * curDiff().hp);
   B.hp=B.maxHp;
   const pc = kind==='great'?10:(kind==='mid'?5:7);
   for(let i=0;i<pc;i++){ B.parts.push({a:i/pc*TAU, hp: kind==='great'?220:130, alive:true}); }
@@ -1658,6 +1749,14 @@ function finishBossDeath(b){
   if(b.isHelper){
     /* 援軍を撃破 → 次の援軍が控える（出現は最終ボスのHP次第） */
     Game.helperIdx = Math.max(Game.helperIdx, b.helperIdx+1);
+    return;
+  }
+  if(Director.rush && !b.isHelper){
+    /* ボスラッシュ: 大ボスならクリア、それ以外は次のボスへ */
+    Game.boss=null;
+    if(b.isGreat){ Game.helpers.length=0; Game.enemies.length=0;
+      if(Game.state===STATE.PLAY) Game.endRun(true); return; }
+    const s=Director.script[Director.step]; if(s) s.done=true;
     return;
   }
   if(b.isMid){
@@ -1906,7 +2005,7 @@ function updatePlayer(dt){
   if(p.inv>0) p.inv-=dt;
   if(p.muzzle>0) p.muzzle-=0.16*dt;
   if(p.bombFlash>0) p.bombFlash-=0.04*dt;
-  if(p.shieldMax>0 && p.shieldHP<p.shieldMax){ p.shieldRegen+=dt; if(p.shieldRegen>p.st.shieldDelay){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+p.st.shieldRegenRate*powerMul()*dt); } }
+  if(p.shieldMax>0 && p.shieldHP<p.shieldMax && !curDiff().noRegen){ p.shieldRegen+=dt; if(p.shieldRegen>p.st.shieldDelay){ p.shieldHP=Math.min(p.shieldMax,p.shieldHP+p.st.shieldRegenRate*powerMul()*dt); } }
   p.fireCd-=dt;
   if(p.fireCd<=0){ playerFire(); p.fireCd=p.st.fireInterval/16.67*curWeapon().rate; }
   if(p.st.missiles>0){ p.missileCd-=dt; if(p.missileCd<=0){ for(let i=0;i<p.st.missiles;i++){ setTimeout(()=>{ if(Game.player===p && Game.state===STATE.PLAY) fireHoming(p.x+rand(-10,10),p.y,p.st.dmg*1.4*powerMul());},i*80);} p.missileCd=90; } }
@@ -2203,6 +2302,7 @@ function updatePlay(dt){
   if(Game.cine){ Game.cine.t+=dt; if(Game.cine.t>=Game.cine.dur) Game.cine=null; }
   if(Game.odT>0) Game.odT-=dt;
   /* v2.0: チェインの持続タイマーとグレイズの光 */
+  if(Game.mode==='rush' && !Game.cine) Game.rushT+=dt;
   if(Game.chainT>0){ Game.chainT-=dt; if(Game.chainT<=0) Game.chain=0; }
   if(Game.grazeFx>0) Game.grazeFx-=dt;
   for(const b of eBullets){ if(b.gzT>0) b.gzT-=dt; }
@@ -3028,7 +3128,15 @@ function drawHUD(){
   ctx.textAlign='right'; ctx.fillStyle='#ffd76a'; ctx.font='bold 13px system-ui';
   ctx.fillText('◈ '+fmt(Game.runCredits)+'c', VW-12, 24);
   ctx.fillStyle='#9fd'; ctx.font='11px system-ui'; ctx.fillText('SCORE '+fmt(Game.score), VW-12, 40);
-  ctx.fillStyle='#8ac'; ctx.fillText('STAGE '+(Game.stageIndex+1), VW-12, 56);
+  if(Game.mode==='rush'){
+    const left = RUSH_ORDER.length - Math.min(RUSH_ORDER.length, Director.script.filter(x=>x.type==='rush'&&x.done).length);
+    ctx.fillStyle='#ffd76a'; ctx.fillText(fmtTime(Game.rushT), VW-12, 56);
+    ctx.fillStyle='#8ac'; ctx.font='10px system-ui'; ctx.fillText('BOSS RUSH  残り'+left, VW-12, 70);
+  } else {
+    ctx.fillStyle='#8ac'; ctx.fillText('STAGE '+(Game.stageIndex+1), VW-12, 56);
+    if(diffIdx()>0){ ctx.fillStyle=curDiff().color; ctx.font='bold 10px system-ui';
+      ctx.fillText(curDiff().name, VW-12, 70); }
+  }
 
   /* v2.0: チェイン表示（右上・残り時間バー付き） */
   if(Game.chain>=2){
@@ -3266,6 +3374,12 @@ function drawTitle(){
     const W=curWeapon();
     ctx.fillStyle=W.color; ctx.font='bold 10px system-ui';
     ctx.fillText('WEAPON: '+W.name+'  '+W.jp, VW/2, 421);
+    if(diffIdx()>0 || Save.data.rushBest){
+      ctx.fillStyle=curDiff().color; ctx.font='bold 9px system-ui';
+      const bits=[]; if(diffIdx()>0) bits.push(curDiff().name);
+      if(Save.data.rushBest) bits.push('RUSH '+fmtTime(Save.data.rushBest));
+      ctx.fillText(bits.join('   /   '), VW/2, 433);
+    }
   }
 
   const bw=200,bx=VW/2-bw/2;
@@ -3374,7 +3488,28 @@ function drawHangar(){
     ctx.textAlign='center';
   }
 
-  const top=wtop+wh+18, rh=52, lw=VW-32, lx=16;
+  /* v2.0: 難易度タブ */
+  const dtop=wtop+wh+16, dh=28;
+  {
+    const cw=(VW-32-12)/3;
+    DIFFS.forEach((d,i)=>{
+      const x=16+i*(cw+6), sel=(i===diffIdx()), lock=!diffUnlocked(i);
+      ctx.save();
+      ctx.strokeStyle= lock? '#33404e' : (sel? d.color : '#3a4a5c'); ctx.lineWidth= sel?1.8:1.1;
+      ctx.shadowBlur=gq(sel?10:0); ctx.shadowColor=d.color;
+      ctx.fillStyle= sel? 'rgba(40,26,44,0.7)' : 'rgba(14,24,40,0.45)';
+      roundRect(x,dtop,cw,dh,6); ctx.fill(); ctx.stroke(); ctx.restore();
+      ctx.textAlign='center';
+      ctx.fillStyle= lock? '#4a5a6a' : (sel? '#ffffff' : '#7f9ab0'); ctx.font='bold 11px system-ui';
+      ctx.fillText(lock? '🔒 '+d.name : d.name, x+cw/2, dtop+18);
+      addBtn(x,dtop,cw,dh,'diff:'+i);
+    });
+    ctx.textAlign='left'; ctx.fillStyle=curDiff().color; ctx.font='9px system-ui';
+    ctx.fillText(curDiff().desc, 18, dtop+dh+11);
+    ctx.textAlign='center';
+  }
+
+  const top=dtop+dh+18, rh=48, lw=VW-32, lx=16;
   UPGRADES.forEach((u,i)=>{
     const y=top+i*rh; const lvl=upLevel(u.id); const maxed=upMaxed(u); const cost=upCost(u);
     const afford = Save.data.credits>=cost;
@@ -3384,32 +3519,32 @@ function drawHangar(){
     ctx.restore();
     const mx=upMax(u);
     /* 上段: 名前 ＋ レベルの丸（右側） */
-    ctx.textAlign='left'; ctx.fillStyle='#eaffff'; ctx.font='bold 14px system-ui'; ctx.fillText(u.name, lx+12, y+15);
+    ctx.textAlign='left'; ctx.fillStyle='#eaffff'; ctx.font='bold 14px system-ui'; ctx.fillText(u.name, lx+12, y+14);
     for(let k=0;k<mx;k++){
       const isExt = k>=u.max;                       // 限界突破ぶんは金色で示す
-      ctx.beginPath(); ctx.arc(lx+165+k*12, y+12, 4, 0, TAU);
+      ctx.beginPath(); ctx.arc(lx+165+k*12, y+11, 4, 0, TAU);
       if(k<lvl){ ctx.fillStyle=isExt?'#ffd76a':'#6cf'; ctx.shadowBlur=gq(6); ctx.shadowColor=ctx.fillStyle; ctx.fill(); ctx.shadowBlur=0; }
       else { ctx.strokeStyle=isExt?'#8a7038':'#456'; ctx.lineWidth=1; ctx.stroke(); }
     }
     /* v30: 下段は「いま」ではなく「次に買うとどうなるか」を主役にする */
     if(maxed){
       ctx.fillStyle='#9bd'; ctx.font='11px system-ui';
-      ctx.fillText(u.desc(lvl), lx+12, y+34);
+      ctx.fillText(u.desc(lvl), lx+12, y+31);
     } else {
       ctx.fillStyle='#5a7f9c'; ctx.font='10px system-ui';
-      ctx.fillText('現在 Lv'+lvl+' '+u.desc(lvl), lx+12, y+28);
+      ctx.fillText('現在 Lv'+lvl+' '+u.desc(lvl), lx+12, y+26);
       ctx.fillStyle= afford ? '#9fffd0' : '#6f8fa6'; ctx.font='bold 11px system-ui';
-      ctx.fillText('▲ Lv'+(lvl+1)+' '+u.desc(lvl+1), lx+12, y+41);
+      ctx.fillText('▲ Lv'+(lvl+1)+' '+u.desc(lvl+1), lx+12, y+37);
     }
     /* v8: 火力の行に、いまの弾と次の弾の見た目プレビューを表示 */
     if(u.id==='power'){
       const pv=clamp(lvl + (upLevel('weapon')>=6?1:0),0,6);
       const px0 = lx+165+mx*12+16;                 // 限界突破で丸が増えても重ならない位置
-      drawBoltAt(px0, y+12, pv);
+      drawBoltAt(px0, y+11, pv);
       if(!maxed){
-        drawBoltAt(px0+34, y+12, clamp(pv+1,0,6));
+        drawBoltAt(px0+34, y+11, clamp(pv+1,0,6));
         ctx.fillStyle='#5a7f9c'; ctx.font='11px system-ui'; ctx.textAlign='center';
-        ctx.fillText('▶', px0+17, y+16); ctx.textAlign='left';
+        ctx.fillText('▶', px0+17, y+15); ctx.textAlign='left';
       }
     }
     const btw=90, btx=lx+lw-btw-8, bty=y+8;
@@ -3444,8 +3579,20 @@ function drawHangar(){
 
   const bw=210,bx=VW/2-bw/2, by=top+UPGRADES.length*rh+6+extraY;
   const lbl = Game.midRun ? ('STAGE '+(Game.pendingStage+1)+' へ ▶') : '出撃 ▶';
-  drawButton(bx, by, bw, 48, lbl, true, '#f6c'); addBtn(bx,by,bw,48,'launch');
-  ctx.textAlign='center'; ctx.fillStyle='#567'; ctx.font='11px system-ui'; ctx.fillText('Enter / タップ で出撃', VW/2, by+66);
+  drawButton(bx, by, bw, 44, lbl, true, '#f6c'); addBtn(bx,by,bw,44,'launch');
+  /* v2.0: ボスラッシュ（本編クリアで解放） */
+  if(!Game.midRun){
+    const rw=210, rx=VW/2-rw/2, ry=by+48, unlocked=!!Save.data.cleared;
+    drawButton(rx, ry, rw, 32, unlocked?'BOSS RUSH ▶':'🔒 BOSS RUSH', unlocked, unlocked?'#ffd76a':'#456');
+    addBtn(rx,ry,rw,32,'rush');
+    ctx.textAlign='center'; ctx.font='9px system-ui'; ctx.fillStyle='#7f9ab0';
+    ctx.fillText(unlocked
+      ? (Save.data.rushBest? '全ボス連戦 — ベスト '+fmtTime(Save.data.rushBest) : '全ボス連戦のタイムアタック')
+      : '本編クリアで解放', VW/2, ry+44);
+  } else {
+    ctx.textAlign='center'; ctx.fillStyle='#567'; ctx.font='11px system-ui';
+    ctx.fillText('Enter / タップ で出撃', VW/2, by+62);
+  }
   if(Game.midRun && Game.carryHP!=null){
     ctx.fillStyle='#f9a'; ctx.fillText('※ 機体ダメージは持ち越し（現在HP '+Math.ceil(Game.carryHP)+'）', VW/2, by+84);
   }
@@ -3832,7 +3979,11 @@ function drawWin(){
     ctx.fillText('獲得 ◈ '+fmt(Game.lastGain||0)+'c ／ 総資産 ◈ '+fmt(Save.data.credits)+'c', VW/2, 508);
     ctx.fillStyle='#8fd4ff'; ctx.font='12px system-ui';
     ctx.fillText('最高 '+(Game.chainBest||0)+' CHAIN ／ GRAZE '+(Game.graze||0)
-      +' ／ '+curWeapon().name, VW/2, 527);
+      +' ／ '+curWeapon().name+(diffIdx()>0?' ／ '+curDiff().name:''), VW/2, 527);
+    if(Game.mode==='rush'){
+      ctx.fillStyle= Game.rushRecord? '#ffd76a':'#9fffd0'; ctx.font='bold 14px system-ui';
+      ctx.fillText('BOSS RUSH  '+fmtTime(Game.rushT)+(Game.rushRecord?'  ★NEW RECORD':''), VW/2, 546);
+    }
   }
   if(T>110){
     const tw=0.6+0.4*Math.sin(T*0.06);
