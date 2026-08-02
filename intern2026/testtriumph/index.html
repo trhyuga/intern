@@ -3515,8 +3515,9 @@ function drawWin(){
   /* ランクメダル */
   if(T>70){
     const sc2=Game.score;
-    const rank = sc2>=65000?'S': sc2>=50000?'A': sc2>=35000?'B':'C';
-    const rc = rank==='S'?'#ffd76a': rank==='A'?'#f6c': rank==='B'?'#7df':'#9fd';
+    /* v31: 最高ランクは S ではなく Z（Zenith） */
+    const rank = sc2>=65000?'Z': sc2>=50000?'A': sc2>=35000?'B':'C';
+    const rc = rank==='Z'?'#ffd76a': rank==='A'?'#f6c': rank==='B'?'#7df':'#9fd';
     const rp=1+Math.sin(T*0.1)*0.05;
     const pop = T<86 ? 1.8-0.8*((T-70)/16) : 1;
     ctx.save(); ctx.translate(VW/2, 396); ctx.scale(rp*pop,rp*pop);
