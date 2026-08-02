@@ -58,6 +58,8 @@ function fmt(n){ return Math.floor(n).toLocaleString('en-US'); }
 const keys = {};
 /* v5: 相対ドラッグ操作 — 指を置いた場所からの移動量ぶんだけ自機が動く */
 const pointer = { active:false, id:null, px:VW/2, py:VH*0.8, dxAcc:0, dyAcc:0 };
+/* v31: 格納庫の強化リストのスクロール位置（項目が増えても画面高さを一定に保つため） */
+let hangarScroll = 0;
 addEventListener('keydown', e=>{
   keys[e.code]=true;
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
@@ -114,7 +116,13 @@ function pointerUp(id){
   btnTouches.delete(id);
   /* 担当外の指が離れてもドラッグは継続 */
   if(pointer.id !== null && id !== undefined && pointer.id !== id) return;
+  const wasDragging = pointer.active;
   pointer.active=false; pointer.id=null; pointer.dxAcc=0; pointer.dyAcc=0;
+  /* v31: 格納庫でのドラッグスクロールは、指を離したら行の境目にスナップする
+     （中途半端な位置で止まるとボタンが押せなくなるため） */
+  if(wasDragging && Game.state===STATE.HANGAR){
+    hangarScroll = clamp(Math.round(hangarScroll/HANGAR_RH)*HANGAR_RH, 0, hangarMaxScroll());
+  }
 }
 /* 担当の指を離した時、画面に残っている別の指（ボタン押下用を除く）へ
    ドラッグ担当を引き継ぐ。座標を基準に取り直すのでワープは起きない。 */
@@ -151,6 +159,14 @@ function onTouchEnd(e){
 }
 addEventListener('touchend', onTouchEnd, {passive:false});
 addEventListener('touchcancel', onTouchEnd, {passive:false});
+
+/* v31: 格納庫の強化リストをホイールでもスクロール（1目盛=1行、常にスナップ済み） */
+addEventListener('wheel', e=>{
+  if(Game.state!==STATE.HANGAR) return;
+  e.preventDefault();
+  const dir = e.deltaY>0 ? 1 : -1;
+  hangarScroll = clamp(hangarScroll + dir*HANGAR_RH, 0, hangarMaxScroll());
+}, {passive:false});
 
 /* ---------------- 効果音 (WebAudio 簡易シンセ) ---------------- */
 const Sound = {
@@ -1204,7 +1220,7 @@ const Game = {
     else if(id==='pause'){ this.state = this.state===STATE.PLAY?STATE.PAUSE:STATE.PLAY; }
   },
 
-  gotoHangar(){ this.state=STATE.HANGAR; Music.play('opening'); },
+  gotoHangar(){ this.state=STATE.HANGAR; hangarScroll=0; Music.play('opening'); },
 
   buy(uid){
     const u = UPGRADES.find(x=>x.id===uid); if(!u) return;
@@ -4107,6 +4123,13 @@ function drawAchToast(){
 }
 
 /* --- 格納庫（ショップ） --- */
+/* v31: 格納庫の強化リストは6行ぶんだけを常に表示し、残りはスクロールする。
+   こうしておけば今後どれだけ強化項目が増えても格納庫の縦幅は変わらない。 */
+const HANGAR_ROWVIS=6, HANGAR_RH=48;
+function hangarMaxScroll(){
+  const rows = UPGRADES.length + (isExtMaxed()?1:0);
+  return Math.max(0, rows*HANGAR_RH - HANGAR_ROWVIS*HANGAR_RH);
+}
 function drawHangar(){
   Game.buttons=[];
   drawStarfield();
@@ -4181,9 +4204,22 @@ function drawHangar(){
     ctx.textAlign='center';
   }
 
-  const top=dtop+dh+18, rh=48, lw=VW-32, lx=16;
+  const top=dtop+dh+18, rh=HANGAR_RH, lw=VW-32, lx=16;
+  /* v31: 強化リストは常に HANGAR_ROWVIS 行ぶんの高さに固定し、はみ出す分はスクロールで見せる。
+     こうすることで格納庫全体の縦幅は強化項目の数に関係なく一定になる。 */
+  const listH=HANGAR_ROWVIS*rh, panelBottom=top+listH;
+  const odRowOn = isExtMaxed();
+  const totalRows = UPGRADES.length + (odRowOn?1:0);
+  const maxScroll = hangarMaxScroll();
+  /* ドラッグ中は指の移動量ぶんスクロール（自機移動と同じ「相対ドラッグ」方式） */
+  if(pointer.dyAcc!==0){ hangarScroll=clamp(hangarScroll-pointer.dyAcc, 0, maxScroll); pointer.dyAcc=0; pointer.dxAcc=0; }
+  hangarScroll = clamp(hangarScroll, 0, maxScroll);
+
+  ctx.save(); ctx.beginPath(); ctx.rect(0, top, VW, listH); ctx.clip();
   UPGRADES.forEach((u,i)=>{
-    const y=top+i*rh; const lvl=upLevel(u.id); const maxed=upMaxed(u); const cost=upCost(u);
+    const y=top+i*rh-hangarScroll;
+    if(y+rh < top-1 || y > panelBottom+1) return;   // 画面外の行は描画しない（軽量化）
+    const lvl=upLevel(u.id); const maxed=upMaxed(u); const cost=upCost(u);
     const afford = Save.data.credits>=cost;
     ctx.save();
     ctx.strokeStyle=maxed?'#7f8': (afford?'#6cf':'#456'); ctx.lineWidth=1.5; ctx.shadowBlur=gq(8); ctx.shadowColor=ctx.strokeStyle;
@@ -4220,36 +4256,52 @@ function drawHangar(){
       }
     }
     const btw=90, btx=lx+lw-btw-8, bty=y+8;
+    /* v31: クリップ境界で半分だけ見えている行は、押せてしまうと事故になるので
+       完全に見えている時だけ addBtn する（見た目はそのまま描画する） */
+    const fullyVisible = y>=top-0.5 && y+(rh-8)<=panelBottom+0.5;
     if(maxed){ drawButton(btx,bty,btw,rh-24,'MAX',false,'#7f8'); }
-    else { drawButton(btx,bty,btw,rh-24,'◈'+fmt(cost),afford,afford?'#6cf':'#456'); addBtn(btx,bty,btw,rh-24,'buy:'+u.id); }
+    else { drawButton(btx,bty,btw,rh-24,'◈'+fmt(cost),afford,afford?'#6cf':'#456'); if(fullyVisible) addBtn(btx,bty,btw,rh-24,'buy:'+u.id); }
   });
 
-  /* v28: 常時オーバードライブ（限界突破カンスト後に解放される最終購入） */
-  let extraY = 0;
-  if(isExtMaxed()){
-    const oy = top+UPGRADES.length*rh+4, owned = odAlways();
-    const afford = Save.data.credits >= OD_COST;
-    const g = 0.6+0.4*Math.sin(Game.t*0.07);
+  /* v28: 常時オーバードライブ（限界突破カンスト後に解放される最終購入。リストの最後の行として並ぶ） */
+  if(odRowOn){
+    const y = top+UPGRADES.length*rh-hangarScroll, owned = odAlways();
+    if(!(y+rh < top-1 || y > panelBottom+1)){
+      const afford = Save.data.credits >= OD_COST;
+      const g = 0.6+0.4*Math.sin(Game.t*0.07);
+      ctx.save();
+      ctx.strokeStyle = owned? '#9fffd0' : (afford? '#ffd76a':'#7a6330');
+      ctx.lineWidth=1.8; ctx.shadowBlur=gq(owned?14:(afford?10+8*g:5)); ctx.shadowColor=ctx.strokeStyle;
+      const grd=ctx.createLinearGradient(lx,y,lx+lw,y);
+      grd.addColorStop(0,'rgba(90,62,12,0.55)'); grd.addColorStop(1,'rgba(30,22,8,0.35)');
+      ctx.fillStyle=grd; roundRect(lx,y,lw,rh-8,8); ctx.fill(); ctx.stroke(); ctx.restore();
+      ctx.textAlign='left'; ctx.fillStyle= owned?'#9fffd0':'#ffe9a8'; ctx.font='bold 14px system-ui';
+      ctx.fillText('★ 常時オーバードライブ', lx+12, y+20);
+      ctx.fillStyle= owned?'#8fd0aa':'#c9a86a'; ctx.font='11px system-ui';
+      ctx.fillText(owned?'出撃時から金色形態 — 火力・シールド +40%'
+                       :'購入すると最初から金色形態で戦える（+40%）', lx+12, y+38);
+      const btw=90, btx=lx+lw-btw-8, bty=y+8;
+      const fullyVisible = y>=top-0.5 && y+(rh-8)<=panelBottom+0.5;
+      if(owned) drawButton(btx,bty,btw,rh-24,'所有済',false,'#7f8');
+      else { drawButton(btx,bty,btw,rh-24,'◈'+fmt(OD_COST),afford,afford?'#ffd76a':'#456');
+             if(fullyVisible) addBtn(btx,bty,btw,rh-24,'buyod'); }
+    }
+  }
+  ctx.restore();
+  ctx.textAlign='center';
+
+  /* v31: スクロール可能な時だけ細いスクロールバーを右端に表示（掴んでの操作は不要、目安として） */
+  if(maxScroll>0){
+    const tx=VW-9, ty0=top+2, th=listH-4;
     ctx.save();
-    ctx.strokeStyle = owned? '#9fffd0' : (afford? '#ffd76a':'#7a6330');
-    ctx.lineWidth=1.8; ctx.shadowBlur=gq(owned?14:(afford?10+8*g:5)); ctx.shadowColor=ctx.strokeStyle;
-    const grd=ctx.createLinearGradient(lx,oy,lx+lw,oy);
-    grd.addColorStop(0,'rgba(90,62,12,0.55)'); grd.addColorStop(1,'rgba(30,22,8,0.35)');
-    ctx.fillStyle=grd; roundRect(lx,oy,lw,rh-8,8); ctx.fill(); ctx.stroke(); ctx.restore();
-    ctx.textAlign='left'; ctx.fillStyle= owned?'#9fffd0':'#ffe9a8'; ctx.font='bold 14px system-ui';
-    ctx.fillText('★ 常時オーバードライブ', lx+12, oy+20);
-    ctx.fillStyle= owned?'#8fd0aa':'#c9a86a'; ctx.font='11px system-ui';
-    ctx.fillText(owned?'出撃時から金色形態 — 火力・シールド +40%'
-                     :'購入すると最初から金色形態で戦える（+40%）', lx+12, oy+38);
-    const btw=90, btx=lx+lw-btw-8, bty=oy+8;
-    if(owned) drawButton(btx,bty,btw,rh-24,'所有済',false,'#7f8');
-    else { drawButton(btx,bty,btw,rh-24,'◈'+fmt(OD_COST),afford,afford?'#ffd76a':'#456');
-           addBtn(btx,bty,btw,rh-24,'buyod'); }
-    ctx.textAlign='center';
-    extraY = rh;
+    ctx.fillStyle='rgba(255,255,255,0.10)'; roundRect(tx,ty0,4,th,2); ctx.fill();
+    const thumbH=Math.max(22, th*listH/(totalRows*rh));
+    const thumbY=ty0+(th-thumbH)*(hangarScroll/maxScroll);
+    ctx.fillStyle='rgba(140,225,255,0.6)'; roundRect(tx,thumbY,4,thumbH,2); ctx.fill();
+    ctx.restore();
   }
 
-  const bw=210,bx=VW/2-bw/2, by=top+UPGRADES.length*rh+6+extraY;
+  const bw=210,bx=VW/2-bw/2, by=panelBottom+10;
   const lbl = Game.midRun ? ('STAGE '+(Game.pendingStage+1)+' へ ▶') : '出撃 ▶';
   drawButton(bx, by, bw, 44, lbl, true, '#f6c'); addBtn(bx,by,bw,44,'launch');
   /* v2.0: ボスラッシュ（本編クリアで解放） */
