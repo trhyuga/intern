@@ -3155,22 +3155,35 @@ function drawHangar(){
     ctx.strokeStyle=maxed?'#7f8': (afford?'#6cf':'#456'); ctx.lineWidth=1.5; ctx.shadowBlur=8; ctx.shadowColor=ctx.strokeStyle;
     ctx.fillStyle='rgba(16,30,54,0.5)'; roundRect(lx,y,lw,rh-8,8); ctx.fill(); ctx.stroke(); ctx.shadowBlur=0;
     ctx.restore();
-    ctx.textAlign='left'; ctx.fillStyle='#eaffff'; ctx.font='bold 14px system-ui'; ctx.fillText(u.name, lx+12, y+20);
-    ctx.fillStyle='#9bd'; ctx.font='11px system-ui'; ctx.fillText(u.desc(lvl), lx+12, y+38);
     const mx=upMax(u);
+    /* 上段: 名前 ＋ レベルの丸（右側） */
+    ctx.textAlign='left'; ctx.fillStyle='#eaffff'; ctx.font='bold 14px system-ui'; ctx.fillText(u.name, lx+12, y+16);
     for(let k=0;k<mx;k++){
       const isExt = k>=u.max;                       // 限界突破ぶんは金色で示す
-      ctx.beginPath(); ctx.arc(lx+165+k*12, y+34, 4, 0, TAU);
-      if(k<lvl){ ctx.fillStyle=isExt?'#ffd76a':'#6cf'; ctx.shadowBlur=6; ctx.shadowColor=ctx.fillStyle; ctx.fill(); ctx.shadowBlur=0; }
+      ctx.beginPath(); ctx.arc(lx+165+k*12, y+13, 4, 0, TAU);
+      if(k<lvl){ ctx.fillStyle=isExt?'#ffd76a':'#6cf'; ctx.shadowBlur=gq(6); ctx.shadowColor=ctx.fillStyle; ctx.fill(); ctx.shadowBlur=0; }
       else { ctx.strokeStyle=isExt?'#8a7038':'#456'; ctx.lineWidth=1; ctx.stroke(); }
     }
-    /* v8: 火力の行に、いまの弾の見た目プレビューを表示 */
+    /* v30: 下段は「いま」ではなく「次に買うとどうなるか」を主役にする */
+    if(maxed){
+      ctx.fillStyle='#9bd'; ctx.font='11px system-ui';
+      ctx.fillText(u.desc(lvl), lx+12, y+36);
+    } else {
+      ctx.fillStyle='#5a7f9c'; ctx.font='10px system-ui';
+      ctx.fillText('現在 Lv'+lvl+' '+u.desc(lvl), lx+12, y+30);
+      ctx.fillStyle= afford ? '#9fffd0' : '#6f8fa6'; ctx.font='bold 11px system-ui';
+      ctx.fillText('▲ Lv'+(lvl+1)+' '+u.desc(lvl+1), lx+12, y+43);
+    }
+    /* v8: 火力の行に、いまの弾と次の弾の見た目プレビューを表示 */
     if(u.id==='power'){
       const pv=clamp(lvl + (upLevel('weapon')>=6?1:0),0,6);
-      const px0 = lx+165+mx*12+14;                 // 限界突破で丸が増えても重ならない位置
-      drawBoltAt(px0, y+24, pv);
-      if(!maxed){ ctx.save(); ctx.globalAlpha=0.45; drawBoltAt(px0+34, y+24, clamp(pv+1,0,6)); ctx.restore();
-        ctx.fillStyle='#5a7f9c'; ctx.font='11px system-ui'; ctx.textAlign='center'; ctx.fillText('→', px0+17, y+28); ctx.textAlign='left'; }
+      const px0 = lx+165+mx*12+16;                 // 限界突破で丸が増えても重ならない位置
+      drawBoltAt(px0, y+13, pv);
+      if(!maxed){
+        drawBoltAt(px0+34, y+13, clamp(pv+1,0,6));
+        ctx.fillStyle='#5a7f9c'; ctx.font='11px system-ui'; ctx.textAlign='center';
+        ctx.fillText('▶', px0+17, y+17); ctx.textAlign='left';
+      }
     }
     const btw=90, btx=lx+lw-btw-8, bty=y+8;
     if(maxed){ drawButton(btx,bty,btw,rh-24,'MAX',false,'#7f8'); }
