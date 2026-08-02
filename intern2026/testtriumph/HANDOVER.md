@@ -14,7 +14,7 @@
   中身は縦スクロールシューティング **NEON VANGUARD**（単一 `index.html` で動く）。
 - **v1.0 が「一旦の完成形」**。タグ `v1.0` と `testtriumph/v1.0/index.html` で凍結済み。いつでも戻せる。
 - 2026-08-03 は「**1日かけて自由に面白く改造する日**」。
-  v2.0(I1〜I5) / v2.1(I7 演出) / v2.2(I8 実績) を実装・デプロイ済み。
+  v2.0(I1〜I5) / v2.1(I7 演出) / v2.2(I8 実績) / v2.3(I10 ENDLESS) を実装・デプロイ済み。
   締切 **2026-08-03 23:59 JST**。それまで 計画→実装→テスト→評価 のループを回し続ける。
 
 ---
@@ -42,7 +42,7 @@
 
 ```
 intern2026/testtriumph/
-├── index.html          ← ゲーム本体（約4,900行・これ1つで動く）
+├── index.html          ← ゲーム本体（約5,000行・これ1つで動く）
 ├── README.md           ← 仕様書＋ロールバック手順（v2.x へ更新済み）
 ├── HANDOVER.md         ← このファイル
 ├── bgm/                ← BGM 10曲（ユーザー自作。差し替え不可・追加もしない）
@@ -108,12 +108,13 @@ GitHubのWebエディタに直接タイプすると自動補完でコードが�
 | `t_multitouch.cjs` | マルチタッチ操作（ボム同時押し） | 12 |
 | `t_juice.cjs` | v2.1 演出（スローモー曲線・チェイン節目・グレイズ残像） | 14 |
 | `t_ach.cjs` | v2.2 実績（定義・解除フック・画面・初期化との整合） | 32 |
+| `t_endless.cjs` | v2.3 ENDLESS（解放条件・台本生成・無限性・記録） | 29 |
 | `t_bal.cjs` | バランス実測（PASS/FAILではなく**表を読む**タイプ。約5分） | - |
 | `t_v23.cjs` | 演出スクリーンショット（エラー0確認） | - |
 | `t_smoke2.cjs` | フルクリア通し（**2分近くかかる。timeout 170 で単独実行**） | - |
 
 一括（`t_smoke2` と `t_bal` は時間がかかるので**必ず別実行**）:
-`cd /root && for f in t_ach t_juice t_feel t_wpn t_mode t_new t_rec t_rank3 t_leak t_v28 t_v25 t_multitouch t_v23; do printf "%-14s " $f; node $f.cjs >/tmp/$f.log 2>&1 && echo PASS || echo FAIL; done`
+`cd /root && for f in t_endless t_ach t_juice t_feel t_wpn t_mode t_new t_rec t_rank3 t_leak t_v28 t_v25 t_multitouch t_v23; do printf "%-14s " $f; node $f.cjs >/tmp/$f.log 2>&1 && echo PASS || echo FAIL; done`
 
 構文チェック（速い）:
 `node -e "const s=require('fs').readFileSync('/root/testtriumph/index.html','utf8'); new Function(s.split('<script>')[1].split('</script>')[0]); console.log('OK')"`
@@ -229,6 +230,7 @@ OVERDRIVE(+30%) → 限界突破解放 → OVERDRIVE+(+40%) → 常時オーバ�
 | 4044 | `drawWin()` — FINはZランクのみ |
 | 4372 | `drawCinematic()` — 登場カットイン |
 | 601 | `ACHIEVEMENTS` / `unlockAch()` / `checkPassiveAch()` — 実績（v2.2） |
+| 1700 | `endlessWaveSpawn()` / `buildEndlessChunk()` — ENDLESS の台本（v2.3） |
 | 1425 | `startSlowMo()` / `slowMoScale()` / `chainMilestone()` — 演出（v2.1） |
 | 3760 | `drawAch()` — 実績一覧画面 / `drawAchToast()` — 解除トースト |
 | 4700 | `loop()` — ヒットストップ・スローモー・発光品質の自動調整 |
@@ -298,9 +300,32 @@ OVERDRIVE(+30%) → 限界突破解放 → OVERDRIVE+(+40%) → 常時オーバ�
 `README.md` を v2.x 相当へ全面更新（武器/難易度/BOSS RUSH/新敵/アイテム/演出/実績の表）。
 遊び方画面にも「稼ぎのコツ」「やり込み」を追加（行間を詰めて1画面に収めてある）。
 
+### I10 ENDLESS モード（v2.3）
+
+本編クリアで解放される3つ目のモード。格納庫を挟まない一発勝負で、
+倒されるまでウェーブが続く。**`Game.mode` は `campaign` / `rush` / `endless` の3値**になった。
+
+| 仕組み | 実装 |
+|---|---|
+| ウェーブ生成 | `endlessWaveSpawn(n)` — 進行度 `t=min(1,n/40)` で数量と敵種プールが増える |
+| 台本 | `buildEndlessChunk(from,count)`。`Director.extendEndless()` が終端6手前で20ずつ継ぎ足す |
+| 節目 | 8の倍数=中ボス(`emid`) / 24の倍数=ステージボス(`ebos`)。背景と曲は3面ぶんを巡回 |
+| 強化 | `endlessHP()`=1+0.135n（敵とボス両方に掛かる）／`endlessDmg()`=1+0.03n（上限2.6） |
+| 記録 | `Save.data.endlessBest`（到達ウェーブ）＋ `Save.data.rec['endl_'+難易度]`（スコア） |
+| 実績 | `endless25`（不屈）/ `endless50`（際限なし） |
+
+**注意点**:
+- ボス撃破時に `Director.onBossDefeated()` が**格納庫に飛ばないよう endless で早期 return** している。
+  ここを消すと ENDLESS 中に格納庫へ落ちる。
+- `endlessWaveSpawn` は `Game.enemies.length > 34` で追加湧きを止める。
+  これが無いと高ウェーブで敵が溜まり続けて描画が死ぬ。
+- `Game.endlessWave` は `Director.update()` が毎フレーム `s.n` で上書きする（HUDと倍率の唯一の出どころ）。
+- `Save.data.best`（本編の最高到達ステージ）は ENDLESS では**更新しない**。
+
 ### 追加したテスト
 
-`t_bal.cjs`（バランス実測・出力を読む用）／`t_juice.cjs`（演出14項目）／`t_ach.cjs`（実績32項目）。
+`t_bal.cjs`（バランス実測・出力を読む用）／`t_juice.cjs`（演出14項目）／
+`t_ach.cjs`（実績32項目）／`t_endless.cjs`（ENDLESS 29項目）。
 
 ---
 
@@ -308,7 +333,6 @@ OVERDRIVE(+30%) → 限界突破解放 → OVERDRIVE+(+40%) → 常時オーバ�
 
 - ステージ内ウェーブの再構成（新敵を活かした配置の作り込み）
 - ボスに新パターン追加（`bossPatterns()` に工場関数を足すだけで済む）
-- エンドレス／デイリーなどの追加モード
 - リリースタグ `v2.0` の作成
 
 ---
