@@ -848,6 +848,8 @@ const Game = {
   midRun:false, pendingStage:0, stageClearMsgT:0, cine:null, odT:0,
   /* v2.0: 手触りの核 — グレイズ / チェイン / ヒットストップ */
   graze:0, grazeCharge:0, grazeFx:0, chain:0, chainT:0, chainBest:0, hitStop:0,
+  /* v2.1: 演出 — スローモー / チェイン節目のポップ / グレイズ残像 */
+  slowMo:0, slowMoDur:1, slowMoDepth:0, chainPop:0, trail:[],
   mode:'campaign', rushT:0, rushKills:0,
   buttons:[], bg:null, lastGain:0, shopMsg:'', shopMsgT:0,
 
@@ -912,6 +914,7 @@ const Game = {
     }
     this.enemies=[]; this.boss=null; this.helpers=[]; this.helperIdx=0; this.overdrive=false;
     this.chain=0; this.chainT=0; this.hitStop=0; this.grazeFx=0; this.buffs={};
+    this.slowMo=0; this.slowMoDepth=0; this.chainPop=0; this.trail=[];
     /* v28: 常時オーバードライブを購入済みなら、最初から金色形態で出撃する */
     if(odAlways()){
       this.overdrive = true;
@@ -1029,6 +1032,7 @@ const Game = {
     this.roll=null; this.overdrive=false; this.odT=0;
     this.graze=0; this.grazeCharge=0; this.grazeFx=0; this.buffs={};
     this.chain=0; this.chainT=0; this.chainBest=0; this.hitStop=0;
+    this.slowMo=0; this.slowMoDepth=0; this.chainPop=0; this.trail=[];
   },
 
   setMessage(a,b,dur){ this.message={a,b}; this.messageT=dur; },
@@ -1363,6 +1367,37 @@ const GRAZE_PER_BOMB = 70;       // これだけ稼ぐとボム+1
 function chainScoreMul(){ return Math.min(CHAIN_MAX_MUL, 1 + Game.chain*0.05); }
 function chainCredMul(){ return Math.min(1.5, 1 + Game.chain*0.012); }
 
+/* =========================================================================
+   v2.1: スローモーション
+   ヒットストップ（数フレーム完全停止）とは別に、「決まった瞬間」を
+   ゆっくり見せるための時間スケール。開始直後がいちばん遅く、
+   残り時間に応じて滑らかに等速へ戻る（イージングは二乗）。
+   depth=0.7 なら最初は約30%速度。
+   ========================================================================= */
+function startSlowMo(frames, depth){
+  /* すでに強いスローが掛かっているなら上書きしない */
+  if(Game.slowMo>0 && Game.slowMoDepth>=depth && Game.slowMo>=frames) return;
+  Game.slowMo=frames; Game.slowMoDur=frames; Game.slowMoDepth=depth;
+}
+function slowMoScale(){
+  if(Game.slowMo<=0) return 1;
+  const k = clamp(Game.slowMo/(Game.slowMoDur||1), 0, 1);
+  return 1 - Game.slowMoDepth*k*k;
+}
+
+/* v2.1: チェインの節目で画面全体に「効いた感」を出す */
+const CHAIN_MARKS = [10,25,50,75,100,150,200];
+function chainMilestone(n, x, y){
+  const big = n>=50;
+  addFloat(x, y-22, n+' CHAIN!', big?'#ffd76a':'#ffe9a8', big?19:15);
+  addShock(x, y, big?300:200, big?'#ffd76a':'#cfe9ff');
+  Game.doFlash(big?'#ffd76a':'#cfe9ff', big?0.34:0.18);
+  Game.screenShake(big?9:5);
+  Game.chainPop = 22;
+  if(big) startSlowMo(26, 0.45);
+  Sound.chainUp(n);
+}
+
 function damageEnemy(e, dmg, hx, hy, silent){
   e.hp -= dmg; e.hitFlash=4;
   if(hx!==undefined) addFloat(hx, hy-6, Math.round(dmg), dmgColor(dmg), dmgSize(dmg));
@@ -1375,9 +1410,7 @@ function killEnemy(e){
   /* v2.0: 連続撃破でチェイン。スコアに倍率、クレジットは控えめに乗る */
   Game.chain++; Game.chainT = CHAIN_HOLD;
   if(Game.chain > Game.chainBest) Game.chainBest = Game.chain;
-  if(Game.chain===10||Game.chain===25||Game.chain===50||Game.chain===100){
-    addFloat(e.x, e.y-22, Game.chain+' CHAIN!', '#ffe9a8', 15); Sound.chainUp(Game.chain);
-  }
+  if(CHAIN_MARKS.indexOf(Game.chain)>=0) chainMilestone(Game.chain, e.x, e.y);
   if(e.r>=19) Game.hitStop = Math.max(Game.hitStop, 2);
   Game.score += Math.round(e.scoreV * chainScoreMul() * curDiff().score);
   const g=Game.addCredits(e.credit*credScale()*chainCredMul());
@@ -1762,6 +1795,10 @@ function damageBoss(dmg, hx, hy){ damageBossObj(Game.boss, dmg, hx, hy); }
 function startBossDeath(b){
   b.dead=true; b.deathT=0; b.boomed=false; b.rattleCd=0;
   b.deathDur = b.isGreat ? 330 : (b.isMid ? 105 : 185);
+  /* v2.1: 撃破の瞬間だけ時間を落として「決めた」感を出す。
+     大ボスほど深く長く。中ボスは軽めにしてテンポを殺さない。 */
+  Game.hitStop = Math.max(Game.hitStop, b.isGreat?9:(b.isMid?3:6));
+  startSlowMo(b.isGreat?120:(b.isMid?30:70), b.isGreat?0.76:(b.isMid?0.45:0.62));
   if(b.isGreat){
     /* 最終ボスの爆発に巻き込まれて、援軍も雑魚も消し飛ぶ */
     for(const h of Game.helpers){ burst(h.x,h.y,'#ffd76a',30,5); addShock(h.x,h.y,180,'#ffd76a'); }
@@ -2411,6 +2448,23 @@ function updatePlay(dt){
     if(Game.buffs[k]<=0){ Game.buffs[k]=0; addFloat(Game.player?Game.player.x:VW/2, Game.player?Game.player.y-24:VH/2, BUFFS[k].name+' END', '#7f9ab0', 11); } } } }
   if(Game.chainT>0){ Game.chainT-=dt; if(Game.chainT<=0) Game.chain=0; }
   if(Game.grazeFx>0) Game.grazeFx-=dt;
+  if(Game.chainPop>0) Game.chainPop-=dt;
+  /* v2.1: グレイズ中だけ自機の軌跡を残す（際どくかわしているのが目で分かる） */
+  {
+    const p=Game.player;
+    if(p && !p.dying && Game.grazeFx>0){
+      /* ある程度動いた時だけ点を打つ。止まっていると重ならずに済む */
+      const last=Game.trail[Game.trail.length-1];
+      if(!last || Math.hypot(p.x-last.x, p.y-last.y) > 3){
+        Game.trail.push({x:p.x, y:p.y, life:16});
+        if(Game.trail.length>12) Game.trail.shift();
+      }
+    }
+    for(let i=Game.trail.length-1;i>=0;i--){
+      Game.trail[i].life-=dt;
+      if(Game.trail[i].life<=0) Game.trail.splice(i,1);
+    }
+  }
   for(const b of eBullets){ if(b.gzT>0) b.gzT-=dt; }
   if(Game.shake>0) Game.shake*=0.9;
   if(Game.flash>0) Game.flash-=0.03*dt;
@@ -2664,6 +2718,19 @@ function drawPlayer(){
   const accent = BULLET_TIERS[p.tier!==undefined?p.tier:bulletTier()].c;
 
   const od = Game.overdrive;
+  /* v2.1: グレイズ残像 — 通ってきた軌跡を淡い菱形で描く */
+  if(Game.trail.length){
+    ctx.save(); ctx.globalCompositeOperation='lighter';
+    for(const t of Game.trail){
+      const a=clamp(t.life/16,0,1);
+      ctx.globalAlpha=0.46*a; ctx.fillStyle= od ? '#ffd76a' : '#8fe8ff';
+      ctx.beginPath();
+      ctx.moveTo(t.x, t.y-13*a); ctx.lineTo(t.x+7.5*a, t.y+8*a);
+      ctx.lineTo(t.x, t.y+4*a);  ctx.lineTo(t.x-7.5*a, t.y+8*a);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore(); ctx.globalAlpha=1;
+  }
   if(!blink){
     if(p.shieldHP>0) drawShieldBarrier(p);
     /* v2.0: グレイズ中の判定圏を光らせる（どこまで近づけたかが見える） */
@@ -3304,7 +3371,9 @@ function drawHUD(){
   if(Game.chain>=2){
     const mul=chainScoreMul(), hot=clamp((Game.chain-2)/48,0,1);
     const col = hot>0.75?'#ffd76a' : hot>0.4?'#ff9be6' : '#9fffd0';
-    const pop = Game.chainT>CHAIN_HOLD-8 ? 1.25 : 1;
+    /* v2.1: 撃破直後の小さな跳ね＋節目での大きな跳ね */
+    const pop = (Game.chainT>CHAIN_HOLD-8 ? 1.25 : 1)
+              + (Game.chainPop>0 ? 0.55*clamp(Game.chainPop/22,0,1) : 0);
     /* ボスHPバー(y63-82)や増援バー(x90-390)と重ならない右端の帯に置く */
     ctx.save(); ctx.textAlign='right'; ctx.translate(VW-12, 100); ctx.scale(pop,pop);
     ctx.shadowBlur=gq(10+12*hot); ctx.shadowColor=col; ctx.fillStyle=col;
@@ -4567,6 +4636,8 @@ function loop(ts){
   Game.dt = clamp(raw,0.1,2.5); Game.t += Game.dt;
   /* v2.0: ヒットストップ — 手応えのある瞬間だけ数フレーム時間を止める */
   if(Game.hitStop>0){ Game.hitStop -= 1; Game.dt *= 0.07; }
+  /* v2.1: スローモー — 決まった瞬間をゆっくり見せる（ヒットストップの後に効く） */
+  else if(Game.slowMo>0){ Game.dt *= slowMoScale(); Game.slowMo -= 1; }
   /* v26: 描画が重い端末では発光のぼかしを自動的に弱め、フレームレートを優先する。
      ヒステリシスを付けて境界でチラつかないようにしている。 */
   Game.msAvg = Game.msAvg===undefined ? ms : Game.msAvg*0.94 + ms*0.06;
