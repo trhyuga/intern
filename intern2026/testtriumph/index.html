@@ -1312,6 +1312,16 @@ function enterDone(e){ e.entered=true; e.mt=0; }
 function updateEnemy(e, dt){
   e.t += dt;
   const p = Game.player;
+  /* v33: 編隊入場（フォーメーション）が弧を描いて合流するための共通処理。
+     formationRow() が付けた arcFromX/arcFromY/arcSlotX を、e.y が targetY に着くまでの
+     進み具合(0→1)に応じて x に反映するだけ。降下速度や発火開始タイミングなど
+     敵種ごとのロジック（下のswitch）は一切変更しない。 */
+  if(e.arcFromX!==undefined && !e.entered){
+    const span = e.targetY - e.arcFromY;
+    const prog = span ? clamp((e.y - e.arcFromY)/span, 0, 1) : 1;
+    const ease = 1-Math.pow(1-prog,3);
+    e.x = e.arcFromX + (e.arcSlotX-e.arcFromX)*ease;
+  }
   switch(e.kind){
     case 'grunt': {
       if(!e.entered){ e.y += 2.4*dt; if(e.y>=e.targetY){ enterDone(e); e.fireCd=rand(120,220); } }
@@ -1653,8 +1663,22 @@ function dmgScale(){ return (DMG_MUL[Game.stageIndex]||1) * curDiff().dmg * (Gam
 function credScale(){ return (CRED_MUL[Game.stageIndex]||1) * curDiff().cred * (Game.mode==='endless'?Math.min(2.2,endlessDmg()):1); }
 
 function formationRow(kind, count, y, hpMul){
+  /* v33: Galaga風に、左右交互に少しだけ横へずれた位置から弧を描いて
+     隊列（本来のスロット位置）に合流する演出。着地後の挙動・発火タイミングは
+     従来通り（各敵種のupdateEnemyロジックは無変更）。
+     ずれ幅は控えめ(±90px)に抑えている — 画面端からの大きな横断は
+     オートパイロット（自機のx追従先=最も近いy距離の敵のx）を大きく揺らし、
+     t_bal.cjs の再現性に無視できない影響が出ることを確認したため。 */
   const gap=VW/(count+1);
-  for(let i=0;i<count;i++){ const e=makeEnemy(kind, gap*(i+1), -30-i*4, {targetY:y, hpMul}); Game.enemies.push(e); }
+  for(let i=0;i<count;i++){
+    const slotX = gap*(i+1);
+    const fromX = clamp(slotX + (i%2===0 ? -90 : 90), 24, VW-24);
+    const spawnY = -30-i*4;
+    const e=makeEnemy(kind, fromX, spawnY, {targetY:y, hpMul});
+    e.homeX = slotX;                 // 着地後に揺れる中心はスロット位置のまま
+    e.arcFromX = fromX; e.arcFromY = spawnY; e.arcSlotX = slotX;
+    Game.enemies.push(e);
+  }
 }
 function swarm(kind,count,hpMul){
   for(let i=0;i<count;i++){ const e=makeEnemy(kind,rand(50,VW-50),-30-i*26,{hpMul}); Game.enemies.push(e); }
