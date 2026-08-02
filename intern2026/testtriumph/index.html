@@ -304,6 +304,14 @@ const Sound = {
     this.osc(2600, 0.05, {type:'triangle', vol:0.05, to:3400, filter:9000});
   },
   /* v2.0: チェイン節目のファンファーレ */
+  /* v2.2: 実績解除のジングル（上がっていく3音＋余韻） */
+  achieve(){
+    [0,1,2,3].forEach(i=> setTimeout(()=>{
+      const f=[660,880,1100,1320][i];
+      this.osc(f, 0.26, {type:'triangle', vol:0.12, filter:8000});
+      this.osc(f*2, 0.18, {type:'sine', vol:0.05});
+    }, i*70));
+  },
   chainUp(n){
     const base = 520 + Math.min(4, Math.log2(Math.max(2,n/5)))*130;
     [0,1,2].forEach(i=> setTimeout(()=>{
@@ -485,11 +493,14 @@ const Music = {
 /* ---------------- セーブ (localStorage) ---------------- */
 const SAVE_KEY = 'neon_vanguard_save_v1';
 const Save = {
-  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{} },
+  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{}, ach:{}, grazeAll:0, wpnClear:0 },
   load(){
     try{ const s=localStorage.getItem(SAVE_KEY); if(s) this.data=Object.assign(this.data, JSON.parse(s)); }catch(e){}
     if(!this.data.up) this.data.up={};
     if(!this.data.rec) this.data.rec={};
+    if(!this.data.ach) this.data.ach={};
+    if(!this.data.grazeAll) this.data.grazeAll=0;
+    if(!this.data.wpnClear) this.data.wpnClear=0;
     // v2: スピード強化は廃止 → 購入済み分は返金
     if(this.data.up.speed){
       let refund=0; for(let l=0;l<this.data.up.speed;l++) refund+=Math.round(90*Math.pow(1.7,l));
@@ -499,7 +510,7 @@ const Save = {
   },
   save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); }catch(e){} },
   reset(){
-    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{} };
+    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{}, ach:{}, grazeAll:0, wpnClear:0 };
     this.save();
     /* v33: セーブだけでなく、メモリ上のプレイ記録も一緒に捨てる */
     if(typeof Game!=='undefined' && Game.clearRunFlags) Game.clearRunFlags();
@@ -594,6 +605,50 @@ function odMul(){ return isExtMaxed() ? 1.4 : 1.3; }
 const OD_COST = 100000;
 function odAlways(){ return (Save.data.od||0) > 0; }
 function odBuyable(){ return isExtMaxed() && !odAlways(); }
+
+/* =========================================================================
+   v2.2: 実績（メダル）
+   周回する理由をもう一段増やすための収集要素。ゲームバランスには一切影響せず、
+   「やったこと」を記録するだけ。解除は unlockAch(id) を1か所で行う。
+   ========================================================================= */
+const ACHIEVEMENTS = [
+  { id:'first',   name:'初陣',         icon:'●', desc:'敵を1機撃墜する' },
+  { id:'mk5',     name:'MK-V',         icon:'▲', desc:'機体を MK-V SOVEREIGN まで育てる' },
+  { id:'boss1',   name:'第一関門',     icon:'Ⅰ', desc:'ステージ1のボスを撃破する' },
+  { id:'boss2',   name:'中核突破',     icon:'Ⅱ', desc:'ステージ2のボスを撃破する' },
+  { id:'clear',   name:'星域解放',     icon:'★', desc:'大ボスを撃破してクリアする' },
+  { id:'chain50', name:'連鎖の使い手', icon:'50', desc:'1回の出撃で 50 チェインを繋ぐ' },
+  { id:'chain100',name:'連鎖の支配者', icon:'99', desc:'1回の出撃で 100 チェインを繋ぐ' },
+  { id:'graze500',name:'紙一重',       icon:'◇', desc:'グレイズ回数の累計が 500 を超える' },
+  { id:'nobomb',  name:'温存',         icon:'◎', desc:'ボムを1発も使わずステージボスを倒す' },
+  { id:'hitless', name:'無傷',         icon:'♥', desc:'一度も被弾せずにステージをクリアする' },
+  { id:'hard',    name:'高難度制覇',   icon:'H', desc:'HARD でクリアする' },
+  { id:'night',   name:'悪夢の果て',   icon:'N', desc:'NIGHTMARE でクリアする' },
+  { id:'rush',    name:'連戦制覇',     icon:'≫', desc:'BOSS RUSH をクリアする' },
+  { id:'rush5',   name:'韋駄天',       icon:'⏱', desc:'BOSS RUSH を 5分以内でクリアする' },
+  { id:'wpn3',    name:'三種の武装',   icon:'⊞', desc:'3種類すべての武器でクリアする' },
+  { id:'zrank',   name:'真の終幕',     icon:'Z', desc:'Zランクに到達する' },
+];
+function achDone(id){ return !!(Save.data.ach && Save.data.ach[id]); }
+/* 状態を見るだけで判定できるものは、画面を開いた時にまとめてチェックする */
+function checkPassiveAch(){
+  if(typeof currentMark==='function' && currentMark()>=4) unlockAch('mk5');
+  if((Save.data.grazeAll||0)>=500) unlockAch('graze500');
+}
+function achCount(){ return ACHIEVEMENTS.filter(a=>achDone(a.id)).length; }
+function unlockAch(id){
+  if(!Save.data.ach) Save.data.ach={};
+  if(Save.data.ach[id]) return false;
+  const a = ACHIEVEMENTS.find(x=>x.id===id); if(!a) return false;
+  Save.data.ach[id]=1; Save.save();
+  /* 画面右上から流れてくる小さなトーストで知らせる */
+  if(typeof Game!=='undefined'){
+    Game.achToast = Game.achToast || [];
+    if(Game.achToast.length<4) Game.achToast.push({a, t:0, dur:190});
+  }
+  if(typeof Sound!=='undefined' && Sound.achieve) Sound.achieve();
+  return true;
+}
 /* オーバードライブ中は火力・シールドが3割（限界突破カンストなら4割）増し */
 function powerMul(){ return (Game.overdrive ? odMul() : 1) * buffPower(); }
 /* v13: 強化コストを急カーブ化。最終段階だけさらに重くして「最後の一押し」を目標にする
@@ -838,7 +893,7 @@ function eb(x,y,vx,vy,opt){
 function enemyBullet(x,y,vx,vy,r,color,dmg){ eb(x,y,vx,vy,{r:r,color:color,dmg:dmg}); }
 
 /* ---------------- ゲーム状態 ---------------- */
-const STATE = { TITLE:'title', HOWTO:'howto', HANGAR:'hangar', PLAY:'play', PAUSE:'pause', OVER:'over', WIN:'win', CREDITS:'credits' };
+const STATE = { TITLE:'title', HOWTO:'howto', HANGAR:'hangar', PLAY:'play', PAUSE:'pause', OVER:'over', WIN:'win', CREDITS:'credits', ACH:'ach' };
 
 const Game = {
   state: STATE.TITLE,
@@ -915,6 +970,8 @@ const Game = {
     this.enemies=[]; this.boss=null; this.helpers=[]; this.helperIdx=0; this.overdrive=false;
     this.chain=0; this.chainT=0; this.hitStop=0; this.grazeFx=0; this.buffs={};
     this.slowMo=0; this.slowMoDepth=0; this.chainPop=0; this.trail=[];
+    /* v2.2: 実績「温存」「無傷」はステージ単位で判定する */
+    this.bombsUsed=0; this.hitless=true;
     /* v28: 常時オーバードライブを購入済みなら、最初から金色形態で出撃する */
     if(odAlways()){
       this.overdrive = true;
@@ -978,11 +1035,23 @@ const Game = {
       } else {
         Save.data.clearedDiff = (Save.data.clearedDiff|0) | (1<<diffIdx());
       }
+      /* v2.2: クリア系の実績 */
+      if(this.mode==='rush'){
+        unlockAch('rush');
+        if(this.rushT <= 5*60*60) unlockAch('rush5');
+      } else {
+        unlockAch('clear');
+        if(diffIdx()===1) unlockAch('hard');
+        if(diffIdx()===2) unlockAch('night');
+        Save.data.wpnClear = (Save.data.wpnClear|0) | (1<<weaponIdx());
+        if((Save.data.wpnClear & 7) === 7) unlockAch('wpn3');
+      }
     }
     /* v32: ランク判定用に、撃破時点の状態を記録しておく */
     this.odAtClear      = !!this.overdrive;    // オーバードライブ状態で倒したか
     this.extAtClear     = isExtMaxed();        // OVERDRIVE+（限界突破カンスト）だったか
     this.odAlwaysAtClear = odAlways();         // v33: 常時オーバードライブを持っていたか
+    if(win && this.mode!=='rush' && clearRank().rank==='Z') unlockAch('zrank');
     /* v20: フル強化でラスボスに敗れると「限界突破」が解放される */
     this.extUnlocked = false;
     if(!win && this.overdrive && !(Save.data.ext>0)){
@@ -1033,6 +1102,7 @@ const Game = {
     this.graze=0; this.grazeCharge=0; this.grazeFx=0; this.buffs={};
     this.chain=0; this.chainT=0; this.chainBest=0; this.hitStop=0;
     this.slowMo=0; this.slowMoDepth=0; this.chainPop=0; this.trail=[];
+    this.bombsUsed=0; this.hitless=true; this.achToast=[];
   },
 
   setMessage(a,b,dur){ this.message={a,b}; this.messageT=dur; },
@@ -1050,6 +1120,7 @@ const Game = {
     const p=this.player;
     if(!p || p.bombs<=0){ Sound.deny(); return; }
     p.bombs--; p.bombFlash=1; Sound.bomb(); this.hitStop=Math.max(this.hitStop,5);
+    this.bombsUsed=(this.bombsUsed||0)+1;                       /* v2.2: 実績「温存」用 */
     this.doFlash('#bff',0.9); this.screenShake(18);
     eBullets.length=0;
     for(const e of this.enemies){ damageEnemy(e, BOMB_DMG, e.x,e.y); }
@@ -1071,6 +1142,7 @@ const Game = {
   click(id){
     if(id==='start'){ this.gotoHangar(); }
     else if(id==='howto'){ this.state=STATE.HOWTO; }
+    else if(id==='ach'){ checkPassiveAch(); this.state=STATE.ACH; }
     else if(id==='back'){ this.state=STATE.TITLE; }
     else if(id==='launch'){ if(this.midRun) this.resumeNext(); else this.launch(); }
     else if(id==='mute'){ Sound.muted=!Sound.muted; Save.data.muted=Sound.muted; Save.save(); Music.setMuted(Sound.muted); }
@@ -1131,7 +1203,7 @@ function handleKeyPress(code){
     else if(Game.state===STATE.HANGAR){ Game.click('launch'); }
     else if(Game.state===STATE.CREDITS){ Game.finishCredits(); }
     else if(Game.state===STATE.OVER || Game.state===STATE.WIN){ Game.click('hangar'); }
-    else if(Game.state===STATE.HOWTO){ Game.state=STATE.TITLE; }
+    else if(Game.state===STATE.HOWTO || Game.state===STATE.ACH){ Game.state=STATE.TITLE; }
   }
   if(code==='KeyB' && Game.state===STATE.PLAY){ Game.bombBlast(); }
   if(code==='KeyP' && (Game.state===STATE.PLAY||Game.state===STATE.PAUSE)){ Game.click('pause'); }
@@ -1411,6 +1483,9 @@ function killEnemy(e){
   Game.chain++; Game.chainT = CHAIN_HOLD;
   if(Game.chain > Game.chainBest) Game.chainBest = Game.chain;
   if(CHAIN_MARKS.indexOf(Game.chain)>=0) chainMilestone(Game.chain, e.x, e.y);
+  unlockAch('first');
+  if(Game.chain>=50) unlockAch('chain50');
+  if(Game.chain>=100) unlockAch('chain100');
   if(e.r>=19) Game.hitStop = Math.max(Game.hitStop, 2);
   Game.score += Math.round(e.scoreV * chainScoreMul() * curDiff().score);
   const g=Game.addCredits(e.credit*credScale()*chainCredMul());
@@ -1799,6 +1874,13 @@ function startBossDeath(b){
      大ボスほど深く長く。中ボスは軽めにしてテンポを殺さない。 */
   Game.hitStop = Math.max(Game.hitStop, b.isGreat?9:(b.isMid?3:6));
   startSlowMo(b.isGreat?120:(b.isMid?30:70), b.isGreat?0.76:(b.isMid?0.45:0.62));
+  /* v2.2: 実績 — ステージボス撃破 / ボム未使用撃破 */
+  if(!b.isMid && !b.isGreat){
+    if(Game.stageIndex===0) unlockAch('boss1');
+    if(Game.stageIndex===1) unlockAch('boss2');
+    if(!(Game.bombsUsed>0)) unlockAch('nobomb');
+    if(Game.hitless) unlockAch('hitless');
+  }
   if(b.isGreat){
     /* 最終ボスの爆発に巻き込まれて、援軍も雑魚も消し飛ぶ */
     for(const h of Game.helpers){ burst(h.x,h.y,'#ffd76a',30,5); addShock(h.x,h.y,180,'#ffd76a'); }
@@ -2261,6 +2343,7 @@ function playerFire(){
 }
 function playerHit(dmg){
   const p=Game.player; if(!p || p.dying || p.inv>0) return;
+  Game.hitless=false;                                   /* v2.2: 実績「無傷」判定 */
   if(p.shieldHP>0){ p.shieldHP-=dmg; if(p.shieldHP<0){ p.hp+=p.shieldHP; p.shieldHP=0; } p.shieldRegen=0; Sound.shieldHit(); Game.doFlash('#7ff',0.4); p.inv=20; Game.screenShake(5); }
   else { p.hp-=dmg; p.inv=50; p.shieldRegen=0; Sound.hullHit(); Game.doFlash('#f66',0.5); Game.screenShake(10); burst(p.x,p.y,'#f88',14,4); Game.hitStop=Math.max(Game.hitStop,4); }
   /* ↑ v7: 本体被弾でも回復タイマーをリセット（戦闘中にシールドが復活し続ける抜け穴を修正） */
@@ -2354,6 +2437,10 @@ function collisions(){
       Game.graze++; Game.grazeCharge++; Game.grazeFx = Math.min(14, Game.grazeFx+7);
       Game.score += Math.round(12 * chainScoreMul());
       Sound.graze();
+      /* v2.2: 累計グレイズを実績用に貯める（保存は100回ごとに間引く） */
+      Save.data.grazeAll = (Save.data.grazeAll||0) + 1;
+      if(Save.data.grazeAll>=500) unlockAch('graze500');
+      else if(Save.data.grazeAll%100===0) Save.save();
       if(Game.grazeCharge >= GRAZE_PER_BOMB){
         Game.grazeCharge = 0;
         if(p.bombs < 9){ p.bombs++; addFloat(p.x, p.y-30, 'BOMB +1', '#bff', 14); Sound.powerUp(); }
@@ -3533,6 +3620,7 @@ function drawNebula(){
 /* --- タイトル（v3: 動く演出） --- */
 function drawTitle(){
   Game.buttons=[];
+  checkPassiveAch();          /* v2.2: 強化状況だけで決まる実績はここで拾う */
   drawNebula();
   drawStarfield();
   const T=Game.t;
@@ -3641,7 +3729,14 @@ function drawTitle(){
 
   const bw=200,bx=VW/2-bw/2;
   drawButton(bx, 430, bw, 46, 'スタート', true, '#6cf'); addBtn(bx,430,bw,46,'start');
-  drawButton(bx, 488, bw, 40, '遊び方', true, '#9f8'); addBtn(bx,488,bw,40,'howto');
+  /* v2.2: 「遊び方」と「実績」を左右に並べる */
+  {
+    const hw=(bw-8)/2;
+    drawButton(bx, 488, hw, 40, '遊び方', true, '#9f8'); addBtn(bx,488,hw,40,'howto');
+    const done=achCount(), all=ACHIEVEMENTS.length;
+    drawButton(bx+hw+8, 488, hw, 40, '実績 '+done+'/'+all, true, done>=all?'#ffd76a':'#fc8');
+    addBtn(bx+hw+8,488,hw,40,'ach');
+  }
   drawButton(bx, 538, bw, 40, Sound.muted?'サウンド: OFF':'サウンド: ON', true, '#fc8'); addBtn(bx,538,bw,40,'mute');
   drawButton(bx, 588, bw, 34, 'データ初期化', true, '#f88'); addBtn(bx,588,bw,34,'reset');
 
@@ -3685,10 +3780,94 @@ function drawHowto(){
     '',
     '■ アイテム',
     '  H=回復  S=シールド  $=クレジット  B=ボム',
+    '  P=火力↑  R=連射↑  T=敵弾スロー（各15秒）',
+    '',
+    '■ 稼ぎのコツ',
+    '  ・敵弾スレスレをかわす＝グレイズでボムが増える',
+    '  ・連続で倒すとチェイン。スコア倍率が最大×4.0',
+    '',
+    '■ やり込み',
+    '  ・武器は3種（扇 / 貫通 / 追尾）から選べる',
+    '  ・クリアで HARD、HARDクリアで NIGHTMARE が解放',
+    '  ・クリア後は BOSS RUSH（タイムアタック）が遊べる',
+    '  ・タイトルの「実績」に16個のメダルと条件が並ぶ',
   ];
-  let y=124; for(const l of lines){ ctx.fillText(l, 44, y); y+=26; }
+  /* 項目が増えたので行間を詰め、空行は半分の高さにして1画面に収める */
+  ctx.font='13px system-ui';
+  let y=104;
+  for(const l of lines){
+    if(l){ ctx.fillStyle = l[0]==='■' ? '#9fd8ff' : '#cfe'; ctx.fillText(l, 40, y); y+=20; }
+    else y+=9;
+  }
   const bw=180,bx=VW/2-bw/2;
   drawButton(bx, 716, bw, 42, '戻る', true, '#6cf'); addBtn(bx,716,bw,42,'back');
+}
+
+/* --- v2.2: 実績（メダル）一覧 --- */
+function drawAch(){
+  Game.buttons=[];
+  drawStarfield();
+  const done=achCount(), all=ACHIEVEMENTS.length;
+  ctx.textAlign='center'; ctx.fillStyle='#dffbff'; ctx.font='bold 26px system-ui';
+  ctx.shadowBlur=gq(16); ctx.shadowColor='#ffd76a'; ctx.fillText('実 績', VW/2, 70); ctx.shadowBlur=0;
+  ctx.fillStyle= done>=all ? '#ffd76a' : '#8fd4ff'; ctx.font='bold 13px system-ui';
+  ctx.fillText(done+' / '+all+' 獲得', VW/2, 92);
+  /* 進捗バー */
+  { const w=260, x=VW/2-w/2;
+    ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(x,100,w,5);
+    ctx.save(); ctx.shadowBlur=gq(10); ctx.shadowColor='#ffd76a';
+    ctx.fillStyle='#ffd76a'; ctx.fillRect(x,100,w*(done/all),5); ctx.restore(); }
+
+  const rh=38, top=120;
+  ACHIEVEMENTS.forEach((a,i)=>{
+    const y=top+i*rh, got=achDone(a.id);
+    ctx.fillStyle= got ? 'rgba(255,215,106,0.10)' : 'rgba(120,160,200,0.05)';
+    ctx.fillRect(24, y, VW-48, rh-5);
+    /* メダル */
+    ctx.save(); ctx.translate(48, y+16);
+    ctx.beginPath(); ctx.arc(0,0,13,0,TAU);
+    if(got){ ctx.shadowBlur=gq(12); ctx.shadowColor='#ffd76a'; ctx.strokeStyle='#ffd76a'; ctx.fillStyle='rgba(255,215,106,0.18)'; }
+    else   { ctx.strokeStyle='rgba(120,160,200,0.35)'; ctx.fillStyle='rgba(0,0,0,0.2)'; }
+    ctx.lineWidth=1.8; ctx.fill(); ctx.stroke(); ctx.shadowBlur=0;
+    ctx.textAlign='center'; ctx.font='bold 12px system-ui';
+    ctx.fillStyle= got ? '#fff2c0' : 'rgba(120,160,200,0.5)';
+    ctx.fillText(got?a.icon:'?', 0, 4);
+    ctx.restore();
+    /* 名前と条件（未獲得でも条件は見せる＝目標になる） */
+    ctx.textAlign='left';
+    ctx.font='bold 13px system-ui'; ctx.fillStyle= got ? '#ffe9a8' : '#8fb0c8';
+    ctx.fillText(a.name, 72, y+14);
+    ctx.font='10px system-ui'; ctx.fillStyle= got ? '#9fc2d8' : '#5f88aa';
+    ctx.fillText(a.desc, 72, y+28);
+  });
+
+  const bw=180,bx=VW/2-bw/2;
+  drawButton(bx, 742, bw, 40, '戻る', true, '#6cf'); addBtn(bx,742,bw,40,'back');
+}
+
+/* v2.2: 実績解除トースト（右上から流れる） */
+function drawAchToast(){
+  const q=Game.achToast; if(!q || !q.length) return;
+  for(let i=q.length-1;i>=0;i--){
+    const t=q[i]; t.t+=Game.dt;
+    if(t.t>=t.dur){ q.splice(i,1); continue; }
+    const k=t.t/t.dur;
+    /* 入り: 0-0.12 でスライドイン / 出: 0.88-1 でフェード */
+    const inA=clamp(k/0.12,0,1), outA=clamp((1-k)/0.12,0,1);
+    const a=Math.min(inA,outA);
+    const w=214, h=40, x=VW-w-10, y=150+i*46 - (1-inA)*18;
+    ctx.save(); ctx.globalAlpha=a;
+    ctx.fillStyle='rgba(20,26,36,0.90)'; ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle='#ffd76a'; ctx.lineWidth=1.4;
+    ctx.shadowBlur=gq(14); ctx.shadowColor='#ffd76a'; ctx.strokeRect(x,y,w,h); ctx.shadowBlur=0;
+    ctx.textAlign='center'; ctx.font='bold 13px system-ui'; ctx.fillStyle='#ffd76a';
+    ctx.beginPath(); ctx.arc(x+22,y+20,12,0,TAU); ctx.stroke();
+    ctx.fillText(t.a.icon, x+22, y+24);
+    ctx.textAlign='left';
+    ctx.font='9px system-ui'; ctx.fillStyle='#9fc2d8'; ctx.fillText('実績を獲得', x+42, y+15);
+    ctx.font='bold 13px system-ui'; ctx.fillStyle='#ffe9a8'; ctx.fillText(t.a.name, x+42, y+31);
+    ctx.restore(); ctx.globalAlpha=1;
+  }
 }
 
 /* --- 格納庫（ショップ） --- */
@@ -4662,6 +4841,7 @@ function loop(ts){
   switch(Game.state){
     case STATE.TITLE: drawBackdrop(); drawTitle(); break;
     case STATE.HOWTO: drawBackdrop(); drawHowto(); break;
+    case STATE.ACH: drawBackdrop(); drawAch(); break;
     case STATE.HANGAR: drawBackdrop(); drawHangar(); break;
     case STATE.PLAY: drawWorld(); break;
     case STATE.PAUSE: drawPause(); break;
@@ -4669,6 +4849,7 @@ function loop(ts){
     case STATE.CREDITS: drawBackdrop(); drawCreditRoll(); break;
     case STATE.WIN: drawWin(); break;
   }
+  drawAchToast();                       /* v2.2: 実績トーストは常に最前面 */
   ctx.restore();
   if(Game.flash>0){ ctx.globalAlpha=clamp(Game.flash,0,1); ctx.fillStyle=Game.flashColor; ctx.fillRect(0,0,VW,VH); ctx.globalAlpha=1; }
 
