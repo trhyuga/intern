@@ -493,7 +493,7 @@ const Music = {
 /* ---------------- セーブ (localStorage) ---------------- */
 const SAVE_KEY = 'neon_vanguard_save_v1';
 const Save = {
-  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{}, ach:{}, grazeAll:0, wpnClear:0 },
+  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{}, ach:{}, grazeAll:0, wpnClear:0, endlessBest:0 },
   load(){
     try{ const s=localStorage.getItem(SAVE_KEY); if(s) this.data=Object.assign(this.data, JSON.parse(s)); }catch(e){}
     if(!this.data.up) this.data.up={};
@@ -501,6 +501,7 @@ const Save = {
     if(!this.data.ach) this.data.ach={};
     if(!this.data.grazeAll) this.data.grazeAll=0;
     if(!this.data.wpnClear) this.data.wpnClear=0;
+    if(!this.data.endlessBest) this.data.endlessBest=0;
     // v2: スピード強化は廃止 → 購入済み分は返金
     if(this.data.up.speed){
       let refund=0; for(let l=0;l<this.data.up.speed;l++) refund+=Math.round(90*Math.pow(1.7,l));
@@ -510,7 +511,7 @@ const Save = {
   },
   save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); }catch(e){} },
   reset(){
-    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{}, ach:{}, grazeAll:0, wpnClear:0 };
+    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{}, ach:{}, grazeAll:0, wpnClear:0, endlessBest:0 };
     this.save();
     /* v33: セーブだけでなく、メモリ上のプレイ記録も一緒に捨てる */
     if(typeof Game!=='undefined' && Game.clearRunFlags) Game.clearRunFlags();
@@ -626,6 +627,8 @@ const ACHIEVEMENTS = [
   { id:'night',   name:'悪夢の果て',   icon:'N', desc:'NIGHTMARE でクリアする' },
   { id:'rush',    name:'連戦制覇',     icon:'≫', desc:'BOSS RUSH をクリアする' },
   { id:'rush5',   name:'韋駄天',       icon:'⏱', desc:'BOSS RUSH を 5分以内でクリアする' },
+  { id:'endless25',name:'不屈',        icon:'25', desc:'ENDLESS でウェーブ25に到達する' },
+  { id:'endless50',name:'際限なし',    icon:'50', desc:'ENDLESS でウェーブ50に到達する' },
   { id:'wpn3',    name:'三種の武装',   icon:'⊞', desc:'3種類すべての武器でクリアする' },
   { id:'zrank',   name:'真の終幕',     icon:'Z', desc:'Zランクに到達する' },
 ];
@@ -944,6 +947,20 @@ const Game = {
     this.startCine('stage','BOSS RUSH','全ボス連戦 — タイムアタック',150);
   },
 
+  /* v2.3: ENDLESS 開始（クリア後に解放される無限ウェーブ生存モード） */
+  launchEndless(){
+    Sound.init(); Sound.resume();
+    this.mode='endless'; this.midRun=false;
+    this.carryHP=null; this.carryShield=null;
+    this.score=0; this.runCredits=0;
+    this.clearRunFlags();
+    this.endlessWave=1;
+    Save.data.runs++;
+
+    this.beginStage(0);
+    this.startCine('stage','ENDLESS','倒されるまで終わらない — 到達ウェーブを競う',150);
+  },
+
   /* ---- ステージ間格納庫から次ステージへ ---- */
   resumeNext(){
     Sound.init(); Sound.resume();
@@ -986,7 +1003,9 @@ const Game = {
     this.state = STATE.PLAY;
     this.cine=null; this.odT=0; this.message=null; this.messageT=0;
     /* v23: 何ステージに入ったかがハッキリ分かる開幕カットイン */
-    if(this.mode!=='rush'){
+    if(this.mode==='endless'){
+      Music.play('stage'+stage);
+    } else if(this.mode!=='rush'){
       this.startCine('stage', 'STAGE '+(stage+1), STAGES[stage].name, 165);
       Music.play('stage'+stage);
     } else {
@@ -1012,7 +1031,7 @@ const Game = {
     Music.play('opening');
   },
 
-  recKey(){ return (this.mode==='rush'?'rush':'camp')+'_'+diffIdx(); },
+  recKey(){ return (this.mode==='rush'?'rush':this.mode==='endless'?'endl':'camp')+'_'+diffIdx(); },
   bestScore(){ return (Save.data.rec && Save.data.rec[this.recKey()]) || 0; },
 
   endRun(win){
@@ -1022,9 +1041,17 @@ const Game = {
       const k=this.recKey(), prev=(Save.data.rec[k]||0);
       if(this.score > prev){ Save.data.rec[k]=Math.round(this.score); this.newRecord = prev>0; }
     }
+    /* v2.3: ENDLESS は到達ウェーブが記録。クリアという概念が無いので勝敗判定は使わない */
+    if(this.mode==='endless'){
+      const w=this.endlessWave|0;
+      this.endlessRecord = w > (Save.data.endlessBest||0);
+      if(this.endlessRecord) Save.data.endlessBest = w;
+      if(w>=25) unlockAch('endless25');
+      if(w>=50) unlockAch('endless50');
+    }
     const gain = Math.round(this.runCredits);
     Save.data.credits += gain; this.runCredits=0;
-    if(this.stageIndex+1 > Save.data.best) Save.data.best = this.stageIndex+1;
+    if(this.mode!=='endless' && this.stageIndex+1 > Save.data.best) Save.data.best = this.stageIndex+1;
     if(win){
       Save.data.cleared=true;
       if(this.mode==='rush'){
@@ -1103,6 +1130,7 @@ const Game = {
     this.chain=0; this.chainT=0; this.chainBest=0; this.hitStop=0;
     this.slowMo=0; this.slowMoDepth=0; this.chainPop=0; this.trail=[];
     this.bombsUsed=0; this.hitless=true; this.achToast=[];
+    this.endlessWave=0; this.endlessRecord=false;
   },
 
   setMessage(a,b,dur){ this.message={a,b}; this.messageT=dur; },
@@ -1160,6 +1188,10 @@ const Game = {
     else if(id==='rush'){
       if(!Save.data.cleared){ Sound.deny(); this.shopMsg='本編クリアで解放されます'; this.shopMsgT=110; return; }
       this.launchRush();
+    }
+    else if(id==='endless'){
+      if(!Save.data.cleared){ Sound.deny(); this.shopMsg='本編クリアで解放されます'; this.shopMsgT=110; return; }
+      this.launchEndless();
     }
     else if(id.startsWith('wpn:')){
       const n=+id.slice(4);
@@ -1598,8 +1630,9 @@ const CRED_MUL = [1.0, 1.4, 1.8];   // クレジット倍率(ステージ別)
    （撃ち出しの初速は同じ。低速弾ほどよく伸び、元から速い弾は伸びない） */
 const ACC_MUL  = [0.005, 0.009, 0.014];
 const ACC_CAP  = [1.70, 2.05, 2.45];   // 到達できる最大倍率（終盤ほど伸びる）
-function dmgScale(){ return (DMG_MUL[Game.stageIndex]||1) * curDiff().dmg; }
-function credScale(){ return (CRED_MUL[Game.stageIndex]||1) * curDiff().cred; }
+/* v2.3: ENDLESS はウェーブが進むほど被ダメージが増える（見返りも増える） */
+function dmgScale(){ return (DMG_MUL[Game.stageIndex]||1) * curDiff().dmg * (Game.mode==='endless'?endlessDmg():1); }
+function credScale(){ return (CRED_MUL[Game.stageIndex]||1) * curDiff().cred * (Game.mode==='endless'?Math.min(2.2,endlessDmg()):1); }
 
 function formationRow(kind, count, y, hpMul){
   const gap=VW/(count+1);
@@ -1622,13 +1655,24 @@ const Director = {
   begin(stage){
     this.stage=stage; this.step=0; this.timer=0; this.phase='run';
     this.rush = (Game.mode==='rush');
-    this.script = this.rush ? buildRushScript() : buildScript(stage);
+    this.endless = (Game.mode==='endless');
+    this.script = this.endless ? buildEndlessChunk(1, 30)
+                : this.rush    ? buildRushScript()
+                :                buildScript(stage);
     Game.stageIndex=stage;
+  },
+  /* v2.3: 台本の終わりが近づいたら継ぎ足す（ENDLESS専用） */
+  extendEndless(){
+    const from = (this.script[this.script.length-1].n|0) + 1;
+    this.script = this.script.concat(buildEndlessChunk(from, 20));
   },
   update(dt){
     if(this.phase!=='run') return;
+    if(this.endless && this.step > this.script.length-6) this.extendEndless();
     const s=this.script[this.step];
     if(!s){ return; }
+    /* ENDLESS: いま何ウェーブ目かを常に反映（HUD・倍率が参照する） */
+    if(this.endless && s.n) Game.endlessWave = s.n;
     if(s.type==='wave'){
       if(!s.started){ s.spawn(); s.started=true; this.timer=0; }
       this.timer+=dt;
@@ -1655,10 +1699,25 @@ const Director = {
         else { spawnGreatBoss(VW/2, -60); Music.play('final'); }
       }
       if(s.done) this.next();
+    } else if(s.type==='emid' || s.type==='ebos'){
+      /* v2.3: ENDLESS のボスウェーブ。背景と曲を巡回させて単調さを避ける */
+      if(!s.started){
+        s.started=true;
+        this.stage = s.stage; Game.stageIndex = s.stage;
+        if(s.type==='emid'){ spawnMidboss(s.stage); Music.play('midboss'); }
+        else { spawnBoss(s.stage); Music.play('boss'+s.stage); }
+      }
+      if(s.done){ Music.play('stage'+this.stage); this.next(); }
     }
   },
   next(){ this.step++; this.timer=0; },
   onBossDefeated(){
+    /* v2.3: ENDLESS では格納庫に戻らず、そのまま次のウェーブへ続く */
+    if(this.endless){
+      const s=this.script[this.step]; if(s) s.done=true;
+      Game.setMessage('WAVE '+((Game.endlessWave|0)+1)+' へ', '', 90);
+      return;
+    }
     if(this.stage<2){
       Game.stageClear(this.stage+1);   // v2: 格納庫を挟む
     } else {
@@ -1686,6 +1745,51 @@ function buildRushScript(){
     if(i>0) S.push({type:'wait', t:34});
     S.push({type:'rush', kind:r.kind, stage:r.stage, idx:i});
   });
+  return S;
+}
+
+/* =========================================================================
+   v2.3: ENDLESS — 無限ウェーブ生存モード（クリア後に解放）
+   ・格納庫を挟まない一発勝負。倒されたら終了、到達ウェーブとスコアが記録される
+   ・敵HPと攻撃力がウェーブごとに上がり続ける（`endlessHP()` / `endlessDmg()`）
+   ・8ウェーブごとに中ボス、24ウェーブごとにステージボス。背景と曲も巡回する
+   ・台本は使い切ったぶんだけ継ぎ足す（`Director.extendEndless()`）ので本当に無限
+   ========================================================================= */
+const ENDLESS_MID = 8;          // 中ボスの間隔（ウェーブ）
+const ENDLESS_BOSS = 24;        // ステージボスの間隔（ウェーブ）
+function endlessHP(){  return 1 + (Game.endlessWave||0)*0.135; }
+function endlessDmg(){ return Math.min(2.6, 1 + (Game.endlessWave||0)*0.030); }
+/* ウェーブ番号から敵構成を組み立てる。進むほど密度と種類が増える */
+function endlessWaveSpawn(n){
+  const m = endlessHP();
+  const t = Math.min(1, n/40);                       // 0→1 の進行度
+  const c = (base)=> base + Math.round(t*3);         // 数量の伸び
+  const early = ['grunt','weaver','turret','kamikaze','splitter'];
+  const mid   = ['bomber','sniper','shield','mine','orbiter','prism'];
+  const late  = ['hunter','bulwark','carrier','dasher'];
+  const pool  = early.concat(n>=6?mid:[], n>=14?late:[]);
+  const pick  = ()=> pool[randi(0,pool.length-1)];
+  return ()=>{
+    const groups = 2 + (n>=10?1:0) + (n>=26?1:0);
+    for(let g=0; g<groups; g++){
+      /* 前のウェーブの残りが多い時は追加で湧かせない（画面と描画負荷を守る） */
+      if(Game.enemies.length > 34) break;
+      const k=pick(), y=80+g*46+randi(0,20);
+      if(k==='kamikaze'||k==='mine'||k==='splitter'||k==='hunter') swarm(k, c(3), m);
+      else if(k==='dasher') dashers(c(3), g%2?1:-1, y, m);
+      else if(k==='carrier'){ const e=makeEnemy('carrier', rand(90,VW-90), -40, {targetY:y, hpMul:m}); Game.enemies.push(e); }
+      else formationRow(k, c(3), y, m);
+    }
+  };
+}
+function buildEndlessChunk(from, count){
+  const S=[];
+  for(let i=0;i<count;i++){
+    const n = from+i;                                 // 1始まりのウェーブ番号
+    if(n % ENDLESS_BOSS === 0)     S.push({type:'ebos', n, stage:((n/ENDLESS_BOSS-1)|0)%3});
+    else if(n % ENDLESS_MID === 0) S.push({type:'emid', n, stage:((n/ENDLESS_MID-1)|0)%3});
+    else                           S.push({type:'wave', clear:'all', maxT:1400, n, spawn:endlessWaveSpawn(n)});
+  }
   return S;
 }
 
@@ -1775,6 +1879,8 @@ function makeBoss(kind, stage){
   else if(kind==='great'){ B.r=64; B.maxHp=95000; B.name='OMEGA CORE'; B.baseY=VH*0.24; }
   else { B.r=52; B.maxHp=[3400,14000,42000][stage]; B.name=BOSS_NAMES[stage]; }
   B.maxHp = Math.round(B.maxHp * curDiff().hp);
+  /* v2.3: ENDLESS のボスは周回ごとに硬くなる（雑魚と同じ倍率を掛ける） */
+  if(Game.mode==='endless') B.maxHp = Math.round(B.maxHp * endlessHP());
   B.hp=B.maxHp;
   const pc = kind==='great'?10:(kind==='mid'?5:7);
   for(let i=0;i<pc;i++){ B.parts.push({a:i/pc*TAU, hp: kind==='great'?220:130, alive:true}); }
@@ -3448,6 +3554,12 @@ function drawHUD(){
     const left = RUSH_ORDER.length - Math.min(RUSH_ORDER.length, Director.script.filter(x=>x.type==='rush'&&x.done).length);
     ctx.fillStyle='#ffd76a'; ctx.fillText(fmtTime(Game.rushT), VW-12, 56);
     ctx.fillStyle='#8ac'; ctx.font='10px system-ui'; ctx.fillText('BOSS RUSH  残り'+left, VW-12, 70);
+  } else if(Game.mode==='endless'){
+    /* v2.3: ENDLESS はウェーブ数と現在の敵強化倍率を出す */
+    ctx.fillStyle='#9fffd0'; ctx.font='bold 13px system-ui';
+    ctx.fillText('WAVE '+(Game.endlessWave|0), VW-12, 56);
+    ctx.fillStyle='#8ac'; ctx.font='10px system-ui';
+    ctx.fillText('敵HP ×'+endlessHP().toFixed(2)+'  被ダメ ×'+endlessDmg().toFixed(2), VW-12, 70);
   } else {
     ctx.fillStyle='#8ac'; ctx.fillText('STAGE '+(Game.stageIndex+1), VW-12, 56);
     if(diffIdx()>0){ ctx.fillStyle=curDiff().color; ctx.font='bold 10px system-ui';
@@ -3789,8 +3901,9 @@ function drawHowto(){
     '■ やり込み',
     '  ・武器は3種（扇 / 貫通 / 追尾）から選べる',
     '  ・クリアで HARD、HARDクリアで NIGHTMARE が解放',
-    '  ・クリア後は BOSS RUSH（タイムアタック）が遊べる',
-    '  ・タイトルの「実績」に16個のメダルと条件が並ぶ',
+    '  ・クリア後は BOSS RUSH と ENDLESS が解放される',
+    '  　BOSS RUSH=全ボス連戦タイム / ENDLESS=無限ウェーブ生存',
+    '  ・タイトルの「実績」に18個のメダルと条件が並ぶ',
   ];
   /* 項目が増えたので行間を詰め、空行は半分の高さにして1画面に収める */
   ctx.font='13px system-ui';
@@ -4018,13 +4131,20 @@ function drawHangar(){
   drawButton(bx, by, bw, 44, lbl, true, '#f6c'); addBtn(bx,by,bw,44,'launch');
   /* v2.0: ボスラッシュ（本編クリアで解放） */
   if(!Game.midRun){
-    const rw=210, rx=VW/2-rw/2, ry=by+48, unlocked=!!Save.data.cleared;
-    drawButton(rx, ry, rw, 32, unlocked?'BOSS RUSH ▶':'🔒 BOSS RUSH', unlocked, unlocked?'#ffd76a':'#456');
+    const rw=102, rx=VW/2-rw-3, ry=by+48, unlocked=!!Save.data.cleared;
+    drawButton(rx, ry, rw, 32, unlocked?'BOSS RUSH':'🔒 RUSH', unlocked, unlocked?'#ffd76a':'#456');
     addBtn(rx,ry,rw,32,'rush');
+    /* v2.3: ENDLESS も同じ解放条件で横に並べる */
+    const ex=VW/2+3;
+    drawButton(ex, ry, rw, 32, unlocked?'ENDLESS':'🔒 ENDLESS', unlocked, unlocked?'#9fffd0':'#456');
+    addBtn(ex,ry,rw,32,'endless');
     ctx.textAlign='center'; ctx.font='9px system-ui'; ctx.fillStyle='#7f9ab0';
-    ctx.fillText(unlocked
-      ? (Save.data.rushBest? '全ボス連戦 — ベスト '+fmtTime(Save.data.rushBest) : '全ボス連戦のタイムアタック')
-      : '本編クリアで解放', VW/2, ry+44);
+    if(!unlocked){ ctx.fillText('本編クリアで解放', VW/2, ry+44); }
+    else{
+      ctx.fillText(Save.data.rushBest? 'RUSH ベスト '+fmtTime(Save.data.rushBest) : '全ボス連戦のタイムアタック', VW/2, ry+44);
+      ctx.fillStyle='#7fb09a';
+      ctx.fillText(Save.data.endlessBest? 'ENDLESS 最高 WAVE '+Save.data.endlessBest : '倒されるまで終わらない生存戦', VW/2, ry+56);
+    }
   } else {
     ctx.textAlign='center'; ctx.fillStyle='#567'; ctx.font='11px system-ui';
     ctx.fillText('Enter / タップ で出撃', VW/2, by+62);
@@ -4056,6 +4176,15 @@ function drawOver(){
   ctx.save(); ctx.shadowBlur=24;
   ctx.shadowColor='#f66'; ctx.fillStyle='#ffd0d0'; ctx.font='bold 42px system-ui'; ctx.fillText('SHIP DOWN', VW/2, 270);
   ctx.restore();
+  /* v2.3: ENDLESS は「どこまで行けたか」が主役なので大きく出す */
+  if(Game.mode==='endless'){
+    const rec=Game.endlessRecord;
+    ctx.save(); ctx.shadowBlur=gq(20); ctx.shadowColor='#9fffd0';
+    ctx.fillStyle= rec?'#ffd76a':'#9fffd0'; ctx.font='bold 30px system-ui';
+    ctx.fillText('WAVE '+(Game.endlessWave|0), VW/2, 318); ctx.restore();
+    ctx.fillStyle= rec?'#ffd76a':'#5f88aa'; ctx.font= rec?'bold 12px system-ui':'11px system-ui';
+    ctx.fillText(rec? '★ 最高到達ウェーブ更新！' : '最高 WAVE '+(Save.data.endlessBest||0), VW/2, 338);
+  }
   ctx.fillStyle='#cfe'; ctx.font='15px system-ui';
   ctx.fillText('今回のスコア: '+fmt(Game.score), VW/2, 360);
   ctx.fillStyle='#ffd76a'; ctx.fillText('獲得クレジット: ◈ '+fmt(Game.lastGain||0)+'c', VW/2, 388);
