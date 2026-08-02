@@ -485,10 +485,11 @@ const Music = {
 /* ---------------- セーブ (localStorage) ---------------- */
 const SAVE_KEY = 'neon_vanguard_save_v1';
 const Save = {
-  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false },
+  data:{ credits:0, up:{}, best:0, cleared:false, muted:false, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{} },
   load(){
     try{ const s=localStorage.getItem(SAVE_KEY); if(s) this.data=Object.assign(this.data, JSON.parse(s)); }catch(e){}
     if(!this.data.up) this.data.up={};
+    if(!this.data.rec) this.data.rec={};
     // v2: スピード強化は廃止 → 購入済み分は返金
     if(this.data.up.speed){
       let refund=0; for(let l=0;l<this.data.up.speed;l++) refund+=Math.round(90*Math.pow(1.7,l));
@@ -498,7 +499,7 @@ const Save = {
   },
   save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(this.data)); }catch(e){} },
   reset(){
-    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false };
+    this.data={ credits:0, up:{}, best:0, cleared:false, muted:Sound.muted, runs:0, ext:0, od:0, wpn:0, diff:0, clearedDiff:0, rushBest:0, rushCleared:false, rec:{} };
     this.save();
     /* v33: セーブだけでなく、メモリ上のプレイ記録も一緒に捨てる */
     if(typeof Game!=='undefined' && Game.clearRunFlags) Game.clearRunFlags();
@@ -951,7 +952,16 @@ const Game = {
     Music.play('opening');
   },
 
+  recKey(){ return (this.mode==='rush'?'rush':'camp')+'_'+diffIdx(); },
+  bestScore(){ return (Save.data.rec && Save.data.rec[this.recKey()]) || 0; },
+
   endRun(win){
+    /* v2.0: モード×難易度ごとのベストスコアを記録 */
+    this.newRecord = false;
+    {
+      const k=this.recKey(), prev=(Save.data.rec[k]||0);
+      if(this.score > prev){ Save.data.rec[k]=Math.round(this.score); this.newRecord = prev>0; }
+    }
     const gain = Math.round(this.runCredits);
     Save.data.credits += gain; this.runCredits=0;
     if(this.stageIndex+1 > Save.data.best) Save.data.best = this.stageIndex+1;
@@ -3544,6 +3554,14 @@ function drawTitle(){
     const W=curWeapon();
     ctx.fillStyle=W.color; ctx.font='bold 10px system-ui';
     ctx.fillText('WEAPON: '+W.name+'  '+W.jp, VW/2, 421);
+    {
+      const parts=[];
+      DIFFS.forEach((d,i)=>{ const v=(Save.data.rec||{})['camp_'+i]; if(v) parts.push(d.name+' '+fmt(v)); });
+      if(parts.length){
+        ctx.fillStyle='#5f88aa'; ctx.font='9px system-ui';
+        ctx.fillText('BEST  '+parts.join('   /   '), VW/2, 445);
+      }
+    }
     if(diffIdx()>0 || Save.data.rushBest){
       ctx.fillStyle=curDiff().color; ctx.font='bold 9px system-ui';
       const bits=[]; if(diffIdx()>0) bits.push(curDiff().name);
@@ -3794,16 +3812,25 @@ function drawOver(){
   ctx.fillText('今回のスコア: '+fmt(Game.score), VW/2, 360);
   ctx.fillStyle='#ffd76a'; ctx.fillText('獲得クレジット: ◈ '+fmt(Game.lastGain||0)+'c', VW/2, 388);
   ctx.fillStyle='#9fd'; ctx.fillText('総クレジット: ◈ '+fmt(Save.data.credits)+'c', VW/2, 414);
+  /* v2.0: 立ち回りの戦績とベスト記録 */
+  ctx.fillStyle='#8fd4ff'; ctx.font='12px system-ui';
+  ctx.fillText('最高 '+(Game.chainBest||0)+' CHAIN ／ GRAZE '+(Game.graze||0)
+    +' ／ '+curWeapon().name+(diffIdx()>0?' ／ '+curDiff().name:''), VW/2, 434);
+  {
+    const bs=Game.bestScore();
+    ctx.fillStyle= Game.newRecord? '#ffd76a':'#5f88aa'; ctx.font= Game.newRecord?'bold 12px system-ui':'11px system-ui';
+    ctx.fillText(Game.newRecord? '★ NEW RECORD  '+fmt(bs) : 'BEST '+fmt(bs), VW/2, 452);
+  }
   if(Game.extUnlocked){
     const g=0.65+0.35*Math.sin(Game.t*0.09);
     ctx.save(); ctx.shadowBlur=18; ctx.shadowColor='#ffd76a';
     ctx.fillStyle='rgba(255,215,106,'+g.toFixed(2)+')'; ctx.font='bold 18px system-ui';
-    ctx.fillText('★ 限界突破 UNLOCKED ★', VW/2, 452); ctx.restore();
+    ctx.fillText('★ 限界突破 UNLOCKED ★', VW/2, 474); ctx.restore();
     ctx.fillStyle='#cfe'; ctx.font='12px system-ui';
-    ctx.fillText('火力・ホーミング・シールドの上限が解放された', VW/2, 476);
-    ctx.fillStyle='#8ac'; ctx.fillText('限界まで上げ切れば オーバードライブが更に強化される', VW/2, 496);
+    ctx.fillText('火力・ホーミング・シールドの上限が解放された', VW/2, 494);
+    ctx.fillStyle='#8ac'; ctx.fillText('限界まで上げ切れば オーバードライブが更に強化される', VW/2, 510);
   } else {
-    ctx.fillStyle='#8ac'; ctx.font='13px system-ui'; ctx.fillText('強化して もう一度挑もう！', VW/2, 448);
+    ctx.fillStyle='#8ac'; ctx.font='13px system-ui'; ctx.fillText('強化して もう一度挑もう！', VW/2, 476);
   }
 
   const bw=200,bx=VW/2-bw/2;
@@ -4163,9 +4190,14 @@ function drawWin(){
     ctx.fillStyle='#8fd4ff'; ctx.font='12px system-ui';
     ctx.fillText('最高 '+(Game.chainBest||0)+' CHAIN ／ GRAZE '+(Game.graze||0)
       +' ／ '+curWeapon().name+(diffIdx()>0?' ／ '+curDiff().name:''), VW/2, 527);
+    {
+      const bs=Game.bestScore();
+      ctx.fillStyle= Game.newRecord? '#ffd76a':'#5f88aa'; ctx.font= Game.newRecord?'bold 12px system-ui':'11px system-ui';
+      ctx.fillText(Game.newRecord? '★ NEW RECORD  '+fmt(bs) : 'BEST '+fmt(bs), VW/2, 546);
+    }
     if(Game.mode==='rush'){
       ctx.fillStyle= Game.rushRecord? '#ffd76a':'#9fffd0'; ctx.font='bold 14px system-ui';
-      ctx.fillText('BOSS RUSH  '+fmtTime(Game.rushT)+(Game.rushRecord?'  ★NEW RECORD':''), VW/2, 546);
+      ctx.fillText('BOSS RUSH  '+fmtTime(Game.rushT)+(Game.rushRecord?'  ★NEW RECORD':''), VW/2, 563);
     }
   }
   if(T>110){
