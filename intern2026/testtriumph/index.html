@@ -2264,11 +2264,19 @@ function fLattice(speed, gapW){
    fAimSplit: 自機を狙う弾が少し進んでから3方向に割れる（雑魚プリズムと同じ
    split機構を流用）。最初の軌道だけ見て避けても、分裂後の拡散まで見ておかないと
    追い打ちを食らう。既存の自機狙い弾(fAimN)と役割が近いので、置き換えて使う。 */
-function fAimSplit(speed){
+function fAimSplit(speed, n, spread){
+  /* v2.10: n>1 なら fAimN 同様の密集スプレッドを同時発射できるよう拡張。
+     n未指定（既存呼び出し）は従来通り単発。GOLD SENTINELのような「瞬間密度」が
+     重要な相手には n を指定して初速の脅威量を fAimN 相当に揃えてから使うこと
+     （v2.9で単発版を流用してバランスを崩した反省）。 */
   return (b)=>{
     const p=Game.player; if(!p) return;
     const a=Math.atan2(p.y-b.y,p.x-b.x);
-    eb(b.x,b.y,Math.cos(a)*speed,Math.sin(a)*speed,{r:6,color:'#d9a0ff',dmg:18,split:1});
+    const cnt = n||1, sp = spread||0;
+    for(let i=0;i<cnt;i++){
+      const off = cnt>1 ? (i-(cnt-1)/2)*sp : 0;
+      eb(b.x,b.y,Math.cos(a+off)*speed,Math.sin(a+off)*speed,{r:6,color:'#d9a0ff',dmg:18,split:1});
+    }
   };
 }
 /* fZigRain: 上から降る雨が左右にジグザグしながら落ちてくる。まっすぐ避けても
@@ -2310,7 +2318,7 @@ function bossPatterns(b){
   if(b.id==='boss2'){ // GOLD SENTINEL: 要塞。十字砲＋加速雨＋密リング
     if(ph===0) return [ {f:fCross(8,3.6),cd:34,reps:4}, {f:fRing(16,3.2),cd:58,reps:2}, {f:fAimN(5,0.2,5.0),cd:32,reps:2} ];
     if(ph===1) return [ {f:fCross(10,3.8),cd:28,reps:4}, {f:fAccelRain(12),cd:40,reps:3}, {f:fLattice(3.6,48),cd:110,reps:1}, {f:fSummon(['turret','sniper']),cd:50,reps:2} ];
-    return       [ {f:fCross(12,4.0),cd:24,reps:4}, {f:fVortex(16,3.0,0.020),cd:52,reps:2}, {f:fAccelRain(15),cd:34,reps:3}, {f:fAimN(7,0.16,5.6),cd:26,reps:3} ];
+    return       [ {f:fCross(12,4.0),cd:24,reps:4}, {f:fVortex(16,3.0,0.020),cd:52,reps:2}, {f:fAccelRain(15),cd:34,reps:3}, {f:fAimSplit(5.6,7,0.16),cd:26,reps:3} ];
   }
   /* GREAT: OMEGA CORE — 全ボスの技を受け継ぐ総力戦。長丁場なので手数を多く */
   if(ph===0) return [
