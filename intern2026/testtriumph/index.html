@@ -4159,7 +4159,11 @@ function drawAch(){
     ctx.save(); ctx.shadowBlur=gq(10); ctx.shadowColor='#ffd76a';
     ctx.fillStyle='#ffd76a'; ctx.fillRect(x,100,w*(done/all),5); ctx.restore(); }
 
-  const rh=38, top=120;
+  /* v2.12: 実績が18個まで増えたため rh=38 のままだと最後の2項目
+     （三種の武装/真の終幕）が下部固定の「戻る」ボタン(y=742)や画面下端(VH=800)と
+     重なって読めなくなっていた。行の余白比率(rh-5=5pxの隙間)は保ったまま
+     rh=34に詰め、18項目すべてがボタンより上に収まるようにする。 */
+  const rh=34, top=120;
   ACHIEVEMENTS.forEach((a,i)=>{
     const y=top+i*rh, got=achDone(a.id);
     ctx.fillStyle= got ? 'rgba(255,215,106,0.10)' : 'rgba(120,160,200,0.05)';
