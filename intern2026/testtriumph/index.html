@@ -4481,10 +4481,14 @@ function drawOver(){
     ctx.fillStyle='#8ac'; ctx.font='13px system-ui'; ctx.fillText('強化して もう一度挑もう！', VW/2, 476);
   }
 
+  /* v2.13: 初回「限界突破 UNLOCKED」表示は3行になり、固定y=500のボタンと
+     文字が重なっていた（3行目 y=510 がボタン帯 500〜546 に食い込む）。
+     このバナー表示時だけボタン群を下にずらして衝突を避ける（通常時のレイアウトは不変）。 */
   const bw=200,bx=VW/2-bw/2;
-  drawButton(bx, 500, bw, 46, '格納庫へ', true, '#6cf'); addBtn(bx,500,bw,46,'hangar');
-  drawButton(bx, 558, bw, 40, 'タイトルへ', true, '#9f8'); addBtn(bx,558,bw,40,'title');
-  ctx.fillStyle='#567'; ctx.font='11px system-ui'; ctx.fillText('Enter / タップ で格納庫', VW/2, 620);
+  const by = Game.extUnlocked ? 522 : 500;
+  drawButton(bx, by,     bw, 46, '格納庫へ',  true, '#6cf'); addBtn(bx,by,   bw,46,'hangar');
+  drawButton(bx, by+58,  bw, 40, 'タイトルへ', true, '#9f8'); addBtn(bx,by+58,bw,40,'title');
+  ctx.fillStyle='#567'; ctx.font='11px system-ui'; ctx.fillText('Enter / タップ で格納庫', VW/2, by+120);
 }
 
 /* =========================================================================
