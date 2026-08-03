@@ -2260,6 +2260,27 @@ function fLattice(speed, gapW){
     }
   };
 }
+/* v2.9: 新パターン2種
+   fAimSplit: 自機を狙う弾が少し進んでから3方向に割れる（雑魚プリズムと同じ
+   split機構を流用）。最初の軌道だけ見て避けても、分裂後の拡散まで見ておかないと
+   追い打ちを食らう。既存の自機狙い弾(fAimN)と役割が近いので、置き換えて使う。 */
+function fAimSplit(speed){
+  return (b)=>{
+    const p=Game.player; if(!p) return;
+    const a=Math.atan2(p.y-b.y,p.x-b.x);
+    eb(b.x,b.y,Math.cos(a)*speed,Math.sin(a)*speed,{r:6,color:'#d9a0ff',dmg:18,split:1});
+  };
+}
+/* fZigRain: 上から降る雨が左右にジグザグしながら落ちてくる。まっすぐ避けても
+   うねりに追いつかれるので、リズムを見て逆方向へ動く必要がある。 */
+function fZigRain(n, speed, amp){
+  return (b)=>{
+    for(let i=0;i<n;i++){
+      const x=rand(30,VW-30);
+      eb(x, b.y+rand(-10,20), 0, speed, {r:5,color:'#baffc9',dmg:16, wave:{a:amp||30,f:0.05,p:rand(0,TAU)}});
+    }
+  };
+}
 
 /* 各ボスのフェーズ別パターンリスト {f, cd, reps} */
 function bossPatterns(b){
@@ -2279,12 +2300,12 @@ function bossPatterns(b){
   if(b.id==='boss0'){ // AZURE CRUSHER: カニ。壁＋ハサミ集中砲火
     if(ph===0) return [ {f:fClaws(4.4),cd:40,reps:4}, {f:fWallGap(3.0),cd:100,reps:1}, {f:fAimN(3,0.26,4.6),cd:36,reps:3} ];
     if(ph===1) return [ {f:fClaws(4.8),cd:32,reps:4}, {f:fWallGap(3.3),cd:85,reps:2}, {f:fRing(14,3.0),cd:60,reps:2}, {f:fSummon(['grunt','weaver']),cd:50,reps:2} ];
-    return       [ {f:fClaws(5.2),cd:26,reps:5}, {f:fLattice(3.4,46),cd:104,reps:1}, {f:fRing(18,3.4),cd:48,reps:2}, {f:fAimN(7,0.18,5.2),cd:30,reps:2} ];
+    return       [ {f:fClaws(5.2),cd:26,reps:5}, {f:fLattice(3.4,46),cd:104,reps:1}, {f:fRing(18,3.4),cd:48,reps:2}, {f:fAimSplit(5.4),cd:26,reps:3} ];
   }
   if(b.id==='boss1'){ // CRIMSON MOTH: 蛾。鱗粉スキャッター＋波状扇＋二重螺旋
     if(ph===0) return [ {f:fScatter(9,3.4),cd:42,reps:3}, {f:fWaveFan(7,3.2,1.6),cd:60,reps:2}, {f:fAimN(4,0.24,4.8),cd:34,reps:2} ];
     if(ph===1) return [ {f:fSpiral(3,3.6,1),cd:9,reps:16}, {f:fWaveFan(9,3.4,2.0),cd:52,reps:2}, {f:fBloom(5,64,8),cd:76,reps:2}, {f:fSummon(['kamikaze','sniper']),cd:46,reps:2} ];
-    return       [ {f:fSpiral(3,3.8,1),cd:8,reps:14}, {f:fBloom(7,58,10),cd:70,reps:2}, {f:fWaveFan(11,3.6,2.4),cd:46,reps:2}, {f:fScatter(14,4.2),cd:32,reps:2} ];
+    return       [ {f:fSpiral(3,3.8,1),cd:8,reps:14}, {f:fBloom(7,58,10),cd:70,reps:2}, {f:fWaveFan(11,3.6,2.4),cd:46,reps:2}, {f:fZigRain(11,3.8),cd:32,reps:2} ];
   }
   if(b.id==='boss2'){ // GOLD SENTINEL: 要塞。十字砲＋加速雨＋密リング
     if(ph===0) return [ {f:fCross(8,3.6),cd:34,reps:4}, {f:fRing(16,3.2),cd:58,reps:2}, {f:fAimN(5,0.2,5.0),cd:32,reps:2} ];
