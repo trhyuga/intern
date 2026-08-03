@@ -1680,6 +1680,42 @@ function formationRow(kind, count, y, hpMul){
     Game.enemies.push(e);
   }
 }
+function formationV(kind, count, yBase, hpMul, spread){
+  /* v34: V字（谷型）編隊。x方向のスロット配置・弧入場は formationRow と同じ
+     （安全性はt_bal.cjs複数回で検証済みのロジックを流用）。
+     y方向にだけ緩やかな高低差をつけ、中央が手前・両端ほど奥に着地するようにする。
+     spreadは既定24px程度に抑え、着地y分布のブレをformationRow各種呼び出しの
+     既存の幅（80〜200の範囲で複数回に分けて呼ぶ設計）から大きく外れないようにしている。 */
+  const gap=VW/(count+1);
+  const mid=(count-1)/2;
+  const sp = spread!==undefined?spread:14;
+  for(let i=0;i<count;i++){
+    const slotX = gap*(i+1);
+    const fromX = clamp(slotX + (i%2===0 ? -90 : 90), 24, VW-24);
+    const spawnY = -30-i*4;
+    const targetY = yBase + Math.abs(i-mid)*sp;
+    const e=makeEnemy(kind, fromX, spawnY, {targetY, hpMul});
+    e.homeX = slotX;
+    e.arcFromX = fromX; e.arcFromY = spawnY; e.arcSlotX = slotX;
+    Game.enemies.push(e);
+  }
+}
+function formationWedge(kind, count, yBase, hpMul, spread){
+  /* v34: くさび形（山型）編隊。formationV の逆で、中央が最も奥・両端が手前。 */
+  const gap=VW/(count+1);
+  const mid=(count-1)/2;
+  const sp = spread!==undefined?spread:14;
+  for(let i=0;i<count;i++){
+    const slotX = gap*(i+1);
+    const fromX = clamp(slotX + (i%2===0 ? -90 : 90), 24, VW-24);
+    const spawnY = -30-i*4;
+    const targetY = yBase + (mid-Math.abs(i-mid))*sp;
+    const e=makeEnemy(kind, fromX, spawnY, {targetY, hpMul});
+    e.homeX = slotX;
+    e.arcFromX = fromX; e.arcFromY = spawnY; e.arcSlotX = slotX;
+    Game.enemies.push(e);
+  }
+}
 function swarm(kind,count,hpMul){
   for(let i=0;i<count;i++){ const e=makeEnemy(kind,rand(50,VW-50),-30-i*26,{hpMul}); Game.enemies.push(e); }
 }
@@ -1841,7 +1877,7 @@ function buildScript(stage){
   if(stage===0){
     S.push(W(()=>{ formationRow('grunt',5,80,m); formationRow('grunt',5,130,m); }));
     S.push(W(()=>{ formationRow('weaver',5,90,m); }));
-    S.push(W(()=>{ formationRow('turret',3,100,m); formationRow('grunt',4,150,m); }));
+    S.push(W(()=>{ formationV('turret',3,100,m); formationRow('grunt',4,150,m); }));
     S.push(W(()=>{ dashers(4,1,110,m); formationRow('grunt',4,170,m); }));
     S.push(W(()=>{ formationRow('sniper',2,90,m); formationRow('weaver',4,150,m); }));
     S.push({type:'midboss'});
@@ -1861,7 +1897,7 @@ function buildScript(stage){
     S.push(W(()=>{ swarm('splitter',3,m); formationRow('grunt',5,90,m); }));
     S.push(W(()=>{ formationRow('bomber',3,90,m); swarm('kamikaze',5,m); }));
     S.push(W(()=>{ dashers(4,-1,100,m); formationRow('sniper',2,140,m); }));
-    S.push(W(()=>{ formationRow('prism',3,100,m); formationRow('weaver',4,160,m); }));
+    S.push(W(()=>{ formationV('prism',3,100,m); formationRow('weaver',4,160,m); }));
     S.push(W(()=>{ formationRow('orbiter',3,130,m); swarm('mine',7,m); }));
     S.push(W(()=>{ formationRow('shield',2,90,m); formationRow('weaver',5,150,m); }));
     S.push({type:'midboss'});
@@ -1880,7 +1916,7 @@ function buildScript(stage){
     S.push(W(()=>{ formationRow('turret',4,90,m); formationRow('splitter',2,150,m); }));
     S.push(W(()=>{ formationRow('shield',3,90,m); swarm('kamikaze',6,m); }));
     S.push(W(()=>{ dashers(5,1,100,m); formationRow('sniper',2,150,m); }));
-    S.push(W(()=>{ formationRow('bomber',4,90,m); formationRow('weaver',5,150,m); }));
+    S.push(W(()=>{ formationWedge('bomber',4,90,m); formationRow('weaver',5,150,m); }));
     S.push(W(()=>{ formationRow('bulwark',3,95,m); swarm('hunter',3,m); }));
     S.push(W(()=>{ formationRow('prism',3,100,m); formationRow('turret',3,160,m); }));
     S.push(W(()=>{ formationRow('orbiter',3,120,m); swarm('mine',8,m); }));
