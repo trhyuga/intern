@@ -3992,6 +3992,7 @@ function drawTitle(){
   drawShipBody(T, BULLET_TIERS[bulletTier()].c, shipOpts({thrust:1.05}));
   ctx.restore(); ctx.shadowBlur=0;
   /* v27: 現在の機体形式を表示 */
+  let titleExtraInfo=false; // v2.14: 下の記録行がスタートボタンと重なるレイアウトかどうか
   {
     const M=SHIP_MARKS[currentMark()];
     ctx.fillStyle='#8fd4ff'; ctx.font='bold 12px system-ui';
@@ -4004,11 +4005,13 @@ function drawTitle(){
       const parts=[];
       DIFFS.forEach((d,i)=>{ const v=(Save.data.rec||{})['camp_'+i]; if(v) parts.push(d.name+' '+fmt(v)); });
       if(parts.length){
+        titleExtraInfo=true;
         ctx.fillStyle='#5f88aa'; ctx.font='9px system-ui';
         ctx.fillText('BEST  '+parts.join('   /   '), VW/2, 445);
       }
     }
     if(diffIdx()>0 || Save.data.rushBest){
+      titleExtraInfo=true;
       ctx.fillStyle=curDiff().color; ctx.font='bold 9px system-ui';
       const bits=[]; if(diffIdx()>0) bits.push(curDiff().name);
       if(Save.data.rushBest) bits.push('RUSH '+fmtTime(Save.data.rushBest));
@@ -4016,18 +4019,23 @@ function drawTitle(){
     }
   }
 
+  /* v2.14: 難易度別の周回ベストやRUSHベストが表示される時、その行(y433/445)が
+     スタートボタン上端(元y430)と重なって読みづらかった（低コントラストで薄く透けて見える）。
+     該当行が実際に表示される場合だけボタン群全体を24px下にずらして回避する。
+     記録が無い初回プレイ時のレイアウトは従来通り不変。 */
+  const btnOff = titleExtraInfo ? 24 : 0;
   const bw=200,bx=VW/2-bw/2;
-  drawButton(bx, 430, bw, 46, 'スタート', true, '#6cf'); addBtn(bx,430,bw,46,'start');
+  drawButton(bx, 430+btnOff, bw, 46, 'スタート', true, '#6cf'); addBtn(bx,430+btnOff,bw,46,'start');
   /* v2.2: 「遊び方」と「実績」を左右に並べる */
   {
     const hw=(bw-8)/2;
-    drawButton(bx, 488, hw, 40, '遊び方', true, '#9f8'); addBtn(bx,488,hw,40,'howto');
+    drawButton(bx, 488+btnOff, hw, 40, '遊び方', true, '#9f8'); addBtn(bx,488+btnOff,hw,40,'howto');
     const done=achCount(), all=ACHIEVEMENTS.length;
-    drawButton(bx+hw+8, 488, hw, 40, '実績 '+done+'/'+all, true, done>=all?'#ffd76a':'#fc8');
-    addBtn(bx+hw+8,488,hw,40,'ach');
+    drawButton(bx+hw+8, 488+btnOff, hw, 40, '実績 '+done+'/'+all, true, done>=all?'#ffd76a':'#fc8');
+    addBtn(bx+hw+8,488+btnOff,hw,40,'ach');
   }
-  drawButton(bx, 538, bw, 40, Sound.muted?'サウンド: OFF':'サウンド: ON', true, '#fc8'); addBtn(bx,538,bw,40,'mute');
-  drawButton(bx, 588, bw, 34, 'データ初期化', true, '#f88'); addBtn(bx,588,bw,34,'reset');
+  drawButton(bx, 538+btnOff, bw, 40, Sound.muted?'サウンド: OFF':'サウンド: ON', true, '#fc8'); addBtn(bx,538+btnOff,bw,40,'mute');
+  drawButton(bx, 588+btnOff, bw, 34, 'データ初期化', true, '#f88'); addBtn(bx,588+btnOff,bw,34,'reset');
 
   ctx.fillStyle='rgba(90,120,150,'+(0.5+0.4*sh).toFixed(2)+')'; ctx.font='11px system-ui';
   ctx.fillText('Enter / タップ でスタート', VW/2, 700);
