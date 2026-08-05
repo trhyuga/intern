@@ -4209,8 +4209,10 @@ function drawAchToast(){
     const inA=clamp(k/0.12,0,1), outA=clamp((1-k)/0.12,0,1);
     const a=Math.min(inA,outA);
     /* v35: 勝利画面ではMISSION COMPLETEの帯(y150〜410)とトーストが重なって見づらいので、
-       その帯にかからない上部(y40〜)に退避させる。通常プレイ中の位置(y150〜)は変更なし。 */
-    const topY = (Game.state===STATE.WIN) ? 40 : 150;
+       その帯にかからない上部(y40〜)に退避させる。通常プレイ中の位置(y150〜)は変更なし。
+       v2.16: ゲームオーバー画面の「SHIP DOWN」(y270付近)も同じ理由で重なるため、
+       OVER状態でも同じ退避を行う（OVER画面のy40〜150は元々空きスペースなので安全）。 */
+    const topY = (Game.state===STATE.WIN || Game.state===STATE.OVER) ? 40 : 150;
     const w=214, h=40, x=VW-w-10, y=topY+i*46 - (1-inA)*18;
     ctx.save(); ctx.globalAlpha=a;
     ctx.fillStyle='rgba(20,26,36,0.90)'; ctx.fillRect(x,y,w,h);
