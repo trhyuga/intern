@@ -5280,8 +5280,12 @@ function loop(ts){
      その場で発生してしまう（v2.14〜v2.17で対応した「持ち越されたトースト」とは別種の問題で、
      遷移時のクリアでは防げない）。ACH画面も入場時に同じ判定を1回行うため同様の可能性がある。
      実績自体は通常通り記録され実績一覧（実績 N/18・一覧のハイライト）でいつでも確認できるため、
-     この2画面に限りトースト表示自体を省略する（他の画面の挙動は不変）。 */
-  if(Game.state!==STATE.TITLE && Game.state!==STATE.ACH){ drawAchToast(); }  /* v2.2: 実績トーストは常に最前面 */
+     この2画面に限りトースト表示自体を省略する（他の画面の挙動は不変）。
+     v2.19: CREDITS（エンドロール）はZランク撃破の直前（stageClear/win処理中）に
+     'zrank'等の実績が解除されると、持ち越しトーストがそのまま流れ続ける画面全体スクロールに
+     重なってしまう。エンドロールは開始〜終了まで安全な余白がないため、TITLE/ACHと同様に
+     この画面もトースト表示自体を省略する。実績解除自体・記録は従来通り行われる。 */
+  if(Game.state!==STATE.TITLE && Game.state!==STATE.ACH && Game.state!==STATE.CREDITS){ drawAchToast(); }  /* v2.2: 実績トーストは常に最前面 */
   ctx.restore();
   if(Game.flash>0){ ctx.globalAlpha=clamp(Game.flash,0,1); ctx.fillStyle=Game.flashColor; ctx.fillRect(0,0,VW,VH); ctx.globalAlpha=1; }
 

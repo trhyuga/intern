@@ -965,6 +965,36 @@ OVER・HANGAR の5状態では正しい位置に表示され、TITLE・ACH の2�
 - 本番（https://intern-xi-lilac.vercel.app/intern2026/testtriumph/ ）は
   v2.18が稼働中。全コミットはGitHub Web UI経由でmainに直接反映済み。
 
+### I26 エンドロール（CREDITS）画面でも実績トーストの重なりを防止 v2.19（deployed）
+
+上記まとめで「許容し見送った」としていたCREDITS画面についても、記載していた
+対処方針（TITLE/ACHと同じ描画省略）がそのまま安全に適用できると判断し実施。
+
+**きっかけ**: Zランク撃破でエンドロールに入る直前（`stageClear()`のwin処理内、
+`this.state = STATE.CREDITS` 代入の直前）に`unlockAch('zrank')`が呼ばれており、
+このタイミングで新規に実績が解除されると、持ち越されたトーストがそのまま
+スクロールし続けるエンドロールの文字列と数秒間重なる可能性があった。
+
+**対処**: 最終描画ディスパッチの`drawAchToast()`呼び出し条件に`STATE.CREDITS`を
+追加しただけの1行変更（`index.html`内、描画switch文の直後）。
+```js
+// before (v2.18):
+if(Game.state!==STATE.TITLE && Game.state!==STATE.ACH){ drawAchToast(); }
+// after (v2.19):
+if(Game.state!==STATE.TITLE && Game.state!==STATE.ACH && Game.state!==STATE.CREDITS){ drawAchToast(); }
+```
+実績自体の解除・保存・実績一覧での確認は従来通り影響なし。
+
+**検証**: `drawAchToast()`本体をラップして呼び出し回数を計測する専用スクリプトで、
+TITLE/CREDITS状態でachToastを積んでも`drawAchToast()`が0回しか呼ばれず、対照群の
+PLAY状態では通常通り呼ばれることを確認（`/tmp/t_credits_toast.cjs`、使い捨て）。
+加えて通常回帰15本・`t_smoke2.cjs`・`t_bal.cjs`（フル9条件、クラッシュ・数値異常
+なし）を実施、全PASS。見た目の描画条件のみの変更のため`t_bal.cjs`は参考確認。
+
+これでPLAY・PAUSE・WIN・OVER・HANGARは正しい位置に表示、TITLE・ACH・CREDITSの
+3状態は表示自体を省略という形になり、実績トースト重なり系不具合（I21〜I26）は
+全画面で解消・完了。
+
 ---
 
 ## 11. ロールバック
