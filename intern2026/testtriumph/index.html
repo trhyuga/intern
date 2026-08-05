@@ -1045,6 +1045,11 @@ const Game = {
     this.midRun = true; this.pendingStage = nextStage;
     this.stageClearMsgT = 200;
     this.cine=null;
+    /* v2.17: ステージクリアの瞬間に実績が解除されトーストが表示中だと、
+       格納庫の強化リスト（価格表示など）に重なって読めなくなる。
+       格納庫はHUDと違って常時表示前提の画面ではないため、遷移時にトーストを
+       畳んでしまう（実績自体はACH画面でいつでも確認できるため実害は小さい）。 */
+    this.achToast=[];
     this.state = STATE.HANGAR;
     Music.play('opening');
   },
@@ -1189,12 +1194,12 @@ const Game = {
     if(id==='start'){ this.gotoHangar(); }
     else if(id==='howto'){ this.state=STATE.HOWTO; }
     else if(id==='ach'){ checkPassiveAch(); this.state=STATE.ACH; }
-    else if(id==='back'){ this.state=STATE.TITLE; }
+    else if(id==='back'){ this.achToast=[]; this.state=STATE.TITLE; }
     else if(id==='launch'){ if(this.midRun) this.resumeNext(); else this.launch(); }
     else if(id==='mute'){ Sound.muted=!Sound.muted; Save.data.muted=Sound.muted; Save.save(); Music.setMuted(Sound.muted); }
     else if(id==='reset'){ if(confirmReset()){ Save.reset(); } }
     else if(id==='hangar'){ this.midRun=false; this.gotoHangar(); }
-    else if(id==='title'){ this.midRun=false; this.state=STATE.TITLE; Music.play('opening'); }
+    else if(id==='title'){ this.midRun=false; this.achToast=[]; this.state=STATE.TITLE; Music.play('opening'); }
     else if(id==='resume'){ this.state=STATE.PLAY; }
     else if(id.startsWith('buy:')){ this.buy(id.slice(4)); }
     else if(id==='buyod'){ this.buyOverdrive(); }
@@ -1220,7 +1225,7 @@ const Game = {
     else if(id==='pause'){ this.state = this.state===STATE.PLAY?STATE.PAUSE:STATE.PLAY; }
   },
 
-  gotoHangar(){ this.state=STATE.HANGAR; hangarScroll=0; Music.play('opening'); },
+  gotoHangar(){ this.achToast=[]; this.state=STATE.HANGAR; hangarScroll=0; Music.play('opening'); },
 
   buy(uid){
     const u = UPGRADES.find(x=>x.id===uid); if(!u) return;
@@ -1253,7 +1258,7 @@ function handleKeyPress(code){
     else if(Game.state===STATE.HANGAR){ Game.click('launch'); }
     else if(Game.state===STATE.CREDITS){ Game.finishCredits(); }
     else if(Game.state===STATE.OVER || Game.state===STATE.WIN){ Game.click('hangar'); }
-    else if(Game.state===STATE.HOWTO || Game.state===STATE.ACH){ Game.state=STATE.TITLE; }
+    else if(Game.state===STATE.HOWTO || Game.state===STATE.ACH){ Game.achToast=[]; Game.state=STATE.TITLE; }
   }
   if(code==='KeyB' && Game.state===STATE.PLAY){ Game.bombBlast(); }
   if(code==='KeyP' && (Game.state===STATE.PLAY||Game.state===STATE.PAUSE)){ Game.click('pause'); }
