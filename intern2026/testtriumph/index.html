@@ -5275,7 +5275,13 @@ function loop(ts){
     case STATE.CREDITS: drawBackdrop(); drawCreditRoll(); break;
     case STATE.WIN: drawWin(); break;
   }
-  drawAchToast();                       /* v2.2: 実績トーストは常に最前面 */
+  /* v2.18: TITLE画面は毎フレームcheckPassiveAch()を呼んでおり（グレイズ累計500等の
+     受動的な実績判定）、そこで新規に実績が解除されると「ロゴに重なる新しいトースト」が
+     その場で発生してしまう（v2.14〜v2.17で対応した「持ち越されたトースト」とは別種の問題で、
+     遷移時のクリアでは防げない）。ACH画面も入場時に同じ判定を1回行うため同様の可能性がある。
+     実績自体は通常通り記録され実績一覧（実績 N/18・一覧のハイライト）でいつでも確認できるため、
+     この2画面に限りトースト表示自体を省略する（他の画面の挙動は不変）。 */
+  if(Game.state!==STATE.TITLE && Game.state!==STATE.ACH){ drawAchToast(); }  /* v2.2: 実績トーストは常に最前面 */
   ctx.restore();
   if(Game.flash>0){ ctx.globalAlpha=clamp(Game.flash,0,1); ctx.fillStyle=Game.flashColor; ctx.fillRect(0,0,VW,VH); ctx.globalAlpha=1; }
 
