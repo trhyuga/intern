@@ -4902,12 +4902,17 @@ function drawPause(){
   drawWorld();
   ctx.fillStyle='rgba(4,6,15,0.6)'; ctx.fillRect(0,0,VW,VH);
   Game.buttons=[];
+  /* v2.15: 実績トーストが最大4件（y150〜328）表示された状態で一時停止すると、
+     「PAUSE」の文字（y320付近）に4件目のトーストが重なっていた。
+     トースト表示中だけポーズ画面のUIを50px下にずらして衝突を避ける
+     （トーストが無い通常時のレイアウトは不変）。 */
+  const off = (Game.achToast && Game.achToast.length>0) ? 50 : 0;
   ctx.textAlign='center'; ctx.fillStyle='#dffbff'; ctx.font='bold 34px system-ui';
-  ctx.shadowBlur=gq(16); ctx.shadowColor='#6cf'; ctx.fillText('PAUSE', VW/2, 320); ctx.shadowBlur=0;
+  ctx.shadowBlur=gq(16); ctx.shadowColor='#6cf'; ctx.fillText('PAUSE', VW/2, 320+off); ctx.shadowBlur=0;
   const bw=200,bx=VW/2-bw/2;
-  drawButton(bx, 380, bw, 46, '再開', true, '#6cf'); addBtn(bx,380,bw,46,'resume');
-  drawButton(bx, 438, bw, 40, 'タイトルへ', true, '#f88'); addBtn(bx,438,bw,40,'title');
-  ctx.fillStyle='#567'; ctx.font='11px system-ui'; ctx.fillText('P で再開', VW/2, 500);
+  drawButton(bx, 380+off, bw, 46, '再開', true, '#6cf'); addBtn(bx,380+off,bw,46,'resume');
+  drawButton(bx, 438+off, bw, 40, 'タイトルへ', true, '#f88'); addBtn(bx,438+off,bw,40,'title');
+  ctx.fillStyle='#567'; ctx.font='11px system-ui'; ctx.fillText('P で再開', VW/2, 500+off);
 }
 
 /* --- プレイ画面ワールド --- */
