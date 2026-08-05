@@ -1005,6 +1005,16 @@ RUSH（`Game.mode==='rush'`）やENDLESS（`Game.mode==='endless'`）固有の�
 確認したが、両方とも既存のtopY=40退避がそのまま効いており重なりなし。
 コード変更なし、確認のみ（使い捨てスクリプト `/tmp/t_endless_rush_toast.cjs`）。
 
+### 10c 締切時点（23:50 JST or 90%使用まで）の本番状態
+
+- https://intern-xi-lilac.vercel.app/intern2026/testtriumph/ はv2.19が稼働中。
+  全コミットはGitHub Web UI経由でmainに直接反映済み（HANDOVER.md/README.mdも同期）。
+- README・リリースタグをv2.19相当に更新（README.mdに「画面の細部修正（v2.11〜v2.19）」
+  節を追加、`testtriumph-v2.19` タグをGitHub Releasesに作成・公開、Latestに設定）。
+- 通常回帰15本・`t_smoke2.cjs`・`t_bal.cjs`（フル9条件）は21時台に全PASSを確認済み。
+- 21:52 JST時点でリポジトリのHEAD（git clone直後）とローカルの`index.html`/
+  `HANDOVER.md`が完全一致することを確認済み。
+
 ---
 
 ## 11. ロールバック
