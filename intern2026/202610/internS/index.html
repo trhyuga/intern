@@ -43,11 +43,18 @@
   .title-wrap .badge{ display:inline-block; color:var(--gold); border:1px solid var(--gold); border-radius:999px; padding:4px 14px; font-size:12px; letter-spacing:.15em; margin-bottom:16px; }
 
   /* 競馬新聞 */
-  .paper{ background:var(--paper); color:var(--paper-ink); border-radius:6px; padding:10px; font-size:12px; overflow-x:auto; }
-  .paper .head{ display:flex; justify-content:space-between; align-items:baseline; border-bottom:3px double #333; padding-bottom:6px; margin-bottom:6px; }
+  .paper{ background:var(--paper); color:var(--paper-ink); border-radius:6px; padding:8px 6px; font-size:12px; overflow-x:auto; }
+  .paper .head{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:2px 10px; border-bottom:3px double #333; padding-bottom:6px; margin-bottom:6px; }
+  .paper .head span{ font-size:11px; color:#444; }
   .paper .head b{ font-size:18px; }
   .paper table{ width:100%; border-collapse:collapse; white-space:nowrap; }
-  .paper th,.paper td{ border-bottom:1px solid #c9c1aa; padding:5px 3px; text-align:center; }
+  .paper th,.paper td{ border-bottom:1px solid #c9c1aa; padding:5px 2px; text-align:center; }
+  .paper th{ font-size:10px; font-weight:700; color:#555; }
+  /* 予想印の3列は細く詰める */
+  .paper th.rp{ font-size:8.5px; line-height:1.15; padding:3px 0; width:2.1em; }
+  .paper td.mark{ padding:5px 0; width:1.9em; }
+  .paper td.odds{ font-weight:800; font-variant-numeric:tabular-nums; }
+  @media (max-width:370px){ .paper{ font-size:11px; } .paper td.name{ letter-spacing:-.03em; } }
   .paper td.name{ text-align:left; font-weight:800; }
   .waku{ display:inline-block; width:20px; height:20px; line-height:20px; border-radius:3px; font-weight:800; border:1px solid #333; }
   .mark{ font-weight:800; color:#c0392b; }
@@ -566,10 +573,10 @@ function wakuBadge(no){ const w = WAKU[no-1]; return `<span class="waku" style="
 function renderPaper(){
   const { race, horses } = Game.field;
   let h = `<div class="head"><b>${race.name}（G1）</b><span>${race.month}月 ${race.venue} ${race.surface}${race.dist}m 8頭立て${race.mareOnly ? "（牝馬限定）" : ""}</span></div>`;
-  h += '<table><tr><th>馬番</th>' + REPORTERS.map(r=>`<th>${r}</th>`).join('') + '<th>馬名</th><th>脚質</th><th>前走</th><th>距離</th><th>単勝</th></tr>';
+  h += '<table><tr><th>馬番</th>' + REPORTERS.map(r=>`<th class="rp">${r.replace('記者','記者<br>')}</th>`).join('') + '<th>馬名</th><th>脚質</th><th>前走</th><th>距離</th><th>単勝</th></tr>';
   horses.forEach((x,i) => {
     h += `<tr><td>${wakuBadge(x.no)}</td>` + Game.marks.map(m=>`<td class="mark">${m[i]}</td>`).join('') +
-      `<td class="name">${x.name}${x.sex==='牝'?' <small style="color:#c0392b">牝</small>':''}</td><td>${x.style}</td><td>${x.lastRun}着</td><td>${aptMark(x, race.dist)}</td><td>${Game.odds.win[i].toFixed(1)}</td></tr>`;
+      `<td class="name">${x.name}${x.sex==='牝'?' <small style="color:#c0392b">牝</small>':''}</td><td>${x.style}</td><td>${x.lastRun}着</td><td>${aptMark(x, race.dist)}</td><td class="odds">${Game.odds.win[i].toFixed(1)}</td></tr>`;
   });
   h += '</table>';
   $('paper').innerHTML = h;
