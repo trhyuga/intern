@@ -80,6 +80,48 @@
     background:rgba(0,0,0,.55); opacity:0; pointer-events:none; transition:opacity .25s; border-radius:10px;
   }
   #phaseCard.on{ opacity:1; }
+
+  /* タイトルのアニメーション */
+  #titleCv{ width:100%; height:auto; display:block; border-radius:12px; margin:18px 0 6px; background:#000; }
+  .title-wrap h1{ font-size:40px; background:linear-gradient(90deg,#fff3c4,var(--gold),#ffb347); -webkit-background-clip:text; background-clip:text; color:transparent; animation:shine 3s ease-in-out infinite; }
+  @keyframes shine{ 0%,100%{ filter:brightness(1);} 50%{ filter:brightness(1.35);} }
+
+  /* 発走前のG1紹介 */
+  #introCard{
+    position:absolute; inset:0; border-radius:10px; display:flex; flex-direction:column; justify-content:center; align-items:center;
+    gap:8px; padding:18px; text-align:center; background:linear-gradient(160deg,rgba(10,20,14,.92),rgba(40,30,8,.92));
+    opacity:0; pointer-events:none; transition:opacity .35s;
+  }
+  #introCard.on{ opacity:1; }
+  #introCard .ic-month{ color:var(--gold); font-size:13px; letter-spacing:.2em; }
+  #introCard .ic-name{ font-size:30px; font-weight:900; letter-spacing:.05em; animation:pop .6s ease-out; }
+  #introCard .ic-cond{ font-size:13px; color:var(--soft); }
+  #introCard .ic-desc{ font-size:14px; line-height:1.6; max-width:34em; }
+  @keyframes pop{ from{ transform:scale(.7); opacity:0; } to{ transform:none; opacity:1; } }
+
+  /* 的中演出 */
+  #celebrate{ position:fixed; inset:0; pointer-events:none; z-index:50; display:none; }
+  #celebrate.on{ display:block; }
+  #celebrate canvas{ position:absolute; inset:0; width:100%; height:100%; }
+  #celebrate .msg{
+    position:absolute; left:50%; top:38%; transform:translate(-50%,-50%); text-align:center;
+    font-weight:900; color:var(--gold); text-shadow:0 0 18px rgba(0,0,0,.8), 0 0 4px #000; animation:hit 2.6s ease-out forwards;
+  }
+  #celebrate .msg b{ display:block; font-size:56px; letter-spacing:.1em; }
+  #celebrate .msg span{ font-size:22px; color:#fff; }
+  @keyframes hit{ 0%{ transform:translate(-50%,-50%) scale(.4); opacity:0; } 15%{ transform:translate(-50%,-50%) scale(1.15); opacity:1; }
+    25%{ transform:translate(-50%,-50%) scale(1); } 80%{ opacity:1; } 100%{ opacity:0; } }
+
+  /* エンディングロール */
+  #rollView{ position:relative; height:70vh; overflow:hidden; border-radius:12px; background:#000; border:1px solid var(--line); }
+  #rollBody{ position:absolute; left:0; right:0; top:100%; text-align:center; padding:0 16px 40px; }
+  #rollBody h3{ color:var(--gold); font-size:13px; letter-spacing:.25em; margin:34px 0 10px; }
+  #rollBody .big{ font-size:30px; font-weight:900; letter-spacing:.05em; }
+  #rollBody .r{ display:flex; justify-content:space-between; gap:10px; font-size:14px; padding:3px 0; border-bottom:1px dashed #223; text-align:left; }
+  #rollBody .r span:last-child{ white-space:nowrap; font-variant-numeric:tabular-nums; }
+  #rollBody .plus{ color:var(--gold); } #rollBody .minus{ color:var(--soft); }
+  #rollBody .fin{ font-size:28px; font-weight:900; color:var(--gold); margin-top:60px; letter-spacing:.2em; }
+  @media (prefers-reduced-motion: reduce){ #celebrate .msg{ animation:none; } #introCard .ic-name{ animation:none; } }
   #commentary{
     margin-top:10px; height:132px; overflow:hidden; background:#000; border:1px solid var(--line);
     border-radius:10px; padding:8px 10px; font-size:14px; line-height:1.6; display:flex; flex-direction:column; justify-content:flex-end;
@@ -109,6 +151,7 @@
         <div class="badge">ANNUAL G1 SERIES</div>
         <h1>G1 PREDICTOR</h1>
         <p class="sub" style="margin-top:8px">年間のG1をすべて予想して、元手を増やせ。</p>
+        <canvas id="titleCv" width="480" height="190"></canvas>
       </div>
       <div class="panel sub" id="titleInfo"></div>
       <button class="btn" id="btnContinue">つづきから</button>
@@ -168,6 +211,7 @@
       <div id="raceWrap">
         <canvas id="raceCv" width="480" height="300"></canvas>
         <div id="phaseCard"></div>
+        <div id="introCard"></div>
       </div>
       <div id="commentary"></div>
       <button class="btn ghost" id="btnSkip">結果まで飛ばす</button>
@@ -181,6 +225,12 @@
       <button class="btn" id="btnNext">次のレースへ</button>
     </section>
 
+    <!-- エンディングロール（年間の結果発表） -->
+    <section class="screen" id="sc-credits">
+      <div id="rollView"><div id="rollBody"></div></div>
+      <button class="btn ghost" id="btnRollSkip">結果発表を飛ばす</button>
+    </section>
+
     <!-- ゲームオーバー / クリア -->
     <section class="screen" id="sc-end">
       <div class="title-wrap">
@@ -192,6 +242,7 @@
     </section>
   </main>
 </div>
+<div id="celebrate"><canvas id="confetti"></canvas><div class="msg" id="celebrateMsg"></div></div>
 
 <script>
 'use strict';
@@ -216,30 +267,30 @@ const CONFIG = {
 // ---------- 年間G1カレンダー（架空） ----------
 // 本物のG1名を使う場合は、最新のJRA日程を確認してからここを差し替える。
 const CALENDAR = [
-  { name:'冬晴ステークス',     month:2,  surface:'ダート', dist:1600 },
-  { name:'春雷スプリント',     month:3,  surface:'芝',     dist:1200 },
-  { name:'若葉賞',             month:4,  surface:'芝',     dist:2000 },
-  { name:'桜花杯',             month:4,  surface:'芝',     dist:1600 },
-  { name:'皐風賞',             month:4,  surface:'芝',     dist:2000 },
-  { name:'天空賞（春）',       month:5,  surface:'芝',     dist:3200 },
-  { name:'新緑マイル',         month:5,  surface:'芝',     dist:1600 },
-  { name:'乙女マイル',         month:5,  surface:'芝',     dist:1600 },
-  { name:'樫の木賞',           month:5,  surface:'芝',     dist:2400 },
-  { name:'青嵐ダービー',       month:5,  surface:'芝',     dist:2400 },
-  { name:'初夏マイル',         month:6,  surface:'芝',     dist:1600 },
-  { name:'夏至記念',           month:6,  surface:'芝',     dist:2200 },
-  { name:'秋分スプリント',     month:9,  surface:'芝',     dist:1200 },
-  { name:'紅葉賞',             month:10, surface:'芝',     dist:2000 },
-  { name:'菊月賞',             month:10, surface:'芝',     dist:3000 },
-  { name:'天空賞（秋）',       month:10, surface:'芝',     dist:2000 },
-  { name:'霜月女王杯',         month:11, surface:'芝',     dist:2200 },
-  { name:'晩秋マイル',         month:11, surface:'芝',     dist:1600 },
-  { name:'世界杯',             month:11, surface:'芝',     dist:2400 },
-  { name:'砂塵カップ',         month:12, surface:'ダート', dist:1800 },
-  { name:'冬の女王杯',         month:12, surface:'芝',     dist:1600 },
-  { name:'若駒フューチュリティ', month:12, surface:'芝',   dist:1600 },
-  { name:'年末グランプリ',     month:12, surface:'芝',     dist:2500 },
-  { name:'冬至ホープフル',     month:12, surface:'芝',     dist:2000 },
+  { name:'冬晴ステークス',     month:2,  surface:'ダート', dist:1600 , desc:'一年の幕開けを告げる砂の決戦。冬の澄んだ空気の中、パワー自慢が揃う。' },
+  { name:'春雷スプリント',     month:3,  surface:'芝',     dist:1200 , desc:'わずか1200m、まばたき厳禁の電撃戦。スタートの一歩が勝負を分ける。' },
+  { name:'若葉賞',             month:4,  surface:'芝',     dist:2000 , desc:'若駒たちが初めて頂点を争う一戦。ここで名乗りを上げるのは誰だ。' },
+  { name:'桜花杯',             month:4,  surface:'芝',     dist:1600 , desc:'春の花道を駆け抜ける牝馬の祭典。華やかさと激しさが同居するマイル戦。' },
+  { name:'皐風賞',             month:4,  surface:'芝',     dist:2000 , desc:'クラシック第一冠。速さと器用さを兼ね備えた馬だけが栄冠をつかむ。' },
+  { name:'天空賞（春）',       month:5,  surface:'芝',     dist:3200 , desc:'3200mの長丁場、スタミナの限界が試される伝統の一戦。最後に笑うのはタフな馬。' },
+  { name:'新緑マイル',         month:5,  surface:'芝',     dist:1600 , desc:'新緑の季節に行われるマイル王決定戦。スピードと持続力の総合力勝負。' },
+  { name:'乙女マイル',         month:5,  surface:'芝',     dist:1600 , desc:'牝馬のマイル女王を決める一戦。直線の叩き合いは毎年語り草に。' },
+  { name:'樫の木賞',           month:5,  surface:'芝',     dist:2400 , desc:'牝馬クラシックの大一番、2400m。距離の壁を越えられるかが鍵。' },
+  { name:'青嵐ダービー',       month:5,  surface:'芝',     dist:2400 , desc:'ホースマンすべての夢、世代の頂点を決める最高峰。歓声がスタンドを揺らす。' },
+  { name:'初夏マイル',         month:6,  surface:'芝',     dist:1600 , desc:'夏を前にしたマイル決戦。古馬と若駒の初対決にも注目が集まる。' },
+  { name:'夏至記念',           month:6,  surface:'芝',     dist:2200 , desc:'上半期を締めくくるファン投票のグランプリ。人気馬たちの夢の競演。' },
+  { name:'秋分スプリント',     month:9,  surface:'芝',     dist:1200 , desc:'秋のスプリント王決定戦。一瞬の切れ味がすべてを決める。' },
+  { name:'紅葉賞',             month:10, surface:'芝',     dist:2000 , desc:'紅葉に染まる秋の中距離戦。夏を越えて成長した馬が台頭する。' },
+  { name:'菊月賞',             month:10, surface:'芝',     dist:3000 , desc:'クラシック最終戦、3000mの淀みない流れ。最も強い馬が勝つと言われる舞台。' },
+  { name:'天空賞（秋）',       month:10, surface:'芝',     dist:2000 , desc:'秋の頂上決戦、2000m。一線級が真っ向からぶつかる王道の一戦。' },
+  { name:'霜月女王杯',         month:11, surface:'芝',     dist:2200 , desc:'霜の降りる季節に女王を決める一戦。歴戦の牝馬たちが意地を見せる。' },
+  { name:'晩秋マイル',         month:11, surface:'芝',     dist:1600 , desc:'秋のマイル王決定戦。スピード自慢が直線で一斉に弾ける。' },
+  { name:'世界杯',             month:11, surface:'芝',     dist:2400 , desc:'世界の強豪を迎え撃つ国際G1。2400mの大舞台で真の実力が問われる。' },
+  { name:'砂塵カップ',         month:12, surface:'ダート', dist:1800 , desc:'砂の王者を決める冬の大一番。砂煙の中から抜け出すのは誰だ。' },
+  { name:'冬の女王杯',         month:12, surface:'芝',     dist:1600 , desc:'冬の牝馬マイル決戦。寒さを切り裂く末脚に期待が高まる。' },
+  { name:'若駒フューチュリティ', month:12, surface:'芝',   dist:1600 , desc:'未来のスターを探す2歳マイル戦。来年の主役がここから生まれる。' },
+  { name:'年末グランプリ',     month:12, surface:'芝',     dist:2500 , desc:'一年の総決算、ファンが選んだ夢のドリームレース。今年最後の大勝負。' },
+  { name:'冬至ホープフル',     month:12, surface:'芝',     dist:2000 , desc:'一年を締めくくる若駒の中距離戦。来春のクラシックを占う一戦。' },
 ];
 
 // 枠色（8頭立て＝1枠1頭）
@@ -404,8 +455,15 @@ function paddockComment(h, rnd){
 // ---------- セーブ ----------
 const Save = {
   data: null,
-  fresh(){ return { money: CONFIG.START_MONEY, year: 1, idx: 0, cleared: 0, best: CONFIG.START_MONEY }; },
-  load(){ try{ this.data = JSON.parse(localStorage.getItem(CONFIG.SAVE_KEY)); }catch(e){ this.data = null; } return this.data; },
+  fresh(){ return { money: CONFIG.START_MONEY, year: 1, idx: 0, cleared: 0, best: CONFIG.START_MONEY, yearStart: CONFIG.START_MONEY, history: [] }; },
+  load(){
+    try{ this.data = JSON.parse(localStorage.getItem(CONFIG.SAVE_KEY)); }catch(e){ this.data = null; }
+    if(this.data){ // 古いセーブにない項目を補う
+      if(!Array.isArray(this.data.history)) this.data.history = [];
+      if(typeof this.data.yearStart !== 'number') this.data.yearStart = this.data.money;
+    }
+    return this.data;
+  },
   write(){ try{ localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(this.data)); }catch(e){} },
   reset(){ this.data = this.fresh(); this.write(); },
 };
@@ -414,6 +472,8 @@ const Save = {
 const $ = id => document.getElementById(id);
 function show(name){
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 'sc-'+name));
+  if(name === 'title') startTitleAnim(); else cancelAnimationFrame(titleRAF);
+  if(name !== 'credits') stopRoll();
   window.scrollTo(0,0);
   updateHeader();
 }
@@ -568,10 +628,40 @@ function startRace(){
   Race.t = 0; Race.phase = -1; Race.said = {}; Race.leader = -1; Race.done = false;
   $('commentary').innerHTML = '';
   show('race');
-  say(`${Game.field.race.name}、ゲートが開いた！ 各馬いっせいにスタート！`, true);
-  Race.lastNow = performance.now();
   cancelAnimationFrame(Race.raf);
-  Race.raf = requestAnimationFrame(raceLoop);
+  clearTimeout(Race.introTimer);
+  // ゲート前の静止画を描いておく
+  const fr0 = Race.sim.frames[0];
+  drawRace(fr0, standings(fr0), 0, 0);
+  showIntro();
+}
+
+// 発走前: そのG1の特徴を紹介して盛り上げる
+const INTRO_MS = 4200;
+function showIntro(){
+  const r = Game.field.race;
+  const c = $('introCard');
+  c.innerHTML = '';
+  const add = (cls, text) => { const e = document.createElement('div'); e.className = cls; e.textContent = text; c.appendChild(e); };
+  add('ic-month', `${r.month}月の大一番 ／ G1`);
+  add('ic-name', r.name);
+  add('ic-cond', `${r.surface}${r.dist}m ・ フルゲート8頭`);
+  if(r.desc) add('ic-desc', r.desc);
+  c.classList.add('on');
+  say(`さあ今年も${r.month}月、${r.name}の季節がやってきました！`, true);
+  if(r.desc) Race.introTimer = setTimeout(() => say(r.desc), 1300);
+  const fav = Game.odds.win.indexOf(Math.min(...Game.odds.win));
+  Race.introTimer2 = setTimeout(() => say(`1番人気は${H(fav).name}、単勝${Game.odds.win[fav].toFixed(1)}倍。各馬ゲートに収まりました…`), 2700);
+  Race.introTimer3 = setTimeout(() => {
+    c.classList.remove('on');
+    say(`${r.name}、ゲートが開いた！ 各馬いっせいにスタート！`, true);
+    Race.lastNow = performance.now();
+    Race.raf = requestAnimationFrame(raceLoop);
+  }, INTRO_MS);
+}
+function clearIntro(){
+  clearTimeout(Race.introTimer); clearTimeout(Race.introTimer2); clearTimeout(Race.introTimer3);
+  $('introCard').classList.remove('on');
 }
 
 function say(text, big){
@@ -586,7 +676,7 @@ function standings(fr){
 }
 
 function raceLoop(now){
-  const dt = Math.min(0.05, (now - Race.lastNow)/1000); Race.lastNow = now;
+  const dt = Math.max(0, Math.min(0.05, (now - Race.lastNow)/1000)); Race.lastNow = now;
   const sim = Race.sim;
   const total = sim.frames.length - 1;
   // 1位がゴールするまでを RACE_SECONDS 秒で見せ、その後は少しだけ流す
@@ -753,16 +843,53 @@ function showResult(){
   $('payout').innerHTML = html;
   $('resTitle').textContent = `${Game.field.race.name} 確定`;
   $('podium').innerHTML = o.slice(0,3).map((no,k) => `<div><span class="pos">${k+1}着</span>${wakuBadge(no)} ${Game.field.horses[no-1].name}</div>`).join('');
+  // 年間の結果発表用に記録
+  const stake = Game.tickets.reduce((a,t)=>a+t.amount,0);
+  d.history.push({ race: Game.field.race.name, month: Game.field.race.month, winner: Game.field.horses[o[0]-1].name,
+    winOdds: Game.odds.win[o[0]-1], stake, pay });
   // 次へ進める
   d.idx++;
   Save.write();
   show('result');
+  if(pay > 0) celebrate(pay, stake);
+}
+
+// 的中したときの紙吹雪
+let confettiRAF = 0;
+function celebrate(pay, stake){
+  const box = $('celebrate'), cv = $('confetti'), g = cv.getContext('2d');
+  const W = cv.width = innerWidth, Hh = cv.height = innerHeight;
+  $('celebrateMsg').innerHTML = '';
+  const b = document.createElement('b'); b.textContent = '的中！';
+  const sp = document.createElement('span'); sp.textContent = `払戻 ${yen(pay)}` + (stake ? `（回収率 ${Math.round(pay/stake*100)}%）` : '');
+  $('celebrateMsg').append(b, sp);
+  // アニメーションをやり直すため一度外す
+  $('celebrateMsg').style.animation = 'none'; void $('celebrateMsg').offsetWidth; $('celebrateMsg').style.animation = '';
+  box.classList.add('on');
+  const colors = WAKU.map(w => w.bg).concat(['#f2c94c','#ffffff']);
+  const parts = Array.from({ length: 140 }, () => ({
+    x: Math.random()*W, y: -20 - Math.random()*Hh*0.5, vx: (Math.random()-0.5)*2.5, vy: 2 + Math.random()*3.5,
+    r: Math.random()*Math.PI, vr: (Math.random()-0.5)*0.3, s: 5 + Math.random()*6, c: colors[Math.floor(Math.random()*colors.length)],
+  }));
+  const t0 = performance.now();
+  cancelAnimationFrame(confettiRAF);
+  const loop = now => {
+    const t = (now - t0)/1000;
+    g.clearRect(0,0,W,Hh);
+    parts.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c; g.fillRect(-p.s/2, -p.s/4, p.s, p.s/2); g.restore();
+    });
+    if(t < 2.8) confettiRAF = requestAnimationFrame(loop);
+    else { g.clearRect(0,0,W,Hh); box.classList.remove('on'); }
+  };
+  confettiRAF = requestAnimationFrame(loop);
 }
 
 function next(){
   const d = Save.data;
   if(d.money < CONFIG.MIN_BET){ return endScreen('over'); }
-  if(d.idx >= CALENDAR.length){ d.cleared++; Save.write(); return endScreen('clear'); }
+  if(d.idx >= CALENDAR.length){ return showCredits(); }
   prepareRace();
 }
 
@@ -777,13 +904,97 @@ function endScreen(kind){
     $('endTitle').textContent = 'SEASON CLEAR!';
     $('endText').textContent = `${d.year}年目のG1をすべて予想しました。所持金 ${yen(d.money)}`;
     $('btnEndMain').textContent = '翌年も続ける';
-    $('btnEndMain').onclick = () => { d.year++; d.idx = 0; Save.write(); prepareRace(); };
+    $('btnEndMain').onclick = () => { d.cleared++; d.year++; d.idx = 0; d.history = []; d.yearStart = d.money; Save.write(); prepareRace(); };
   }
   Game.field = null;
   show('end');
 }
 
 // ---------- イベント ----------
+// ---------- エンディングロール（年間の結果発表） ----------
+let rollRAF = 0;
+function stopRoll(){ cancelAnimationFrame(rollRAF); }
+function showCredits(){
+  const d = Save.data;
+  const hist = d.history || [];
+  const body = $('rollBody'); body.innerHTML = '';
+  const add = (tag, cls, text) => { const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; body.appendChild(e); return e; };
+  const row = (left, right, cls) => { const r = add('div','r'); const a = document.createElement('span'); a.textContent = left;
+    const b = document.createElement('span'); b.textContent = right; if(cls) b.className = cls; r.append(a, b); };
+  add('h3', null, `SEASON ${d.year} RESULTS`);
+  add('div','big', `${d.year}年目 G1 全${CALENDAR.length}戦 結果発表`);
+  add('h3', null, '優勝馬');
+  hist.forEach(h => row(`${h.month}月 ${h.race}`, `${h.winner}（${h.winOdds.toFixed(1)}倍）`));
+  add('h3', null, 'あなたの戦績');
+  hist.forEach(h => {
+    if(!h.stake){ row(h.race, '見送り'); return; }
+    const diff = h.pay - h.stake;
+    row(h.race, `${diff >= 0 ? '+' : ''}${diff.toLocaleString('ja-JP')}円`, diff > 0 ? 'plus' : 'minus');
+  });
+  const played = hist.filter(h => h.stake > 0);
+  const hits = played.filter(h => h.pay > 0);
+  const stake = played.reduce((a,h)=>a+h.stake,0), pay = played.reduce((a,h)=>a+h.pay,0);
+  const bestPay = hits.reduce((m,h)=>Math.max(m,h.pay),0);
+  add('h3', null, '年間成績');
+  row('参加レース', `${played.length} / ${hist.length}戦`);
+  row('的中レース', `${hits.length}戦（的中率 ${played.length ? Math.round(hits.length/played.length*100) : 0}%）`);
+  row('購入総額', yen(stake));
+  row('払戻総額', yen(pay));
+  row('回収率', stake ? `${Math.round(pay/stake*100)}%` : '-');
+  row('最高払戻', yen(bestPay));
+  row('年初の所持金', yen(d.yearStart));
+  row('年末の所持金', yen(d.money), d.money >= d.yearStart ? 'plus' : 'minus');
+  add('div','fin', 'THANK YOU FOR PLAYING');
+  Game.field = null;
+  show('credits');
+  // 下から上へ流す
+  const view = $('rollView');
+  const total = view.clientHeight + body.scrollHeight;
+  const dur = Math.max(18, Math.min(45, total / 40)); // 秒
+  const t0 = performance.now();
+  stopRoll();
+  const loop = now => {
+    const p = Math.min(1, (now - t0)/1000/dur);
+    body.style.transform = `translateY(${-p*total}px)`;
+    if(p < 1) rollRAF = requestAnimationFrame(loop); else endScreen('clear');
+  };
+  rollRAF = requestAnimationFrame(loop);
+}
+$('btnRollSkip').onclick = () => { stopRoll(); endScreen('clear'); };
+
+// ---------- タイトルのアニメーション ----------
+let titleRAF = 0;
+const TITLE_HORSES = [0,1,2,3,4].map(i => ({ no: i+1, coat: COAT[i % COAT.length], lane: i, speed: 0.92 + i*0.03 }));
+function startTitleAnim(){
+  cancelAnimationFrame(titleRAF);
+  const cv = $('titleCv'), g = cv.getContext('2d'), W = cv.width, Hh = cv.height;
+  const t0 = performance.now();
+  const loop = now => {
+    const t = (now - t0)/1000;
+    // 夕焼けの空とスタンド
+    const sky = g.createLinearGradient(0,0,0,Hh*0.5);
+    sky.addColorStop(0,'#2b1a3a'); sky.addColorStop(0.6,'#c2603a'); sky.addColorStop(1,'#f2b45c');
+    g.fillStyle = sky; g.fillRect(0,0,W,Hh*0.5);
+    g.fillStyle = 'rgba(255,230,160,.9)'; g.beginPath(); g.arc(W*0.78, Hh*0.42, 22, 0, Math.PI*2); g.fill();
+    g.fillStyle = '#3a2f3f';
+    for(let k=0;k<8;k++){ const x = ((k*90 - t*30) % (W+90) + W+90) % (W+90) - 90; g.fillRect(x, Hh*0.32, 80, Hh*0.18); }
+    // 芝と縞
+    g.fillStyle = '#2f8f4e'; g.fillRect(0,Hh*0.5,W,Hh*0.5);
+    g.fillStyle = 'rgba(255,255,255,.07)';
+    for(let k=0;k<16;k++){ const x = ((k*60 - t*260) % (W+60) + W+60) % (W+60) - 60; g.fillRect(x, Hh*0.5, 30, Hh*0.5); }
+    g.fillStyle = '#fff'; g.fillRect(0, Hh*0.53, W, 2);
+    for(let k=0;k<12;k++){ const x = ((k*50 - t*260) % (W+50) + W+50) % (W+50) - 50; g.fillRect(x, Hh*0.49, 2, Hh*0.05); }
+    // 馬が抜きつ抜かれつ
+    TITLE_HORSES.slice().reverse().forEach(h => {
+      const x = W*0.5 + Math.sin(t*h.speed + h.lane*1.7)*W*0.28 - 20;
+      const y = Hh*0.62 + h.lane*Hh*0.075;
+      drawHorse(g, x, y, 0.8 + h.lane*0.05, h, t*14 + h.lane, 1);
+    });
+    titleRAF = requestAnimationFrame(loop);
+  };
+  titleRAF = requestAnimationFrame(loop);
+}
+
 function titleScreen(){
   const d = Save.load();
   Game.field = null;
@@ -793,7 +1004,7 @@ function titleScreen(){
     : `元手 ${yen(CONFIG.START_MONEY)} で全${CALENDAR.length}戦のG1に挑戦。<br>資金が${yen(CONFIG.MIN_BET)}を切るとゲームオーバー。`;
   show('title');
 }
-$('btnContinue').onclick = () => { if(Save.data.money < CONFIG.MIN_BET) return endScreen('over'); if(Save.data.idx >= CALENDAR.length) return endScreen('clear'); prepareRace(); };
+$('btnContinue').onclick = () => { if(Save.data.money < CONFIG.MIN_BET) return endScreen('over'); if(Save.data.idx >= CALENDAR.length) return showCredits(); prepareRace(); };
 $('btnNew').onclick = () => { if(Save.data && !confirm('セーブを消して最初から始めますか？')) return; Save.reset(); prepareRace(); };
 $('btnToPaddock').onclick = () => { renderPaddock(); show('paddock'); };
 $('btnBackPaper').onclick = () => { cancelAnimationFrame(paddockRAF); show('paper'); };
@@ -810,7 +1021,7 @@ $('btnAddTicket').onclick = () => {
   Game.sel = []; Game.amount = 0; renderBet();
 };
 $('btnStartRace').onclick = startRace;
-$('btnSkip').onclick = () => { if(!Race.done){ Race.done = true; cancelAnimationFrame(Race.raf); showResult(); } };
+$('btnSkip').onclick = () => { if(!Race.done){ Race.done = true; clearIntro(); cancelAnimationFrame(Race.raf); showResult(); } };
 $('btnNext').onclick = next;
 $('btnEndTitle').onclick = titleScreen;
 
