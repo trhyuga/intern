@@ -264,33 +264,34 @@ const CONFIG = {
   SAVE_KEY: 'internS_g1predictor_save_v1',
 };
 
-// ---------- 年間G1カレンダー（架空） ----------
-// 本物のG1名を使う場合は、最新のJRA日程を確認してからここを差し替える。
+// ---------- 年間G1カレンダー（JRA平地G1・2026年の日程順） ----------
+// 2026年の開催日程をJRA等の公開情報で確認して並べた。年によって日程・競馬場が変わるので、年が変わったら確認すること。
+// mareOnly: 牝馬限定戦。2歳戦・3歳戦の年齢制限は「時代を超えた夢のレース」として無視している。
 const CALENDAR = [
-  { name:'冬晴ステークス',     month:2,  surface:'ダート', dist:1600 , desc:'一年の幕開けを告げる砂の決戦。冬の澄んだ空気の中、パワー自慢が揃う。' },
-  { name:'春雷スプリント',     month:3,  surface:'芝',     dist:1200 , desc:'わずか1200m、まばたき厳禁の電撃戦。スタートの一歩が勝負を分ける。' },
-  { name:'若葉賞',             month:4,  surface:'芝',     dist:2000 , desc:'若駒たちが初めて頂点を争う一戦。ここで名乗りを上げるのは誰だ。' },
-  { name:'桜花杯',             month:4,  surface:'芝',     dist:1600 , desc:'春の花道を駆け抜ける牝馬の祭典。華やかさと激しさが同居するマイル戦。' },
-  { name:'皐風賞',             month:4,  surface:'芝',     dist:2000 , desc:'クラシック第一冠。速さと器用さを兼ね備えた馬だけが栄冠をつかむ。' },
-  { name:'天空賞（春）',       month:5,  surface:'芝',     dist:3200 , desc:'3200mの長丁場、スタミナの限界が試される伝統の一戦。最後に笑うのはタフな馬。' },
-  { name:'新緑マイル',         month:5,  surface:'芝',     dist:1600 , desc:'新緑の季節に行われるマイル王決定戦。スピードと持続力の総合力勝負。' },
-  { name:'乙女マイル',         month:5,  surface:'芝',     dist:1600 , desc:'牝馬のマイル女王を決める一戦。直線の叩き合いは毎年語り草に。' },
-  { name:'樫の木賞',           month:5,  surface:'芝',     dist:2400 , desc:'牝馬クラシックの大一番、2400m。距離の壁を越えられるかが鍵。' },
-  { name:'青嵐ダービー',       month:5,  surface:'芝',     dist:2400 , desc:'ホースマンすべての夢、世代の頂点を決める最高峰。歓声がスタンドを揺らす。' },
-  { name:'初夏マイル',         month:6,  surface:'芝',     dist:1600 , desc:'夏を前にしたマイル決戦。古馬と若駒の初対決にも注目が集まる。' },
-  { name:'夏至記念',           month:6,  surface:'芝',     dist:2200 , desc:'上半期を締めくくるファン投票のグランプリ。人気馬たちの夢の競演。' },
-  { name:'秋分スプリント',     month:9,  surface:'芝',     dist:1200 , desc:'秋のスプリント王決定戦。一瞬の切れ味がすべてを決める。' },
-  { name:'紅葉賞',             month:10, surface:'芝',     dist:2000 , desc:'紅葉に染まる秋の中距離戦。夏を越えて成長した馬が台頭する。' },
-  { name:'菊月賞',             month:10, surface:'芝',     dist:3000 , desc:'クラシック最終戦、3000mの淀みない流れ。最も強い馬が勝つと言われる舞台。' },
-  { name:'天空賞（秋）',       month:10, surface:'芝',     dist:2000 , desc:'秋の頂上決戦、2000m。一線級が真っ向からぶつかる王道の一戦。' },
-  { name:'霜月女王杯',         month:11, surface:'芝',     dist:2200 , desc:'霜の降りる季節に女王を決める一戦。歴戦の牝馬たちが意地を見せる。' },
-  { name:'晩秋マイル',         month:11, surface:'芝',     dist:1600 , desc:'秋のマイル王決定戦。スピード自慢が直線で一斉に弾ける。' },
-  { name:'世界杯',             month:11, surface:'芝',     dist:2400 , desc:'世界の強豪を迎え撃つ国際G1。2400mの大舞台で真の実力が問われる。' },
-  { name:'砂塵カップ',         month:12, surface:'ダート', dist:1800 , desc:'砂の王者を決める冬の大一番。砂煙の中から抜け出すのは誰だ。' },
-  { name:'冬の女王杯',         month:12, surface:'芝',     dist:1600 , desc:'冬の牝馬マイル決戦。寒さを切り裂く末脚に期待が高まる。' },
-  { name:'若駒フューチュリティ', month:12, surface:'芝',   dist:1600 , desc:'未来のスターを探す2歳マイル戦。来年の主役がここから生まれる。' },
-  { name:'年末グランプリ',     month:12, surface:'芝',     dist:2500 , desc:'一年の総決算、ファンが選んだ夢のドリームレース。今年最後の大勝負。' },
-  { name:'冬至ホープフル',     month:12, surface:'芝',     dist:2000 , desc:'一年を締めくくる若駒の中距離戦。来春のクラシックを占う一戦。' },
+  { name:'フェブラリーステークス', month:2,  venue:'東京', surface:'ダート', dist:1600, desc:'JRAの一年で最初のG1。東京ダート1600mで争うダートマイル王決定戦。' },
+  { name:'高松宮記念',           month:3,  venue:'中京', surface:'芝', dist:1200, desc:'春のスプリント王決定戦。中京芝1200m、一瞬のスピードが勝負を分ける。' },
+  { name:'大阪杯',               month:4,  venue:'阪神', surface:'芝', dist:2000, desc:'春の中距離王決定戦。2017年にG1へ昇格した阪神芝2000mの一戦。' },
+  { name:'桜花賞',               month:4,  venue:'阪神', surface:'芝', dist:1600, mareOnly:true, desc:'牝馬クラシックの第一冠。満開の桜の下、阪神芝1600mで女王を決める。' },
+  { name:'皐月賞',               month:4,  venue:'中山', surface:'芝', dist:2000, desc:'クラシック三冠の第一冠。「最も速い馬が勝つ」と言われる中山芝2000m。' },
+  { name:'天皇賞（春）',         month:5,  venue:'京都', surface:'芝', dist:3200, desc:'JRAの平地G1で最も長い京都芝3200m。スタミナが試される伝統の盾。' },
+  { name:'NHKマイルカップ',      month:5,  venue:'東京', surface:'芝', dist:1600, desc:'3歳マイル王決定戦。東京芝1600mでスピード自慢がぶつかる。' },
+  { name:'ヴィクトリアマイル',   month:5,  venue:'東京', surface:'芝', dist:1600, mareOnly:true, desc:'牝馬のマイル女王決定戦。東京芝1600m、直線の長い舞台での叩き合い。' },
+  { name:'オークス',             month:5,  venue:'東京', surface:'芝', dist:2400, mareOnly:true, desc:'牝馬クラシックの第二冠、優駿牝馬。東京芝2400mで距離の壁に挑む。' },
+  { name:'日本ダービー',         month:5,  venue:'東京', surface:'芝', dist:2400, desc:'東京優駿。ホースマン誰もが夢見る世代の頂点、東京芝2400m。' },
+  { name:'安田記念',             month:6,  venue:'東京', surface:'芝', dist:1600, desc:'春のマイル王決定戦。東京芝1600m、古馬の一線級が集う。' },
+  { name:'宝塚記念',             month:6,  venue:'阪神', surface:'芝', dist:2200, desc:'ファン投票で出走馬が選ばれる上半期のグランプリ。阪神芝2200m。' },
+  { name:'スプリンターズステークス', month:9, venue:'中山', surface:'芝', dist:1200, desc:'秋のスプリント王決定戦。中山芝1200m、急坂のゴール前が見どころ。' },
+  { name:'秋華賞',               month:10, venue:'京都', surface:'芝', dist:2000, mareOnly:true, desc:'牝馬三冠の最終戦。京都芝2000mで世代の女王が決まる。' },
+  { name:'菊花賞',               month:10, venue:'京都', surface:'芝', dist:3000, desc:'クラシック三冠の最終戦。「最も強い馬が勝つ」と言われる京都芝3000m。' },
+  { name:'天皇賞（秋）',         month:11, venue:'東京', surface:'芝', dist:2000, desc:'秋の中距離王決定戦。東京芝2000m、伝統の盾をかけた一戦。' },
+  { name:'エリザベス女王杯',     month:11, venue:'京都', surface:'芝', dist:2200, mareOnly:true, desc:'古馬も3歳も集う牝馬の女王決定戦。京都芝2200m。' },
+  { name:'マイルチャンピオンシップ', month:11, venue:'京都', surface:'芝', dist:1600, desc:'秋のマイル王決定戦。京都芝1600m、外回りの直線で一気に弾ける。' },
+  { name:'ジャパンカップ',       month:11, venue:'東京', surface:'芝', dist:2400, desc:'海外の強豪も招く国際招待競走。東京芝2400mで世界と頂点を争う。' },
+  { name:'チャンピオンズカップ', month:12, venue:'中京', surface:'ダート', dist:1800, desc:'ダートの頂点を決める冬の大一番。中京ダート1800m。' },
+  { name:'阪神ジュベナイルフィリーズ', month:12, venue:'阪神', surface:'芝', dist:1600, mareOnly:true, desc:'2歳女王決定戦。阪神芝1600mから未来の名牝が生まれる。' },
+  { name:'朝日杯フューチュリティステークス', month:12, venue:'阪神', surface:'芝', dist:1600, desc:'2歳王者決定戦。阪神芝1600mで来年のクラシックを占う。' },
+  { name:'ホープフルステークス', month:12, venue:'中山', surface:'芝', dist:2000, desc:'2歳の中距離G1。中山芝2000m、皐月賞と同じ舞台で素質を競う。' },
+  { name:'有馬記念',             month:12, venue:'中山', surface:'芝', dist:2500, desc:'ファン投票で選ばれた馬が集う暮れのグランプリ。中山芝2500m、一年の総決算。' },
 ];
 
 // 枠色（8頭立て＝1枠1頭）
@@ -308,50 +309,111 @@ const pick = (rnd, arr) => arr[Math.floor(rnd()*arr.length)];
 const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 const yen = n => n.toLocaleString('ja-JP') + '円';
 
-// ---------- 馬名生成（架空） ----------
-const NAME_HEAD = ['サクラ','アオイ','ミライ','ハヤテ','シルバ','ゴールド','ブルー','クリムゾン','スター','ルナ','ソラ','カゼ','ホシ','ヨアケ','ミカヅキ','アカツキ'];
-const NAME_TAIL = ['ラン','オー','ボルト','ハート','キング','ローズ','フラッシュ','ドリーム','ウイング','アロー','ノヴァ','リーフ','ダンサー','ジェット','カムイ','ブレイズ'];
-function horseName(rnd, used){
-  for(let i=0;i<50;i++){
-    const n = pick(rnd,NAME_HEAD) + pick(rnd,NAME_TAIL);
-    if(n.length<=9 && !used.has(n)){ used.add(n); return n; }
-  }
-  return 'ナナシ' + used.size;
-}
+// ---------- 歴代の名馬 ----------
+// 名前・性別・主な戦場（芝/ダート）・脚質・得意距離は、よく知られた戦績に寄せたゲーム用のおおよその設定。
+// speed/stamina/kick（スピード/スタミナ/末脚）はゲームバランス用の目安で、実際の成績を数値化したものではない。
+// sex: '牡'（牡馬・せん馬を含む）/'牝'
+const LEGENDS = [
+  // 芝・中長距離
+  { name:'シンボリルドルフ',   sex:'牡', surface:'芝', style:'先行', bestDist:2400, speed:92, stamina:92, kick:86 },
+  { name:'ナリタブライアン',   sex:'牡', surface:'芝', style:'差し', bestDist:2400, speed:91, stamina:90, kick:90 },
+  { name:'ディープインパクト', sex:'牡', surface:'芝', style:'追込', bestDist:2400, speed:93, stamina:90, kick:99 },
+  { name:'オルフェーヴル',     sex:'牡', surface:'芝', style:'差し', bestDist:2400, speed:91, stamina:92, kick:94 },
+  { name:'キタサンブラック',   sex:'牡', surface:'芝', style:'逃げ', bestDist:2400, speed:89, stamina:95, kick:82 },
+  { name:'テイエムオペラオー', sex:'牡', surface:'芝', style:'先行', bestDist:2400, speed:88, stamina:92, kick:85 },
+  { name:'スペシャルウィーク', sex:'牡', surface:'芝', style:'差し', bestDist:2400, speed:88, stamina:89, kick:90 },
+  { name:'トウカイテイオー',   sex:'牡', surface:'芝', style:'先行', bestDist:2200, speed:90, stamina:84, kick:87 },
+  { name:'グラスワンダー',     sex:'牡', surface:'芝', style:'差し', bestDist:2200, speed:89, stamina:84, kick:90 },
+  { name:'エルコンドルパサー', sex:'牡', surface:'芝', style:'先行', bestDist:2000, speed:91, stamina:86, kick:86 },
+  { name:'イクイノックス',     sex:'牡', surface:'芝', style:'先行', bestDist:2200, speed:94, stamina:88, kick:93 },
+  { name:'コントレイル',       sex:'牡', surface:'芝', style:'差し', bestDist:2200, speed:90, stamina:87, kick:91 },
+  { name:'ドウデュース',       sex:'牡', surface:'芝', style:'差し', bestDist:2200, speed:89, stamina:86, kick:93 },
+  { name:'サイレンススズカ',   sex:'牡', surface:'芝', style:'逃げ', bestDist:1800, speed:96, stamina:74, kick:80 },
+  { name:'ミホノブルボン',     sex:'牡', surface:'芝', style:'逃げ', bestDist:2000, speed:90, stamina:80, kick:78 },
+  { name:'マルゼンスキー',     sex:'牡', surface:'芝', style:'逃げ', bestDist:1800, speed:93, stamina:76, kick:80 },
+  { name:'オグリキャップ',     sex:'牡', surface:'芝', style:'差し', bestDist:1800, speed:90, stamina:83, kick:91 },
+  { name:'ジャスタウェイ',     sex:'牡', surface:'芝', style:'差し', bestDist:1800, speed:90, stamina:80, kick:90 },
+  // 芝・長距離
+  { name:'メジロマックイーン', sex:'牡', surface:'芝', style:'先行', bestDist:3000, speed:86, stamina:97, kick:82 },
+  { name:'ライスシャワー',     sex:'牡', surface:'芝', style:'先行', bestDist:3200, speed:83, stamina:98, kick:82 },
+  { name:'ゴールドシップ',     sex:'牡', surface:'芝', style:'追込', bestDist:2800, speed:85, stamina:96, kick:89 },
+  { name:'タイトルホルダー',   sex:'牡', surface:'芝', style:'逃げ', bestDist:3000, speed:86, stamina:96, kick:78 },
+  // 芝・短距離〜マイル
+  { name:'ロードカナロア',     sex:'牡', surface:'芝', style:'先行', bestDist:1200, speed:97, stamina:62, kick:88 },
+  { name:'サクラバクシンオー', sex:'牡', surface:'芝', style:'先行', bestDist:1200, speed:96, stamina:58, kick:82 },
+  { name:'デュランダル',       sex:'牡', surface:'芝', style:'追込', bestDist:1400, speed:91, stamina:62, kick:95 },
+  { name:'タイキシャトル',     sex:'牡', surface:'芝', style:'先行', bestDist:1600, speed:95, stamina:68, kick:86 },
+  // 牝馬
+  { name:'ウオッカ',           sex:'牝', surface:'芝', style:'差し', bestDist:1800, speed:91, stamina:84, kick:92 },
+  { name:'ダイワスカーレット', sex:'牝', surface:'芝', style:'先行', bestDist:2000, speed:91, stamina:86, kick:84 },
+  { name:'アーモンドアイ',     sex:'牝', surface:'芝', style:'差し', bestDist:2000, speed:94, stamina:86, kick:96 },
+  { name:'ジェンティルドンナ', sex:'牝', surface:'芝', style:'先行', bestDist:2200, speed:91, stamina:88, kick:88 },
+  { name:'ブエナビスタ',       sex:'牝', surface:'芝', style:'差し', bestDist:2000, speed:89, stamina:86, kick:92 },
+  { name:'リスグラシュー',     sex:'牝', surface:'芝', style:'差し', bestDist:2200, speed:88, stamina:87, kick:91 },
+  { name:'クロノジェネシス',   sex:'牝', surface:'芝', style:'差し', bestDist:2200, speed:88, stamina:88, kick:89 },
+  { name:'エアグルーヴ',       sex:'牝', surface:'芝', style:'先行', bestDist:2000, speed:89, stamina:84, kick:86 },
+  { name:'メジロドーベル',     sex:'牝', surface:'芝', style:'差し', bestDist:2000, speed:86, stamina:84, kick:88 },
+  { name:'ヒシアマゾン',       sex:'牝', surface:'芝', style:'追込', bestDist:2000, speed:87, stamina:84, kick:91 },
+  { name:'スティルインラブ',   sex:'牝', surface:'芝', style:'差し', bestDist:2000, speed:86, stamina:83, kick:88 },
+  { name:'デアリングタクト',   sex:'牝', surface:'芝', style:'差し', bestDist:2000, speed:87, stamina:85, kick:91 },
+  { name:'リバティアイランド', sex:'牝', surface:'芝', style:'差し', bestDist:2000, speed:89, stamina:86, kick:93 },
+  { name:'グランアレグリア',   sex:'牝', surface:'芝', style:'差し', bestDist:1400, speed:95, stamina:70, kick:94 },
+  { name:'ソダシ',             sex:'牝', surface:'芝', style:'先行', bestDist:1600, speed:90, stamina:74, kick:84 },
+  { name:'カレンチャン',       sex:'牝', surface:'芝', style:'先行', bestDist:1200, speed:92, stamina:60, kick:84 },
+  { name:'ニシノフラワー',     sex:'牝', surface:'芝', style:'先行', bestDist:1400, speed:90, stamina:64, kick:84 },
+  { name:'ビリーヴ',           sex:'牝', surface:'芝', style:'先行', bestDist:1200, speed:91, stamina:58, kick:83 },
+  // ダート
+  { name:'クロフネ',           sex:'牡', surface:'ダート', style:'先行', bestDist:1800, speed:95, stamina:84, kick:86 },
+  { name:'スマートファルコン', sex:'牡', surface:'ダート', style:'逃げ', bestDist:2000, speed:92, stamina:86, kick:80 },
+  { name:'ホッコータルマエ',   sex:'牡', surface:'ダート', style:'先行', bestDist:1800, speed:89, stamina:86, kick:83 },
+  { name:'トランセンド',       sex:'牡', surface:'ダート', style:'逃げ', bestDist:1800, speed:90, stamina:84, kick:80 },
+  { name:'エスポワールシチー', sex:'牡', surface:'ダート', style:'先行', bestDist:1600, speed:90, stamina:78, kick:82 },
+  { name:'コパノリッキー',     sex:'牡', surface:'ダート', style:'先行', bestDist:1600, speed:90, stamina:80, kick:82 },
+  { name:'ゴールドドリーム',   sex:'牡', surface:'ダート', style:'差し', bestDist:1600, speed:89, stamina:78, kick:90 },
+  { name:'レモンポップ',       sex:'牡', surface:'ダート', style:'先行', bestDist:1600, speed:93, stamina:80, kick:85 },
+  { name:'ウシュバテソーロ',   sex:'牡', surface:'ダート', style:'追込', bestDist:2000, speed:87, stamina:88, kick:93 },
+];
 
 // ---------- 出走表生成 ----------
+// レースの条件（芝/ダート・距離・牝馬限定）に合う名馬ほど選ばれやすい。年ごとに顔ぶれが変わる。
+function fitScore(h, race){
+  let s = 0;
+  if(h.surface !== race.surface) s -= 60;
+  s -= Math.abs(race.dist - h.bestDist) / 25;
+  s += (h.speed + h.stamina * race.dist/3200 + h.kick) / 6;
+  return s;
+}
 function makeField(year, idx){
   const race = CALENDAR[idx];
   const rnd = mulberry32(year*1000 + idx*37 + 11);
-  const used = new Set();
-  const horses = [];
-  for(let i=0;i<CONFIG.FIELD;i++){
-    horses.push({
-      no: i+1,
-      name: horseName(rnd, used),
-      speed: Math.round(55 + rnd()*40),     // 基本スピード
-      stamina: Math.round(50 + rnd()*45),   // スタミナ
-      kick: Math.round(50 + rnd()*45),      // 末脚
-      style: pick(rnd, STYLES),
-      bestDist: 1200 + Math.round(rnd()*10)*200, // 得意距離
-      cond: clamp(gauss(rnd)*0.45, -1, 1),  // 当日の調子（隠し値。パドックでヒント）
-      coat: pick(rnd, COAT),
-      lastRun: 0,
-    });
-  }
+  const pool = LEGENDS.filter(h => !race.mareOnly || h.sex === '牝')
+    .map(h => ({ h, s: fitScore(h, race) + gauss(rnd)*9 }))
+    .sort((a,b) => b.s - a.s)
+    .slice(0, CONFIG.FIELD);
+  // 枠順はランダム
+  for(let i=pool.length-1;i>0;i--){ const j = Math.floor(rnd()*(i+1)); [pool[i],pool[j]] = [pool[j],pool[i]]; }
+  const horses = pool.map(({h}, i) => ({
+    no: i+1,
+    name: h.name, sex: h.sex, surface: h.surface, style: h.style, bestDist: h.bestDist,
+    speed: h.speed, stamina: h.stamina, kick: h.kick,
+    cond: clamp(gauss(rnd)*0.45, -1, 1),  // 当日の調子（隠し値。パドックでヒント）
+    coat: pick(rnd, COAT),
+    lastRun: 0,
+  }));
   // 前走着順（能力から作るそれっぽい数字）
   horses.forEach(h => {
-    const r = rating(h, race.dist);
-    h.lastRun = clamp(Math.round(9 - r/12 + gauss(rnd)*2.2), 1, 16);
+    const r = rating(h, race.dist, race.surface);
+    h.lastRun = clamp(Math.round(8 - (r-88)/4.5 + gauss(rnd)*2), 1, 12);
   });
   return { race, horses, rnd };
 }
 
 // 新聞記者から見える「強さ」の目安（調子は含まない）
-function rating(h, dist){
+function rating(h, dist, surface){
   const apt = 1 - Math.min(1, Math.abs(dist - h.bestDist)/1400);
   const stamW = dist/3200;
-  return h.speed*0.45 + h.stamina*0.35*stamW + h.kick*0.3 + apt*25;
+  const surf = (surface && h.surface && surface !== h.surface) ? -15 : 0;
+  return h.speed*0.45 + h.stamina*0.35*stamW + h.kick*0.3 + apt*25 + surf;
 }
 
 // ---------- レースシミュレーション ----------
@@ -359,7 +421,7 @@ function rating(h, dist){
 // record=true のときだけ演出用のフレームと実況イベントを記録する。
 const DT = 0.25; // 秒
 // 能力差と運のバランス（大きいほどその要素が効く）
-const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.15, COND_W:0.22, LUCK:0.28 };
+const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.15, COND_W:0.22, LUCK:0.28, SURF_W:0.35 };
 function simulate(field, rnd, opts){
   const { race, horses } = field;
   const D = race.dist;
@@ -390,6 +452,8 @@ function simulate(field, rnd, opts){
       }
       // 距離適性
       v -= Math.abs(D - h.bestDist)/1000 * SIM.APT_W;
+      // 芝とダートの向き不向き
+      if(h.surface && h.surface !== race.surface) v -= SIM.SURF_W;
       if(useCond) v += h.cond * SIM.COND_W;
       v += gauss(rnd) * 0.35;
       pos[i] += Math.max(10, v) * DT;
@@ -432,7 +496,7 @@ const REPORTERS = ['本紙','記者A','記者B'];
 function makeMarks(field){
   const rnd = field.rnd;
   return REPORTERS.map((_, ri) => {
-    const sc = field.horses.map((h,i) => ({ i, s: rating(h, field.race.dist) + gauss(rnd)*(6+ri*3) }));
+    const sc = field.horses.map((h,i) => ({ i, s: rating(h, field.race.dist, field.race.surface) + gauss(rnd)*(6+ri*3) }));
     sc.sort((a,b) => b.s - a.s);
     const m = new Array(field.horses.length).fill('');
     sc.slice(0, MARKS.length).forEach((x,k) => m[x.i] = MARKS[k]);
@@ -501,11 +565,11 @@ function wakuBadge(no){ const w = WAKU[no-1]; return `<span class="waku" style="
 
 function renderPaper(){
   const { race, horses } = Game.field;
-  let h = `<div class="head"><b>${race.name}（G1）</b><span>${race.month}月 ${race.surface}${race.dist}m 8頭立て</span></div>`;
+  let h = `<div class="head"><b>${race.name}（G1）</b><span>${race.month}月 ${race.venue} ${race.surface}${race.dist}m 8頭立て${race.mareOnly ? "（牝馬限定）" : ""}</span></div>`;
   h += '<table><tr><th>馬番</th>' + REPORTERS.map(r=>`<th>${r}</th>`).join('') + '<th>馬名</th><th>脚質</th><th>前走</th><th>距離</th><th>単勝</th></tr>';
   horses.forEach((x,i) => {
     h += `<tr><td>${wakuBadge(x.no)}</td>` + Game.marks.map(m=>`<td class="mark">${m[i]}</td>`).join('') +
-      `<td class="name">${x.name}</td><td>${x.style}</td><td>${x.lastRun}着</td><td>${aptMark(x, race.dist)}</td><td>${Game.odds.win[i].toFixed(1)}</td></tr>`;
+      `<td class="name">${x.name}${x.sex==='牝'?' <small style="color:#c0392b">牝</small>':''}</td><td>${x.style}</td><td>${x.lastRun}着</td><td>${aptMark(x, race.dist)}</td><td>${Game.odds.win[i].toFixed(1)}</td></tr>`;
   });
   h += '</table>';
   $('paper').innerHTML = h;
@@ -645,7 +709,9 @@ function showIntro(){
   const add = (cls, text) => { const e = document.createElement('div'); e.className = cls; e.textContent = text; c.appendChild(e); };
   add('ic-month', `${r.month}月の大一番 ／ G1`);
   add('ic-name', r.name);
-  add('ic-cond', `${r.surface}${r.dist}m ・ フルゲート8頭`);
+  // 長いレース名は文字を小さくして1行に収める
+  c.lastChild.style.fontSize = r.name.length > 14 ? '18px' : r.name.length > 9 ? '22px' : '';
+  add('ic-cond', `${r.venue} ${r.surface}${r.dist}m ・ 歴代の名馬8頭${r.mareOnly ? '（牝馬限定）' : ''}`);
   if(r.desc) add('ic-desc', r.desc);
   c.classList.add('on');
   say(`さあ今年も${r.month}月、${r.name}の季節がやってきました！`, true);
