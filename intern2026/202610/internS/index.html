@@ -429,7 +429,14 @@ function rating(h, dist, surface){
 const DT = 0.25; // 秒
 const RUNOUT_SEC = 6; // 全頭ゴール後に走り続ける時間（演出用）
 // 能力差と運のバランス（大きいほどその要素が効く）
-const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.3, COND_W:0.22, LUCK:0.28, SURF_W:0.35 };
+const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.3, COND_W:0.22, LUCK:0.28, SURF_W:0.35,
+  // 脚質: 序盤(〜30%)の加速と、直線(75%〜)の伸び
+  EARLY: { '逃げ':0.3, '先行':0.12, '差し':-0.06, '追込':-0.18 },
+  LATE:  { '逃げ':-0.05, '先行':0.12, '差し':0.42, '追込':0.7 },
+  LATE_LUCK: 0.45, // 直線での運（大きいほど逆転が起きやすい）
+  FADE: 0.6,       // 序盤に前に行った馬が直線で失速する度合い
+  LATE_START: 0.75,
+  PACK: 0.33 };     // 直線までは差がつきにくい（1=そのまま、小さいほど馬群が固まる）
 function simulate(field, rnd, opts){
   const { race, horses } = field;
   const D = race.dist;
@@ -439,6 +446,7 @@ function simulate(field, rnd, opts){
   const pos = new Array(n).fill(0);
   const fin = new Array(n).fill(-1);
   const luck = horses.map(() => gauss(rnd)*SIM.LUCK); // そのレースだけの運
+  const lateLuck = horses.map(() => gauss(rnd)*SIM.LATE_LUCK); // 直線での伸びの運
   const frames = [];
   let t = 0, done = 0, lastFin = 0;
   const order = [];
@@ -455,10 +463,15 @@ function simulate(field, rnd, opts){
       const f = pos[i]/D;
       let v = 16.4 + h.speed*SIM.SPEED_W + luck[i];
       // 脚質: 序盤は前の馬が速く、終盤は後ろの馬が伸びる
-      const early = { '逃げ':0.55, '先行':0.25, '差し':-0.15, '追込':-0.4 }[h.style];
-      const late  = { '逃げ':-0.25, '先行':0.05, '差し':0.35, '追込':0.6 }[h.style];
+      const early = SIM.EARLY[h.style];
+      const late  = SIM.LATE[h.style];
       if(f < 0.3) v += early;
-      else if(f >= 0.75) v += late * (h.kick/75) + (h.kick-70)*SIM.KICK_W;
+      else if(f >= SIM.LATE_START){
+        const k = (f - SIM.LATE_START) / (1 - SIM.LATE_START); // 直線の進み具合 0→1
+        v += late * (h.kick/75) + (h.kick-70)*SIM.KICK_W + lateLuck[i];
+        // 序盤に飛ばした馬ほど、ゴール前で脚が上がる
+        v -= Math.max(0, early) * SIM.FADE * k;
+      }
       // スタミナ切れ
       if(f > 0.55){
         const need = (D/2000) * 75;
@@ -468,8 +481,15 @@ function simulate(field, rnd, opts){
       v -= Math.abs(D - h.bestDist)/1000 * SIM.APT_W;
       // 芝とダートの向き不向き
       if(h.surface && h.surface !== race.surface) v -= SIM.SURF_W;
-      if(useCond) v += h.cond * SIM.COND_W;
       v += gauss(rnd) * 0.35;
+      // 直線に入るまでは馬群が固まって進む（脚質による位置取りの差は残す）
+      if(f < SIM.LATE_START){
+        const base = 16.4 + 80*SIM.SPEED_W;
+        const styleBonus = f < 0.3 ? early : 0;
+        v = base + styleBonus + (v - base - styleBonus) * SIM.PACK;
+      }
+      // 当日の調子（パドックでヒントが出る）は馬群の影響を受けずに効く
+      if(useCond) v += h.cond * SIM.COND_W;
       lastV[i] = Math.max(10, v);
       pos[i] += lastV[i] * DT;
       if(pos[i] >= D){ fin[i] = t; finFrame[i] = frames.length; order.push(i); done++; lastFin = t; }
@@ -672,7 +692,8 @@ function drawLeg(g, hx, hy, a1, a2, len1, len2, w1, w2, color, hoof){
 function drawHorse(g, x, y, s, h, phase, dir, opts){
   opts = opts || {};
   const c = coatOf(h), silk = silkOf(h), walk = !!opts.walk;
-  const L = (opts.look && PADDOCK_LOOKS[opts.look]) || null;
+  const Lraw = (opts.look && PADDOCK_LOOKS[opts.look]) || null;
+  const L = Lraw && !walk ? Object.assign({}, Lraw, { amp:1, head:0, toss:0, jitter:0, limp:false, tail:0 }) : Lraw;
   const tNow = opts.time || 0;
   const TAU = Math.PI*2;
   g.save(); g.translate(x, y); g.scale(s*dir, s);
@@ -930,7 +951,7 @@ function startRace(){
   // 本番は「調子」込みで走る
   const rnd = mulberry32(Math.floor(Math.random()*1e9));
   Race.sim = simulate(Game.field, rnd, { useCond:true, record:true });
-  Race.t = 0; Race.phase = -1; Race.said = {}; Race.leader = -1; Race.done = false;
+  Race.t = 0; Race.phase = -1; Race.said = {}; Race.leader = -1; Race.done = false; Race.started = false;
   $('commentary').innerHTML = '';
   show('race');
   cancelAnimationFrame(Race.raf);
@@ -944,6 +965,7 @@ function startRace(){
 
 // 発走前: そのG1の特徴を紹介して盛り上げる
 const INTRO_MS = 4200;
+const GATE_WAIT_MS = 1000; // 紹介のあと、閉じたゲートを見せる時間
 function showIntro(){
   const r = Game.field.race;
   const c = $('introCard');
@@ -962,13 +984,16 @@ function showIntro(){
   Race.introTimer2 = setTimeout(() => say(`1番人気は${H(fav).name}、単勝${Game.odds.win[fav].toFixed(1)}倍。各馬ゲートに収まりました…`), 2700);
   Race.introTimer3 = setTimeout(() => {
     c.classList.remove('on');
-    say(`${r.name}、ゲートが開いた！ 各馬いっせいにスタート！`, true);
-    Race.lastNow = performance.now();
-    Race.raf = requestAnimationFrame(raceLoop);
+    Race.introTimer4 = setTimeout(() => {
+      Race.started = true;
+      say(`${r.name}、ゲートが開いた！ 各馬いっせいにスタート！`, true);
+      Race.lastNow = performance.now();
+      Race.raf = requestAnimationFrame(raceLoop);
+    }, GATE_WAIT_MS);
   }, INTRO_MS);
 }
 function clearIntro(){
-  clearTimeout(Race.introTimer); clearTimeout(Race.introTimer2); clearTimeout(Race.introTimer3);
+  clearTimeout(Race.introTimer); clearTimeout(Race.introTimer2); clearTimeout(Race.introTimer3); clearTimeout(Race.introTimer4);
   $('introCard').classList.remove('on');
 }
 
@@ -1065,6 +1090,44 @@ function commentEvents(prog, st, fi){
 // 疑似乱数（描画用・毎フレーム同じ値になる）
 const hash01 = n => { const x = Math.sin(n*12.9898)*43758.5453; return x - Math.floor(x); };
 
+// スタートゲート: 1頭ずつの枠（奥の柱・屋根・横板）と、手前の柱・扉
+const GATE_COL = '#2f8a5a', GATE_DARK = '#1d5c3c', GATE_LIGHT = '#e8f5ec';
+// 1頭分の枠（馬の体がすっぽり入る大きさ）。gx はスタート地点での馬の中心
+function drawGateBack(g, gx, y, sc, no){
+  const back = gx - 36*sc, front = gx + 40*sc, top = y - 86*sc;
+  // 奥の横板（半透明の緑）と、後ろの扉
+  g.fillStyle = 'rgba(29,92,60,.55)'; g.fillRect(back, top + 10*sc, front - back, 46*sc);
+  g.fillStyle = GATE_DARK; g.fillRect(back - 3*sc, top, 6*sc, 86*sc);
+  g.fillStyle = GATE_LIGHT; for(let k=0;k<3;k++) g.fillRect(back - 3*sc, top + (22 + k*18)*sc, 6*sc, 2*sc);
+  // 屋根
+  g.fillStyle = GATE_COL; g.fillRect(back - 5*sc, top - 6*sc, front - back + 12*sc, 8*sc);
+  g.fillStyle = GATE_LIGHT; g.fillRect(back - 5*sc, top - 6*sc, front - back + 12*sc, 1.6*sc);
+  // 枠番の札
+  const w = WAKU[no-1];
+  g.fillStyle = w.bg; g.strokeStyle = '#000'; g.lineWidth = 0.8;
+  g.fillRect(front - 10*sc, top - 20*sc, 16*sc, 13*sc); g.strokeRect(front - 10*sc, top - 20*sc, 16*sc, 13*sc);
+  g.fillStyle = w.fg; g.font = `bold ${Math.max(8, 10*sc)}px sans-serif`; g.textAlign = 'center';
+  g.fillText(String(no), front - 2*sc, top - 10*sc); g.textAlign = 'left';
+}
+function drawGateFront(g, gx, y, sc, closed){
+  const front = gx + 40*sc, top = y - 86*sc;
+  // 手前の柱
+  g.fillStyle = GATE_COL; g.fillRect(front - 3*sc, top, 7*sc, 86*sc);
+  g.fillStyle = GATE_LIGHT; g.fillRect(front - 1*sc, top + 4*sc, 2*sc, 78*sc);
+  if(closed){
+    // 閉じた前扉（格子）
+    g.fillStyle = 'rgba(29,92,60,.92)'; g.fillRect(front - 4*sc, y - 60*sc, 10*sc, 54*sc);
+    g.fillStyle = GATE_LIGHT;
+    for(let k=0;k<5;k++) g.fillRect(front - 4*sc, y - (56 - k*11)*sc, 10*sc, 1.8*sc);
+  } else {
+    // 開いた前扉（前へ倒れている）
+    g.save(); g.translate(front + 4*sc, y - 58*sc); g.rotate(-1.15);
+    g.fillStyle = 'rgba(29,92,60,.92)'; g.fillRect(0, 0, 10*sc, 30*sc);
+    g.fillStyle = GATE_LIGHT; for(let k=0;k<3;k++) g.fillRect(0, (4 + k*9)*sc, 10*sc, 1.6*sc);
+    g.restore();
+  }
+}
+
 // 描画: 序盤＝横からの引きの絵 / 中盤＝俯瞰のコース図 / ラスト＝寄りの絵
 // 戻り値: 全頭が画面の右へ走り去ったか
 function drawRace(fr, st, ph, time, fi){
@@ -1122,12 +1185,22 @@ function drawRace(fr, st, ph, time, fi){
   }
   // ゴール板
   const gx = (D - camX)*pxPerM;
-  if(gx > -40 && gx < W+40){
-    g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(gx-1, yRail, 2, Hh - yRail);
-    g.fillStyle = '#fff'; g.fillRect(gx-3, yRail - 46, 6, 50);
-    g.fillStyle = '#e33'; g.beginPath(); g.arc(gx, yRail - 50, 12, 0, Math.PI*2); g.fill();
-    g.fillStyle = '#fff'; g.font = 'bold 9px sans-serif'; g.textAlign = 'center'; g.fillText('GOAL', gx, yRail - 47); g.textAlign = 'left';
+  if(gx > -60 && gx < W+60){
+    // ゴールライン: 馬場を横切る白黒の市松模様
+    const lineTop = yRail + 6, lineBot = Hh - 34, cw = 5;
+    for(let yy = lineTop, r = 0; yy < lineBot; yy += cw, r++){
+      g.fillStyle = r % 2 ? '#111' : '#fff'; g.fillRect(gx - cw, yy, cw, cw);
+      g.fillStyle = r % 2 ? '#fff' : '#111'; g.fillRect(gx, yy, cw, cw);
+    }
+    // ゴール板（赤い円盤）
+    g.fillStyle = '#f5f5f5'; g.fillRect(gx-3, yRail - 58, 6, 64);
+    g.fillStyle = '#d62828'; g.strokeStyle = '#fff'; g.lineWidth = 2.5;
+    g.beginPath(); g.arc(gx, yRail - 62, 16, 0, Math.PI*2); g.fill(); g.stroke();
+    g.fillStyle = '#fff'; g.font = 'bold 10px sans-serif'; g.textAlign = 'center'; g.fillText('GOAL', gx, yRail - 58); g.textAlign = 'left';
   }
+  // スタートゲート（スタート地点＝0m）
+  const gateX = (0 - camX)*pxPerM;  // スタート地点の馬の位置
+  const gateVisible = gateX > -120 && gateX < W + 120;
   // 馬（奥の枠から手前へ）
   const zoomBase = last ? 1.25 : 0.72;
   const sFar = zoomBase*0.78, sNear = zoomBase*1.08;
@@ -1150,7 +1223,10 @@ function drawRace(fr, st, ph, time, fi){
       g.beginPath(); g.arc(dx, dy, (dirt ? 4 : 2.2)*sc*(0.6+age), 0, Math.PI*2); g.fill();
     }
     const finished = Race.sim.finFrame[i] >= 0 && Race.sim.finFrame[i] <= fi;
-    drawHorse(g, x, y, sc, h, time*(finished ? 11 : 14) + i*1.7, 1, { whip: last && !finished && st.findIndex(e => e.i === i) < 4 });
+    if(gateVisible) drawGateBack(g, gateX, y, sc, h.no);
+    drawHorse(g, x, y, sc, h, (Race.started ? time : 0)*(finished ? 11 : 14) + i*1.7, 1,
+      { whip: last && !finished && st.findIndex(e => e.i === i) < 4, look: Game.paddock && Game.paddock[i] ? Game.paddock[i].look : null, time });
+    if(gateVisible) drawGateFront(g, gateX, y, sc, !Race.started);
   });
   // スピード線（ラストスパート）
   if(last){
@@ -1163,8 +1239,9 @@ function drawRace(fr, st, ph, time, fi){
     v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.35)');
     g.fillStyle = v; g.fillRect(0,0,W,Hh);
   }
-  drawRankStrip(g, W, Hh, st);
-  const left = D - lead;
+  // 発走前は全頭横一線なので順位は出さない
+  if(Race.started) drawRankStrip(g, W, Hh, st);
+  const left = Race.started ? D - lead : D;
   g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(W-112, 6, 106, 24);
   g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif';
   g.fillText(left > 0 ? `残り ${Math.round(left)}m` : 'ゴール！', W-104, 23);
