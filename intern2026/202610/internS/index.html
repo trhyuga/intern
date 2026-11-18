@@ -386,7 +386,7 @@ const LEGENDS = [
 function fitScore(h, race){
   let s = 0;
   if(h.surface !== race.surface) s -= 60;
-  s -= Math.abs(race.dist - h.bestDist) / 25;
+  s -= Math.abs(race.dist - h.bestDist) / 70;  // 距離が合わない馬も時々出走する
   s += (h.speed + h.stamina * race.dist/3200 + h.kick) / 6;
   return s;
 }
@@ -394,7 +394,7 @@ function makeField(year, idx){
   const race = CALENDAR[idx];
   const rnd = mulberry32(year*1000 + idx*37 + 11);
   const pool = LEGENDS.filter(h => !race.mareOnly || h.sex === '牝')
-    .map(h => ({ h, s: fitScore(h, race) + gauss(rnd)*9 }))
+    .map(h => ({ h, s: fitScore(h, race) + gauss(rnd)*11 }))
     .sort((a,b) => b.s - a.s)
     .slice(0, CONFIG.FIELD);
   // 枠順はランダム
@@ -429,7 +429,7 @@ function rating(h, dist, surface){
 const DT = 0.25; // 秒
 const RUNOUT_SEC = 6; // 全頭ゴール後に走り続ける時間（演出用）
 // 能力差と運のバランス（大きいほどその要素が効く）
-const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.15, COND_W:0.22, LUCK:0.28, SURF_W:0.35 };
+const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.3, COND_W:0.22, LUCK:0.28, SURF_W:0.35 };
 function simulate(field, rnd, opts){
   const { race, horses } = field;
   const D = race.dist;
@@ -520,16 +520,32 @@ function makeMarks(field){
 }
 function aptMark(h, dist){
   const d = Math.abs(dist - h.bestDist);
-  return d <= 200 ? '◎' : d <= 600 ? '○' : '△';
+  return d <= 100 ? '◎' : d <= 400 ? '○' : d <= 800 ? '△' : '×';
 }
+// パドックの気配。text=コメント、look=パドックでの見た目（drawHorse の opts.look）
+// 調子(cond)は隠し値で、コメントと見た目は少しブレたヒントになる
 function paddockComment(h, rnd){
   const c = h.cond + gauss(rnd)*0.25; // ヒントは少しブレる
-  if(c > 0.5)  return pick(rnd, ['毛ヅヤ抜群、気合い十分','踏み込み力強い。絶好調','周回のたびに良く見せる']);
-  if(c > 0.15) return pick(rnd, ['落ち着いて好気配','馬体の張り良好','リズム良く歩けている']);
-  if(c > -0.15)return pick(rnd, ['平行線。可もなく不可もなく','いつも通りの気配','やや地味に映る']);
-  if(c > -0.5) return pick(rnd, ['少しイレ込み気味','やや太め残りか','発汗が目立つ']);
-  return pick(rnd, ['テンションが高すぎる','覇気がない。割引必要','歩様に硬さが残る']);
+  if(c > 0.5)  return pick(rnd, [{ text:'毛ヅヤ抜群、気合い十分', look:'shine' }, { text:'踏み込み力強い。絶好調', look:'power' }, { text:'周回のたびに良く見せる', look:'shine' }]);
+  if(c > 0.15) return pick(rnd, [{ text:'落ち着いて好気配', look:'calm' }, { text:'馬体の張り良好', look:'shine' }, { text:'リズム良く歩けている', look:'calm' }]);
+  if(c > -0.15)return pick(rnd, [{ text:'平行線。可もなく不可もなく', look:'normal' }, { text:'いつも通りの気配', look:'normal' }, { text:'やや地味に映る', look:'plain' }]);
+  if(c > -0.5) return pick(rnd, [{ text:'少しイレ込み気味', look:'nervous' }, { text:'やや太め残りか', look:'heavy' }, { text:'発汗が目立つ', look:'sweat' }]);
+  return pick(rnd, [{ text:'テンションが高すぎる', look:'hot' }, { text:'覇気がない。割引必要', look:'dull' }, { text:'歩様に硬さが残る', look:'stiff' }]);
 }
+// 見た目ごとの歩き方: 速さ・脚の振り・頭の高さ・揺れ
+const PADDOCK_LOOKS = {
+  shine:   { speed:1.0,  amp:1.0,  head:-3, toss:0,   sheen:true },
+  power:   { speed:1.15, amp:1.25, head:-3, toss:0,   sheen:true },
+  calm:    { speed:0.9,  amp:1.0,  head:-1, toss:0 },
+  normal:  { speed:0.9,  amp:1.0,  head:0,  toss:0 },
+  plain:   { speed:0.8,  amp:0.9,  head:3,  toss:0,   dim:0.22 },
+  nervous: { speed:1.3,  amp:1.1,  head:-2, toss:2.5, jitter:1.2, tail:3 },
+  heavy:   { speed:0.8,  amp:0.9,  head:1,  toss:0,   belly:true },
+  sweat:   { speed:1.05, amp:1.0,  head:0,  toss:1,   sweat:true },
+  hot:     { speed:1.6,  amp:1.2,  head:-4, toss:4.5, jitter:2.2, tail:4, sweat:true },
+  dull:    { speed:0.55, amp:0.7,  head:9,  toss:0,   dim:0.38 },
+  stiff:   { speed:0.75, amp:0.45, head:2,  toss:0,   limp:true },
+};
 
 // ---------- セーブ ----------
 const Save = {
@@ -597,7 +613,7 @@ function renderPaddock(){
   const cvs = [];
   Game.field.horses.forEach((x,i) => {
     const d = document.createElement('div'); d.className = 'pd';
-    d.innerHTML = `${wakuBadge(x.no)}<div class="nm">${x.name}</div><canvas width="200" height="90"></canvas><div class="sub" style="margin-top:4px">${Game.paddock[i]}</div>`;
+    d.innerHTML = `${wakuBadge(x.no)}<div class="nm">${x.name}</div><canvas width="200" height="104"></canvas><div class="sub" style="margin-top:4px">${Game.paddock[i].text}</div>`;
     box.appendChild(d); cvs.push(d.querySelector('canvas'));
   });
   cancelAnimationFrame(paddockRAF);
@@ -605,14 +621,15 @@ function renderPaddock(){
   const loop = now => {
     const t = (now - t0)/1000;
     cvs.forEach((cv,i) => {
-      const g = fitCanvas(cv, 200, 90); g.clearRect(0,0,200,90);
-      g.fillStyle = '#2c5a3c'; g.fillRect(0,0,200,90);
-      g.fillStyle = '#b9a27c'; g.fillRect(0,58,200,32);
-      const x = 100 + Math.sin(t*0.6 + i)*44;
+      const g = fitCanvas(cv, 200, 104); g.clearRect(0,0,200,104);
+      g.fillStyle = '#2c5a3c'; g.fillRect(0,0,200,104);
+      g.fillStyle = '#b9a27c'; g.fillRect(0,66,200,38);
+      const look = Game.paddock[i].look, L = PADDOCK_LOOKS[look] || PADDOCK_LOOKS.normal;
+      const x = 100 + Math.sin(t*0.6 + i)*36;
       const dir = Math.cos(t*0.6 + i) >= 0 ? 1 : -1;
-      // イレ込み気味の馬は少し落ち着きなく揺れる
-      const jit = Game.field.horses[i].cond < -0.3 ? Math.sin(t*14+i)*1.5 : 0;
-      drawHorse(g, x + jit, 80, 0.85, Game.field.horses[i], t*3 + i, dir, { walk:true });
+      // イレ込み・テンションが高い馬は落ち着きなく揺れる
+      const jit = L.jitter ? Math.sin(t*14+i)*L.jitter : 0;
+      drawHorse(g, x + jit, 96, 1.05, Game.field.horses[i], t*3*L.speed + i, dir, { walk:true, look, time:t });
     });
     paddockRAF = requestAnimationFrame(loop);
   };
@@ -655,6 +672,8 @@ function drawLeg(g, hx, hy, a1, a2, len1, len2, w1, w2, color, hoof){
 function drawHorse(g, x, y, s, h, phase, dir, opts){
   opts = opts || {};
   const c = coatOf(h), silk = silkOf(h), walk = !!opts.walk;
+  const L = (opts.look && PADDOCK_LOOKS[opts.look]) || null;
+  const tNow = opts.time || 0;
   const TAU = Math.PI*2;
   g.save(); g.translate(x, y); g.scale(s*dir, s);
   // 影
@@ -664,12 +683,13 @@ function drawHorse(g, x, y, s, h, phase, dir, opts){
   g.translate(0, -bob);
   // 脚の動き（襲歩: 後左→後右→前左→前右）
   const off = walk ? [0, 0.5, 0.25, 0.75] : [0, 0.09, 0.46, 0.55];
-  const amp = walk ? 0.32 : 0.62;
+  const amp = (walk ? 0.32 : 0.62) * (L ? L.amp : 1);
   const legAngles = (u, fore) => {
     const a = Math.sin(TAU*u);
     const lift = Math.max(0, Math.sin(TAU*u + 0.9));
     const a1 = (fore ? 0.12 : -0.05) + amp*a;
-    const a2 = fore ? -lift*(walk ? 0.6 : 1.25) : lift*(walk ? 0.4 : 0.85) - 0.15;
+    const bend = (L && L.limp) ? 0.35 : 1;
+    const a2 = (fore ? -lift*(walk ? 0.6 : 1.25) : lift*(walk ? 0.4 : 0.85) - 0.15) * bend;
     return [a1, a2];
   };
   const u = phase/TAU;
@@ -680,13 +700,16 @@ function drawHorse(g, x, y, s, h, phase, dir, opts){
     drawLeg(g, p[0]+1, p[1], a1, a2, 15, 15.5, 6.5, 3.6, c.dark, '#111');
   });
   // 尾（なびく）
-  const wave = Math.sin(phase*1.3)*2.5;
+  const wave = (L && L.tail) ? Math.sin(tNow*9)*L.tail*2 : Math.sin(phase*1.3)*2.5;
   g.strokeStyle = c.mane; g.lineCap = 'round';
   for(let k=0;k<4;k++){
     g.lineWidth = 3.2 - k*0.5;
     g.beginPath(); g.moveTo(-27, -40);
     g.bezierCurveTo(-36, -42 + wave*0.3 + k, -44, -36 + wave + k*1.5, walk ? -32 : -50, (walk ? -16 : -30) + wave + k*2);
     g.stroke();
+  }
+  if(L && L.belly){
+    g.fillStyle = c.dark; g.beginPath(); g.ellipse(-3, -23, 18, 6.5, 0, 0, Math.PI*2); g.fill();
   }
   // 胴体
   const grad = g.createLinearGradient(0, -46, 0, -20);
@@ -702,9 +725,17 @@ function drawHorse(g, x, y, s, h, phase, dir, opts){
   g.bezierCurveTo(22, -24, 26, -26, 26, -30);
   g.closePath(); g.fill();
   g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 0.8; g.stroke();
+  if(L && L.sheen){
+    // 毛ヅヤ: 光が流れるハイライト
+    const sx = -24 + ((tNow*18) % 56);
+    const sg = g.createLinearGradient(sx - 8, 0, sx + 8, 0);
+    sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,.6)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = sg; g.beginPath(); g.ellipse(0, -40, 24, 3.2, -0.04, 0, Math.PI*2); g.fill();
+  }
   // 首と頭（走るときは前に伸ばす）
   const reach = walk ? 0 : 3 + Math.sin(phase*2+1)*1.2;
-  const px = 34 + reach, py = walk ? -62 : -58;
+  const headDrop = L ? L.head + (L.toss ? Math.sin(tNow*7)*L.toss : 0) : 0;
+  const px = 34 + reach, py = (walk ? -62 : -58) + headDrop;
   const ng = g.createLinearGradient(20, -60, 30, -30);
   ng.addColorStop(0, c.light); ng.addColorStop(1, c.base);
   g.fillStyle = ng;
@@ -750,6 +781,34 @@ function drawHorse(g, x, y, s, h, phase, dir, opts){
     const [a1, a2] = legAngles(u + o, fore);
     drawLeg(g, p[0], p[1], a1, a2, 15, 15.5, 7.5, 4, c.leg === c.mane ? c.dark : c.leg, '#151515');
   });
+  if(L && L.sweat){
+    // 発汗: 首と腰の白い汗
+    g.fillStyle = 'rgba(255,255,255,.75)';
+    [[16,-40,3.2],[20,-36,2.4],[-14,-30,3],[-20,-34,2.2],[12,-26,2]].forEach(([sx,sy,r]) => { g.beginPath(); g.ellipse(sx, sy, r, r*0.7, 0, 0, Math.PI*2); g.fill(); });
+  }
+  if(L && L.jitter){
+    // 落ち着きがない: 頭のまわりにピリピリした線
+    g.strokeStyle = `rgba(255,90,60,${0.5 + 0.5*Math.abs(Math.sin(tNow*6))})`; g.lineWidth = 1.4;
+    const hx0 = px + 4, hy0 = py - 8;
+    g.beginPath();
+    g.moveTo(hx0 - 4, hy0); g.lineTo(hx0 - 2, hy0 - 4); g.lineTo(hx0, hy0); g.lineTo(hx0 + 2, hy0 - 4);
+    g.moveTo(hx0 + 7, hy0 + 3); g.lineTo(hx0 + 11, hy0 + 1);
+    g.moveTo(hx0 + 7, hy0 + 7); g.lineTo(hx0 + 12, hy0 + 7);
+    g.stroke();
+  }
+  if(L && L.dim){
+    // 地味・覇気がない: 馬体を少しくすませる
+    g.fillStyle = `rgba(90,90,90,${L.dim})`;
+    g.beginPath(); g.ellipse(-1, -33, 29, 13, 0, 0, Math.PI*2); g.fill();
+  }
+  if(L && L.sheen){
+    // 好調: きらっと光る
+    const tw = (Math.sin(tNow*4) + 1) / 2;
+    g.fillStyle = `rgba(255,240,170,${0.4 + tw*0.6})`;
+    const star = (sx, sy, r) => { g.beginPath(); g.moveTo(sx, sy - r); g.lineTo(sx + r*0.3, sy); g.lineTo(sx, sy + r); g.lineTo(sx - r*0.3, sy); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(sx - r, sy); g.lineTo(sx, sy + r*0.3); g.lineTo(sx + r, sy); g.lineTo(sx, sy - r*0.3); g.closePath(); g.fill(); };
+    star(-20, -50, 4 + tw*3); star(26, -68, 3 + (1-tw)*3); star(-30, -36, 2 + tw*2);
+  }
   // ---- 騎手（前傾のモンキー乗り） ----
   const pump = walk ? 0 : Math.sin(phase*2)*1.6;
   const jy = walk ? -6 : 0; // 歩きのときは少し起き上がる
