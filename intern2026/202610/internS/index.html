@@ -989,7 +989,7 @@ function startRace(){
 }
 
 // 発走前: そのG1の特徴を紹介して盛り上げる
-const INTRO_MS = 4200;
+const INTRO_MS = 5000;
 const GATE_WAIT_MS = 1000; // 紹介のあと、閉じたゲートを見せる時間
 function showIntro(){
   const r = Game.field.race;
@@ -1003,22 +1003,39 @@ function showIntro(){
   add('ic-cond', `${r.venue} ${r.surface}${r.dist}m ・ 8頭立て${r.mareOnly ? '（牝馬限定）' : ''}`);
   if(r.desc) add('ic-desc', r.desc);
   c.classList.add('on');
-  say(`さあ今年も${r.month}月、${r.name}の季節がやってきました！`, true);
-  if(r.desc) Race.introTimer = setTimeout(() => say(r.desc), 1300);
-  const fav = Game.odds.win.indexOf(Math.min(...Game.odds.win));
-  Race.introTimer2 = setTimeout(() => say(`1番人気は${H(fav).name}、単勝${Game.odds.win[fav].toFixed(1)}倍。各馬ゲートに収まりました…`), 2700);
+  say(pickL([`さあ今年も${r.month}月、${r.name}の季節がやってきました！`, `${r.venue}競馬場、${r.name}の発走が近づいてまいりました！`,
+              `お待たせしました！ ${r.name}、まもなく発走です！`, `スタンドは超満員！ ${r.name}のファンファーレが鳴り響きます！`]), true);
+  if(r.desc) Race.introTimer = setTimeout(() => say(r.desc), 1100);
+  const fav = favIndex();
+  Race.introTimer2 = setTimeout(() => {
+    const rs = horseReasons(fav);
+    const why = rs.length ? rs.slice().sort(() => Math.random() - 0.5).slice(0, 2).join('、') : `${STYLE_WORD[H(fav).style]}が持ち味`;
+    say(pickL([`1番人気は${H(fav).name}、単勝${Game.odds.win[fav].toFixed(1)}倍。${why}。`,
+               `${why}、${H(fav).name}が${Game.odds.win[fav].toFixed(1)}倍の1番人気に推されました。`,
+               `人気の中心は${H(fav).name}。${why}、ファンの期待を一身に集めます。`]));
+  }, 2300);
+  // 穴馬: 人気はないがパドックで目立っていた馬／いなければ2番人気
+  const dark = Game.field.horses.map((h,i)=>i).find(i => popRank(i) >= 4 && Game.paddock[i] && (Game.paddock[i].look === 'shine' || Game.paddock[i].look === 'power'));
+  Race.introTimer5 = setTimeout(() => {
+    if(dark != null) say(pickL([`穴なら${H(dark).name}。人気はありませんが、パドックでは目立っていました。`, `${popRank(dark)+1}番人気の${H(dark).name}、気配は上々。一発があっても驚けません。`]));
+    else {
+      const second = Game.field.horses.map((h,i)=>i).find(i => popRank(i) === 1);
+      if(second != null) say(pickL([`対抗は${H(second).name}。${STYLE_WORD[H(second).style]}で逆転を狙います。`, `2番人気${H(second).name}がどこまで迫るか。`]));
+    }
+  }, 3400);
+  Race.introTimer6 = setTimeout(() => say(pickL(['各馬ゲートに収まりました…', '最後の1頭がゲートに入りました。', '態勢完了…'])), 4400);
   Race.introTimer3 = setTimeout(() => {
     c.classList.remove('on');
     Race.introTimer4 = setTimeout(() => {
       Race.started = true;
-      say(`${r.name}、ゲートが開いた！ 各馬いっせいにスタート！`, true);
+      say(pickL([`${r.name}、ゲートが開いた！ 各馬いっせいにスタート！`, `スタートしました！ ${r.name}！`, `ゲートオープン！ 8頭がそろって飛び出した！`]), true);
       Race.lastNow = performance.now();
       Race.raf = requestAnimationFrame(raceLoop);
     }, GATE_WAIT_MS);
   }, INTRO_MS);
 }
 function clearIntro(){
-  clearTimeout(Race.introTimer); clearTimeout(Race.introTimer2); clearTimeout(Race.introTimer3); clearTimeout(Race.introTimer4);
+  clearTimeout(Race.introTimer); clearTimeout(Race.introTimer2); clearTimeout(Race.introTimer3); clearTimeout(Race.introTimer4); clearTimeout(Race.introTimer5); clearTimeout(Race.introTimer6);
   $('introCard').classList.remove('on');
 }
 
@@ -1082,42 +1099,68 @@ function phaseCard(label){
 }
 const H = i => Game.field.horses[i];
 function commentPhase(ph, st){
+  const nm = k => H(st[k].i).name;
   if(ph === 1){
     const pc = Race.sim.pace;
-    say(pc === 'high' ? 'これはかなり速いペース！ 前の馬には厳しい流れだ！' : pc === 'slow' ? 'ペースは落ち着いた。スローペース、前の馬が楽な展開か。' : '平均的なペースで流れている。');
-    say(`先頭は${H(st[0].i).name}、2番手${H(st[1].i).name}。`);
-    say(`最後方には${H(st[st.length-1].i).name}、じっくり脚をためる。`);
+    say(pc === 'high' ? pickL(['これはかなり速いペース！ 前の馬には厳しい流れだ！', '前半から飛ばしていく！ ハイペースだ！ 後ろの馬に展開が向くか！', '息の入らない速い流れ！ 前は苦しくなるぞ！'])
+      : pc === 'slow' ? pickL(['ペースは落ち着いた。スローペース、前の馬が楽な展開か。', 'ゆったりとした流れ。これは前残りもあるぞ。', '各馬折り合いに専念、ペースは上がりません。'])
+      : pickL(['平均的なペースで流れている。', '淀みのない平均ペース、実力が問われる流れです。', 'ペースは平均。各馬それぞれの位置で脚をためる。']));
+    say(pickL([`先頭は${nm(0)}、2番手${nm(1)}。`, `${nm(0)}が引っ張り、${nm(1)}がぴったりマーク。`, `隊列は${nm(0)}、${nm(1)}、少し離れて${nm(2)}。`]));
+    const lastI = st[st.length-1].i;
+    say(pickL([`最後方には${H(lastI).name}、じっくり脚をためる。`, `${H(lastI).name}は最後方、ここからどこまで追い込めるか。`,
+               `後方待機は${H(lastI).name}。${H(lastI).style === '追込' ? 'いつもの形です。' : '少し位置取りが悪いか。'}`]));
   }
   if(ph === 2){
-    say('さあ最後の直線！ ラストスパートだ！', true);
+    say(pickL(['さあ最後の直線！ ラストスパートだ！', '直線に向いた！ 各馬いっせいに追い出す！', '4コーナーを回って直線へ！ ここからが勝負だ！']), true);
   }
 }
 function commentEvents(prog, st, fi){
   const sim = Race.sim, top = st[0].i, fr = sim.frames[fi];
   const anyFinished = sim.finFrame[sim.order[0]] <= fi;
-  if(prog > 0.08 && !Race.said.hana){ Race.said.hana = 1; say(`ハナを切ったのは${H(top).name}！`); }
-  if(prog > 0.5 && !Race.said.half){ Race.said.half = 1; say(`半分を通過。${H(st[0].i).name}、${H(st[1].i).name}、${H(st[2].i).name}の順。`); }
-  if(prog > 0.65 && !Race.said.c4){ Race.said.c4 = 1; say('4コーナーをカーブして、各馬が外へ持ち出す！'); }
+  if(prog > 0.08 && !Race.said.hana){
+    Race.said.hana = 1;
+    const hs = H(top);
+    say(pickL([`ハナを切ったのは${hs.name}！`, `${hs.name}がすっと先頭に立った！`,
+               hs.style === '逃げ' ? `予想どおり${hs.name}が行った！ 逃げ宣言！` : `おっと、${hs.name}が先頭！ 意外な展開だ！`]));
+  }
+  if(prog > 0.5 && !Race.said.half){
+    Race.said.half = 1;
+    const fv = favIndex(), fr2 = st.findIndex(e => e.i === fv);
+    say(pickL([`半分を通過。${H(st[0].i).name}、${H(st[1].i).name}、${H(st[2].i).name}の順。`, `レースは折り返し。先頭は依然${H(st[0].i).name}。`]));
+    say(fr2 <= 2 ? pickL([`1番人気${H(fv).name}は${fr2+1}番手、いい位置につけている。`, `1番人気の${H(fv).name}、絶好の位置で手応え十分。`])
+                 : pickL([`1番人気${H(fv).name}は${fr2+1}番手、まだ後ろだ。`, `1番人気の${H(fv).name}は中団より後ろ、届くのか。`]));
+  }
+  if(prog > 0.65 && !Race.said.c4){ Race.said.c4 = 1; say(pickL(['4コーナーをカーブして、各馬が外へ持ち出す！', '3コーナーから4コーナー、各馬の手が動き始めた！', '勝負どころ！ 後続がじわじわ差を詰めてきた！'])); }
   // 先頭交代（入れ替わりが激しいときは連呼しない: 2秒以上あけて最大3回）
   if(Race.phase === 2 && !anyFinished && Race.leader !== -1 && top !== Race.leader && prog < 0.99
      && fi - (Race.lastLeadSay || -99) >= 8 && (Race.leadSays || 0) < 3 && fr[top] - fr[st[1].i] > 0.3){
     Race.lastLeadSay = fi; Race.leadSays = (Race.leadSays || 0) + 1;
-    say(`${H(top).name}が先頭に変わった！`, true);
+    say(pickL([`${H(top).name}が先頭に変わった！`, `${H(top).name}が前に出た！`, `かわした！ ${H(top).name}が先頭！`]), true);
   }
-  if(prog > 0.9 && !Race.said.r200){ Race.said.r200 = 1; say(`残り200！ 先頭は${H(st[0].i).name}、${H(st[1].i).name}が迫る！`, true); }
+  if(prog > 0.9 && !Race.said.r200){
+    Race.said.r200 = 1;
+    say(pickL([`残り200！ 先頭は${H(st[0].i).name}、${H(st[1].i).name}が迫る！`, `残り200を切った！ ${H(st[0].i).name}か、${H(st[1].i).name}か！`,
+               `あと200m！ ${H(st[0].i).name}が粘る、${H(st[1].i).name}が来る！`]), true);
+  }
+  // ゴール直前の大接戦は叫ぶ
+  if(!Race.said.neck && prog > 0.96 && !anyFinished && fr[st[0].i] - fr[st[1].i] < 1.5){
+    Race.said.neck = 1;
+    say(pickL([`並んだ並んだ！ ${H(st[0].i).name}と${H(st[1].i).name}！ どっちだ！`, `壮絶な叩き合い！ ${H(st[0].i).name}か！ ${H(st[1].i).name}か！`,
+               `ゴールまであとわずか！ 体を並べて${H(st[0].i).name}と${H(st[1].i).name}！`]), true);
+  }
   // 大逃げ: 2番手を大きく離している
   if(!Race.said.oonige && prog > 0.3 && prog < SIM.LATE_START && sim.plan[top].oonige){
     const gap = fr[top] - fr[st[1].i];
-    if(gap >= 10){ Race.said.oonige = 1; say(`${H(top).name}が大逃げ！ 後続を${Math.round(gap/2.4)}馬身ちぎっている！`, true); }
+    if(gap >= 10){ Race.said.oonige = 1; say(pickL([`${H(top).name}が大逃げ！ 後続を${Math.round(gap/2.4)}馬身ちぎっている！`, `${H(top).name}、ぐんぐん差を広げる！ 2番手まで${Math.round(gap/2.4)}馬身！ これは大逃げだ！`]), true); }
   }
   if(Race.said.oonige === 1 && prog > 0.86 && sim.plan[top].oonige && !anyFinished){
-    Race.said.oonige = 2; say(`${H(top).name}まだ逃げる！ 後続は届くのか！`, true);
+    Race.said.oonige = 2; say(pickL([`${H(top).name}まだ逃げる！ 後続は届くのか！`, `${H(top).name}、逃げる逃げる！ 脚色は衰えない！`, `${H(top).name}の逃げ脚が止まらない！`]), true);
   }
   // まくり: 3〜4コーナーで外から進出
   if(prog > 0.6 && prog < SIM.LATE_START){
     st.forEach(({i}, r) => {
       if(sim.plan[i].makuri && !Race.said['mk'+i] && r <= 3 && (Race.rank50 && Race.rank50[i] - r >= 2)){
-        Race.said['mk'+i] = 1; say(`${H(i).name}が外からまくって進出！ 一気に先団に取りついた！`, true);
+        Race.said['mk'+i] = 1; say(pickL([`${H(i).name}が外からまくって進出！ 一気に先団に取りついた！`, `${H(i).name}が動いた！ 早めのスパートで外から上がっていく！`]), true);
       }
     });
   }
@@ -1129,7 +1172,8 @@ function commentEvents(prog, st, fi){
       const gain = Race.rank75[i] - r;
       if(gain >= 4 && !Race.said['gb'+i] && (Race.said.gbCount || 0) < 2){
         Race.said['gb'+i] = 1; Race.said.gbCount = (Race.said.gbCount || 0) + 1;
-        say(`${H(i).name}、大外からものすごい脚！ ${gain}頭まとめてごぼう抜き！`, true);
+        say(pickL([`${H(i).name}、大外からものすごい脚！ ${gain}頭まとめてごぼう抜き！`, `来た！ ${H(i).name}！ ${gain}頭を一気にかわしていく！`,
+                   `${H(i).name}が飛んできた！ 次元の違う脚で${gain}頭抜き去った！`]), true);
       }
     });
   }
@@ -1139,9 +1183,60 @@ function commentEvents(prog, st, fi){
     Race.said.g1 = 1;
     say(Race.story.line, true);
   }
-  if(!Race.said.g2 && sim.finFrame[o[1]] <= fi){ Race.said.g2 = 1; say(`2着に${H(o[1]).name}。`); }
-  if(!Race.said.g3 && sim.finFrame[o[2]] <= fi){ Race.said.g3 = 1; say(`3着は${H(o[2]).name}！ 各馬ゴール板を駆け抜けていく！`); }
+  if(!Race.said.g2 && sim.finFrame[o[1]] <= fi){ Race.said.g2 = 1; say(pickL([`2着に${H(o[1]).name}。`, `${H(o[1]).name}は2着。`, `2着は${H(o[1]).name}、よく頑張った。`])); }
+  if(!Race.said.g3 && sim.finFrame[o[2]] <= fi){ Race.said.g3 = 1; Race.g3Frame = fi; say(pickL([`3着は${H(o[2]).name}！ 各馬ゴール板を駆け抜けていく！`, `3着に${H(o[2]).name}。`])); }
+  // ゴールのあと: 馬券が当たっていたら勝ち馬をたたえる／1番人気に賭けて4着以下なら悔しさを
+  if(Race.said.g3 && !Race.said.post && fi >= Race.g3Frame + 3){
+    Race.said.post = 1;
+    const wNo = H(o[0]).no, w2No = H(o[1]).no;
+    const hit = Game.tickets.some(t => t.type === 'win' ? t.sel[0] === wNo : quinKey(t.sel[0], t.sel[1]) === quinKey(wNo, w2No));
+    if(hit) say(praiseLine(o[0], Race.story), true);
+    const fv = favIndex(), fNo = H(fv).no, fPos = o.indexOf(fv) + 1;
+    const betOnFav = Game.tickets.some(t => t.sel.includes(fNo));
+    if(betOnFav && fPos >= 4){
+      say(pickL([`1番人気の${H(fv).name}は${fPos}着…見せ場なく沈みました。場内から大きなため息が漏れます。`,
+                 `そして1番人気${H(fv).name}は伸びを欠いて${fPos}着！ まさかの大敗、これが競馬の怖さか…`,
+                 `1番人気${H(fv).name}は${fPos}着…。期待に応えられず、うなだれるようにゴール板を過ぎていきました。`]));
+    }
+  }
   Race.leader = top;
+}
+
+// ---------- 実況の言い回し ----------
+const pickL = arr => arr[Math.floor(Math.random()*arr.length)];
+// 人気順（0=1番人気）
+function popRank(i){ const w = Game.odds.win; return w.filter(x => x < w[i]).length; }
+function favIndex(){ const w = Game.odds.win; return w.indexOf(Math.min(...w)); }
+// その馬の「推せる理由」をゲーム内のデータから作る（実在馬の実績は語らない）
+function horseReasons(i){
+  const h = H(i), hs = Game.field.horses, race = Game.field.race, out = [];
+  const best = key => hs.every(x => x[key] <= h[key]);
+  const dm = Game.marks.filter(m => m[i] === '◎').length;
+  if(dm >= 2) out.push(`記者の◎が${dm}つ集まった`);
+  if(h.lastRun === 1) out.push('前走を勝った勢い');
+  else if(h.lastRun <= 3) out.push(`前走も${h.lastRun}着と好調`);
+  if(aptMark(h, race.dist) === '◎') out.push(`${race.dist}mはまさに得意の距離`);
+  if(best('kick')) out.push('末脚の切れはメンバー随一');
+  if(best('speed')) out.push('スピードはメンバー最上位');
+  if(best('stamina') && race.dist >= 2400) out.push('スタミナ勝負なら負けない');
+  const look = Game.paddock && Game.paddock[i] && Game.paddock[i].look;
+  if(look === 'shine' || look === 'power') out.push('パドックでも目を引く好気配');
+  return out;
+}
+const STYLE_WORD = { '逃げ':'逃げ', '先行':'好位からの競馬', '差し':'差し', '追込':'後方からの追い込み' };
+// 勝ち馬をたたえる一言（脚質と勝ち方から）
+function praiseLine(i, story){
+  const n = H(i).name, st = H(i).style;
+  const byStyle = {
+    '逃げ': [`自分でレースを作って押し切る、これぞ${n}の真骨頂！`, `ハナを奪ったら誰にも譲らない！ ${n}、なんという逃げっぷりだ！`],
+    '先行': [`好位から抜け出す完璧な競馬！ ${n}、盤石の強さだ！`, `${n}、まさに横綱の走り！ 力の違いを見せつけた！`],
+    '差し': [`${n}のこの末脚は本物だ！ 一瞬で突き抜けた！`, `なんという切れ味！ ${n}、ここ一番で最高の脚を使った！`],
+    '追込': [`信じられない末脚！ ${n}、次元が違う！`, `あの位置から届くのか！ ${n}、怪物級の追い込みだ！`],
+  }[st] || [`${n}、強い！`];
+  const extra = story.len >= 3 ? [`後続をまったく寄せつけない、圧巻の${story.margin}差！`, `${story.margin}差の独り舞台！ 今年のG1でも屈指の圧勝劇だ！`]
+              : story.len < 0.6 ? ['最後まで諦めなかった執念の勝利！', '勝負根性の塊！ 首の上げ下げを制した！']
+              : ['堂々たる勝ちっぷり！', `これが${n}の実力だ！`];
+  return pickL(byStyle) + ' ' + pickL(extra);
 }
 
 // ---------- レースの物語: 決まり手と着差 ----------
@@ -1164,26 +1259,48 @@ function raceStory(sim){
   const len = (sim.finT[s2] - sim.finT[w]) * (sim.lastV[s2] || 16) / 2.4;
   const mt = marginText(len);
   const h = H(w), wn = h.name, sn = H(s2).name;
-  let kimarite, line;
+  const nige = h.style === '逃げ';
+  let kimarite, line, dramatic = false;
   if(r75 === 0){
-    if(len >= 3){ kimarite = h.style === '逃げ' ? '逃げ切り' : '押し切り'; line = `${wn}、${h.style === '逃げ' ? '逃げ切った' : '押し切った'}！ ${mt}差の圧勝！ 後続は影も踏めない！`; }
-    else if(len < 0.6){ kimarite = h.style === '逃げ' ? '逃げ切り' : '押し切り'; line = `${wn}、ギリギリ粘り切った！ ${mt}だけしのいだ！`; }
-    else { kimarite = h.style === '逃げ' ? '逃げ切り' : '押し切り'; line = `${wn}、そのまま押し切ってゴールイン！`; }
+    kimarite = nige ? '逃げ切り' : '押し切り';
+    if(len >= 3){
+      line = pickL([`${wn}、${nige ? '逃げ切った' : '押し切った'}！ ${mt}差の圧勝！ 後続は影も踏めない！`,
+                    `${wn}だ！ ${wn}だ！ 誰も追いつけない！ ${mt}ちぎってゴールイン！`,
+                    `強い強い強い！ ${wn}、${mt}差の独走でゴール！`]);
+    } else if(len < 0.6){
+      dramatic = true;
+      line = pickL([`${wn}、ギリギリ粘り切った！ ${mt}だけしのいだ！`,
+                    `粘る粘る${wn}！ ${sn}の猛追を${mt}差で振り切った！`,
+                    `しのいだ！ しのいだ！ ${wn}、執念で${mt}だけ残した！`]);
+    } else {
+      line = pickL([`${wn}、そのまま押し切ってゴールイン！`, `${wn}、最後まで先頭を譲らずゴール！`, `${wn}、危なげなく押し切った！`]);
+    }
   } else if(leader75 === s2 && len < 0.6){
-    kimarite = '差し切り'; line = `ゴール寸前！ ${wn}が${sn}をとらえた！ ${mt}差の大逆転！`;
+    kimarite = '差し切り'; dramatic = true;
+    line = pickL([`ゴール寸前！ ${wn}が${sn}をとらえた！ ${mt}差の大逆転！`,
+                  `差した差した差した！ ${wn}だ！ 最後の最後で${sn}を飲み込んだ！`,
+                  `ゴール前で逆転！ ${wn}！ ${sn}は${mt}差、無念の2着！`]);
   } else if(r75 === n-1){
-    kimarite = '追い込み'; line = `最後方から${wn}！ 全頭ごぼう抜きの怒涛の追い込み！`;
+    kimarite = '追い込み'; dramatic = true;
+    line = pickL([`最後方から${wn}！ 全頭ごぼう抜きの怒涛の追い込み！`,
+                  `来た来た来た！ 最後方から${wn}！ 信じられない、全馬をなで切った！`,
+                  `なんということだ！ ${wn}、最後方から一気に突き抜けた！`]);
   } else if(r75 >= n-3){
-    kimarite = '追い込み'; line = `${wn}、後方一気！ 大外から突き抜けた！`;
+    kimarite = '追い込み'; dramatic = true;
+    line = pickL([`${wn}、後方一気！ 大外から突き抜けた！`, `大外から${wn}！ ものすごい脚で全部まとめて差し切った！`]);
   } else if(sim.plan[w].makuri){
-    kimarite = 'まくり'; line = `${wn}、まくって押し切った！ 早めの仕掛けが決まった！`;
+    kimarite = 'まくり';
+    line = pickL([`${wn}、まくって押し切った！ 早めの仕掛けが決まった！`, `${wn}、3コーナーからのロングスパートで押し切った！ 大胆な競馬！`]);
   } else if(h.style === '先行' || r75 <= 2){
-    kimarite = '好位抜け出し'; line = len >= 1 ? `${wn}、好位から抜け出して横綱相撲！ ${mt}差の完勝！` : `${wn}、好位から抜け出して押し切った！`;
+    kimarite = '好位抜け出し';
+    line = len >= 1 ? pickL([`${wn}、好位から抜け出して横綱相撲！ ${mt}差の完勝！`, `${wn}、射程圏から抜け出してあっさり${mt}突き放した！`])
+                    : pickL([`${wn}、好位から抜け出して押し切った！`, `${wn}、好位から伸びて${mt}差の勝利！`]);
   } else {
-    kimarite = '差し切り'; line = `${wn}、中団から鋭く差し切った！`;
+    kimarite = '差し切り';
+    line = pickL([`${wn}、中団から鋭く差し切った！`, `${wn}、馬群を割って鮮やかに差し切った！`, `外から${wn}！ 中団から伸びて差し切った！`]);
   }
-  if(len < 0.3) line = '写真判定！ ' + line;
-  return { kimarite, margin: mt, line, r75, leader75 };
+  if(len < 0.3){ dramatic = true; line = pickL(['写真判定！ ', '際どい！ 写真判定だ！ ']) + line; }
+  return { kimarite, margin: mt, len, line, r75, leader75, dramatic };
 }
 
 // 疑似乱数（描画用・毎フレーム同じ値になる）
@@ -1393,7 +1510,8 @@ function drawRankStrip(g, W, Hh, st){
 }
 
 function finishRace(){
-  setTimeout(showResult, 900);
+  // ゴール後の実況（勝ち馬をたたえる等）を読む時間をとってから結果へ
+  setTimeout(showResult, Race.said.post ? 2200 : 900);
 }
 
 // ---------- 結果・払い戻し ----------
@@ -1411,7 +1529,7 @@ function showResult(){
   if(!Game.tickets.length) html = '<div class="lose">今回は見送り</div>';
   d.money += pay;
   d.best = Math.max(d.best, d.money);
-  if(Race.story) html = `<div class="sub" style="margin-bottom:6px">着差 <b>${Race.story.margin}</b> ／ 決まり手 <b>${Race.story.kimarite}</b></div>` + html;
+  if(Race.story) html = `<div class="sub" style="margin-bottom:6px">着差 <b>${Race.story.margin}</b> ／ <b>${Race.story.kimarite}</b></div>` + html;
   html += `<div style="margin-top:8px">払戻 ${yen(pay)} ／ 所持金 <b>${yen(d.money)}</b></div>`;
   html += `<div class="sub" style="margin-top:4px">単勝 ${o[0]} ${Game.odds.win[o[0]-1].toFixed(1)}倍 ／ 馬連 ${quinKey(o[0],o[1])} ${Game.odds.quin[quinKey(o[0],o[1])].toFixed(1)}倍</div>`;
   $('payout').innerHTML = html;
