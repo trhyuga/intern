@@ -429,14 +429,21 @@ function rating(h, dist, surface){
 const DT = 0.25; // 秒
 const RUNOUT_SEC = 6; // 全頭ゴール後に走り続ける時間（演出用）
 // 能力差と運のバランス（大きいほどその要素が効く）
-const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.3, COND_W:0.22, LUCK:0.28, SURF_W:0.35,
+const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.3, COND_W:0.22, LUCK:0.2, SURF_W:0.35,
   // 脚質: 序盤(〜30%)の加速と、直線(75%〜)の伸び
   EARLY: { '逃げ':0.3, '先行':0.12, '差し':-0.06, '追込':-0.18 },
-  LATE:  { '逃げ':-0.05, '先行':0.12, '差し':0.42, '追込':0.7 },
+  LATE:  { '逃げ':-0.02, '先行':0.12, '差し':0.33, '追込':0.5 },
   LATE_LUCK: 0.45, // 直線での運（大きいほど逆転が起きやすい）
   FADE: 0.6,       // 序盤に前に行った馬が直線で失速する度合い
   LATE_START: 0.75,
-  PACK: 0.33 };     // 直線までは差がつきにくい（1=そのまま、小さいほど馬群が固まる）
+  PACK: 0.33,
+  RAMP0: 0.35,
+  CHASE: 0.05, CHASE_MAX: 0.6,  // 直線で前との差1mあたりの伸び、上限     // 直線入口での伸びの割合（小さいほど伸びがゴール前に集中する）      // 直線までは差がつきにくい（1=そのまま、小さいほど馬群が固まる）
+  // ペース: 出現率 [スロー, 平均]（残りがハイ）と、それぞれの効き方
+  PACE_P: [0.3, 0.4],
+  PACE: { slow: { early:0.7, fade:0.5, late:0.8 }, avg: { early:1, fade:1, late:1 }, high: { early:1.5, fade:1.6, late:1.25 } },
+  OONIGE_P: 0.35, OONIGE_V: 0.6, OONIGE_FADE: 1.7,  // 大逃げ: 逃げ馬がこの確率で選ぶ
+  MAKURI_P: 0.18, MAKURI_V: 0.7, MAKURI_COST: 0.5, MAKURI_FROM: 0.5 }; // まくり: 差し・追込がこの確率で選ぶ     // 直線までは差がつきにくい（1=そのまま、小さいほど馬群が固まる）
 function simulate(field, rnd, opts){
   const { race, horses } = field;
   const D = race.dist;
@@ -447,13 +454,24 @@ function simulate(field, rnd, opts){
   const fin = new Array(n).fill(-1);
   const luck = horses.map(() => gauss(rnd)*SIM.LUCK); // そのレースだけの運
   const lateLuck = horses.map(() => gauss(rnd)*SIM.LATE_LUCK); // 直線での伸びの運
+  // レース展開: ペース（スロー／平均／ハイ）と、各馬の作戦（大逃げ・まくり）
+  const pr = rnd();
+  const pace = pr < SIM.PACE_P[0] ? 'slow' : pr < SIM.PACE_P[0] + SIM.PACE_P[1] ? 'avg' : 'high';
+  const P = SIM.PACE[pace];
+  const plan = horses.map(h => ({
+    oonige: h.style === '逃げ' && rnd() < SIM.OONIGE_P,
+    makuri: (h.style === '差し' || h.style === '追込') && rnd() < SIM.MAKURI_P,
+  }));
   const frames = [];
   let t = 0, done = 0, lastFin = 0;
   const order = [];
   const finFrame = new Array(n).fill(-1);
+  const finT = new Array(n).fill(Infinity);
   const lastV = new Array(n).fill(16);
+  const base = 16.4 + 80*SIM.SPEED_W;
   // 演出用(record)のときは、全頭ゴールしたあとも少し走らせて「駆け抜け」を描く
   while((done < n || (record && t < lastFin + RUNOUT_SEC)) && t < 600){
+    const leadPos = Math.max(...pos);
     for(let i=0;i<n;i++){
       if(fin[i] >= 0){
         if(record){ lastV[i] *= 0.985; pos[i] += lastV[i] * DT; }
@@ -461,43 +479,48 @@ function simulate(field, rnd, opts){
       }
       const h = horses[i];
       const f = pos[i]/D;
+      // その馬の地力（能力・運・距離・馬場・スタミナ）
       let v = 16.4 + h.speed*SIM.SPEED_W + luck[i];
-      // 脚質: 序盤は前の馬が速く、終盤は後ろの馬が伸びる
-      const early = SIM.EARLY[h.style];
-      const late  = SIM.LATE[h.style];
-      if(f < 0.3) v += early;
-      else if(f >= SIM.LATE_START){
-        const k = (f - SIM.LATE_START) / (1 - SIM.LATE_START); // 直線の進み具合 0→1
-        v += late * (h.kick/75) + (h.kick-70)*SIM.KICK_W + lateLuck[i];
-        // 序盤に飛ばした馬ほど、ゴール前で脚が上がる
-        v -= Math.max(0, early) * SIM.FADE * k;
-      }
-      // スタミナ切れ
       if(f > 0.55){
         const need = (D/2000) * 75;
         v -= Math.max(0, need - h.stamina) * SIM.STAM_W * (f-0.55)/0.45;
       }
-      // 距離適性
       v -= Math.abs(D - h.bestDist)/1000 * SIM.APT_W;
-      // 芝とダートの向き不向き
       if(h.surface && h.surface !== race.surface) v -= SIM.SURF_W;
       v += gauss(rnd) * 0.35;
-      // 直線に入るまでは馬群が固まって進む（脚質による位置取りの差は残す）
-      if(f < SIM.LATE_START){
-        const base = 16.4 + 80*SIM.SPEED_W;
-        const styleBonus = f < 0.3 ? early : 0;
-        v = base + styleBonus + (v - base - styleBonus) * SIM.PACK;
+      // 直線に入るまでは馬群が固まって進む
+      if(f < SIM.LATE_START) v = base + (v - base) * SIM.PACK;
+      // ---- 脚質と展開（ここは馬群に固められない＝位置取りの差になる）----
+      const early = SIM.EARLY[h.style], late = SIM.LATE[h.style];
+      if(f < 0.3) v += early * P.early;
+      if(plan[i].oonige && f < SIM.LATE_START) v += SIM.OONIGE_V;                        // 大逃げ: 後続を大きく離す
+      if(plan[i].makuri && f >= SIM.MAKURI_FROM && f < SIM.LATE_START) v += SIM.MAKURI_V; // まくり: 3〜4コーナーで一気に進出
+      if(f >= SIM.LATE_START){
+        const k = (f - SIM.LATE_START) / (1 - SIM.LATE_START); // 直線の進み具合 0→1
+        const ramp = SIM.RAMP0 + (1 - SIM.RAMP0) * 3 * k*k;      // 直線は後半ほど伸びる（ゴール前の逆転）
+        v += (late * (h.kick/75) * P.late + lateLuck[i]) * ramp + (h.kick-70)*SIM.KICK_W;
+        v -= Math.max(0, early) * SIM.FADE * P.fade * k*k * 2.25; // 前で飛ばした馬はゴール前で急に脚が上がる
+        if(plan[i].oonige) v -= SIM.OONIGE_FADE * k*k * 1.5;
+        if(plan[i].makuri) v -= SIM.MAKURI_COST;
+        // 追う馬は前を目標に伸びる（直線で差が詰まり、ゴール前が接戦になりやすい）
+        v += Math.min(SIM.CHASE_MAX, (leadPos - pos[i]) * SIM.CHASE);
       }
-      // 当日の調子（パドックでヒントが出る）は馬群の影響を受けずに効く
+      // 当日の調子（パドックでヒントが出る）
       if(useCond) v += h.cond * SIM.COND_W;
       lastV[i] = Math.max(10, v);
+      const prev = pos[i];
       pos[i] += lastV[i] * DT;
-      if(pos[i] >= D){ fin[i] = t; finFrame[i] = frames.length; order.push(i); done++; lastFin = t; }
+      if(pos[i] >= D){
+        fin[i] = t; finFrame[i] = frames.length; done++; lastFin = t;
+        finT[i] = t + (D - prev) / lastV[i];   // ゴールした正確な時刻（同じコマ内の着順もこれで決める）
+        order.push(i);
+      }
     }
     if(record) frames.push(pos.slice());
     t += DT;
   }
-  return { order, frames, D, finFrame };
+  order.sort((a,b) => finT[a] - finT[b]);
+  return { order, frames, D, finFrame, finT, pace, plan, lastV };
 }
 
 // ---------- オッズ ----------
@@ -952,6 +975,8 @@ function startRace(){
   const rnd = mulberry32(Math.floor(Math.random()*1e9));
   Race.sim = simulate(Game.field, rnd, { useCond:true, record:true });
   Race.t = 0; Race.phase = -1; Race.said = {}; Race.leader = -1; Race.done = false; Race.started = false;
+  Race.rank50 = null; Race.rank75 = null; Race.camPx = null; Race.lastLeadSay = -99; Race.leadSays = 0;
+  Race.story = raceStory(Race.sim);
   $('commentary').innerHTML = '';
   show('race');
   cancelAnimationFrame(Race.raf);
@@ -1058,7 +1083,9 @@ function phaseCard(label){
 const H = i => Game.field.horses[i];
 function commentPhase(ph, st){
   if(ph === 1){
-    say(`隊列が落ち着いて中盤へ。先頭は${H(st[0].i).name}、2番手${H(st[1].i).name}。`);
+    const pc = Race.sim.pace;
+    say(pc === 'high' ? 'これはかなり速いペース！ 前の馬には厳しい流れだ！' : pc === 'slow' ? 'ペースは落ち着いた。スローペース、前の馬が楽な展開か。' : '平均的なペースで流れている。');
+    say(`先頭は${H(st[0].i).name}、2番手${H(st[1].i).name}。`);
     say(`最後方には${H(st[st.length-1].i).name}、じっくり脚をためる。`);
   }
   if(ph === 2){
@@ -1066,25 +1093,97 @@ function commentPhase(ph, st){
   }
 }
 function commentEvents(prog, st, fi){
-  const sim = Race.sim, top = st[0].i;
+  const sim = Race.sim, top = st[0].i, fr = sim.frames[fi];
   const anyFinished = sim.finFrame[sim.order[0]] <= fi;
   if(prog > 0.08 && !Race.said.hana){ Race.said.hana = 1; say(`ハナを切ったのは${H(top).name}！`); }
   if(prog > 0.5 && !Race.said.half){ Race.said.half = 1; say(`半分を通過。${H(st[0].i).name}、${H(st[1].i).name}、${H(st[2].i).name}の順。`); }
   if(prog > 0.65 && !Race.said.c4){ Race.said.c4 = 1; say('4コーナーをカーブして、各馬が外へ持ち出す！'); }
-  if(Race.phase === 2 && !anyFinished && Race.leader !== -1 && top !== Race.leader && prog < 0.99){
+  // 先頭交代（入れ替わりが激しいときは連呼しない: 2秒以上あけて最大3回）
+  if(Race.phase === 2 && !anyFinished && Race.leader !== -1 && top !== Race.leader && prog < 0.99
+     && fi - (Race.lastLeadSay || -99) >= 8 && (Race.leadSays || 0) < 3 && fr[top] - fr[st[1].i] > 0.3){
+    Race.lastLeadSay = fi; Race.leadSays = (Race.leadSays || 0) + 1;
     say(`${H(top).name}が先頭に変わった！`, true);
   }
-  if(prog > 0.9 && !Race.said.r200){ Race.said.r200 = 1; say(`残り200！ ${H(st[0].i).name}粘るか、${H(st[1].i).name}が迫る！`, true); }
-  // ゴールの瞬間に1〜3着を実況
+  if(prog > 0.9 && !Race.said.r200){ Race.said.r200 = 1; say(`残り200！ 先頭は${H(st[0].i).name}、${H(st[1].i).name}が迫る！`, true); }
+  // 大逃げ: 2番手を大きく離している
+  if(!Race.said.oonige && prog > 0.3 && prog < SIM.LATE_START && sim.plan[top].oonige){
+    const gap = fr[top] - fr[st[1].i];
+    if(gap >= 10){ Race.said.oonige = 1; say(`${H(top).name}が大逃げ！ 後続を${Math.round(gap/2.4)}馬身ちぎっている！`, true); }
+  }
+  if(Race.said.oonige === 1 && prog > 0.86 && sim.plan[top].oonige && !anyFinished){
+    Race.said.oonige = 2; say(`${H(top).name}まだ逃げる！ 後続は届くのか！`, true);
+  }
+  // まくり: 3〜4コーナーで外から進出
+  if(prog > 0.6 && prog < SIM.LATE_START){
+    st.forEach(({i}, r) => {
+      if(sim.plan[i].makuri && !Race.said['mk'+i] && r <= 3 && (Race.rank50 && Race.rank50[i] - r >= 2)){
+        Race.said['mk'+i] = 1; say(`${H(i).name}が外からまくって進出！ 一気に先団に取りついた！`, true);
+      }
+    });
+  }
+  if(prog >= 0.5 && !Race.rank50){ Race.rank50 = {}; st.forEach(({i}, r) => Race.rank50[i] = r); }
+  if(prog >= SIM.LATE_START && !Race.rank75){ Race.rank75 = {}; st.forEach(({i}, r) => Race.rank75[i] = r); }
+  // ごぼう抜き: 直線で何頭もかわす
+  if(Race.rank75 && !anyFinished){
+    st.forEach(({i}, r) => {
+      const gain = Race.rank75[i] - r;
+      if(gain >= 4 && !Race.said['gb'+i] && (Race.said.gbCount || 0) < 2){
+        Race.said['gb'+i] = 1; Race.said.gbCount = (Race.said.gbCount || 0) + 1;
+        say(`${H(i).name}、大外からものすごい脚！ ${gain}頭まとめてごぼう抜き！`, true);
+      }
+    });
+  }
+  // ゴールの瞬間: 決まり手と着差
   const o = sim.order;
   if(!Race.said.g1 && sim.finFrame[o[0]] <= fi){
     Race.said.g1 = 1;
-    const gap = (sim.finFrame[o[1]] - sim.finFrame[o[0]]) * DT;
-    say(gap <= 0.25 ? `ゴール！ ハナ差の大接戦！ わずかに${H(o[0]).name}か！` : `${H(o[0]).name}、1着でゴールイン！`, true);
+    say(Race.story.line, true);
   }
   if(!Race.said.g2 && sim.finFrame[o[1]] <= fi){ Race.said.g2 = 1; say(`2着に${H(o[1]).name}。`); }
   if(!Race.said.g3 && sim.finFrame[o[2]] <= fi){ Race.said.g3 = 1; say(`3着は${H(o[2]).name}！ 各馬ゴール板を駆け抜けていく！`); }
   Race.leader = top;
+}
+
+// ---------- レースの物語: 決まり手と着差 ----------
+function marginText(len){
+  if(len < 0.15) return 'ハナ';
+  if(len < 0.3) return 'アタマ';
+  if(len < 0.55) return 'クビ';
+  if(len < 0.8) return '1/2馬身';
+  if(len < 1.1) return '3/4馬身';
+  if(len > 10) return '大差';
+  const half = Math.round(len*2)/2;
+  return half % 1 ? `${Math.floor(half)}馬身半` : `${half}馬身`;
+}
+function raceStory(sim){
+  const n = sim.order.length, w = sim.order[0], s2 = sim.order[1];
+  const idx = sim.frames.findIndex(fr => Math.max(...fr) >= sim.D * SIM.LATE_START);
+  const fr = sim.frames[Math.max(0, idx)];
+  const ranks = fr.map((p,i)=>({i,p})).sort((a,b)=>b.p-a.p).map(x=>x.i);
+  const r75 = ranks.indexOf(w), leader75 = ranks[0];
+  const len = (sim.finT[s2] - sim.finT[w]) * (sim.lastV[s2] || 16) / 2.4;
+  const mt = marginText(len);
+  const h = H(w), wn = h.name, sn = H(s2).name;
+  let kimarite, line;
+  if(r75 === 0){
+    if(len >= 3){ kimarite = h.style === '逃げ' ? '逃げ切り' : '押し切り'; line = `${wn}、${h.style === '逃げ' ? '逃げ切った' : '押し切った'}！ ${mt}差の圧勝！ 後続は影も踏めない！`; }
+    else if(len < 0.6){ kimarite = h.style === '逃げ' ? '逃げ切り' : '押し切り'; line = `${wn}、ギリギリ粘り切った！ ${mt}だけしのいだ！`; }
+    else { kimarite = h.style === '逃げ' ? '逃げ切り' : '押し切り'; line = `${wn}、そのまま押し切ってゴールイン！`; }
+  } else if(leader75 === s2 && len < 0.6){
+    kimarite = '差し切り'; line = `ゴール寸前！ ${wn}が${sn}をとらえた！ ${mt}差の大逆転！`;
+  } else if(r75 === n-1){
+    kimarite = '追い込み'; line = `最後方から${wn}！ 全頭ごぼう抜きの怒涛の追い込み！`;
+  } else if(r75 >= n-3){
+    kimarite = '追い込み'; line = `${wn}、後方一気！ 大外から突き抜けた！`;
+  } else if(sim.plan[w].makuri){
+    kimarite = 'まくり'; line = `${wn}、まくって押し切った！ 早めの仕掛けが決まった！`;
+  } else if(h.style === '先行' || r75 <= 2){
+    kimarite = '好位抜け出し'; line = len >= 1 ? `${wn}、好位から抜け出して横綱相撲！ ${mt}差の完勝！` : `${wn}、好位から抜け出して押し切った！`;
+  } else {
+    kimarite = '差し切り'; line = `${wn}、中団から鋭く差し切った！`;
+  }
+  if(len < 0.3) line = '写真判定！ ' + line;
+  return { kimarite, margin: mt, line, r75, leader75 };
 }
 
 // 疑似乱数（描画用・毎フレーム同じ値になる）
@@ -1136,10 +1235,22 @@ function drawRace(fr, st, ph, time, fi){
   g.clearRect(0,0,W,Hh);
   if(ph === 1){ drawOverhead(g, W, Hh, fr, D, fi); return false; }
   const last = ph === 2;
-  const pxPerM = last ? 9 : 4.2;
   const lead = Math.max(...fr);
-  // カメラ: 先頭を追い、ゴール板が画面の左寄りに来たら止める（各馬が右へ駆け抜ける）
-  const camX = Math.min(lead - (last ? 30 : 60), D - W*0.38/pxPerM);
+  // カメラ: 序盤は馬群全体、直線は先頭と（結末の）1・2着が入るように自動でズーム
+  let pxPerM, camX;
+  if(!Race.started){
+    pxPerM = 4.2; camX = lead - 60;
+  } else {
+    const o = Race.sim.order;
+    const minP = last ? Math.min(fr[o[0]], fr[o[1]], lead - 22) : Math.min(...fr);
+    const span = Math.max(last ? 22 : 40, lead - minP);
+    const target = clamp((W*0.68) / (span + 6), 3.0, last ? 10 : 6);
+    if(Race.camPx == null || Race.camPhase !== ph){ Race.camPx = target; Race.camPhase = ph; }
+    Race.camPx += (target - Race.camPx) * 0.05;
+    pxPerM = Race.camPx;
+    // 先頭を画面の右寄りに置き、ゴール板が左寄りに来たら止める（各馬が右へ駆け抜ける）
+    camX = Math.min(lead - (W*0.8)/pxPerM, D - W*0.38/pxPerM);
+  }
   const dirt = Game.field.race.surface === 'ダート';
   const yRail = Hh*0.40, yTrackTop = Hh*0.43, yTrackBot = Hh - 40;
 
@@ -1202,7 +1313,7 @@ function drawRace(fr, st, ph, time, fi){
   const gateX = (0 - camX)*pxPerM;  // スタート地点の馬の位置
   const gateVisible = gateX > -120 && gateX < W + 120;
   // 馬（奥の枠から手前へ）
-  const zoomBase = last ? 1.25 : 0.72;
+  const zoomBase = clamp(0.72 * Math.pow(pxPerM/4.2, 0.75), 0.6, 1.35);
   const sFar = zoomBase*0.78, sNear = zoomBase*1.08;
   const yFeetFar = yTrackTop + 70*sFar, yFeetNear = yTrackBot - 4;
   let allGone = true;
@@ -1300,6 +1411,7 @@ function showResult(){
   if(!Game.tickets.length) html = '<div class="lose">今回は見送り</div>';
   d.money += pay;
   d.best = Math.max(d.best, d.money);
+  if(Race.story) html = `<div class="sub" style="margin-bottom:6px">着差 <b>${Race.story.margin}</b> ／ 決まり手 <b>${Race.story.kimarite}</b></div>` + html;
   html += `<div style="margin-top:8px">払戻 ${yen(pay)} ／ 所持金 <b>${yen(d.money)}</b></div>`;
   html += `<div class="sub" style="margin-top:4px">単勝 ${o[0]} ${Game.odds.win[o[0]-1].toFixed(1)}倍 ／ 馬連 ${quinKey(o[0],o[1])} ${Game.odds.quin[quinKey(o[0],o[1])].toFixed(1)}倍</div>`;
   $('payout').innerHTML = html;
