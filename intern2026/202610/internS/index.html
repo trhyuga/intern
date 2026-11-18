@@ -268,12 +268,12 @@ const CONFIG = {
 // 2026年の開催日程をJRA等の公開情報で確認して並べた。年によって日程・競馬場が変わるので、年が変わったら確認すること。
 // mareOnly: 牝馬限定戦。2歳戦・3歳戦の年齢制限は「時代を超えた夢のレース」として無視している。
 const CALENDAR = [
-  { name:'フェブラリーステークス', month:2,  venue:'東京', surface:'ダート', dist:1600, desc:'JRAの一年で最初のG1。東京ダート1600mで争うダートマイル王決定戦。' },
+  { name:'フェブラリーステークス', month:2,  venue:'東京', surface:'ダート', dist:1600, desc:'一年で最初のG1。東京ダート1600mで争うダートマイル王決定戦。' },
   { name:'高松宮記念',           month:3,  venue:'中京', surface:'芝', dist:1200, desc:'春のスプリント王決定戦。中京芝1200m、一瞬のスピードが勝負を分ける。' },
   { name:'大阪杯',               month:4,  venue:'阪神', surface:'芝', dist:2000, desc:'春の中距離王決定戦。2017年にG1へ昇格した阪神芝2000mの一戦。' },
   { name:'桜花賞',               month:4,  venue:'阪神', surface:'芝', dist:1600, mareOnly:true, desc:'牝馬クラシックの第一冠。満開の桜の下、阪神芝1600mで女王を決める。' },
   { name:'皐月賞',               month:4,  venue:'中山', surface:'芝', dist:2000, desc:'クラシック三冠の第一冠。「最も速い馬が勝つ」と言われる中山芝2000m。' },
-  { name:'天皇賞（春）',         month:5,  venue:'京都', surface:'芝', dist:3200, desc:'JRAの平地G1で最も長い京都芝3200m。スタミナが試される伝統の盾。' },
+  { name:'天皇賞（春）',         month:5,  venue:'京都', surface:'芝', dist:3200, desc:'平地G1で最も長い京都芝3200m。スタミナが試される伝統の盾。' },
   { name:'NHKマイルカップ',      month:5,  venue:'東京', surface:'芝', dist:1600, desc:'3歳マイル王決定戦。東京芝1600mでスピード自慢がぶつかる。' },
   { name:'ヴィクトリアマイル',   month:5,  venue:'東京', surface:'芝', dist:1600, mareOnly:true, desc:'牝馬のマイル女王決定戦。東京芝1600m、直線の長い舞台での叩き合い。' },
   { name:'オークス',             month:5,  venue:'東京', surface:'芝', dist:2400, mareOnly:true, desc:'牝馬クラシックの第二冠、優駿牝馬。東京芝2400mで距離の壁に挑む。' },
@@ -711,7 +711,7 @@ function showIntro(){
   add('ic-name', r.name);
   // 長いレース名は文字を小さくして1行に収める
   c.lastChild.style.fontSize = r.name.length > 14 ? '18px' : r.name.length > 9 ? '22px' : '';
-  add('ic-cond', `${r.venue} ${r.surface}${r.dist}m ・ 歴代の名馬8頭${r.mareOnly ? '（牝馬限定）' : ''}`);
+  add('ic-cond', `${r.venue} ${r.surface}${r.dist}m ・ 8頭立て${r.mareOnly ? '（牝馬限定）' : ''}`);
   if(r.desc) add('ic-desc', r.desc);
   c.classList.add('on');
   say(`さあ今年も${r.month}月、${r.name}の季節がやってきました！`, true);
