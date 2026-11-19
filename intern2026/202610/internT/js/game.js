@@ -578,7 +578,12 @@ const AI = {
     const sorted = gens.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
     const army = sorted.filter(g => !(g.isLord && c.i === f.capital && sorted.length > 2)).slice(0, 5);
     if (!army.length) return null;
-    const troops = Math.min(Math.round(c.troops * 0.75), army.reduce((s, g) => s + Game.troopCap(g), 0));
+    // 守備兵を残す：前線4000・今の兵の3割・隣の敵（攻め先以外）の最大兵力の半分、のうち多い数
+    let maxEnemy = 0;
+    c.adj.forEach(a => { const o = G.cities[a]; if (a !== best.i && o.owner !== null && o.owner !== fi && !Game.isAlly(fi, o.owner)) maxEnemy = Math.max(maxEnemy, o.troops); });
+    const keep = Math.max(Game.isFront(c) ? 4000 : 2000, c.troops * 0.3, maxEnemy * 0.5);
+    const troops = Math.floor(Math.min(c.troops - keep, army.reduce((s, g) => s + Game.troopCap(g), 0)) / 100) * 100;
+    if (troops < 3000) return null;
     return { atkFi: fi, from: c.i, to: best.i, gens: army.map(g => g.i), troops, food: Math.min(c.food, Math.round(troops * 0.5)) };
   },
 

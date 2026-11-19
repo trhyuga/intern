@@ -506,7 +506,11 @@ const App = {
     const cap = sel.reduce((s, gi) => s + Game.troopCap(G.gens[gi]), 0);
     const maxT = Math.min(c.troops, cap);
     if (maxT < 500) return UI.alert('兵が足りない（500以上必要）');
-    const troops = await UI.number(`率いる兵（上限 ${fmt(cap)}）`, 500, Math.floor(maxT / 100) * 100, Math.floor(maxT / 100) * 100, 100);
+    let maxEnemy = 0;
+    c.adj.forEach(a => { const o = G.cities[a]; if (a !== t.i && o.owner !== null && o.owner !== G.player && !Game.isAlly(G.player, o.owner)) maxEnemy = Math.max(maxEnemy, o.troops); });
+    const keep = Math.round(Math.max(Game.isFront(c) ? 4000 : 2000, c.troops * 0.3, maxEnemy * 0.7) / 100) * 100;
+    const suggest = Math.max(500, Math.min(Math.floor(maxT / 100) * 100, Math.floor((c.troops - keep) / 100) * 100));
+    const troops = await UI.number(`率いる兵（上限 ${fmt(cap)}）<br><small style="font-weight:500">${c.name}の守りに ${fmt(keep)} ほど残すのがおすすめ（初期値はその分を残した数）</small>`, 500, Math.floor(maxT / 100) * 100, suggest, 100);
     if (troops == null) return App.openCity(c.i);
     const needFood = Math.round(troops * 0.03 * 30);
     const food = Math.min(c.food, needFood);
