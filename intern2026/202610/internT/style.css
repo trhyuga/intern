@@ -253,7 +253,7 @@ button { font-family: inherit; }
 .d-mid { width: 116px; flex: none; text-align: center; padding-top: 12px; }
 .d-title { white-space: nowrap; font-family: var(--brush); font-size: 25px; color: var(--gold2); text-shadow: 0 0 14px #ff4a2a; line-height: 1.1; }
 .d-round { margin-top: 8px; font-size: 14px; color: #fff; background: #0008; border: 1px solid var(--gold); border-radius: 12px; padding: 2px 0; }
-.d-arena { width: 100%; height: 150px; border: 2px solid #6a4a2a; border-radius: 8px; box-shadow: inset 0 0 20px #000; display: block; }
+.d-arena { width: 100%; height: 170px; border: 2px solid #6a4a2a; border-radius: 8px; box-shadow: inset 0 0 20px #000; display: block; }
 .d-chat { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; }
 .d-msg { display: flex; gap: 6px; align-items: flex-start; max-width: 86%; }
 .d-msg img { width: 34px; height: 42px; border-radius: 4px; border: 1.5px solid var(--c); flex: none; }
