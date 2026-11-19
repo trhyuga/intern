@@ -93,6 +93,8 @@ const Battle = (() => {
       B.units.forEach(u => { u.train = u.side === 'atk' ? from.train : to.train; if (u.gi >= 0 && Game.top(u.g, 'cha')) u.morale = 95; });
       // 人望の上位者がいる軍は士気が高い
       ['atk', 'def'].forEach(sd => { if (B.units.some(u => u.side === sd && u.gi >= 0 && Game.top(u.g, 'cha'))) B.units.filter(u => u.side === sd).forEach(u => u.morale = Math.max(u.morale, 90)); });
+      // 君主の位（公・王・皇帝）に応じて、その勢力の将兵の士気が上がる
+      B.units.forEach(u => { const f = u.fi != null && G.factions[u.fi]; if (f && f.rank) u.morale = Math.min(100, u.morale + f.rank * 4); });
       B.weather = pickWeather();
       setupDOM(opts && opts.auto);
       baseBgm();
@@ -638,6 +640,7 @@ const Battle = (() => {
                              : r + prog * 0.6 - (gateBroken ? 0.3 : 0);
     return clamp(v, -1, 1);
   }
+  const isMusou = g => g.name === '呂布' || g.war >= 98;
   const isWeakVs = (dg, ag) => dg.war < 65 || ag.war - dg.war >= 15;
   // 一騎討ちを受けるか：負けそうなら一発逆転を狙って受け、勝てそうなら無理に受けない
   function willAcceptDuel(d, a) {
@@ -645,6 +648,10 @@ const Battle = (() => {
     const adv = outlook(d.side), diff = (d.g.war - a.g.war) / 60;
     const hot = Game.has(d.g, '剛勇') || Game.has(d.g, '猪突');
     const heroes = d.g.war >= 85 && a.g.war >= 85;   // 豪傑同士は引き合う
+    // 天下無双（呂布など武力98以上）は、誰の挑戦でもすべて受けて立つ
+    if (isMusou(d.g)) return true;
+    // 君主は負ければ命を落としかねない。武力で10以上勝る相手でなければ受けない
+    if (d.g.isLord) { if (d.g.war >= a.g.war + 10 && Math.random() < 0.7) return true; d._lordHeld = true; return false; }
     // 弱い武将（武力65未満、または相手より15以上劣る）は基本的に受けない。猪突だけはまれに無謀に受ける
     if (isWeakVs(d.g, a.g)) return Game.has(d.g, '猪突') && !d.commander && Math.random() < 0.15;
     // 総大将は討たれると負け。基本は受けない。ジリ貧で負けが見えた時だけ、賭けに出る
@@ -697,8 +704,8 @@ const Battle = (() => {
     if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? G.factions[a.fi].color : '#777', { tag: '一騎討ち' });
     const accept = willAcceptDuel(d, a);
     if (!accept) {
-      if (!auto) await UI.talk(d.g, 'normal', d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : d._winning ? `${d.g.name}「${pick(['勝ち戦で、貴様の遊びに付き合う義理はない', 'ふん、焦っておるな。その手には乗らん', 'このまま押し潰せば済むこと。相手にするまでもない'])}」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
-      d._held = false; d._winning = false;
+      if (!auto) await UI.talk(d.g, 'normal', d._lordHeld ? `${d.g.name}「${pick(['一国の主が、匹夫の勇を競うわけにはいかぬ', '我が身はもはや我一人のものではない。相手にするな', '挑発には乗らん。将兵よ、わしを守れ'])}」` : d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : d._winning ? `${d.g.name}「${pick(['勝ち戦で、貴様の遊びに付き合う義理はない', 'ふん、焦っておるな。その手には乗らん', 'このまま押し潰せば済むこと。相手にするまでもない'])}」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
+      d._held = false; d._winning = false; d._lordHeld = false;
       d.morale = Math.max(0, d.morale - 8); a.morale = Math.min(100, a.morale + 5);
       addLog(`${d.g.name}は一騎打ちを避けた（士気が下がった）`);
       return;
@@ -939,7 +946,8 @@ const Battle = (() => {
       .sort((a, b) => { const v = o => (o.commander ? (u.g.war >= o.g.war + 8 ? 20 : -15) : 0) + (u.g.war - o.g.war); return v(b) - v(a); });   // 総大将は応じにくいので、勝ち目が大きい時だけ狙う
     const t = cands[0];
     if (!t) return false;
-    if (u.commander && u.g.war < t.g.war + (Game.has(u.g, '猪突') || Game.has(u.g, '剛勇') ? 4 : 10)) return false;   // 総大将は大差で勝てる相手にだけ挑む
+    if (u.commander && !isMusou(u.g) && u.g.war < t.g.war + (Game.has(u.g, '猪突') || Game.has(u.g, '剛勇') ? 4 : 10)) return false;
+    if (u.g.isLord && !isMusou(u.g) && u.g.war < t.g.war + 10) return false;   // 君主は大きく勝る相手にしか挑まない   // 総大将は大差で勝てる相手にだけ挑む
     let p = bold ? 0.8 : timid ? 0.3 : 0.55;
     if (u.g.war >= 85) p += 0.1;                                       // 腕に覚えのある者は名乗りを上げたがる
     if (t.g.war >= 85 && u.g.war >= 85) p += 0.1;                      // 豪傑同士は引き合う

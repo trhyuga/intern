@@ -339,6 +339,7 @@ const Sound = (() => {
       case 'cheer': shout(t, 0.3, 1.5, S, 420); shout(t + 0.2, 0.2, 1.3, S, 520); for (let i = 0; i < 3; i++) drum(t + i * 0.25, 0.3, 60, S); break;
       case 'thunder': noise(t, 0.6, 2.5, 180, S, 'lowpass'); noise(t, 0.4, 0.3, 1200, S); break;
       case 'gong': gong(t, 0.4, S); break;
+      case 'coronation': gong(t, 0.4, S); [[0.3, 0], [0.5, 4], [0.7, 7], [0.9, 12], [1.2, 16]].forEach(([dt, d]) => pipa(t + dt, 69 + d, 0.17, 0.35, S)); erhu(t + 1.2, 81, 0.09, 2.2, S); bell(t + 1.2, 93, 0.1, 3, S); cymbal(t + 1.2, 0.12, 2, S); drum(t + 1.2, 0.6, 48, S, 0.9); shout(t + 1.4, 0.2, 1.6, S, 420); break;
       // 勝敗のファンファーレ
       case 'victory': {
         const ph = [[0, 0], [0.18, 4], [0.36, 7], [0.54, 9], [0.8, 12]];
