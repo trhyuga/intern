@@ -1063,6 +1063,81 @@ const Duel = (() => {
     return { winner, outcome: r < 0.3 ? 'killed' : r < 0.75 ? 'captured' : 'fled' };
   }
   // pSide: 'a' or 'd' プレイヤーが操作する側（null なら観戦）
+  // ---------- 一騎討ちの闘技場（2騎が駆け寄って打ち合う絵） ----------
+  function makeArena(cv, ca, cd, a, d) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const W = cv.clientWidth, H = cv.clientHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const st = { pa: 0, pd: 0, fa: 0, fd: 0, kbA: 0, kbD: 0, shake: 0, floats: [], sparks: [], t0: performance.now(), raf: 0, power: 0 };
+    const baseA = W * 0.24, baseD = W * 0.76, meet = W * 0.5;
+    function rider(x, y, s, col, dir, t, flash, name) {
+      c.save(); c.translate(x, y); c.scale(dir * s, s);
+      const leg = Math.sin(t * 14) * 5;
+      // 馬
+      c.fillStyle = flash ? '#ff5a4a' : '#2a1a10';
+      c.beginPath(); c.ellipse(0, 0, 26, 10, 0, 0, 7); c.fill();
+      c.beginPath(); c.moveTo(16, -4); c.quadraticCurveTo(26, -20, 34, -24); c.lineTo(38, -17); c.quadraticCurveTo(29, -10, 23, 2); c.fill();
+      c.strokeStyle = c.fillStyle; c.lineWidth = 3.2; [[-17, 1], [-9, -1], [12, 1], [19, -1]].forEach(([dx, k]) => { c.beginPath(); c.moveTo(dx, 4); c.lineTo(dx + leg * k, 22); c.stroke(); });
+      c.beginPath(); c.moveTo(-24, -2); c.quadraticCurveTo(-36, 2, -38, 13); c.stroke();
+      // 武者（勢力の色の鎧）
+      c.fillStyle = flash ? '#ffb0a0' : col; c.fillRect(-5, -30, 11, 22);
+      c.fillStyle = '#e8c49a'; c.beginPath(); c.arc(0, -35, 5.5, 0, 7); c.fill();
+      c.fillStyle = '#1a1210'; c.beginPath(); c.arc(0, -38, 5.5, Math.PI, 0); c.fill();
+      // 武器
+      c.strokeStyle = '#d8d8d8'; c.lineWidth = 2.2; c.beginPath(); c.moveTo(-6, -18); c.lineTo(34, -40); c.stroke();
+      c.fillStyle = '#f0f0f0'; c.beginPath(); c.moveTo(34, -40); c.lineTo(42, -46); c.lineTo(38, -38); c.fill();
+      // 背旗
+      c.strokeStyle = '#3a2a1a'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(-4, -28); c.lineTo(-10, -62); c.stroke();
+      c.fillStyle = col; c.beginPath(); c.moveTo(-10, -62); c.lineTo(-30, -58 + Math.sin(t * 7) * 2); c.lineTo(-26, -46); c.lineTo(-8, -48); c.fill();
+      c.restore();
+      c.save(); c.fillStyle = '#fff'; c.font = "bold 12px 'Shippori Mincho B1', serif"; c.textAlign = 'center'; c.shadowColor = '#000'; c.shadowBlur = 4;
+      c.fillText(name, x - dir * 12 * s, y - 70 * s); c.restore();
+    }
+    function frame() {
+      const t = (performance.now() - st.t0) / 1000;
+      const sh = st.shake > 0 ? (Math.random() - 0.5) * st.shake : 0;
+      st.shake *= 0.85;
+      c.save(); c.translate(sh, sh * 0.5);
+      // 空と地面
+      const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2a0e0a'); g.addColorStop(0.55, '#8a3a1a'); g.addColorStop(0.56, '#5a3a22'); g.addColorStop(1, '#2a1a10');
+      c.fillStyle = g; c.fillRect(-10, -10, W + 20, H + 20);
+      c.fillStyle = 'rgba(255,200,120,0.25)'; c.beginPath(); c.arc(W / 2, H * 0.5, 40, 0, 7); c.fill();
+      for (let i = 0; i < 6; i++) { c.fillStyle = `rgba(30,15,10,${0.5 - i * 0.06})`; c.beginPath(); c.moveTo(-10, H * 0.56); for (let x = 0; x <= W + 20; x += 40) c.lineTo(x, H * 0.56 - 8 - Math.abs(Math.sin(x * 0.03 + i)) * (14 + i * 4)); c.lineTo(W + 20, H * 0.56); c.fill(); }
+      // 砂煙
+      for (let i = 0; i < 6; i++) { c.fillStyle = 'rgba(220,180,130,0.12)'; c.beginPath(); c.ellipse((i * 83 + t * 30) % (W + 60) - 30, H * 0.86, 30, 8, 0, 0, 7); c.fill(); }
+      const xa = baseA + (meet - 26 - baseA) * st.pa - st.kbA, xd = baseD + (meet + 26 - baseD) * st.pd + st.kbD;
+      st.kbA *= 0.85; st.kbD *= 0.85;
+      rider(xa, H * 0.78, 1, ca, 1, t, st.fa > 0, a.name);
+      rider(xd, H * 0.78, 1, cd, -1, t + 0.4, st.fd > 0, d.name);
+      if (st.fa > 0) st.fa--; if (st.fd > 0) st.fd--;
+      // 火花
+      st.sparks = st.sparks.filter(p => p.life > 0);
+      st.sparks.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life--; c.fillStyle = `rgba(255,${200 + Math.random() * 55 | 0},120,${p.life / 30})`; c.fillRect(p.x, p.y, 2.5, 2.5); });
+      if (st.power > 0) { c.fillStyle = `rgba(255,240,200,${st.power / 20})`; c.fillRect(0, 0, W, H); st.power--; }
+      // 数字・文字
+      const now = performance.now();
+      st.floats = st.floats.filter(f => now - f.t0 < 1000);
+      st.floats.forEach(f => { const k = (now - f.t0) / 1000; c.globalAlpha = 1 - k; c.font = `bold ${f.size}px sans-serif`; c.textAlign = 'center'; c.lineWidth = 4; c.strokeStyle = '#000'; c.strokeText(f.text, f.x, f.y - k * 30); c.fillStyle = f.col; c.fillText(f.text, f.x, f.y - k * 30); c.globalAlpha = 1; });
+      c.restore();
+      st.raf = requestAnimationFrame(frame);
+    }
+    st.raf = requestAnimationFrame(frame);
+    const anim = (key, to, ms) => new Promise(res => { const from = st[key], t0 = performance.now(); const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); st[key] = from + (to - from) * (k * (2 - k)); if (k < 1) requestAnimationFrame(step); else res(); }; step(); });
+    return {
+      stop() { cancelAnimationFrame(st.raf); },
+      async charge(ms) { await Promise.all([anim('pa', 1, ms), anim('pd', 1, ms)]); },
+      async back(ms) { await Promise.all([anim('pa', 0, ms), anim('pd', 0, ms)]); },
+      clash(power) { for (let i = 0; i < (power ? 40 : 22); i++) st.sparks.push({ x: meet, y: H * 0.45, vx: (Math.random() - 0.5) * 7, vy: -Math.random() * 5, life: 30 }); st.shake = power ? 12 : 6; if (power) st.power = 8; },
+      hit(side, dmg, power) {   // side が受けた
+        const x = side === 'a' ? baseA + (meet - baseA) * 0.7 : baseD - (baseD - meet) * 0.7;
+        if (dmg > 0) { if (side === 'a') { st.fa = 10; st.kbA = 26; } else { st.fd = 10; st.kbD = 26; } st.floats.push({ x, y: H * 0.32, text: '-' + dmg, col: power ? '#ffd23a' : '#ff6a5a', size: power ? 26 : 20, t0: performance.now() }); }
+        else st.floats.push({ x, y: H * 0.32, text: 'かわした！', col: '#bfe6ff', size: 15, t0: performance.now() });
+      },
+      text(t, col) { st.floats.push({ x: meet, y: H * 0.25, text: t, col: col || '#fff', size: 18, t0: performance.now() }); },
+    };
+  }
+
   function run(ua, ud, pSide, autoEnd) {
     return new Promise(resolve => {
       Sound.bgm('duel'); Sound.se('gong');
@@ -1070,73 +1145,96 @@ const Duel = (() => {
       const ca = G.factions[ua.fi] ? G.factions[ua.fi].color : '#777', cd = ud.fi !== null && G.factions[ud.fi] ? G.factions[ud.fi].color : '#777';
       const el = document.getElementById('duel');
       el.innerHTML = `
-        <div class="d-title">一騎討ち</div>
-        <div class="d-row">
-          <div class="d-side" id="dA"><img src="${Portrait.get(a, 'angry', ca)}"><div class="d-name">${a.name}</div><div class="d-war">武力 ${a.war}</div><div class="d-hp"><i style="width:100%"></i></div></div>
-          <div class="d-vs">VS</div>
-          <div class="d-side" id="dD"><img src="${Portrait.get(d, 'angry', cd)}"><div class="d-name">${d.name}</div><div class="d-war">武力 ${d.war}</div><div class="d-hp"><i style="width:100%"></i></div></div>
+        <div class="d-head">
+          <div class="d-fighter" id="dA" style="--c:${ca}"><img src="${Portrait.get(a, 'angry', ca)}"><div class="d-name">${a.name}</div><div class="d-war">武力 ${a.war}</div><div class="d-hp"><i style="width:100%"></i><span>100</span></div></div>
+          <div class="d-mid"><div class="d-title">一騎討ち</div><div class="d-round">第1合</div></div>
+          <div class="d-fighter" id="dD" style="--c:${cd}"><img src="${Portrait.get(d, 'angry', cd)}"><div class="d-name">${d.name}</div><div class="d-war">武力 ${d.war}</div><div class="d-hp"><i style="width:100%"></i><span>100</span></div></div>
         </div>
-        <div class="d-log"></div>
+        <canvas class="d-arena"></canvas>
+        <div class="d-chat"></div>
         <div class="d-btns"></div>`;
       el.classList.add('show');
-      const logEl = el.querySelector('.d-log'), btns = el.querySelector('.d-btns');
+      const chat = el.querySelector('.d-chat'), btns = el.querySelector('.d-btns'), roundEl = el.querySelector('.d-round');
       const hpA = el.querySelector('#dA .d-hp i'), hpD = el.querySelector('#dD .d-hp i');
-      let ha = 100, hd = 100, round = 0;
-      const log = t => { logEl.innerHTML = `<div>${t}</div>` + logEl.innerHTML; };
-      log(`${a.name}「${line(a, 'duelChallenge', { foe: d.name })}」`);
-      setTimeout(() => log(`${d.name}「${line(d, 'duelAccept', { foe: a.name })}」`), 500);
-      const flash = id => { const s = el.querySelector(id); s.classList.remove('hit'); void s.offsetWidth; s.classList.add('hit'); };
+      const hpAt = el.querySelector('#dA .d-hp span'), hpDt = el.querySelector('#dD .d-hp span');
+      const arena = makeArena(el.querySelector('.d-arena'), ca, cd, a, d);
+      const pace = ms => new Promise(r => setTimeout(r, ms / Math.max(1, (Battle.watching ? Auto.speed : 1))));
+      let ha = 100, hd = 100, round = 0, busy = false;
+      // 発言は左右に吹き出しで。実況は真ん中に、攻めた側の色の帯で
+      const say = (side, text, kind) => {
+        const g = side === 'a' ? a : side === 'd' ? d : null, col = side === 'a' ? ca : side === 'd' ? cd : '#888';
+        const m = document.createElement('div');
+        if (kind === 'act') { m.className = `d-act ${side}`; m.style.setProperty('--c', col); m.innerHTML = text; }
+        else if (!g) { m.className = 'd-narr'; m.innerHTML = text; }
+        else { m.className = `d-msg ${side}`; m.style.setProperty('--c', col); m.innerHTML = `<img src="${Portrait.get(g, side === 'a' ? exprA : exprD, col)}"><div><b>${g.name}</b><p>${text}</p></div>`; }
+        chat.appendChild(m); chat.scrollTop = chat.scrollHeight;
+      };
+      let exprA = 'angry', exprD = 'angry';
+      const setFace = (side, e) => { if (side === 'a') exprA = e; else exprD = e; el.querySelector(side === 'a' ? '#dA img' : '#dD img').src = Portrait.get(side === 'a' ? a : d, e, side === 'a' ? ca : cd); };
+      const setHp = () => { hpA.style.width = Math.max(0, ha) + '%'; hpD.style.width = Math.max(0, hd) + '%'; hpAt.textContent = Math.max(0, ha); hpDt.textContent = Math.max(0, hd); };
+      const close = res => { arena.stop(); el.classList.remove('show'); resolve(res); };
+      say('a', line(a, 'duelChallenge', { foe: d.name }));
+      setTimeout(() => say('d', line(d, 'duelAccept', { foe: a.name })), 500);
       const finish = (winner) => {
-        const w = winner === 'a' ? a : d, l = winner === 'a' ? d : a;
+        const w = winner === 'a' ? a : d, l = winner === 'a' ? d : a, ws = winner, ls = winner === 'a' ? 'd' : 'a';
         const r = Math.random();
         const outcome = r < 0.3 ? 'killed' : r < 0.75 ? 'captured' : 'fled';
-        el.querySelector(winner === 'a' ? '#dA img' : '#dD img').src = Portrait.get(w, 'happy', winner === 'a' ? ca : cd);
-        el.querySelector(winner === 'a' ? '#dD img' : '#dA img').src = Portrait.get(l, 'sad', winner === 'a' ? cd : ca);
-        log(`${l.name}「${line(l, 'duelLose')}」`);
-        log(`<b>${w.name}「${line(w, 'duelWin', { foe: l.name })}」</b>`);
-        log(`${l.name}は${outcome === 'killed' ? '討ち取られた！' : outcome === 'captured' ? '馬から落ち、捕らえられた！' : '馬首を返して逃げ去った！'}`);
+        setFace(ws, 'happy'); setFace(ls, 'sad');
+        say(ls, line(l, 'duelLose'));
+        say(ws, `<b>${line(w, 'duelWin', { foe: l.name })}</b>`);
+        say(null, `${l.name}は${outcome === 'killed' ? '討ち取られた！' : outcome === 'captured' ? '馬から落ち、捕らえられた！' : '馬首を返して逃げ去った！'}`);
+        arena.text(`${w.name} の勝利！`, '#ffd23a');
         Sound.se('win');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
-        btns.querySelector('button').onclick = () => { el.classList.remove('show'); resolve({ winner, outcome }); };
-        if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2200 / Auto.speed);
-      };
-      const exchange = (modeP) => {
-        round++;
-        const modeA = pSide === 'a' ? modeP : (Math.random() < 0.25 ? 'power' : 'atk');
-        const modeD = pSide === 'd' ? modeP : (Math.random() < 0.25 ? 'power' : 'atk');
-        let x = strike(a, d, modeA); if (modeD === 'guard') x = Math.round(x * 0.4);
-        hd -= x; flash('#dD'); Sound.se(x ? 'clash' : 'tap');
-        log(x ? `${a.name}の${modeA === 'power' ? '渾身の一撃' : '攻撃'}！ ${d.name}に${x}` : `${a.name}の攻撃は空を切った`);
-        if (hd > 0) {
-          let y = strike(d, a, modeD); if (modeA === 'guard') y = Math.round(y * 0.4);
-          if (modeD === 'guard') y = 0;
-          ha -= y; setTimeout(() => { flash('#dA'); Sound.se(y ? 'clash' : 'tap'); }, 250);
-          log(y ? `${d.name}の反撃！ ${a.name}に${y}` : modeD === 'guard' ? `${d.name}は守りを固めた` : `${d.name}の攻撃をかわした`);
-        }
-        hpA.style.width = Math.max(0, ha) + '%'; hpD.style.width = Math.max(0, hd) + '%';
-        // 逃走判定（剛勇は逃げない）
-        if (hd > 0 && ha > 0) {
-          if (hd < 25 && !Game.has(d, '剛勇') && pSide !== 'd' && Math.random() < 0.35) { log(`${d.name}は形勢不利と見て逃げ出した！`); return setTimeout(() => { btns.innerHTML = ''; finishFlee('a'); }, 500); }
-          if (ha < 25 && !Game.has(a, '剛勇') && pSide !== 'a' && Math.random() < 0.35) { log(`${a.name}は形勢不利と見て逃げ出した！`); return setTimeout(() => { btns.innerHTML = ''; finishFlee('d'); }, 500); }
-        }
-        if (ha <= 0 || hd <= 0) { btns.innerHTML = ''; setTimeout(() => finish(ha > hd ? 'a' : 'd'), 600); return; }
-        if (round >= 20) { btns.innerHTML = ''; log('決着つかず、両者引き分けた'); setTimeout(() => finish(ha >= hd ? 'a' : 'd'), 600); return; }
-        if (!pSide) setTimeout(() => exchange('atk'), 650);
+        btns.querySelector('button').onclick = () => close({ winner, outcome });
+        if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2400 / Auto.speed);
       };
       const finishFlee = winner => {
         Sound.se('ng');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
-        btns.querySelector('button').onclick = () => { el.classList.remove('show'); resolve({ winner, outcome: 'fled' }); };
+        btns.querySelector('button').onclick = () => close({ winner, outcome: 'fled' });
         if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2000 / Auto.speed);
+      };
+      const exchange = async (modeP) => {
+        if (busy) return; busy = true;
+        btns.querySelectorAll('button').forEach(b => b.disabled = true);
+        round++; roundEl.textContent = `第${round}合`;
+        const modeA = pSide === 'a' ? modeP : (Math.random() < 0.25 ? 'power' : 'atk');
+        const modeD = pSide === 'd' ? modeP : (Math.random() < 0.25 ? 'power' : 'atk');
+        await arena.charge(320);
+        let x = strike(a, d, modeA); if (modeD === 'guard') x = Math.round(x * 0.4);
+        arena.clash(modeA === 'power'); Sound.se(x ? 'clash' : 'tap');
+        hd -= x; arena.hit('d', x, modeA === 'power'); setHp();
+        say('a', x ? `${modeA === 'power' ? '渾身の一撃' : '斬りつけた'}！ ${d.name}に <b>${x}</b>` : `${d.name}にかわされた`, 'act');
+        if (hd > 0) {
+          await pace(380);
+          let y = strike(d, a, modeD); if (modeA === 'guard') y = Math.round(y * 0.4);
+          if (modeD === 'guard') y = 0;
+          arena.clash(modeD === 'power'); Sound.se(y ? 'clash' : 'tap');
+          ha -= y; arena.hit('a', y, modeD === 'power'); setHp();
+          say('d', y ? `${modeD === 'power' ? '渾身の反撃' : '反撃'}！ ${a.name}に <b>${y}</b>` : modeD === 'guard' ? '守りを固めた' : `${a.name}にかわされた`, 'act');
+        }
+        if (ha < 35 && exprA === 'angry') setFace('a', 'shock'); if (hd < 35 && exprD === 'angry') setFace('d', 'shock');
+        await arena.back(300);
+        busy = false;
+        // 逃走判定（剛勇は逃げない）
+        if (hd > 0 && ha > 0) {
+          if (hd < 25 && !Game.has(d, '剛勇') && pSide !== 'd' && Math.random() < 0.35) { say(null, `${d.name}は形勢不利と見て逃げ出した！`); btns.innerHTML = ''; return setTimeout(() => finishFlee('a'), 500); }
+          if (ha < 25 && !Game.has(a, '剛勇') && pSide !== 'a' && Math.random() < 0.35) { say(null, `${a.name}は形勢不利と見て逃げ出した！`); btns.innerHTML = ''; return setTimeout(() => finishFlee('d'), 500); }
+        }
+        if (ha <= 0 || hd <= 0) { btns.innerHTML = ''; setTimeout(() => finish(ha > hd ? 'a' : 'd'), 500); return; }
+        if (round >= 20) { btns.innerHTML = ''; say(null, '決着つかず――'); setTimeout(() => finish(ha >= hd ? 'a' : 'd'), 500); return; }
+        btns.querySelectorAll('button').forEach(b => b.disabled = false);
+        if (!pSide) setTimeout(() => exchange('atk'), 450 / Math.max(1, (Battle.watching ? Auto.speed : 1)));
       };
       if (pSide) {
         btns.innerHTML = `<button class="btn primary" data-m="atk">攻める</button><button class="btn" data-m="power">渾身</button><button class="btn" data-m="guard">守る</button><button class="btn danger" data-m="flee">退く</button>`;
         btns.querySelectorAll('button').forEach(b => b.onclick = () => {
           const m = b.dataset.m;
-          if (m === 'flee') { log(`${pSide === 'a' ? a.name : d.name}は退いた`); btns.innerHTML = ''; return finishFlee(pSide === 'a' ? 'd' : 'a'); }
+          if (m === 'flee') { say(pSide, '……ここは退く！'); btns.innerHTML = ''; return finishFlee(pSide === 'a' ? 'd' : 'a'); }
           exchange(m);
         });
-      } else setTimeout(() => exchange('atk'), 1200);
+      } else setTimeout(() => exchange('atk'), 1300);
     });
   }
   return { run, quick };
