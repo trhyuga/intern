@@ -112,6 +112,14 @@ const Game = {
   bondOf(names) { return BONDS.filter(b => b.members.filter(m => names.includes(m)).length >= 2); },
   has(g, t) { return g && g.traits && g.traits.includes(t); },
 
+  // 次の秋の収穫までに必要な兵糧（兵の食べる量＋予備）。前線は予備を厚く
+  isFront(c) { return c.adj.some(a => { const o = G.cities[a]; return o.owner !== c.owner && (o.owner === null || c.owner === null || !Game.isAlly(c.owner, o.owner)); }); },
+  foodReserve(c, troops) {
+    const t = troops == null ? c.troops : troops;
+    const n = G.season <= 2 ? 3 - G.season : 4;
+    return Math.round(t * 0.12 * n + 1500 + (Game.isFront(c) ? 2500 : 0));
+  },
+
   // ---------------- 内政コマンド ----------------
   // 戻り値 { ok, msg, expr }
   doCommand(cmd, g, c, arg) {
@@ -507,13 +515,14 @@ const AI = {
     gens.forEach(g => {
       if (g.acted) return;
       let cmd;
-      if (threat > c.troops * 0.8 && c.gold >= CONFIG.RECRUIT_COST && c.loyal > 30) cmd = 'draft';
+      const foodOk = add => c.food - Game.foodReserve(c, c.troops + add) > 0;
+      if (threat > c.troops * 0.8 && c.gold >= CONFIG.RECRUIT_COST && c.loyal > 30 && foodOk(3000)) cmd = 'draft';
       else if (c.train < 60 && c.troops > 3000) cmd = 'train';
-      else if (c.loyal < 40 && c.food > 3000) cmd = 'alms';
+      else if (c.loyal < 40 && c.food - 1500 > Game.foodReserve(c)) cmd = 'alms';
       else if (c.farm < c.farmMax * 0.8 && g.pol >= 50 && Math.random() < 0.5) cmd = 'farm';
       else if (c.comm < c.commMax * 0.8 && g.pol >= 50) cmd = 'comm';
       else if (c.def < c.defMax * 0.8 && Math.random() < 0.4) cmd = 'wall';
-      else if (c.gold >= CONFIG.RECRUIT_COST * 2 && c.troops < 40000) cmd = 'draft';
+      else if (c.gold >= CONFIG.RECRUIT_COST * 2 && c.troops < 40000 && foodOk(3000)) cmd = 'draft';
       else cmd = 'train';
       Game.doCommand(cmd, g, c);
       g.acted = true;

@@ -64,7 +64,7 @@ const Auto = (() => {
       win: ['予定通りです'], lose: ['……読み違えました。立て直しましょう'],
       allyYes: ['悪くない話です。受けましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
       rec: ['{gen}は使える人物。登用を勧めます'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
-      transfer: ['後方の兵を前線へ回します'],
+      transfer: ['{to}は{what}が足りません。{from}から回しましょう', '前線の{to}を空にはできません。{from}から{what}を送ります'],
     },
     mid: {
       intro: ['{season}になりました。{plan}', 'さて、今季はどう動きましょうか。{plan}'],
@@ -77,7 +77,7 @@ const Auto = (() => {
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
       allyYes: ['手を組んでおきましょう'], allyNo: ['今回は断りましょう'],
       rec: ['登用してみましょう'], rel: ['解放しましょう'], kill: ['ここは処断を'],
-      transfer: ['兵を動かしておきます'],
+      transfer: ['{from}から{to}へ{what}を送ります'],
     },
     dumb: {
       intro: ['{season}だ！ {plan}', 'えーと……{plan}', 'よし、今季も気合いでいくぞ！ {plan}'],
@@ -90,7 +90,7 @@ const Auto = (() => {
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
       allyYes: ['いいよいいよ、組もう！'], allyNo: ['なんか怪しいから断る！'],
       rec: ['仲間にしちゃおう！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
-      transfer: ['兵を……あっちに送っとくか'],
+      transfer: ['{to}に{what}を送っとけ！'],
     },
   };
   const SL_SPECIAL = {
@@ -141,8 +141,8 @@ const Auto = (() => {
       farm: (1 - c.farm / c.farmMax) * (G.season <= 1 ? 1.2 : 0.9),
       comm: (1 - c.comm / c.commMax),
       wall: (1 - c.def / c.defMax) * (front ? 1.1 : 0.4),
-      alms: c.loyal < 60 && c.food > 4000 ? (60 - c.loyal) / 40 * 1.3 : 0,
-      draft: c.gold >= 200 && c.loyal > 30 ? (front ? clamp((threat * 1.1 - c.troops) / 10000 + 0.5, 0.2, 1.4) : 0.25) : 0,
+      alms: c.loyal < 60 && c.food - 1500 > Game.foodReserve(c) ? (60 - c.loyal) / 40 * 1.3 : 0,
+      draft: c.gold >= 200 && c.loyal > 30 && c.food > Game.foodReserve(c, c.troops + 3500) ? (front ? clamp((threat * 1.1 - c.troops) / 10000 + 0.5, 0.2, 1.4) : 0.25) : 0,
       train: c.troops > 3000 ? (85 - c.train) / 85 : 0,
       search: Game.roninIn(c.i).filter(r => !r.known).length ? 0.3 + br.q * 0.5 : 0.12,
     };
@@ -175,7 +175,7 @@ const Auto = (() => {
     const used = new Set();
     Game.citiesOf(G.player).forEach(c => {
       const gens = Game.gensIn(c.i, G.player).filter(g => !g.acted);
-      if (!gens.length || c.troops < 5000 || c.food < 4000) return;
+      if (!gens.length || c.troops < 5000) return;
       const targets = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner)));
       targets.forEach(t => {
         if (used.has(t.i)) return;
@@ -186,6 +186,8 @@ const Auto = (() => {
         const keep = br.tier === 'smart' ? Math.max(1500, threat * 0.5) : br.tier === 'mid' ? 1500 : 500;
         const troops = Math.floor(Math.min(c.troops - keep, army.reduce((s, g) => s + Game.troopCap(g), 0)) / 100) * 100;
         if (troops < 3000) return;
+        // 出陣しても、残る兵の兵糧（次の収穫まで）を残し、12日分以上を持って行けるか
+        if (c.food - Game.foodReserve(c, c.troops - troops) < troops * 0.03 * 12) return;
         const atkPow = troops * (0.5 + c.train / 200) * (1 + army.reduce((s, g) => s + g.lead + g.war, 0) / 1000);
         let score = atkPow / Math.max(1, defPow) * (1 + (Math.random() - 0.5) * br.noise * 1.6);
         if (t.owner === null) score *= 1.25;
@@ -312,19 +314,77 @@ const Auto = (() => {
       await App.doRecruit(env, t);
     }
   }
-  async function doTransfer(br) {
-    if (br.tier !== 'smart') return;
-    let said = false;
-    for (const c of Game.citiesOf(G.player)) {
-      const front = AI.threat(c, G.player) > 0 || c.adj.some(a => G.cities[a].owner === null);
-      if (front || c.troops < 9000) continue;
-      const dest = c.adj.map(a => G.cities[a]).filter(o => o.owner === G.player).sort((a, b) => AI.threat(b, G.player) - AI.threat(a, G.player))[0];
-      if (!dest) continue;
-      if (!said) { await press(c.i, 'mil', '[data-cmd=transport]'); await say('transfer'); said = true; }
-      const t = Math.floor(c.troops * 0.5 / 100) * 100;
-      Game.transport(c, dest, Math.floor(c.gold * 0.3), Math.floor(c.food * 0.3), t);
-      UI.toast(`${c.name} → ${dest.name}　兵${fmt(t)} を送った`);
-      await wait(600);
+  // ---------- 補給（足りない拠点へ金・兵糧・兵を回す） ----------
+  // 自領だけを通ってたどり着ける都市どうしで融通する
+  function reach(from) {
+    const seen = new Set([from.i]), q = [from.i];
+    while (q.length) { const x = q.shift(); G.cities[x].adj.forEach(a => { if (!seen.has(a) && G.cities[a].owner === G.player) { seen.add(a); q.push(a); } }); }
+    return seen;
+  }
+  function wants(c) {
+    const front = Game.isFront(c);
+    const threat = AI.threat(c, G.player);
+    return {
+      front, threat,
+      food: Game.foodReserve(c) + (front ? 3000 : 1000),               // これだけは置いておきたい
+      gold: front ? 800 : 400,
+      troops: front ? Math.max(6000, Math.round(threat * 0.8)) : 2500,
+    };
+  }
+  async function doLogistics(br) {
+    const cities = Game.citiesOf(G.player);
+    if (cities.length < 2) return;
+    const maxMoves = br.tier === 'smart' ? 5 : br.tier === 'mid' ? 3 : 2;
+    let moves = 0;
+    // 困っている順（前線で空に近いほど先）
+    const needy = cities.map(c => {
+      const w = wants(c);
+      const lack = { food: Math.max(0, w.food - c.food), gold: Math.max(0, w.gold - c.gold), troops: Math.max(0, w.troops - c.troops) };
+      const score = lack.food / 3000 + lack.gold / 500 + lack.troops / 4000 + (w.front ? 1 : 0) * (lack.food + lack.troops > 0 ? 1 : 0);
+      return { c, w, lack, score };
+    }).filter(x => x.lack.food + x.lack.gold + x.lack.troops > 0)
+      // 知力の低い軍師は、兵糧が尽きかけの所しか気づかない
+      .filter(x => br.tier !== 'dumb' || x.c.food < Game.foodReserve(x.c))
+      .sort((a, b) => b.score - a.score);
+    for (const n of needy) {
+      if (stopReq || moves >= maxMoves) return;
+      const r = reach(n.c);
+      // 送り手：自分の必要分を超えて余っている都市（後方を優先）
+      G.logi = G.logi || {};
+      const donors = cities.filter(d => d !== n.c && r.has(d.i))
+        // 前の季節に n.c から受け取った都市には送り返さない（往復を防ぐ）
+        .filter(d => !(G.logi[n.c.i + '>' + d.i] >= G.turn - 1))
+        .map(d => {
+          const w = wants(d);
+          const keepT = w.front ? w.troops * 1.25 : w.troops;   // 前線どうしは自分の守りを厚めに残す
+          return { d, w, food: Math.max(0, d.food - w.food * (w.front ? 1.2 : 1)), gold: Math.max(0, d.gold - w.gold), troops: Math.max(0, d.troops - keepT) };
+        });
+      const pickD = k => donors.filter(x => x[k] > 0).sort((a, b) => (a.w.front - b.w.front) || (b[k] - a[k]))[0];
+      const plan = new Map();
+      [['food', 100], ['gold', 10], ['troops', 100]].forEach(([k, step]) => {
+        if (n.lack[k] <= (k === 'troops' ? 1500 : k === 'gold' ? 100 : 500)) return;
+        const dn = pickD(k); if (!dn) return;
+        let amt = Math.min(dn[k], k === 'troops' ? n.lack[k] : n.lack[k] * 1.3);
+        amt = Math.floor(amt / step) * step;
+        if (amt <= 0) return;
+        if (!plan.has(dn.d)) plan.set(dn.d, { food: 0, gold: 0, troops: 0 });
+        plan.get(dn.d)[k] = amt; dn[k] -= amt;
+      });
+      for (const [d, amt] of plan) {
+        if (stopReq || moves >= maxMoves) return;
+        const what = [amt.food ? '兵糧' : '', amt.gold ? '金' : '', amt.troops ? '兵' : ''].filter(Boolean).join('と');
+        await press(d.i, 'mil', '[data-cmd=transport]');
+        await say('transfer', { from: d.name, to: n.c.name, what });
+        await MapView.march(d.i, n.c.i, G.factions[G.player].color);
+        // 兵を送るときは、その兵の分の兵糧も一緒に
+        const extraFood = amt.troops ? Math.min(Math.max(0, d.food - Game.foodReserve(d, d.troops - amt.troops) - amt.food), Math.round(amt.troops * 0.12 * 2)) : 0;
+        Game.transport(d, n.c, amt.gold, amt.food + extraFood, amt.troops);
+        G.logi[d.i + '>' + n.c.i] = G.turn;
+        UI.toast(`${d.name} → ${n.c.name}　${[amt.food + extraFood ? '兵糧' + fmt(amt.food + extraFood) : '', amt.gold ? '金' + fmt(amt.gold) : '', amt.troops ? '兵' + fmt(amt.troops) : ''].filter(Boolean).join('・')}`, 2400);
+        App.refresh();
+        moves++;
+        await wait(500);
+      }
     }
   }
 
@@ -341,6 +401,7 @@ const Auto = (() => {
     await doRewards(br); if (stopReq) return false;
     await doDiplo(br); if (stopReq) return false;
     await doPlots(br); if (stopReq) return false;
+    await doLogistics(br); if (stopReq) return false;
     // 出陣する武将はあらかじめ取っておく
     const armies = attacks.map(p => ({ p, ...pickArmy(p, br) })).filter(a => a.army.length);
     const reserved = new Set(armies.flatMap(a => a.army.map(x => x.i)));
@@ -373,7 +434,7 @@ const Auto = (() => {
       }
     }
     await doRecruit(br); if (stopReq) return false;
-    await doTransfer(br); if (stopReq) return false;
+    await doLogistics(br); if (stopReq) return false;
     // 出陣
     if (!armies.length) await say('hold');
     for (const a of armies) {
@@ -384,7 +445,9 @@ const Auto = (() => {
       if (!army.length) continue;
       const troops = Math.min(a.troops, p.c.troops - 300);
       if (troops < 2000) continue;
-      const food = Math.min(p.c.food, Math.round(troops * 0.03 * 30));
+      const spare = p.c.food - Game.foodReserve(p.c, p.c.troops - troops);
+      const food = Math.min(Math.round(troops * 0.03 * 30), Math.floor(spare));
+      if (food < troops * 0.03 * 12) { await say('hold'); continue; }
       await press(p.c.i, 'mil', '[data-cmd=attack]');
       MapView.setHighlight([p.t.i]); await wait(500); MapView.setHighlight(null);
       await say('attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name }, 'angry');
