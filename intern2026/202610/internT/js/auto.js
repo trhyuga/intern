@@ -67,6 +67,7 @@ const Auto = (() => {
       allyYes: ['悪くない話です。受けましょう'], allyLast: ['ここで手を結べば、攻める先がなくなります。お断りしましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
       rec: ['{gen}は使える人物。登用を勧めます'], recruitGo: ['{gen}は得がたい人物。{envoy}殿、{city}へ赴いて口説いてください', '{city}の{gen}を放っておく手はありません。弁の立つ{envoy}殿を向かわせます'], kongming: ['{city}の{gen}は、礼を尽くさねば動かぬ人物。{lord}様ご自身で訪ねましょう'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
       gather: ['{from}の兵を{to}に合流させ、{target}を一気に攻めます', '兵は集めてこそ力。{from}の兵も{to}へ'],
+      braveOk: ['……よろしい、{gen}殿。ただし深追いは禁物です', '{gen}殿の勢いを止めるのは惜しい。{target}を任せます'], braveNo: ['{gen}殿、今の{target}は分が悪すぎます。もう少し兵を集めてから'],
       deploy: ['{gen}殿ほどの将を後方に置くのは惜しい。{to}へ移っていただきます', '{to}の守りと攻めの要として、{gen}殿を前線へ'],
       deployCivil: ['{gen}殿には{to}で内政を任せます。前線は武の者に'],
       eventMeet: ['{gens}殿、{city}に集まっていただきましょう。良い縁は近くにあってこそです'], eventFace: ['{gen}殿を{city}へ。{foe}と相まみえる時が来ました', '{foe}の前に{gen}殿を。因縁の相手には、因縁の者を'],
@@ -83,7 +84,7 @@ const Auto = (() => {
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
       allyYes: ['手を組んでおきましょう'], allyLast: ['全部と仲良くしたら、戦う相手がいなくなっちゃいます。断りましょう'], allyNo: ['今回は断りましょう'],
       rec: ['登用してみましょう'], recruitGo: ['{envoy}殿、{city}の{gen}を誘いに行ってください'], kongming: ['{gen}は殿が直々に会いに行かないとダメみたいです'], rel: ['解放しましょう'], kill: ['ここは処断を'],
-      gather: ['{from}の兵を{to}へ合流させます'],
+      gather: ['{from}の兵を{to}へ合流させます'], braveOk: ['わかりました、{gen}殿、存分に！'], braveNo: ['{gen}殿、今は待ってください'],
       deploy: ['{gen}殿は{to}へ移ってください'], deployCivil: ['{gen}殿は{to}で内政を'], eventMeet: ['{gens}殿、{city}に集まってください'], eventFace: ['{gen}殿、{city}へ。{foe}がいます'],
       transfer: ['{from}から{to}へ{what}を送ります'],
     },
@@ -98,7 +99,7 @@ const Auto = (() => {
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
       allyYes: ['いいよいいよ、組もう！'], allyLast: ['あれ？ 組んだら喧嘩する相手がいなくなるぞ。断る！'], allyNo: ['なんか怪しいから断る！'],
       rec: ['仲間にしちゃおう！'], recruitGo: ['{envoy}、{city}の{gen}を連れてこい！'], kongming: ['殿、{gen}に会いに行ってきてくださいよ！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
-      gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'],
+      gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'], braveOk: ['よし行け{gen}！ 暴れてこい！'], braveNo: ['うーん、やめとけ！'],
       deploy: ['{gen}、いつまで後ろにいる！ {to}へ行け！'], deployCivil: ['{gen}は後ろで畑でも耕してろ！'], eventMeet: ['{gens}、みんな{city}に集まれ！ 宴会だ！'], eventFace: ['{gen}、{city}へ行け！ {foe}がいるぞ！'],
       transfer: ['{to}に{what}を送っとけ！'],
     },
@@ -352,6 +353,36 @@ const Auto = (() => {
       chosen.push(p);
     }
     return chosen;
+  }
+
+  // ---------- 猛将の出陣願い ----------
+  // 強くて頭の良くない武将は、率いられる上限まで兵が揃うと、自分から攻め込みたがる
+  const isBrave = g => !g.isLord && ((g.war >= 85 && g.int <= 60) || (Game.has(g, '猪突') && g.war >= 80));
+  function planBrave(br, attacks, reserved) {
+    const out = [];
+    const usedC = new Set(attacks.map(a => a.c.i)), usedT = new Set(attacks.map(a => a.t.i));
+    Game.citiesOf(G.player).forEach(c => {
+      if (usedC.has(c.i) || out.length >= 2) return;
+      const idle = Game.gensIn(c.i, G.player).filter(g => !g.acted && !reserved.has(g.i));
+      const brave = idle.filter(isBrave).sort((a, b) => b.war - a.war)[0];
+      if (!brave) return;
+      const keep = Math.max(Game.isFront(c) ? 3000 : 2000, Math.round(c.troops * 0.2));
+      const cap = Game.troopCap(brave);
+      if (c.troops - keep < cap) return;                     // まだ兵が揃っていない
+      const targets = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && !usedT.has(o.i) && (o.owner === null || !Game.isAlly(G.player, o.owner)));
+      if (!targets.length) return;
+      // 一緒に行く武将（自分より強くない待機武将を最大2人）
+      const mates = idle.filter(g => g !== brave && !g.isLord).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 2);
+      const army = [brave, ...mates];
+      const troops = Math.floor(Math.min(c.troops - keep, army.reduce((s2, g) => s2 + Game.troopCap(g), 0)) / 100) * 100;
+      // 猛将自身の見立て（知力が低いほど甘い）
+      const t = targets.map(o => ({ o, ratio: troops * atkFactor(c, army) / defPower(o) })).sort((a, b) => b.ratio - a.ratio)[0];
+      const selfView = t.ratio * (1 + (60 - Math.min(60, brave.int)) / 100);
+      if (selfView < 0.95) return;                         // さすがに勝ち目がないと本人も思う
+      out.push({ c, t: t.o, army, troops, keep, ratio: t.ratio, brave, restrain: br.tier === 'smart' && t.ratio < 0.8 });
+      usedC.add(c.i); usedT.add(t.o.i);
+    });
+    return out;
   }
 
   // 兵が足りずに攻められないとき、一番取りやすい攻め先を決めて、その手前の拠点に兵を集める
@@ -795,6 +826,22 @@ const Auto = (() => {
     // 出陣する武将はあらかじめ取っておく
     const armies = attacks.map(p => ({ p, army: p.army, troops: p.troops }));
     const reserved = new Set(armies.flatMap(a => a.army.map(x => x.i)));
+    // 猛将の出陣願い（兵が揃った強い武将は、自分から攻め込みたがる）
+    for (const bp of planBrave(br, attacks, reserved)) {
+      if (stopReq) return false;
+      await press(bp.c.i, 'mil', '[data-cmd=attack]');
+      await UI.talk(bp.brave, 'angry', `${bp.brave.name}「${line(bp.brave, 'braveAsk')}」\n<b>（${bp.c.name}の兵が揃った。${bp.t.name}への出陣を願い出ている）</b>`, facColor(bp.brave), { tag: '出陣願い' });
+      if (bp.restrain) {
+        await say('braveNo', { gen: bp.brave.name, target: bp.t.name });
+        bp.brave.loyalty = Math.max(0, bp.brave.loyalty - 3);
+        await UI.talk(bp.brave, 'angry', `${bp.brave.name}「${line(bp.brave, 'braveGrumble')}」`, facColor(bp.brave));
+        continue;
+      }
+      await say('braveOk', { gen: bp.brave.name, target: bp.t.name });
+      bp.isBrave = true;
+      armies.push({ p: bp, army: bp.army, troops: bp.troops });
+      bp.army.forEach(x => reserved.add(x.i));
+    }
     // 内政
     for (const c of Game.citiesOf(G.player)) {
       if (stopReq) return false;
@@ -836,7 +883,7 @@ const Auto = (() => {
       const { p } = a;
       if (p.c.owner !== G.player || p.t.owner === G.player || (p.t.owner !== null && Game.isAlly(G.player, p.t.owner))) continue;
       // 内政のあとの最新の状態でもう一度見積もる（攻め先の兵が増えていたら見送る）
-      const e = evalAttack(p.c, p.t, br);
+      const e = p.isBrave ? p : evalAttack(p.c, p.t, br);   // 猛将の出陣は軍師の見積もりを通さない
       if (!e) { await say('hold'); continue; }
       // 武将の合流
       if (e.moved && e.moved.length) {

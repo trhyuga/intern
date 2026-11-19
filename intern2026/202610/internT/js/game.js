@@ -587,9 +587,11 @@ const AI = {
       if (t.owner === null) score *= 1.3;
       if (score > bestScore) { bestScore = score; best = t; }
     });
-    const aggressive = Game.has(Game.lordOf(fi), '野心') ? 1.15 : 1.3;
+    // 強くて頭の良くない武将が上限まで兵を率いられるなら、攻め気が増す
+    const brave = gens.find(g => !g.isLord && ((g.war >= 85 && g.int <= 60) || (Game.has(g, '猪突') && g.war >= 80)) && c.troops * 0.8 >= Game.troopCap(g));
+    const aggressive = brave ? 1.0 : Game.has(Game.lordOf(fi), '野心') ? 1.15 : 1.3;
     if (!best || bestScore < aggressive) return null;
-    if (Math.random() < 0.25) return null; // いつも攻めるわけではない
+    if (!brave && Math.random() < 0.25) return null; // いつも攻めるわけではない
     // 出陣武将を選ぶ（最大5人、本拠の君主は残す場合あり）
     const sorted = gens.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
     const army = sorted.filter(g => !(g.isLord && c.i === f.capital && sorted.length > 2)).slice(0, 5);
