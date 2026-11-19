@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#140d08">
+<title>群雄天下</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;800&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- 起動（音を鳴らすために最初のタップが必要） -->
+  <section id="tap" class="screen show">
+    <div class="tap-inner">
+      <div class="tap-title">群雄天下</div>
+      <div class="tap-sub">― 三国英傑伝 ―</div>
+      <div class="tap-hint">画面をタップしてください</div>
+      <div class="tap-note">音が鳴ります</div>
+    </div>
+  </section>
+
+  <section id="opening" class="screen"><canvas id="opcv"></canvas><button class="skip">スキップ ▶</button></section>
+
+  <section id="title" class="screen">
+    <canvas id="titlecv"></canvas>
+    <div class="title-wrap">
+      <h1 class="logo"><span>群</span><span>雄</span><span>天</span><span>下</span></h1>
+      <div class="logo-sub">三国英傑伝</div>
+      <div class="title-menu">
+        <button class="btn big primary" data-act="new">新しく始める</button>
+        <button class="btn big" data-act="load">続きから</button>
+        <button class="btn big" data-act="howto">遊び方</button>
+        <button class="btn big" data-act="opening">オープニング</button>
+      </div>
+      <div class="title-foot">intern2026 / internT</div>
+    </div>
+  </section>
+
+  <section id="scen" class="screen paper">
+    <header class="hdr"><button class="back">‹ 戻る</button><h2>シナリオを選ぶ</h2></header>
+    <div class="scroll" id="scenList"></div>
+  </section>
+
+  <section id="lord" class="screen paper">
+    <header class="hdr"><button class="back">‹ 戻る</button><h2>君主を選ぶ</h2></header>
+    <div class="scroll" id="lordList"></div>
+  </section>
+
+  <section id="main" class="screen">
+    <header class="topbar">
+      <div class="tb-left"><div class="tb-date" id="tbDate"></div><div class="tb-fac" id="tbFac"></div></div>
+      <div class="tb-res" id="tbRes"></div>
+      <button class="tb-menu" id="btnMenu">☰</button>
+    </header>
+    <div class="mapwrap"><canvas id="mapcv"></canvas><div class="map-hint" id="mapHint"></div></div>
+    <nav class="bottombar">
+      <button data-nav="cities"><i>城</i>都市</button>
+      <button data-nav="gens"><i>将</i>武将</button>
+      <button data-nav="facs"><i>勢</i>勢力</button>
+      <button data-nav="log"><i>記</i>記録</button>
+      <button data-nav="end" class="end"><i>進</i>季節を進める</button>
+    </nav>
+  </section>
+
+  <section id="battle" class="screen"></section>
+  <section id="ending" class="screen"><canvas id="endcv"></canvas><div class="end-roll" id="endRoll"></div><button class="skip">スキップ ▶</button></section>
+
+  <!-- 下から出るシート -->
+  <div id="sheet" class="sheet"><div class="sheet-bg"></div><div class="sheet-body"><div class="sheet-grip"></div><div class="sheet-content"></div></div></div>
+  <!-- 会話 -->
+  <div id="talk" class="talk"></div>
+  <!-- 一騎討ち -->
+  <div id="duel" class="duel"></div>
+  <!-- 汎用モーダル -->
+  <div id="modal" class="modal"></div>
+  <div id="toast" class="toast"></div>
+</div>
+
+<script src="js/data_cities.js"></script>
+<script src="js/data_generals.js"></script>
+<script src="js/data_scenarios.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/portrait.js"></script>
+<script src="js/game.js"></script>
+<script src="js/mapview.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/cinema.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
