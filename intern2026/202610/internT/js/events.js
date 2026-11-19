@@ -136,8 +136,8 @@ const Events = (() => {
         return { title: '長坂の単騎駆け', gen: '趙雲', expr: 'angry', fac: f, text: '乱戦のなか、趙雲はただ一騎で敵中を駆け抜け、主君の幼子を救い出した。\n趙雲の魅力 +4、武力 +1、忠誠が最大に' }; } },
     { id: 'chibi', title: '赤壁の大火', chance: 0.5,
       cond: () => { const fc = facByLord('曹操'); if (fc < 0 || G.year < 208 || G.year > 210 || Game.citiesOf(fc).length < 12) return false;
-        return ['周瑜', '諸葛亮', '黄蓋'].some(n => { const f = facOf(n); return f >= 0 && f !== fc && Game.citiesOf(f).some(c => c.adj.some(a => G.cities[a].owner === fc)); }); },
-      run: () => { const fc = facByLord('曹操'); const hero = ['周瑜', '黄蓋', '諸葛亮'].find(n => facOf(n) >= 0 && facOf(n) !== fc); const fh = facOf(hero);
+        return ['周瑜', '諸葛亮', '黄蓋'].some(n => nearFac(n, fc, true)); },
+      run: () => { const fc = facByLord('曹操'); const hero = ['周瑜', '黄蓋', '諸葛亮'].find(n => nearFac(n, fc, true)); const fh = facOf(hero);
         const hit = Game.citiesOf(fc).filter(c => c.terrain === 'river' && c.adj.some(a => G.cities[a].owner === fh));
         const k = G.events.chained ? 0.5 : 0.65;
         hit.forEach(c => { c.troops = Math.round(c.troops * k); c.train = Math.max(0, c.train - 20); });
@@ -224,10 +224,14 @@ const Events = (() => {
 
   // ---------------- 特定の人物同士のイベント ----------------
   const same = (...ns) => { const f = facOf(ns[0]); return f >= 0 && ns.every(n => facOf(n) === f) ? f : -1; };
+  // 本人のいる都市どうしが隣り合っている（敵どうし）
+  const nearPerson = (n1, n2) => { const a = serving(n1), b = serving(n2); return !!(a && b && a.faction !== b.faction && !Game.isAlly(a.faction, b.faction) && G.cities[a.city].adj.includes(b.city)); };
+  // 本人のいる都市が、ある勢力の都市（river なら大河沿い）に隣り合っている
+  const nearFac = (n, fi, river) => { const a = serving(n); return !!(a && fi >= 0 && a.faction !== fi && G.cities[a.city].adj.some(x => G.cities[x].owner === fi && (!river || G.cities[x].terrain === 'river'))); };
   const adjFac = (fa, fb) => fa >= 0 && fb >= 0 && fa !== fb && Game.citiesOf(fa).some(c => c.adj.some(a => G.cities[a].owner === fb));
   const PAIR_EVENTS = [
     { id: 'lianhuan', title: '連環の計', chance: 0.5,
-      cond: () => { const fc = facByLord('曹操'), fp = facOf('龐統'); return fc >= 0 && fp >= 0 && fp !== fc && G.year >= 207 && G.year <= 210 && Game.citiesOf(fc).length >= 12 && adjFac(fp, fc) && !(G.events.hist && G.events.hist.chibi); },
+      cond: () => { const fc = facByLord('曹操'), fp = facOf('龐統'); return fc >= 0 && fp >= 0 && fp !== fc && G.year >= 207 && G.year <= 210 && Game.citiesOf(fc).length >= 12 && nearFac('龐統', fc, true) && !(G.events.hist && G.events.hist.chibi); },
       run: () => { const fc = facByLord('曹操'), fp = facOf('龐統'); G.events.chained = true;
         Game.citiesOf(fc).filter(c => c.terrain === 'river' && c.adj.some(a => G.cities[a].owner === fp)).forEach(c => c.train = Math.max(0, c.train - 10));
         return { title: '連環の計', gen: '龐統', expr: 'normal', fac: fp === G.player ? fp : fc, big: true, text: '「船を鎖でつなげば、揺れに慣れぬ北の兵も陸のように戦えましょう」\n龐統の献策に、曹操は大船団を鎖でつないだ。……それが火に弱いとも知らずに。\n長江沿いの曹操軍の訓練 -10（赤壁の大火が起きると被害が大きくなる）' }; } },
@@ -260,15 +264,15 @@ const Events = (() => {
         Game.gensIn(c.i, f).forEach(g => { g.city = G.factions[f].capital; });
         return { title: '煮酒論英雄', gen: '劉備', expr: 'normal', fac: f, big: true, text: text0 + `その後、劉備は${c.name}で曹操に背き、独立した` }; } },
     { id: 'jisheng', title: '既生瑜、何生亮', chance: 0.3,
-      cond: () => { const fz = facOf('周瑜'), fk = facOf('諸葛亮'); return adjFac(fz, fk); },
+      cond: () => nearPerson('周瑜', '諸葛亮'),
       run: () => { const z = G_('周瑜'); up(z, 'int', 1); z.loyalty = Math.min(100, z.loyalty + 5);
         return { title: '既生瑜、何生亮', gen: '周瑜', expr: 'angry', fac: z.faction === G.player ? z.faction : facOf('諸葛亮'), text: '周瑜「天はなぜ、この周瑜を生みながら、諸葛亮まで生んだのか！」\n好敵手の存在が、周瑜をさらに奮い立たせた。周瑜の知力 +1' }; } },
     { id: 'rival', title: '宿命の好敵手', chance: 0.4,
-      cond: () => adjFac(facOf('諸葛亮'), facOf('司馬懿')),
+      cond: () => nearPerson('諸葛亮', '司馬懿'),
       run: () => { ['諸葛亮', '司馬懿'].forEach(n => { const g = G_(n); up(g, 'lead', 1); up(g, 'int', 1); });
         return { title: '宿命の好敵手', gen: '司馬懿', expr: 'normal', fac: facOf('司馬懿') === G.player ? G.player : facOf('諸葛亮'), big: true, text: '司馬懿「孔明……ようやく相まみえることになったか」\n天下の二大軍師が国境を挟んで向かい合った。\n諸葛亮・司馬懿の統率 +1、知力 +1' }; } },
     { id: 'baiyi', title: '白衣渡江', chance: 0.3,
-      cond: () => { const gy = serving('関羽'), lm = serving('呂蒙'); return gy && lm && gy.faction !== lm.faction && !Game.isAlly(gy.faction, lm.faction) && G.cities[gy.city].adj.some(a => G.cities[a].owner === lm.faction); },
+      cond: () => nearPerson('関羽', '呂蒙'),
       run: () => { const gy = G_('関羽'), lm = G_('呂蒙'), c = G.cities[gy.city]; c.loyal = Math.max(0, c.loyal - 20); c.def = Math.round(c.def * 0.8);
         return { title: '白衣渡江', gen: '呂蒙', expr: 'normal', fac: gy.faction === G.player ? gy.faction : lm.faction, big: true, text: `呂蒙は兵に商人の白い衣を着せて川を渡り、関羽の守る${c.name}の見張りを次々と押さえた。\n${c.name}の民忠 -20、城壁 -20%` }; } },
     { id: 'marriage', title: '政略結婚', chance: 0.4,
@@ -278,6 +282,20 @@ const Events = (() => {
   ];
   HIST.push(...PAIR_EVENTS);
 
+  // 同じ都市に集まると起きやすいイベント
+  const MEET = [
+    { id: 'taoyuan', who: ['劉備', '関羽', '張飛'] }, { id: 'shuiyu', who: ['劉備', '諸葛亮'] }, { id: 'wolong', who: ['諸葛亮', '龐統'] },
+    { id: 'duanjin', who: ['孫策', '周瑜'] }, { id: 'chitu', who: ['曹操', '関羽'] },
+  ];
+  // 本人が敵の隣に立つと起きるイベント（mine 側の人物を動かす。foe は人物名か、'@勢力の君主名'。river は大河沿いの都市に限る）
+  const FACE = [
+    { id: 'jisheng', mine: '周瑜', foe: '諸葛亮' }, { id: 'jisheng', mine: '諸葛亮', foe: '周瑜' },
+    { id: 'rival', mine: '諸葛亮', foe: '司馬懿' }, { id: 'rival', mine: '司馬懿', foe: '諸葛亮' },
+    { id: 'baiyi', mine: '呂蒙', foe: '関羽' },
+    { id: 'lianhuan', mine: '龐統', foe: '@曹操', river: true, year: [207, 210] }, { id: 'chibi', mine: '周瑜', foe: '@曹操', river: true, year: [208, 210] }, { id: 'chibi', mine: '黄蓋', foe: '@曹操', river: true, year: [208, 210] },
+    { id: 'liaolai', mine: '張遼', foe: '@孫権', year: [215, 999] },
+  ];
+
   function histEvents() {
     G.events.hist = G.events.hist || {};
     const ev = [];
@@ -285,7 +303,10 @@ const Events = (() => {
       if (!h.repeat && G.events.hist[h.id]) continue;
       let ok = false;
       try { ok = h.cond(); } catch (e) { ok = false; }
-      if (!ok || Math.random() > h.chance) continue;
+      let ch = h.chance;
+      const meet = MEET.find(m => m.id === h.id);
+      if (meet) { const gs = meet.who.map(serving); ch *= gs.every(g => g && g.city === gs[0].city) ? 1.6 : 0.35; }   // 同じ都市に集まっていると起きやすい
+      if (!ok || Math.random() > Math.min(1, ch)) continue;
       const r = h.run();
       if (!h.repeat) G.events.hist[h.id] = true;
       if (!r) continue;
@@ -302,6 +323,7 @@ const Events = (() => {
   return {
     run() { return [...histEvents(), ...randomEvents()]; },
     counts: () => ({ city: CITY.length, gen: GEN.length, hist: HIST.length }),
+    MEET, FACE,
     _HIST: HIST,
   };
 })();
