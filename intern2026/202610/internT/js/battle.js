@@ -59,7 +59,8 @@ const Battle = (() => {
       B = { plan, atkFi: plan.atkFi, defFi, from, to, tiles: genTerrain(to), units: [], day: 1, weather: 'sun', food: plan.food,
         playerSide: plan.atkFi === G.player ? 'atk' : 'def', gateHP: to.def * 2 + 300, gateMax: to.def * 2 + 300, log: [], sel: null, mode: 'idle', reach: null, targets: null, over: false,
         bondAtk: Game.bondOf(atkGens.map(g => g.name)), bondDef: Game.bondOf(defGens.map(g => g.name)),
-        watch: !!(opts && opts.watch), smart: 0.5 };
+        watch: !!(opts && opts.watch), smart: 0.5,
+        buff: { atk: { atk: 1, guard: 1, days: 0 }, def: { atk: 1, guard: 1, days: 0 } } };
       if (B.watch) { const sg = Auto.strategist(); B.smart = sg ? Auto.brain(sg).q : 0.5; }
       // 攻め手の配置（下段）
       let left = plan.troops;
@@ -350,6 +351,7 @@ const Battle = (() => {
     if (ranged) k *= B.weather === 'rain' ? 0.5 : 0.7;
     if (B.weather === 'rain') k *= 0.9;
     if (B.rally && B.rally[a.side] > 0) k *= 1.3;   // 背水の陣
+    if (B.buff) { k *= B.buff[a.side].atk; k *= B.buff[d.side].guard; }   // 必殺技の効果
     return Math.max(30, Math.round(k * rnd(0.85, 1.15)));
   }
 
@@ -398,6 +400,17 @@ const Battle = (() => {
     }
     const d = unitAt(r, c);
     if (!d) return;
+    // 華容道：関羽は追い詰められた曹操を見逃す（ゲーム中1回）
+    if (a.g.name === '関羽' && d.g.name === '曹操' && d.troops < d.maxTroops * 0.35 && !(G.events && G.events.huarong)) {
+      G.events.huarong = true;
+      if (!auto) {
+        await UI.talk(d.g, 'sad', '曹操「雲長、かつての情けを覚えておるか……」', G.factions[d.fi].color, { tag: '華容道' });
+        await UI.talk(a.g, 'sad', '関羽「……行け。これで恩は返した」', G.factions[a.fi].color, { tag: '華容道' });
+      }
+      d.alive = false; d.status = 'retreat'; a.acted = true;
+      addLog('華容道：関羽は曹操を見逃した');
+      return;
+    }
     const ranged = dist(a, d) > 1;
     if (a.gi >= 0 && Math.random() < (a.side === B.playerSide ? 0.45 : 0.3)) bubble(a, line(a.g, 'attack'));
     const dmg = calcDamage(a, d, ranged);
@@ -472,6 +485,138 @@ const Battle = (() => {
     await checkRout(d, a);
   }
 
+  // ---------- 必殺技 ----------
+  function cutin(u, sk) {
+    if (auto) return Promise.resolve();
+    const el = document.getElementById('cutin');
+    const col = u.fi === null ? '#777' : G.factions[u.fi].color;
+    el.innerHTML = `<div class="ci-band" style="--c:${col}"><img src="${Portrait.get(u.g, 'angry', col)}"><div class="ci-txt"><div class="ci-who">${u.g.name}</div><div class="ci-name">${sk.name}</div><div class="ci-line">「${sk.line}」</div></div></div>`;
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    Sound.se('gong'); setTimeout(() => Sound.se('clash'), 250);
+    return sleep(1700).then(() => el.classList.remove('show'));
+  }
+  // 目標を選ぶ必要がある技なら、その候補マス。不要なら null
+  function skillTargets(u, sk) {
+    const foes = B.units.filter(o => o.alive && o.side !== u.side);
+    switch (sk.type) {
+      case 'strike': case 'sweep': case 'dash': return sk.type === 'sweep' ? null : foes.filter(o => dist(o, u) === 1).map(o => [o.r, o.c]);
+      case 'ranged': return foes.filter(o => dist(o, u) <= sk.range).map(o => [o.r, o.c]);
+      case 'fire': case 'chain': return foes.filter(o => dist(o, u) <= sk.range).map(o => [o.r, o.c]);
+      default: return null;
+    }
+  }
+  function skillReady(u) {
+    const sk = SKILLS[u.g.name]; if (!sk || u.skillUsed) return false;
+    const foes = B.units.filter(o => o.alive && o.side !== u.side);
+    if (sk.type === 'sweep') return foes.some(o => dist(o, u) === 1);
+    if (sk.type === 'roar' || sk.type === 'confuse') return foes.some(o => dist(o, u) <= (sk.range || 2));
+    if ((sk.type === 'fire' || sk.type === 'chain') && B.weather === 'rain') return false;
+    const tg = skillTargets(u, sk);
+    return tg ? tg.length > 0 : true;
+  }
+  async function aiSkill(u) {
+    const sk = SKILLS[u.g.name];
+    if (!sk || u.gi < 0 || u.skillUsed || u.acted || !skillReady(u)) return false;
+    const foes = B.units.filter(o => o.alive && o.side !== u.side);
+    const allies = B.units.filter(o => o.alive && o.side === u.side);
+    // 使いどころ：攻撃系は敵が隣・射程に、範囲系は2部隊以上、強化は戦いが始まってから、回復は兵が減ってから
+    let p = 0.55;
+    if (sk.type === 'roar' || sk.type === 'confuse') p = foes.filter(o => dist(o, u) <= (sk.range || 2)).length >= 2 || sk.target ? 0.6 : 0.2;
+    if (sk.type === 'buff') p = foes.some(o => allies.some(a => dist(a, o) <= 2)) ? 0.55 : 0;
+    if (sk.type === 'heal') p = allies.reduce((s2, a) => s2 + a.troops, 0) < allies.reduce((s2, a) => s2 + a.maxTroops, 0) * 0.7 ? 0.7 : 0;
+    if (sk.type === 'sweep') p = foes.filter(o => dist(o, u) === 1).length >= 2 ? 0.8 : 0.35;
+    if (B.watch && u.side === B.playerSide) p = Math.min(0.9, p + 0.15 * B.smart);
+    if (Math.random() >= p) return false;
+    let target = null;
+    const tg = skillTargets(u, sk);
+    if (tg) {
+      const cands = tg.map(([r, c]) => unitAt(r, c)).filter(Boolean);
+      if (!cands.length) return false;
+      cands.sort((a, b) => (b.commander ? 5000 : 0) + b.troops - (a.commander ? 5000 : 0) - a.troops);
+      target = cands[0];
+    }
+    await useSkill(u, target);
+    return true;
+  }
+  async function useSkill(u, target) {
+    const sk = SKILLS[u.g.name];
+    u.skillUsed = true; u.acted = true;
+    await cutin(u, sk);
+    addLog(`${u.g.name}の必殺技「${sk.name}」！`);
+    const foes = () => B.units.filter(o => o.alive && o.side !== u.side);
+    const hit = async (d, mult) => {
+      const dmg = Math.round(calcDamage(u, d, false) * mult);
+      d.troops = Math.max(0, d.troops - dmg); d.morale = Math.max(0, d.morale - 12); d.shake = true; setTimeout(() => d.shake = false, 350);
+      slash(d.r, d.c); addFloater(d.r, d.c, '-' + dmg, '#ffd23a'); Sound.se('hit');
+      await sleep(260);
+      await checkRout(d, u);
+    };
+    switch (sk.type) {
+      case 'strike': case 'dash':
+        if (target) await hit(target, sk.mult);
+        if (target && sk.extra === 'confuse' && target.alive) { target.confused = 2; addFloater(target.r, target.c, '混乱', '#ffd23a'); }
+        if (sk.extra === 'fear') foes().filter(o => dist(o, u) <= 2).forEach(o => { o.morale = Math.max(0, o.morale - 15); });
+        if (sk.extra === 'rally') B.units.filter(o => o.alive && o.side === u.side).forEach(o => o.morale = Math.min(100, o.morale + 15));
+        if (sk.extra === 'self') u.morale = 100;
+        if (sk.type === 'dash') { u.acted = false; addLog(`${u.g.name}はさらに駆ける！`); if (B.watch || u.side !== B.playerSide || auto) { await sleep(200); if (u.alive && !B.over) await aiUnit(u, false); } }
+        break;
+      case 'sweep':
+        for (const d of foes().filter(o => dist(o, u) === 1)) await hit(d, sk.mult);
+        break;
+      case 'ranged':
+        if (target) { arrow(u, target); Sound.se('arrow'); await sleep(300); await hit(target, sk.mult); }
+        break;
+      case 'roar':
+        foes().filter(o => dist(o, u) <= sk.range).forEach(o => { o.morale = Math.max(0, o.morale - sk.morale); if (Math.random() < sk.conf) { o.confused = 2; addFloater(o.r, o.c, '混乱', '#ffd23a'); } else addFloater(o.r, o.c, '士気↓', '#aaf'); });
+        for (const o of foes()) await checkRout(o, u);
+        break;
+      case 'confuse': {
+        let list = foes().filter(o => dist(o, u) <= sk.range);
+        if (sk.target === 'commander') { const c = foes().find(o => o.commander); list = c ? [c] : list; }
+        list.forEach(o => { if (sk.target === 'commander' || Math.random() < sk.prob) { o.confused = 2; addFloater(o.r, o.c, '混乱', '#ffd23a'); } if (sk.morale) o.morale = Math.max(0, o.morale - sk.morale); });
+        if (sk.guard) { B.buff[u.side].guard = sk.guard; B.buff[u.side].days = sk.days; addLog('味方の守りが固まった（2日間）'); }
+        break;
+      }
+      case 'fire': {
+        if (!target) break;
+        Sound.se('fire');
+        for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) { const r = target.r + dr, c = target.c + dc; if (inb(r, c) && !['water', 'wall', 'gate', 'keep'].includes(B.tiles[r][c].t)) B.tiles[r][c].fire = 2; }
+        for (const o of foes().filter(o => Math.abs(o.r - target.r) <= 1 && Math.abs(o.c - target.c) <= 1)) { const dmg = Math.round(o.troops * sk.dmg + 300); o.troops = Math.max(0, o.troops - dmg); o.morale = Math.max(0, o.morale - 15); addFloater(o.r, o.c, '火-' + dmg, '#ffb02a'); await checkRout(o, u); }
+        break;
+      }
+      case 'chain': {
+        if (!target) break;
+        // 隣り合ってつながった敵部隊をすべてたどる
+        const seen = new Set([target]), q = [target];
+        while (q.length) { const x = q.shift(); foes().forEach(o => { if (!seen.has(o) && dist(o, x) === 1) { seen.add(o); q.push(o); } }); }
+        Sound.se('fire');
+        for (const o of seen) { if (!['water'].includes(B.tiles[o.r][o.c].t)) B.tiles[o.r][o.c].fire = 2; const dmg = Math.round(o.troops * sk.dmg + 250); o.troops = Math.max(0, o.troops - dmg); o.morale = Math.max(0, o.morale - 12); addFloater(o.r, o.c, '火-' + dmg, '#ffb02a'); await sleep(150); await checkRout(o, u); }
+        addLog(`炎は${seen.size}部隊に燃え広がった！`);
+        break;
+      }
+      case 'buff':
+        B.buff[u.side].atk = sk.atk || 1; B.buff[u.side].guard = sk.guard || 1; B.buff[u.side].days = sk.days;
+        B.units.filter(o => o.alive && o.side === u.side).forEach(o => { o.morale = Math.min(100, o.morale + (sk.morale || 0)); addFloater(o.r, o.c, sk.atk ? '攻↑' : '守↑', '#7fe0ff'); });
+        break;
+      case 'heal':
+        B.units.filter(o => o.alive && o.side === u.side).forEach(o => { const v = Math.round(o.maxTroops * sk.heal); o.troops = Math.min(o.maxTroops, o.troops + v); o.morale = Math.min(100, o.morale + sk.morale); addFloater(o.r, o.c, '+' + v, '#7fff9a'); });
+        break;
+    }
+    updateHUD();
+    await sleep(300);
+  }
+
+  // ---------- 特定の人物同士 ----------
+  function pairOf(a, d) { return PAIRS.find(p => (p.who[0] === a.g.name && p.who[1] === d.g.name) || (p.who[1] === a.g.name && p.who[0] === d.g.name)); }
+  async function pairTalk(p, a) {
+    if (auto) return;
+    for (const l of p.lines) {
+      const nm = l.split('「')[0];
+      const u = B.units.find(x => x.g.name === nm);
+      await UI.talk(u ? u.g : null, 'angry', l, u && u.fi !== null ? G.factions[u.fi].color : undefined, { tag: p.title });
+    }
+  }
+
   // ---------- 一騎打ち ----------
   function willAcceptDuel(d, a) {
     if (d.gi < 0) return false;
@@ -486,6 +631,35 @@ const Battle = (() => {
   }
   async function doDuel(a, d) {
     a.acted = true;
+    // 典韋の護衛：主君（曹操）への一騎討ちを引き受ける
+    if (d.g.name === '曹操') { const dw = B.units.find(x => x.alive && x.side === d.side && x.g.name === '典韋' && dist(x, a) <= 2); if (dw) { if (!auto) await UI.talk(dw.g, 'angry', '典韋「殿には指一本触れさせん！ 相手はこの俺だ！」', G.factions[dw.fi].color, { tag: '護衛' }); d = dw; } }
+    // 三英戦呂布：劉備・関羽・張飛のうち2人以上がいると、三人がかりで呂布を退ける
+    const lu = a.g.name === '呂布' ? a : d.g.name === '呂布' ? d : null;
+    if (lu) {
+      const other = lu === a ? d : a;
+      const trio = B.units.filter(x => x.alive && x.side === other.side && ['劉備', '関羽', '張飛'].includes(x.g.name));
+      if (trio.length >= 2 && trio.includes(other) && !B.trioDone) {
+        B.trioDone = true;
+        if (!auto) {
+          await UI.talk(other.g, 'angry', `${trio.map(x => x.g.name).join('・')}「三人でかかれ！ 呂布を討て！」`, G.factions[other.fi].color, { tag: '三英戦呂布' });
+          await UI.talk(lu.g, 'shock', '呂布「三人がかりとは……！ ちっ、ここは退く！」', G.factions[lu.fi] ? G.factions[lu.fi].color : '#777', { tag: '三英戦呂布' });
+        }
+        lu.alive = false; lu.status = 'fled'; lu.troops = Math.round(lu.troops * 0.7);
+        trio.forEach(x => { x.morale = Math.min(100, x.morale + 25); if (x.gi >= 0 && x.fi === G.player) G.gens[x.gi].duels++; });
+        B.units.filter(x => x.alive && x.side === lu.side).forEach(x => x.morale = Math.max(0, x.morale - 15));
+        addLog('三英戦呂布！ 呂布は三人の猛攻に退いた');
+        return;
+      }
+    }
+    const pair = pairOf(a, d);
+    if (pair && pair.kind === 'draw') {
+      await pairTalk(pair, a);
+      a.morale = Math.min(100, a.morale + 20); d.morale = Math.min(100, d.morale + 20);
+      if (pair.respect) [a, d].forEach(x => { if (x.gi >= 0) G.gens[x.gi].respect = (x === a ? d : a).g.name; });
+      addLog(`${pair.title}：${a.g.name}と${d.g.name}の一騎打ちは決着がつかなかった`);
+      return;
+    }
+    if (pair && pair.kind === 'normal') await pairTalk(pair, a);
     if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? G.factions[a.fi].color : '#777', { tag: '一騎討ち' });
     const accept = willAcceptDuel(d, a);
     if (!accept) {
@@ -497,6 +671,7 @@ const Battle = (() => {
     }
     const res = auto ? Duel.quick(a.g, d.g) : await Duel.run(a, d, B.watch ? null : a.side === B.playerSide ? 'a' : d.side === B.playerSide ? 'd' : null, B.watch);
     Sound.bgm('battle');
+    if (pair && pair.kind === 'spare') { const wn = (res.winner === 'a' ? a : d).g.name; await pairTalk(pair.winLines ? Object.assign({}, pair, { lines: pair.winLines[wn] || [] }) : pair, a); res.outcome = 'fled'; const loser = res.winner === 'a' ? d : a; if (loser.gi >= 0) { const lg = G.gens[loser.gi]; lg.loyalty = Math.max(0, lg.loyalty - 15); lg.respect = (res.winner === 'a' ? a : d).g.name; } }
     const win = res.winner === 'a' ? a : d, lose = res.winner === 'a' ? d : a;
     win.morale = Math.min(100, win.morale + 20);
     B.units.filter(u => u.alive && u.side === lose.side).forEach(u => u.morale = Math.max(0, u.morale - 10));
@@ -519,7 +694,7 @@ const Battle = (() => {
     B.rally = B.rally || { atk: 0, def: 0 };
     B.reinf = B.reinf || { atk: 0, def: 0 };
     B.rallied = B.rallied || { atk: false, def: false };
-    ['atk', 'def'].forEach(sd => { if (B.rally[sd] > 0) B.rally[sd]--; });
+    ['atk', 'def'].forEach(sd => { if (B.rally[sd] > 0) B.rally[sd]--; const bf = B.buff[sd]; if (bf.days > 0 && --bf.days === 0) { bf.atk = 1; bf.guard = 1; } });
     const tot = sd => B.units.filter(u => u.alive && u.side === sd).reduce((s2, u) => s2 + u.troops, 0);
     const fname = sd => { const fi = sd === 'atk' ? B.atkFi : B.defFi; return fi === null ? '守備隊' : G.factions[fi].name + '軍'; };
     // 背水の陣：兵が相手の4割を切った側が、一度だけ奮い立つ
@@ -667,6 +842,7 @@ const Battle = (() => {
       { label: '火計', disabled: !pt.length || u.gi < 0, fn: () => choose(pt, (r, c) => doPlot(u, 'fire', unitAt(r, c))) },
       { label: '混乱', disabled: !pt.length || u.gi < 0, fn: () => choose(pt, (r, c) => doPlot(u, 'confuse', unitAt(r, c))) },
       { label: '一騎討ち', disabled: !dt.length, fn: () => choose(dt, (r, c) => doDuel(u, unitAt(r, c))) },
+      ...(SKILLS[u.g.name] && u.gi >= 0 ? [{ label: `必殺：${SKILLS[u.g.name].name}`, cls: 'gold', disabled: u.skillUsed || !skillReady(u), fn: () => { const sk = SKILLS[u.g.name], tg = skillTargets(u, sk); if (tg) choose(tg, (r, c) => useSkill(u, unitAt(r, c))); else { B.mode = 'busy'; useSkill(u, null).then(afterAct); } } }] : []),
       { label: '待機', fn: () => { u.acted = true; afterAct(); } },
       { label: '取消', fn: async () => { if (u.prev) { u.r = u.prev[0]; u.c = u.prev[1]; u.x = u.c; u.y = u.r; } B.sel = null; B.mode = 'idle'; showInfo(null); idleActions(); } },
     ]);
@@ -745,9 +921,14 @@ const Battle = (() => {
     let p = (wise ? 0.55 : 0.4) + (u.g.int - 75) / 100;
     if (wmine) p += 0.15 * B.smart;
     if (after) p += 0.15;
+    // 斬りかかれる敵がいるなら、計略より攻撃を優先する
+    const canHit = after ? attackTargets(u).some(([r, c]) => unitAt(r, c)) : moveRange(u).some(k => { const [r, c] = k.split(',').map(Number); return attackTargets(u, r, c).some(([r2, c2]) => unitAt(r2, c2)); });
+    if (canHit) p *= 0.3;
+    p *= Math.pow(0.6, u.plots || 0);   // 同じ武将の計略は使うほど出にくく
     if (Math.random() >= clamp(p, 0.1, 0.85)) return false;
-    const inRange = foes.filter(o => o.alive && dist(o, u) <= 2);
+    const inRange = foes.filter(o => o.alive && dist(o, u) <= 2 && !o.confused);
     if (!inRange.length) return false;
+    u.plots = (u.plots || 0) + 1;
     // 火計は森・平地の敵に。雨なら混乱。総大将や大部隊を優先
     const fireOk = B.weather !== 'rain';
     const fireT = inRange.filter(o => ['forest', 'plain', 'road'].includes(B.tiles[o.r][o.c].t)).sort((a, b) => (b.troops + (B.tiles[b.r][b.c].t === 'forest' ? 3000 : 0)) - (a.troops + (B.tiles[a.r][a.c].t === 'forest' ? 3000 : 0)))[0];
@@ -762,6 +943,8 @@ const Battle = (() => {
     if (!foes.length) { u.acted = true; return; }
     showInfo(u);
     const wmine = B.watch && u.side === B.playerSide;
+    // 必殺技（好機なら使う）
+    if (!rogue && await aiSkill(u)) return;
     // 一騎打ち（移動の前にも後にも考える）
     if (!rogue || Game.has(u.g, '猪突')) { if (await tryDuel(u, wmine)) return; }
     // 計略
@@ -802,7 +985,8 @@ const Battle = (() => {
       if (score > bestScore) { bestScore = score; best = [r, c]; }
     });
     if (best && (best[0] !== u.r || best[1] !== u.c)) await animateMove(u, best[0], best[1]);
-    // 着いた先で、一騎打ちや計略の好機があれば狙う
+    // 着いた先で、必殺技・一騎打ち・計略の好機があれば狙う
+    if (!rogue && await aiSkill(u)) return;
     if (await tryDuel(u, wmine)) return;
     if (!rogue && attackTargets(u).filter(([r, c]) => unitAt(r, c)).length === 0 && await tryPlot(u, wmine, foes, true)) return;
     const tg = attackTargets(u);
@@ -849,7 +1033,7 @@ const Battle = (() => {
     return true;
   }
 
-  return { start, get watching() { return !!(B && B.watch && !B.over); } };
+  return { start, get watching() { return !!(B && B.watch && !B.over); }, get _B() { return B; }, _duel: (a, d) => doDuel(a, d), _attack: (a, r, c) => doAttack(a, r, c) };
 })();
 
 // ============================================================
