@@ -624,17 +624,37 @@ const Battle = (() => {
   }
 
   // ---------- 一騎打ち ----------
+  // 戦況の見通し（-1：ジリ貧で負けそう 〜 +1：このまま押し切れそう）
+  function outlook(side) {
+    const sum = sd => B.units.filter(u => u.alive && u.side === sd).reduce((t, u) => t + u.troops * (0.5 + u.morale / 200), 0);
+    const mine = sum(side), foe = sum(side === 'atk' ? 'def' : 'atk');
+    const r = Math.log2(Math.max(0.1, mine) / Math.max(0.1, foe)) * 0.8;
+    const prog = B.day / CONFIG.BATTLE_DAYS, gateBroken = B.tiles[2][4].t !== 'gate';
+    const v = side === 'atk' ? r - Math.max(0, prog - 0.5) * 1.4 + (gateBroken ? 0.2 : 0) - (B.food < 1 ? 0.3 : 0)
+                             : r + prog * 0.6 - (gateBroken ? 0.3 : 0);
+    return clamp(v, -1, 1);
+  }
+  // 一騎討ちを受けるか：負けそうなら一発逆転を狙って受け、勝てそうなら無理に受けない
   function willAcceptDuel(d, a) {
     if (d.gi < 0) return false;
-    // 総大将は討たれると負け。軍師が止める（賢いほど止める。相手が同格以上のとき）
-    if (d.commander && a.g.war >= d.g.war - 4) {
-      const smart = (B.watch && d.side === B.playerSide) ? B.smart : 0.35;
-      const hot = Game.has(d.g, '剛勇') || Game.has(d.g, '猪突');
-      if (Math.random() < (0.45 + 0.5 * smart) * (hot ? 0.5 : 1)) { d._held = true; return false; }
+    const adv = outlook(d.side), diff = (d.g.war - a.g.war) / 60;
+    const hot = Game.has(d.g, '剛勇') || Game.has(d.g, '猪突');
+    const heroes = d.g.war >= 85 && a.g.war >= 85;   // 豪傑同士は引き合う
+    // 総大将は討たれると負け。基本は受けない。ジリ貧で負けが見えた時だけ、賭けに出る
+    if (d.commander) {
+      const line0 = hot ? -0.3 : -0.5;
+      if (adv > line0) { d._held = true; return false; }
+      const ok = Math.random() < clamp(0.3 + (line0 - adv) * 0.6 + diff + (hot ? 0.15 : 0), 0.05, 0.9);
+      if (ok) d._desperate = true; else d._held = true;
+      return ok;
     }
-    if (Game.has(d.g, '剛勇')) return true;
-    if (Game.has(d.g, '臆病') || Game.has(d.g, '慎重')) return Math.random() < 0.35 + (d.g.war - a.g.war) / 80;
-    return Math.random() < 0.78 + (d.g.war - a.g.war) / 80 + (d.g.war >= 85 ? 0.15 : 0);   // 挑まれて逃げるのは武人の恥
+    if (Game.has(d.g, '猪突') || heroes) return Math.random() < 0.9;
+    let p = 0.45 - adv * 0.35 + diff;
+    if (Game.has(d.g, '剛勇')) p += 0.25;
+    if (Game.has(d.g, '臆病') || Game.has(d.g, '慎重')) p -= 0.2;
+    const ok = Math.random() < clamp(p, 0.05, 0.95);
+    if (!ok && adv > 0.3) d._winning = true;
+    return ok;
   }
   async function doDuel(a, d) {
     a.acted = true;
@@ -670,12 +690,13 @@ const Battle = (() => {
     if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? G.factions[a.fi].color : '#777', { tag: '一騎討ち' });
     const accept = willAcceptDuel(d, a);
     if (!accept) {
-      if (!auto) await UI.talk(d.g, 'normal', d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
-      d._held = false;
+      if (!auto) await UI.talk(d.g, 'normal', d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : d._winning ? `${d.g.name}「${pick(['勝ち戦で、貴様の遊びに付き合う義理はない', 'ふん、焦っておるな。その手には乗らん', 'このまま押し潰せば済むこと。相手にするまでもない'])}」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
+      d._held = false; d._winning = false;
       d.morale = Math.max(0, d.morale - 8); a.morale = Math.min(100, a.morale + 5);
       addLog(`${d.g.name}は一騎打ちを避けた（士気が下がった）`);
       return;
     }
+    if (d._desperate) { d._desperate = false; if (!auto) await UI.talk(d.g, 'angry', `${d.g.name}「${pick(['このままではジリ貧……ならば、この一戦に賭ける！', '退いても先はない。よかろう、受けて立つ！', '大将自ら出るしかあるまい……！'])}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777', { tag: '総大将出陣' }); addLog(`総大将 ${d.g.name}が、劣勢を覆すべく一騎打ちに応じた`); }
     const res = auto ? Duel.quick(a.g, d.g) : await Duel.run(a, d, B.watch ? null : a.side === B.playerSide ? 'a' : d.side === B.playerSide ? 'd' : null, B.watch);
     Sound.bgm('battle');
     if (pair && pair.kind === 'spare') { const wn = (res.winner === 'a' ? a : d).g.name; await pairTalk(pair.winLines ? Object.assign({}, pair, { lines: pair.winLines[wn] || [] }) : pair, a); res.outcome = 'fled'; const loser = res.winner === 'a' ? d : a; if (loser.gi >= 0) { const lg = G.gens[loser.gi]; lg.loyalty = Math.max(0, lg.loyalty - 15); lg.respect = (res.winner === 'a' ? a : d).g.name; } }
