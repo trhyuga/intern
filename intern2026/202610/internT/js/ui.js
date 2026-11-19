@@ -309,7 +309,8 @@ const App = {
       const g = G.gens[gi];
       const r = Game.doCommand(cmd, g, c);
       if (r.ok) g.acted = true;
-      Sound.se(r.ok ? 'ok' : 'ng');
+      Sound.se(r.ok ? ({ farm: 'farm', comm: 'coin', wall: 'build', alms: 'alms', draft: 'draft', train: 'train' }[cmd] || 'ok') : 'ng');
+      if (r.ok && r.grade === 'great') setTimeout(() => Sound.se('great'), 380);
       await UI.talk(g, r.ok ? r.expr : 'sad', `${g.name}「${r.ok ? line(g, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd) : line(g, 'fail')}」\n<b>${r.msg}</b>`);
       App.refresh(); return App.openCity(c.i);
     }
@@ -383,7 +384,7 @@ const App = {
       await UI.talk(g, 'sad', msg, undefined, { tag: '三顧の礼' });
       return;
     }
-    if (r.ok) { Sound.se('win'); await UI.talk(t, 'happy', `${t.name}「${line(t, 'join')}」\n<b>${t.name}が仲間になった！</b>`, facColor(t)); Game.log(`${t.name}が${G.factions[G.player].name}軍に加わった。`); }
+    if (r.ok) { Sound.se('join'); await UI.talk(t, 'happy', `${t.name}「${line(t, 'join')}」\n<b>${t.name}が仲間になった！</b>`, facColor(t)); Game.log(`${t.name}が${G.factions[G.player].name}軍に加わった。`); }
     else { Sound.se('ng'); await UI.talk(t, 'normal', `${t.name}「${line(t, 'refuse')}」\n<b>登用に失敗した</b>`, '#6a5a4a'); }
   },
 
@@ -647,7 +648,7 @@ const App = {
       if (act === 'rec') {
         const lord = Game.lordOf(G.player);
         const r = Game.tryRecruit(lord, g, true);
-        if (r.ok) { g.city = city.owner === G.player ? city.i : G.factions[G.player].capital; Sound.se('win'); await UI.talk(g, 'happy', `${g.name}「${line(g, 'join')}」\n<b>${g.name}が配下に加わった！</b>`); }
+        if (r.ok) { g.city = city.owner === G.player ? city.i : G.factions[G.player].capital; Sound.se('join'); await UI.talk(g, 'happy', `${g.name}「${line(g, 'join')}」\n<b>${g.name}が配下に加わった！</b>`); }
         else { Sound.se('ng'); await UI.talk(g, 'angry', `${g.name}「${line(g, 'refuse')}」\n<b>登用を拒まれた。${g.name}は去っていった</b>`, '#6a5a4a'); release(); }
       } else if (act === 'kill') {
         await UI.talk(g, 'sad', `${g.name}「${line(g, 'execute')}」`, facColor(g), { tag: '処断' });
@@ -694,7 +695,7 @@ const App = {
         if (adj && !Game.isAlly(fi, G.player) && Math.random() < 0.04 && Game.power(fi) < Game.power(G.player) * 1.3) {
           $('#mapHint').classList.remove('show');
           await UI.talk(Game.lordOf(fi), 'normal', `${f.name}軍から使者が来た。\n「我が主は貴軍との同盟を望んでおります」`, f.color, { tag: '外交' });
-          if (Auto.running ? await Auto.decideAlly(fi) : await UI.confirm(`${f.name}軍と同盟を結びますか？（${CONFIG.ALLY_TURNS / 4}年）`)) { f.allies[G.player] = CONFIG.ALLY_TURNS; G.factions[G.player].allies[fi] = CONFIG.ALLY_TURNS; Game.log(`${f.name}軍と同盟を結んだ。`); }
+          if (Auto.running ? await Auto.decideAlly(fi) : await UI.confirm(`${f.name}軍と同盟を結びますか？（${CONFIG.ALLY_TURNS / 4}年）`)) { f.allies[G.player] = CONFIG.ALLY_TURNS; G.factions[G.player].allies[fi] = CONFIG.ALLY_TURNS; Game.log(`${f.name}軍と同盟を結んだ。`); Sound.se('ally'); }
           $('#mapHint').classList.add('show');
         }
         const before = Game.gensOf(G.player).length;
@@ -742,7 +743,7 @@ const App = {
         const eg = e.gen != null ? G.gens[e.gen] : null;
         const ecol = eg ? (G.factions[eg.faction] ? G.factions[eg.faction].color : '#6a5a4a') : undefined;
         if (e.hist) { Sound.se('gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag }); }
-        else if (eg) await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag } : {});
+        else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag } : {}); }
         else UI.toast(e.msg, 2600), await new Promise(r => setTimeout(r, 900));
       }
       const end = Game.checkEnd();
@@ -750,7 +751,7 @@ const App = {
       Game.save();
       App.refresh();
       UI.toast(`${G.year}年 ${SEASONS[G.season]}`);
-      if (G.season === 0) Sound.se('gong');
+      Sound.bgm('map'); Sound.se(G.season === 0 ? 'gong' : 'season');
     } finally { App.busy = false; $('#mapHint').classList.remove('show'); }
   },
 

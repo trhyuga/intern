@@ -524,7 +524,7 @@ const Auto = (() => {
       await say('diplo', { target: G.factions[strong].name + '軍' });
       env.acted = true;
       const r = Game.diploAlly(env, strong);
-      Sound.se(r.ok ? 'win' : 'ng');
+      Sound.se(r.ok ? 'ally' : 'ng');
       await UI.talk(Game.lordOf(strong), r.ok ? 'happy' : 'angry', r.msg, G.factions[strong].color, { tag: '外交' });
       if (r.ok) Game.log(r.msg);
     }
@@ -960,7 +960,8 @@ const Auto = (() => {
           await say('rec', { gen: r.found.name });
           await App.doRecruit(gen, r.found);
         } else {
-          Sound.se(r.ok ? 'ok' : 'ng');
+          Sound.se(r.ok ? ({ farm: 'farm', comm: 'coin', wall: 'build', alms: 'alms', draft: 'draft', train: 'train' }[cmd] || 'ok') : 'ng');
+          if (r.ok && r.grade === 'great') setTimeout(() => Sound.se('great'), 380);
           await UI.talk(gen, r.ok ? r.expr : 'sad', `${gen.name}「${r.ok ? line(gen, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd) : line(gen, 'fail')}」\n<b>${r.msg}</b>`);
         }
         App.refresh();

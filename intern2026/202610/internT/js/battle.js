@@ -95,8 +95,9 @@ const Battle = (() => {
       ['atk', 'def'].forEach(sd => { if (B.units.some(u => u.side === sd && u.gi >= 0 && Game.top(u.g, 'cha'))) B.units.filter(u => u.side === sd).forEach(u => u.morale = Math.max(u.morale, 90)); });
       B.weather = pickWeather();
       setupDOM(opts && opts.auto);
-      Sound.bgm('battle');
-      Sound.se('march');
+      baseBgm();
+      Sound.se('warcry');
+      Sound.amb(B.weather === 'rain' ? 'rain' : null);
       draw();
       startDay(true);
     });
@@ -389,6 +390,7 @@ const Battle = (() => {
   async function animateMove(u, r, c) {
     const fr = u.y, fc = u.x, t0 = performance.now(), dur = 220 + 60 * (Math.abs(r - fr) + Math.abs(c - fc));
     u.r = r; u.c = c;
+    if (!auto && (r !== fr || c !== fc)) Sound.se('horse');
     await new Promise(res => { const step = () => { const k = Math.min(1, (performance.now() - t0) / dur * (G.opts.aiSpeed || 1)); const e = k * (2 - k); u.y = fr + (r - fr) * e; u.x = fc + (c - fc) * e; if (k < 1) requestAnimationFrame(step); else res(); }; step(); });
   }
 
@@ -400,7 +402,7 @@ const Battle = (() => {
       if (B.gateHP <= 0) {
         B.tiles[2][4].t = 'road'; B.tiles[2][3].t = 'road'; B.tiles[2][5].t = 'road';   // 門の両脇の城壁も崩れる
         buildTerrainLayer(window.devicePixelRatio || 1);
-        Sound.se('gong'); await banner('城門、破れたり！', 1000); addLog(`${a.g.name}隊が城門を破った！ 城壁も崩れた`);
+        Sound.se('gateBreak'); await banner('城門、破れたり！', 1000); addLog(`${a.g.name}隊が城門を破った！ 城壁も崩れた`);
       }
       a.acted = true; await sleep(400); return;
     }
@@ -420,7 +422,7 @@ const Battle = (() => {
     const ranged = dist(a, d) > 1;
     if (a.gi >= 0 && Math.random() < (a.side === B.playerSide ? 0.45 : 0.3)) bubble(a, line(a.g, 'attack'));
     const dmg = calcDamage(a, d, ranged);
-    if (ranged) { Sound.se('arrow'); arrow(a, d); await sleep(350); } else { Sound.se('hit'); slash(r, c); }
+    if (ranged) { Sound.se(a.troops > 3000 ? 'volley' : 'arrow'); arrow(a, d); await sleep(350); } else { Sound.se('slash'); slash(r, c); }
     d.shake = true; setTimeout(() => d.shake = false, 300);
     d.troops = Math.max(0, d.troops - dmg); d.morale = Math.max(0, d.morale - dmg / Math.max(500, d.maxTroops) * 40);
     addFloater(d.r, d.c, '-' + dmg, '#ff6a5a');
@@ -485,7 +487,7 @@ const Battle = (() => {
       // 延焼
       DIRS.forEach(([dr, dc]) => { const r = d.r + dr, c = d.c + dc; if (inb(r, c) && ['forest', 'plain', 'road'].includes(B.tiles[r][c].t) && Math.random() < (B.tiles[r][c].t === 'forest' ? 0.5 : 0.2)) B.tiles[r][c].fire = 2; });
     } else {
-      d.confused = 2; addFloater(d.r, d.c, '混乱', '#ffd23a'); addLog(`${d.g.name}隊は混乱した！`); Sound.se('ok');
+      d.confused = 2; addFloater(d.r, d.c, '混乱', '#ffd23a'); addLog(`${d.g.name}隊は混乱した！`); Sound.se('confuse');
     }
     await sleep(600);
     await checkRout(d, a);
@@ -498,7 +500,7 @@ const Battle = (() => {
     const col = u.fi === null ? '#777' : G.factions[u.fi].color;
     el.innerHTML = `<div class="ci-band" style="--c:${col}"><img src="${Portrait.get(u.g, 'angry', col)}"><div class="ci-txt"><div class="ci-who">${u.g.name}</div><div class="ci-name">${sk.name}</div><div class="ci-line">「${sk.line}」</div></div></div>`;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-    Sound.se('gong'); setTimeout(() => Sound.se('clash'), 250);
+    Sound.se('skill');
     return sleep(1700).then(() => el.classList.remove('show'));
   }
   // 目標を選ぶ必要がある技なら、その候補マス。不要なら null
@@ -624,6 +626,8 @@ const Battle = (() => {
   }
 
   // ---------- 一騎打ち ----------
+  // 戦況に応じた合戦の曲（攻め／守り／劣勢）
+  function baseBgm() { Sound.bgm(B.playerSide && outlook(B.playerSide) < -0.45 ? 'crisis' : B.playerSide === 'def' ? 'defend' : 'battle'); }
   // 戦況の見通し（-1：ジリ貧で負けそう 〜 +1：このまま押し切れそう）
   function outlook(side) {
     const sum = sd => B.units.filter(u => u.alive && u.side === sd).reduce((t, u) => t + u.troops * (0.5 + u.morale / 200), 0);
@@ -701,7 +705,7 @@ const Battle = (() => {
     }
     if (d._desperate) { d._desperate = false; if (!auto) await UI.talk(d.g, 'angry', `${d.g.name}「${pick(['このままではジリ貧……ならば、この一戦に賭ける！', '退いても先はない。よかろう、受けて立つ！', '大将自ら出るしかあるまい……！'])}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777', { tag: '総大将出陣' }); addLog(`総大将 ${d.g.name}が、劣勢を覆すべく一騎打ちに応じた`); }
     const res = auto ? Duel.quick(a.g, d.g) : await Duel.run(a, d, B.watch ? null : a.side === B.playerSide ? 'a' : d.side === B.playerSide ? 'd' : null, B.watch);
-    Sound.bgm('battle');
+    baseBgm();
     if (pair && pair.kind === 'spare') { const wn = (res.winner === 'a' ? a : d).g.name; await pairTalk(pair.winLines ? Object.assign({}, pair, { lines: pair.winLines[wn] || [] }) : pair, a); res.outcome = 'fled'; const loser = res.winner === 'a' ? d : a; if (loser.gi >= 0) { const lg = G.gens[loser.gi]; lg.loyalty = Math.max(0, lg.loyalty - 15); lg.respect = (res.winner === 'a' ? a : d).g.name; } }
     const win = res.winner === 'a' ? a : d, lose = res.winner === 'a' ? d : a;
     win.morale = Math.min(100, win.morale + 20);
@@ -735,7 +739,7 @@ const Battle = (() => {
       if (!B.rallied[sd] && cmd && cmd.alive && tot(sd) < tot(other) * 0.4 && Math.random() < 0.6) {
         B.rallied[sd] = true; B.rally[sd] = 3;
         B.units.filter(u => u.alive && u.side === sd).forEach(u => u.morale = Math.min(100, u.morale + 30));
-        Sound.se('gong');
+        Sound.se('warcry');
         await banner(`${fname(sd)}、背水の陣！`, 1300);
         addLog(`${fname(sd)}は追い詰められて奮い立った！（3日間、攻撃力が上がる）`);
         if (cmd.gi >= 0 && !auto) await UI.talk(cmd.g, 'angry', `${cmd.g.name}「退路はない！ ここで死力を尽くせ！」`, cmd.fi === null ? '#777' : G.factions[cmd.fi].color, { tag: '背水の陣' });
@@ -756,7 +760,7 @@ const Battle = (() => {
       const u = mkUnit(null, sd, fi, amt, pos[0], pos[1]);
       u.g = REINF; u.src = src.i; u.train = src.train; u.morale = 95;
       B.units.push(u);
-      Sound.se('march');
+      Sound.se('horn');
       await banner(`${src.name}から援軍到着！`, 1300);
       addLog(`${src.name}から${fname(sd)}の援軍 ${amt} が駆けつけた！`);
     }
@@ -786,6 +790,7 @@ const Battle = (() => {
     if (!first) await dramaEvents();
     if (await checkEnd()) return;
     updateHUD();
+    baseBgm(); Sound.amb(B.weather === 'rain' ? 'rain' : null);
     await banner(`${B.day}日目　${WNAME[B.weather]}`, 700);
     // 先手は攻め手
     if (B.playerSide === 'atk') await playerPhase(); else { await aiPhase('atk'); if (B.over) return; await playerPhase(); }
@@ -1049,7 +1054,8 @@ const Battle = (() => {
     if (!winner) return false;
     B.over = true; B.mode = 'busy'; setActions([]); updateHUD();
     const pWin = winner === B.playerSide;
-    Sound.se(pWin ? 'win' : 'ng');
+    Sound.amb(null);
+    Sound.se(pWin ? 'victory' : 'defeat'); if (pWin) setTimeout(() => Sound.se('cheer'), 900);
     await banner(pWin ? '勝利！' : '敗北…', 1400);
     const res = {
       atkWin: winner === 'atk', reason,
@@ -1307,10 +1313,10 @@ const Duel = (() => {
           const A = atkSide === 'a' ? a : d, D = atkSide === 'a' ? d : a, col = atkSide === 'a' ? ca : cd;
           const r = strike(A, D, mode);
           let x = r.dmg; if (defMode === 'guard' && !r.skill) x = Math.round(x * 0.4);
-          arena.swing(atkSide);
-          if (r.skill) { arena.skill(r.skill.name, col); Sound.se('gong'); say(atkSide, `<b>${r.skill.line}</b>`); await pace(500); }
-          else if (r.crit && x > 0) { arena.crit(); say(atkSide, line(A, 'critical')); }
-          arena.clash(mode === 'power' || r.crit || r.skill); Sound.se(x ? 'clash' : 'tap');
+          arena.swing(atkSide); Sound.se('whoosh');
+          if (r.skill) { arena.skill(r.skill.name, col); Sound.se('skill'); say(atkSide, `<b>${r.skill.line}</b>`); await pace(500); }
+          else if (r.crit && x > 0) { arena.crit(); Sound.se('crit'); say(atkSide, line(A, 'critical')); }
+          arena.clash(mode === 'power' || r.crit || r.skill); if (!r.skill && !(r.crit && x > 0)) Sound.se(x ? (defMode === 'guard' ? 'block' : 'clash') : 'tap');
           arena.hit(defSide, x, r.skill ? 'skill' : r.crit ? 'crit' : mode === 'power' ? 'power' : null);
           const label = r.skill ? `必殺「${r.skill.name}」！` : r.crit ? '会心の一撃！' : mode === 'power' ? (atkSide === 'a' ? '渾身の一撃' : '渾身の反撃') : (atkSide === 'a' ? '斬りつけた' : '反撃');
           say(atkSide, x ? `${label} ${D.name}に <b>${x}</b>` : defMode === 'guard' ? `${D.name}は守りを固めた` : `${D.name}にかわされた`, 'act');
