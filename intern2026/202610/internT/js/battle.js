@@ -1217,7 +1217,7 @@ const Duel = (() => {
       el.innerHTML = `
         <div class="d-head">
           <div class="d-fighter" id="dA" style="--c:${ca}"><img src="${Portrait.get(a, 'angry', ca)}"><div class="d-name">${a.name}</div><div class="d-war">武力 ${a.war}</div><div class="d-hp"><i style="width:100%"></i><span>100</span></div></div>
-          <div class="d-mid"><div class="d-title">一騎討ち</div><div class="d-round">第1合</div></div>
+          <div class="d-mid"><div class="d-title"><span style="white-space:nowrap">一騎討ち</span></div><div class="d-round">第1合</div></div>
           <div class="d-fighter" id="dD" style="--c:${cd}"><img src="${Portrait.get(d, 'angry', cd)}"><div class="d-name">${d.name}</div><div class="d-war">武力 ${d.war}</div><div class="d-hp"><i style="width:100%"></i><span>100</span></div></div>
         </div>
         <canvas class="d-arena"></canvas>
