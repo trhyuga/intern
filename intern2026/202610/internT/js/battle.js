@@ -790,6 +790,8 @@ const Battle = (() => {
         score += Math.max(...best2) + 10;
       }
       score += (DEFK[B.tiles[r][c].t] - 1) * 8;
+      // 武勇に優れた武将は前に出て、激しくぶつかる
+      if (u.g.war >= 85 && !u.commander && tg.length) score += 6 + (Game.has(u.g, '剛勇') || Game.has(u.g, '猪突') ? 6 : 0);
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
       // 総大将は、味方が戦っている間は敵に囲まれる位置を避ける
       if (u.commander && B.units.some(o => o.alive && o.side === u.side && o !== u)) {
