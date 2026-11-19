@@ -200,6 +200,7 @@ const Game = {
     if (Game.has(g, '仁徳') || Game.has(lord, '仁徳')) ch += 0.15;
     if (captive) {
       if (Game.has(t, '忠義') && t.faction >= 0 && G.factions[t.faction].alive) ch -= 0.6;
+      if (t.respect && G.gens.some(x => x.name === t.respect && x.state === 'serve' && x.faction === g.faction)) ch += 0.6;   // 一騎打ちで認め合った相手
       ch += (70 - t.loyalty) / 120;
     }
     // 三顧の礼：諸葛亮は君主自身が3回訪ねないと応じない

@@ -280,3 +280,16 @@ button { font-family: inherit; }
 @keyframes autoPress { 0% { transform: scale(1); } 45% { transform: scale(.94); } 100% { transform: scale(1); } }
 .talk-auto { height: 3px; background: #d4af3780; margin-top: 4px; border-radius: 2px; overflow: hidden; }
 .talk-auto i { display: block; height: 100%; background: var(--gold2); width: 0; }
+
+/* ---------- 必殺技のカットイン ---------- */
+.cutin { position: absolute; inset: 0; z-index: 44; pointer-events: none; display: none; align-items: center; overflow: hidden; }
+.cutin.show { display: flex; animation: ciFade 1.7s forwards; }
+.ci-band { position: relative; width: 140%; margin-left: -20%; height: 150px; transform: skewY(-8deg); background: linear-gradient(90deg, #000d, var(--c) 45%, #000d); border-top: 3px solid var(--gold2); border-bottom: 3px solid var(--gold2); box-shadow: 0 0 40px #000; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.ci-band img { width: 120px; height: 150px; transform: skewY(8deg); animation: ciSlide .35s ease-out; filter: drop-shadow(0 0 10px #fff8); }
+.ci-txt { transform: skewY(8deg); color: #fff; text-shadow: 0 2px 6px #000; animation: ciSlide2 .4s ease-out; }
+.ci-who { font-size: 15px; color: var(--gold2); }
+.ci-name { font-family: var(--brush); font-size: 34px; line-height: 1.15; color: #fff; text-shadow: 0 0 14px var(--c), 0 3px 6px #000; }
+.ci-line { font-size: 13px; margin-top: 4px; max-width: 220px; }
+@keyframes ciFade { 0% { opacity: 0; } 10% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes ciSlide { from { transform: skewY(8deg) translateX(200px); opacity: 0; } }
+@keyframes ciSlide2 { from { transform: skewY(8deg) translateX(-200px); opacity: 0; } }

@@ -109,14 +109,14 @@ const Events = (() => {
         lo.pop -= moved; ch.pop += moved; lo.comm = Math.round(lo.comm * 0.5); lo.loyal = Math.max(0, lo.loyal - 25); ch.comm = Math.min(ch.commMax, Math.round(ch.comm * 1.2));
         G.factions[f].capital = ch.i; up(G_('董卓'), 'cha', -5);
         return { title: '長安遷都', gen: '董卓', expr: 'angry', fac: f, big: true, text: `董卓は洛陽に火を放ち、天子と民を長安へ移した。\n洛陽の商業が半減し民忠 -25、人口 ${fmt(moved)} が長安へ。董卓の魅力 -5` }; } },
-    { id: 'lianhuan', title: '連環の計', chance: 0.3,
+    { id: 'wangyun', title: '王允の計', chance: 0.3,
       cond: () => { const f = facByLord('董卓'); const lu = serving('呂布'); const wy = G_('王允'); return f >= 0 && G.year >= 191 && lu && lu.faction === f && wy && wy.state !== 'dead'; },
       run: () => { const f = facByLord('董卓'), dz = G_('董卓'), lu = G_('呂布');
         Game.killGeneral(dz, '暗殺');
         const fac = G.factions[f];
         if (fac.alive) { Game.gensOf(f).forEach(g => { g.isLord = false; }); lu.isLord = true; lu.loyalty = 100; fac.lord = lu.i; fac.name = '呂布'; Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.max(0, g.loyalty - 20); }); }
         Game.log('呂布が董卓を討った。');
-        return { title: '連環の計', gen: '呂布', expr: 'angry', fac: f, big: true, text: '王允の策により、呂布は義父・董卓に刃を向けた。\n董卓、討たれる。呂布が軍を継いだが、配下の心は揺れている（忠誠 -20）' }; } },
+        return { title: '王允の計', gen: '呂布', expr: 'angry', fac: f, big: true, text: '王允の策により、呂布は義父・董卓に刃を向けた。\n董卓、討たれる。呂布が軍を継いだが、配下の心は揺れている（忠誠 -20）' }; } },
     { id: 'tianzi', title: '天子を奉じる', chance: 0.5,
       cond: () => { const f = facByLord('曹操'); return f >= 0 && G.year >= 196 && (owns(f, '許昌') || owns(f, '洛陽')); },
       run: () => { const f = facByLord('曹操'), cao = G_('曹操'); up(cao, 'cha', 4); Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + 8); });
@@ -139,8 +139,9 @@ const Events = (() => {
         return ['周瑜', '諸葛亮', '黄蓋'].some(n => { const f = facOf(n); return f >= 0 && f !== fc && Game.citiesOf(f).some(c => c.adj.some(a => G.cities[a].owner === fc)); }); },
       run: () => { const fc = facByLord('曹操'); const hero = ['周瑜', '黄蓋', '諸葛亮'].find(n => facOf(n) >= 0 && facOf(n) !== fc); const fh = facOf(hero);
         const hit = Game.citiesOf(fc).filter(c => c.terrain === 'river' && c.adj.some(a => G.cities[a].owner === fh));
-        hit.forEach(c => { c.troops = Math.round(c.troops * 0.65); c.train = Math.max(0, c.train - 20); });
-        return { title: '赤壁の大火', gen: hero, expr: 'angry', fac: fh === G.player ? fh : fc, big: true, text: `東南の風に乗せて放たれた火が、曹操軍の船団を焼き尽くした。\n${hit.map(c => c.name).join('・') || '長江沿い'}の曹操軍、兵 -35%・訓練 -20` }; } },
+        const k = G.events.chained ? 0.5 : 0.65;
+        hit.forEach(c => { c.troops = Math.round(c.troops * k); c.train = Math.max(0, c.train - 20); });
+        return { title: '赤壁の大火', gen: hero, expr: 'angry', fac: fh === G.player ? fh : fc, big: true, text: `${G.events.chained ? '鎖でつながれた船団は逃げることもできず――\n' : ''}東南の風に乗せて放たれた火が、曹操軍の船団を焼き尽くした。\n${hit.map(c => c.name).join('・') || '長江沿い'}の曹操軍、兵 -${G.events.chained ? 50 : 35}%・訓練 -20` }; } },
     { id: 'wuhu', title: '五虎大将', chance: 0.5,
       cond: () => { const f = facByLord('劉備'); return f >= 0 && G.year >= 215 && ['関羽', '張飛', '趙雲', '馬超', '黄忠'].filter(n => facOf(n) === f).length >= 4; },
       run: () => { const f = facByLord('劉備'); const five = ['関羽', '張飛', '趙雲', '馬超', '黄忠'].filter(n => facOf(n) === f); five.forEach(n => { const g = G_(n); up(g, 'war', 1); g.loyalty = 100; }); up(G_('劉備'), 'cha', 2);
@@ -153,7 +154,7 @@ const Events = (() => {
       cond: () => G.factions.some(f => f.alive && Game.citiesOf(f.i).length >= 20 && !(G.events.hist && G.events.hist['guo_' + f.i])),
       run: () => { const f = G.factions.find(x => x.alive && Game.citiesOf(x.i).length >= 20 && !(G.events.hist && G.events.hist['guo_' + x.i]));
         G.events.hist['guo_' + f.i] = true;   // 勢力ごとに一度
-        const lord = Game.lordOf(f.i); const kuni = { '曹': '魏', '劉': '漢', '孫': '呉', '袁': '仲', '董': '秦', '呂': '晋' }[lord.name[0]] || lord.name[0];
+        const lord = Game.lordOf(f.i); const kuni = { '曹操': '魏', '曹丕': '魏', '劉備': '漢', '劉禅': '漢', '孫権': '呉', '孫策': '呉', '孫堅': '呉', '袁術': '仲' }[lord.name] || lord.name[0];   // 史実で国号を定めた人物以外は姓を国号に
         Game.gensOf(f.i).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + 10); }); Game.citiesOf(f.i).forEach(c => c.loyal = Math.min(100, c.loyal + 5)); up(lord, 'cha', 3);
         return { title: `${kuni}の建国`, gen: lord.name, expr: 'happy', fac: f.i, big: true, text: `${lord.name}は国号を「${kuni}」と定め、帝位に就いた。\n配下の忠誠 +10、全都市の民忠 +5` }; } },
     { id: 'chushi', title: '出師の表', chance: 0.5,
@@ -220,6 +221,62 @@ const Events = (() => {
       run: () => { const f = facByLord('劉表'); Game.citiesOf(f).forEach(c => c.loyal = Math.min(100, c.loyal + 6)); Game.citiesOf(f).forEach(c => pct(c, 'comm', 'commMax', 0.05));
         return { title: '荊州の繁栄', gen: '劉表', expr: 'happy', fac: f, text: '戦乱を避けて学者や民が荊州に集まり、学問と商いが栄えた。\n劉表軍の全都市、民忠 +6・商業 +5%' }; } },
   ];
+
+  // ---------------- 特定の人物同士のイベント ----------------
+  const same = (...ns) => { const f = facOf(ns[0]); return f >= 0 && ns.every(n => facOf(n) === f) ? f : -1; };
+  const adjFac = (fa, fb) => fa >= 0 && fb >= 0 && fa !== fb && Game.citiesOf(fa).some(c => c.adj.some(a => G.cities[a].owner === fb));
+  const PAIR_EVENTS = [
+    { id: 'lianhuan', title: '連環の計', chance: 0.5,
+      cond: () => { const fc = facByLord('曹操'), fp = facOf('龐統'); return fc >= 0 && fp >= 0 && fp !== fc && G.year >= 207 && G.year <= 210 && Game.citiesOf(fc).length >= 12 && adjFac(fp, fc) && !(G.events.hist && G.events.hist.chibi); },
+      run: () => { const fc = facByLord('曹操'), fp = facOf('龐統'); G.events.chained = true;
+        Game.citiesOf(fc).filter(c => c.terrain === 'river' && c.adj.some(a => G.cities[a].owner === fp)).forEach(c => c.train = Math.max(0, c.train - 10));
+        return { title: '連環の計', gen: '龐統', expr: 'normal', fac: fp === G.player ? fp : fc, big: true, text: '「船を鎖でつなげば、揺れに慣れぬ北の兵も陸のように戦えましょう」\n龐統の献策に、曹操は大船団を鎖でつないだ。……それが火に弱いとも知らずに。\n長江沿いの曹操軍の訓練 -10（赤壁の大火が起きると被害が大きくなる）' }; } },
+    { id: 'chitu', title: '赤兎馬の贈り物', chance: 0.4,
+      cond: () => { const f = facByLord('曹操'); const ly = G_('呂布'); return f >= 0 && facOf('関羽') === f && ly && ly.state === 'dead'; },
+      run: () => { const g = G_('関羽'); up(g, 'lead', 1); up(g, 'war', 1);
+        return { title: '赤兎馬の贈り物', gen: '関羽', expr: 'happy', fac: g.faction, text: '曹操は関羽の心をつかもうと、名馬・赤兎を贈った。\n関羽「これで兄者の行方が知れれば、一日で駆けつけられる」\n関羽の統率 +1、武力 +1。……曹操は複雑な顔をした' }; } },
+    { id: 'shuiyu', title: '水魚の交わり', chance: 0.5,
+      cond: () => { const f = facByLord('劉備'); return f >= 0 && facOf('諸葛亮') === f && (facOf('関羽') === f || facOf('張飛') === f); },
+      run: () => { const f = facByLord('劉備'); const z = G_('諸葛亮'); z.loyalty = 100; up(z, 'int', 0); up(G_('劉備'), 'cha', 1);
+        ['関羽', '張飛'].forEach(n => { const g = serving(n); if (g && g.faction === f) g.loyalty = Math.max(0, g.loyalty - 5); });
+        return { title: '水魚の交わり', gen: '劉備', expr: 'happy', fac: f, text: '諸葛亮を片時も離さぬ劉備に、関羽と張飛は不満げだった。\n劉備「私にとって孔明は、魚にとっての水のようなものだ」\n諸葛亮の忠誠が最大に。劉備の魅力 +1。関羽・張飛の忠誠 -5' }; } },
+    { id: 'wolong', title: '臥龍と鳳雛', chance: 0.5,
+      cond: () => same('諸葛亮', '龐統') >= 0,
+      run: () => { ['諸葛亮', '龐統'].forEach(n => up(G_(n), 'int', 1)); const f = facOf('諸葛亮'); Game.lordOf(f) && up(Game.lordOf(f), 'cha', 2);
+        return { title: '臥龍と鳳雛', gen: '龐統', expr: 'happy', fac: f, text: '「臥龍・鳳雛、どちらか一人を得れば天下を安んずることができる」\nその二人が、ともに同じ主君のもとに並んだ。\n諸葛亮・龐統の知力 +1、君主の魅力 +2' }; } },
+    { id: 'duanjin', title: '断金の交わり', chance: 0.5,
+      cond: () => same('孫策', '周瑜') >= 0,
+      run: () => { ['孫策', '周瑜'].forEach(n => { const g = G_(n); up(g, 'cha', 2); if (!g.isLord) g.loyalty = 100; });
+        return { title: '断金の交わり', gen: '周瑜', expr: 'happy', fac: facOf('孫策'), text: '同じ年に生まれた孫策と周瑜。その固い絆は「金をも断つ」と称された。\n二人の魅力 +2、周瑜の忠誠が最大に' }; } },
+    { id: 'zhujiu', title: '煮酒論英雄', chance: 0.5,
+      cond: () => { const f = facByLord('曹操'); const lb = serving('劉備'); return f >= 0 && lb && lb.faction === f && !lb.isLord; },
+      run: () => { const f = facByLord('曹操'), lb = G_('劉備'), c = G.cities[lb.city];
+        const text0 = '曹操「今、天下の英雄といえば、君とわしだけよ」\n思わず箸を落とした劉備は、雷鳴に驚いたふりをしてごまかした……。\n';
+        if (c.i === G.factions[f].capital || c.owner !== f) { lb.loyalty = Math.max(0, lb.loyalty - 30); return { title: '煮酒論英雄', gen: '曹操', expr: 'normal', fac: f, text: text0 + '劉備の忠誠 -30' }; }
+        // 劉備は都市を手に独立する（関羽・張飛もついていく）
+        const nf = { i: G.factions.length, name: '劉備', color: '#2f8a4e', lord: lb.i, alive: true, capital: c.i, allies: {}, isPlayer: false, hostility: {} };
+        G.factions.push(nf); lb.faction = nf.i; lb.isLord = true; lb.loyalty = 100; c.owner = nf.i;
+        ['関羽', '張飛', '趙雲', '簡雍', '孫乾', '糜竺'].forEach(n => { const g = serving(n); if (g && g.faction === f) { g.faction = nf.i; g.city = c.i; g.loyalty = 90; } });
+        Game.gensIn(c.i, f).forEach(g => { g.city = G.factions[f].capital; });
+        return { title: '煮酒論英雄', gen: '劉備', expr: 'normal', fac: f, big: true, text: text0 + `その後、劉備は${c.name}で曹操に背き、独立した` }; } },
+    { id: 'jisheng', title: '既生瑜、何生亮', chance: 0.3,
+      cond: () => { const fz = facOf('周瑜'), fk = facOf('諸葛亮'); return adjFac(fz, fk); },
+      run: () => { const z = G_('周瑜'); up(z, 'int', 1); z.loyalty = Math.min(100, z.loyalty + 5);
+        return { title: '既生瑜、何生亮', gen: '周瑜', expr: 'angry', fac: z.faction === G.player ? z.faction : facOf('諸葛亮'), text: '周瑜「天はなぜ、この周瑜を生みながら、諸葛亮まで生んだのか！」\n好敵手の存在が、周瑜をさらに奮い立たせた。周瑜の知力 +1' }; } },
+    { id: 'rival', title: '宿命の好敵手', chance: 0.4,
+      cond: () => adjFac(facOf('諸葛亮'), facOf('司馬懿')),
+      run: () => { ['諸葛亮', '司馬懿'].forEach(n => { const g = G_(n); up(g, 'lead', 1); up(g, 'int', 1); });
+        return { title: '宿命の好敵手', gen: '司馬懿', expr: 'normal', fac: facOf('司馬懿') === G.player ? G.player : facOf('諸葛亮'), big: true, text: '司馬懿「孔明……ようやく相まみえることになったか」\n天下の二大軍師が国境を挟んで向かい合った。\n諸葛亮・司馬懿の統率 +1、知力 +1' }; } },
+    { id: 'baiyi', title: '白衣渡江', chance: 0.3,
+      cond: () => { const gy = serving('関羽'), lm = serving('呂蒙'); return gy && lm && gy.faction !== lm.faction && !Game.isAlly(gy.faction, lm.faction) && G.cities[gy.city].adj.some(a => G.cities[a].owner === lm.faction); },
+      run: () => { const gy = G_('関羽'), lm = G_('呂蒙'), c = G.cities[gy.city]; c.loyal = Math.max(0, c.loyal - 20); c.def = Math.round(c.def * 0.8);
+        return { title: '白衣渡江', gen: '呂蒙', expr: 'normal', fac: gy.faction === G.player ? gy.faction : lm.faction, big: true, text: `呂蒙は兵に商人の白い衣を着せて川を渡り、関羽の守る${c.name}の見張りを次々と押さえた。\n${c.name}の民忠 -20、城壁 -20%` }; } },
+    { id: 'marriage', title: '政略結婚', chance: 0.4,
+      cond: () => { const fs = facByLord('孫権'), fl = facByLord('劉備'); const x = G_('孫尚香'); return fs >= 0 && fl >= 0 && Game.isAlly(fs, fl) && x && x.state === 'serve' && x.faction === fs; },
+      run: () => { const fs = facByLord('孫権'), fl = facByLord('劉備'); G.factions[fs].allies[fl] += 8; G.factions[fl].allies[fs] += 8; const x = G_('孫尚香'); x.faction = fl; x.city = G.factions[fl].capital; x.loyalty = 80;
+        return { title: '政略結婚', gen: '孫尚香', expr: 'happy', fac: fs === G.player ? fs : fl, big: true, text: '同盟の証として、孫権の妹・孫尚香が劉備のもとへ嫁いだ。\n孫権軍と劉備軍の同盟が2年延びた。孫尚香が劉備軍に加わった' }; } },
+  ];
+  HIST.push(...PAIR_EVENTS);
 
   function histEvents() {
     G.events.hist = G.events.hist || {};
