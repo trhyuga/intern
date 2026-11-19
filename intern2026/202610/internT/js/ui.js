@@ -303,7 +303,7 @@ const App = {
       const r = Game.doCommand(cmd, g, c);
       if (r.ok) g.acted = true;
       Sound.se(r.ok ? 'ok' : 'ng');
-      await UI.talk(g, r.ok ? r.expr : 'sad', `${g.name}「${r.ok ? line(g, 'accept') : line(g, 'fail')}」\n<b>${r.msg}</b>`);
+      await UI.talk(g, r.ok ? r.expr : 'sad', `${g.name}「${r.ok ? line(g, cmd) : line(g, 'fail')}」\n<b>${r.msg}</b>`);
       App.refresh(); return App.openCity(c.i);
     }
     switch (cmd) {
@@ -319,7 +319,7 @@ const App = {
           r.found.known = true;
           await UI.talk(g, 'happy', `${g.name}「殿、${r.found.name}という人物を見つけました」`);
           if (await UI.confirm(`${r.found.name}を登用しますか？（使者：${g.name}）`)) await App.doRecruit(g, r.found);
-        } else await UI.talk(g, r.expr, `${g.name}「${r.ok ? '' : line(g, 'fail')}」\n<b>${r.msg}</b>`);
+        } else await UI.talk(g, r.expr, `${g.name}「${r.ok ? line(g, 'search') : line(g, 'fail')}」\n<b>${r.msg}</b>`);
         App.refresh(); return App.openCity(c.i);
       }
       case 'recruit': {
@@ -351,7 +351,7 @@ const App = {
         if (gi == null) return App.openCity(c.i);
         const g = G.gens[gi], r = Game.reward(g, c);
         Sound.se(r.ok ? 'ok' : 'ng');
-        await UI.talk(g, r.expr, `${g.name}「${r.ok ? (Game.has(g, '野心') ? 'ふむ、いただいておこう' : 'ありがたき幸せ！') : '……'}」\n<b>${r.msg}</b>`);
+        await UI.talk(g, r.expr, `${g.name}「${r.ok ? line(g, 'reward') : '……'}」\n<b>${r.msg}</b>`);
         App.refresh(); return App.openCity(c.i);
       }
       case 'sow': case 'lure': case 'rumor': {
@@ -462,7 +462,7 @@ const App = {
       await UI.talk(t, 'happy', `${t.name}「${line(t, 'join')}」\n<b>${r.msg}</b>`, facColor(t));
       Game.log(`${t.name}が${G.factions[G.player].name}軍に寝返った。`);
     } else {
-      await UI.talk(r.ok ? t : g, r.ok ? (Game.has(t, '野心') ? 'angry' : 'sad') : 'sad', r.ok ? `${t.name}「……近ごろ、主君の扱いがどうも気に入らん」\n<b>${r.msg}</b>${Game.has(t, '野心') ? '（野心家には効果てきめん）' : ''}` : `${g.name}「${line(g, 'fail')}」\n<b>${r.msg}</b>`, r.ok ? facColor(t) : undefined);
+      await UI.talk(r.ok ? t : g, r.ok ? (Game.has(t, '野心') ? 'angry' : 'sad') : 'sad', r.ok ? `${t.name}「${line(t, 'sown')}」\n<b>${r.msg}</b>${Game.has(t, '野心') ? '（野心家には効果てきめん）' : ''}` : `${g.name}「${line(g, 'fail')}」\n<b>${r.msg}</b>`, r.ok ? facColor(t) : undefined);
     }
     App.refresh();
   },
@@ -505,6 +505,9 @@ const App = {
     const how = await UI.choose('戦い方', [{ label: '自ら指揮する', sub: '戦場で部隊を動かす', value: 'manual', cls: 'primary' }, { label: '委任する', sub: '結果だけを見る', value: 'auto' }]);
     if (!how) return App.openCity(c.i);
     UI.closeSheet();
+    const cmdr = G.gens[sel[0]];
+    Sound.se('march');
+    await UI.talk(cmdr, 'angry', `${cmdr.name}「${line(cmdr, 'sortie')}」`, facColor(cmdr), { tag: '出陣' });
     sel.forEach(gi => G.gens[gi].acted = true);
     const plan = { atkFi: G.player, from: c.i, to: t.i, gens: sel, troops, food };
     await App.executeBattle(plan, how === 'manual');
@@ -571,6 +574,7 @@ const App = {
         ${deaths.length ? `<p>討死：${deaths.map(g => g.name).join('、')}</p>` : ''}
         ${caps.length ? `<p>捕虜：${caps.map(i => G.gens[i].name).join('、')}</p>` : ''}`, buttons: [{ label: '次へ', cls: 'primary', value: 1 }] });
       if (playerWon && hero) await UI.talk(hero, 'happy', `${hero.name}「${line(hero, 'victory')}」`);
+      if (!playerWon && pAtk) { const lg = atkGens.find(g => g.state === 'serve' && !caps.includes(g.i) && !deaths.includes(g)); if (lg) await UI.talk(lg, 'sad', `${lg.name}「${line(lg, 'defeat')}」`); }
     }
     // 討死の処理
     for (const g of deaths) {
@@ -619,7 +623,7 @@ const App = {
     if (captor === G.player) {
       G.stats.captured++;
       const lordCaptive = g.isLord && ownerAlive;
-      await UI.talk(g, 'angry', `${g.name}を捕らえた。\n${g.name}「${g.isLord ? '殺すなら殺せ！' : line(g, 'refuse')}」`, facColor(g), { tag: '捕虜' });
+      await UI.talk(g, Game.has(g, '臆病') ? 'shock' : 'angry', `${g.name}を捕らえた。\n${g.name}「${line(g, 'captured')}」`, facColor(g), { tag: '捕虜' });
       const act = await UI.choose(`${g.name}をどうする？`, [
         { label: '登用する', sub: lordCaptive ? '敵の君主は登用できない' : '配下に誘う', value: 'rec', disabled: lordCaptive, cls: 'primary' },
         { label: '解放する', sub: ownerAlive ? '元の主のもとへ帰す' : '野に放つ', value: 'rel' },
@@ -631,12 +635,13 @@ const App = {
         if (r.ok) { g.city = city.owner === G.player ? city.i : G.factions[G.player].capital; Sound.se('win'); await UI.talk(g, 'happy', `${g.name}「${line(g, 'join')}」\n<b>${g.name}が配下に加わった！</b>`); }
         else { Sound.se('ng'); await UI.talk(g, 'angry', `${g.name}「${line(g, 'refuse')}」\n<b>登用を拒まれた。${g.name}は去っていった</b>`, '#6a5a4a'); release(); }
       } else if (act === 'kill') {
+        await UI.talk(g, 'sad', `${g.name}「${line(g, 'execute')}」`, facColor(g), { tag: '処断' });
         const fi = g.faction, wasLord = g.isLord;
         const heir = Game.killGeneral(g, '処断');
         Game.log(`${g.name}、処断される。`);
         Game.gensOf(G.player).forEach(h => { if (Game.has(h, '仁徳') && !h.isLord) h.loyalty = Math.max(0, h.loyalty - 5); });
         if (wasLord) await UI.alert(heir ? `${heir.name}が${G.factions[fi].name}軍を継いだ。` : `${g.name}の勢力は滅んだ。`);
-      } else release();
+      } else { await UI.talk(g, 'normal', `${g.name}「${line(g, 'release')}」`, facColor(g)); release(); }
       return;
     }
     // AI が捕らえた場合
@@ -682,7 +687,7 @@ const App = {
         if (Game.gensOf(G.player).length < before && AI._lastLure && AI._lastLure.fi === fi) {
           const t = G.gens[AI._lastLure.t];
           $('#mapHint').classList.remove('show');
-          await UI.talk(t, 'angry', `${t.name}が${f.name}軍に寝返った！`, f.color, { tag: '寝返り' });
+          await UI.talk(t, 'angry', `${t.name}「${line(t, 'betray')}」\n<b>${t.name}が${f.name}軍に寝返った！</b>`, f.color, { tag: '寝返り' });
           $('#mapHint').classList.add('show');
         }
         AI._lastLure = null;
@@ -700,6 +705,8 @@ const App = {
             Sound.se('gong');
             await UI.talk(lead, 'angry', `${f.name}軍が${to.name}に攻めてきた！\n総大将 ${lead.name}、兵 ${fmt(b.troops)}`, f.color, { tag: '敵襲' });
             if (Game.gensIn(to.i, G.player).length) {
+              const dg = Game.gensIn(to.i, G.player).sort((x, y) => (y.isLord ? 999 : 0) + y.lead - (x.isLord ? 999 : 0) - x.lead)[0];
+              await UI.talk(dg, Game.has(dg, '臆病') ? 'shock' : 'angry', `${dg.name}「${line(dg, 'defend')}」`, facColor(dg));
               const how = await UI.choose(`${to.name}の防衛`, [{ label: '自ら指揮する', value: 'manual', cls: 'primary' }, { label: '委任する', value: 'auto' }], false);
               manual = how === 'manual';
             }
@@ -777,9 +784,16 @@ const App = {
       <div style="font-size:13px;margin-top:8px;color:var(--muted)">${g.state === 'serve' ? `${G.factions[g.faction].name}軍　${G.cities[g.city].name}` : g.state === 'ronin' ? `在野　${G.cities[g.city].name}` : ''}　年齢 およそ${age}歳　戦功 ${g.wins}　一騎討ち勝利 ${g.duels}</div>
       ${g.traits.length ? g.traits.map(t => `<div class="tr-desc"><span class="trait">${t}</span>${TRAIT_INFO[t]}</div>`).join('') : '<div class="tr-desc">特筆すべき性格はない</div>'}
       ${bonds.map(b => `<div class="tr-desc"><span class="trait" style="background:var(--red)">絆</span>${b.name}（${b.members.join('・')}）同じ戦場で力が増す</div>`).join('')}`;
-    const p = UI.modal({ title: '列伝', body, buttons: [{ label: '閉じる', cls: 'primary', value: 1 }] });
+    const canChat = g.state === 'serve' && g.faction === G.player;
+    const p = UI.modal({ title: '列伝', body, buttons: (canChat ? [{ label: '話を聞く', value: 'chat' }] : []).concat([{ label: '閉じる', cls: 'primary', value: 1 }]) });
     $$('#modal [data-e]').forEach(b => b.onclick = () => { $('#bioImg').src = Portrait.get(g, b.dataset.e, col); });
-    await p;
+    const v = await p;
+    if (v === 'chat') {
+      const low = !g.isLord && g.loyalty < 50;
+      const expr = low ? (Game.has(g, '野心') ? 'angry' : 'sad') : g.isLord ? 'normal' : pick(['normal', 'happy', 'normal']);
+      await UI.talk(g, expr, `${g.name}「${line(g, low ? 'chatLow' : 'chat')}」`, col);
+      return App.profile(gi);
+    }
   },
 
   async menu() {
