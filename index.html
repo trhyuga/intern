@@ -98,6 +98,28 @@
   }
   .thumb .logo small{ display:block; font-size:10px; letter-spacing:.3em; color:#9fd2ff; margin-top:4px; text-shadow:0 0 8px rgba(80,160,255,.8); }
 
+  /* G1 PREDICTOR のサムネイル（CSSだけの芝コース） */
+  .thumb.turf{
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 28px, transparent 28px 56px),
+      linear-gradient(180deg, #6fb6e8 0%, #a8d8f0 38%, #3e8a3a 38%, #2f7a30 100%);
+  }
+  .thumb.turf::before{ /* 内ラチ */
+    content:""; position:absolute; left:0; right:0; top:118px; height:4px; background:#fff;
+    box-shadow:0 -14px 0 -1px rgba(255,255,255,.6);
+  }
+  .thumb.turf .logo{
+    top:26px; color:#fff; font-size:26px; letter-spacing:.1em;
+    text-shadow:0 2px 0 #1e5a1e, 0 0 16px rgba(0,60,0,.5);
+  }
+  .thumb.turf .logo small{ color:#fffbe0; font-size:10px; letter-spacing:.3em; text-shadow:0 1px 3px rgba(0,0,0,.5); }
+  .thumb.turf .horse{
+    position:absolute; z-index:1; bottom:26px; font-size:38px; line-height:1;
+    left:44%; animation:gallop .5s ease-in-out infinite alternate;
+  }
+  .thumb.turf .horse.h2{ bottom:46px; left:30%; font-size:30px; animation-delay:-.25s; }
+  @keyframes gallop{ 0%{transform:translateY(0)} 100%{transform:translateY(-4px)} }
+
   /* 群雄天下のサムネイル（CSSだけの夕焼けと山並み） */
   .thumb.sangoku{
     background:
@@ -216,6 +238,34 @@
         <div class="actions">
           <a class="btn-play" href="intern2026/testtriumph/">▶ あそぶ</a>
           <a class="btn-sub" href="https://github.com/trhyuga/intern/tree/main/intern2026/testtriumph" target="_blank" rel="noopener">コード</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- internS: G1 PREDICTOR -->
+    <div class="card">
+      <div class="thumb turf">
+        <div class="logo">G1 PREDICTOR<small>年間G1予想ゲーム</small></div>
+        <div class="horse h2">🏇</div>
+        <div class="horse">🏇</div>
+      </div>
+      <div class="body">
+        <div class="meta">
+          <span class="tag t1">GAME</span>
+          <span class="tag t2">競馬予想</span>
+          <span class="tag t3">要望フォームで成長中</span>
+        </div>
+        <h3>G1 PREDICTOR</h3>
+        <div class="creator"><span class="avatar">S</span>制作: internS（intern2026）</div>
+        <p class="desc">
+          1年間のG1全24戦を予想して賭ける競馬ゲーム。
+          競馬新聞の印とオッズ、パドックの気配から穴馬を見抜け。
+          単勝・複勝・馬連、実況つきのレースと大逃げ・まくり・ゴール前の逆転。
+          みんなの要望を取り入れて進化中。
+        </p>
+        <div class="actions">
+          <a class="btn-play" href="intern2026/202610/internS/">▶ あそぶ</a>
+          <a class="btn-sub" href="https://github.com/trhyuga/intern/tree/main/intern2026/202610/internS" target="_blank" rel="noopener">コード</a>
         </div>
       </div>
     </div>
