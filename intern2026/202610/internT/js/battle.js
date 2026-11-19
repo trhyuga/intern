@@ -629,11 +629,12 @@ const Battle = (() => {
     // 総大将は討たれると負け。軍師が止める（賢いほど止める。相手が同格以上のとき）
     if (d.commander && a.g.war >= d.g.war - 4) {
       const smart = (B.watch && d.side === B.playerSide) ? B.smart : 0.35;
-      if (Math.random() < 0.45 + 0.5 * smart) { d._held = true; return false; }
+      const hot = Game.has(d.g, '剛勇') || Game.has(d.g, '猪突');
+      if (Math.random() < (0.45 + 0.5 * smart) * (hot ? 0.5 : 1)) { d._held = true; return false; }
     }
     if (Game.has(d.g, '剛勇')) return true;
-    if (Game.has(d.g, '臆病') || Game.has(d.g, '慎重')) return Math.random() < 0.15;
-    return Math.random() < 0.45 + (d.g.war - a.g.war) / 60;
+    if (Game.has(d.g, '臆病') || Game.has(d.g, '慎重')) return Math.random() < 0.35 + (d.g.war - a.g.war) / 80;
+    return Math.random() < 0.78 + (d.g.war - a.g.war) / 80 + (d.g.war >= 85 ? 0.15 : 0);   // 挑まれて逃げるのは武人の恥
   }
   async function doDuel(a, d) {
     a.acted = true;
@@ -904,12 +905,14 @@ const Battle = (() => {
     const bold = Game.has(u.g, '剛勇') || Game.has(u.g, '猪突');
     const timid = Game.has(u.g, '臆病') || Game.has(u.g, '慎重');
     const cands = B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && dist(o, u) === 1 && !B.challenged.has(u.gi + '-' + o.gi))
-      .filter(o => bold ? u.g.war >= o.g.war - 3 : timid ? u.g.war >= o.g.war + 12 : u.g.war >= o.g.war + 6)
-      .sort((a, b) => (b.commander ? 20 : 0) + (u.g.war - b.g.war) - ((a.commander ? 20 : 0) + (u.g.war - a.g.war)));
+      .filter(o => bold ? u.g.war >= o.g.war - 8 : timid ? u.g.war >= o.g.war + 8 : u.g.war >= o.g.war - (u.g.war >= 80 ? 3 : -2))
+      .sort((a, b) => { const v = o => (o.commander ? (u.g.war >= o.g.war + 8 ? 20 : -15) : 0) + (u.g.war - o.g.war); return v(b) - v(a); });   // 総大将は応じにくいので、勝ち目が大きい時だけ狙う
     const t = cands[0];
     if (!t) return false;
-    if (u.commander && u.g.war < t.g.war + 12) return false;   // 総大将は大差で勝てる相手にだけ挑む
-    let p = bold ? 0.6 : timid ? 0.2 : 0.4;
+    if (u.commander && u.g.war < t.g.war + (Game.has(u.g, '猪突') || Game.has(u.g, '剛勇') ? 4 : 10)) return false;   // 総大将は大差で勝てる相手にだけ挑む
+    let p = bold ? 0.8 : timid ? 0.3 : 0.55;
+    if (u.g.war >= 85) p += 0.1;                                       // 腕に覚えのある者は名乗りを上げたがる
+    if (t.g.war >= 85 && u.g.war >= 85) p += 0.1;                      // 豪傑同士は引き合う
     if (t.commander && u.g.war >= t.g.war + 8) p += 0.25;              // 総大将を討てば勝ち
     if (wmine && t.commander && u.g.war >= t.g.war + 10) p += 0.2 * B.smart;   // 賢い軍師は好機を逃さない
     if (Math.random() >= p) return false;
@@ -981,6 +984,8 @@ const Battle = (() => {
       score += (DEFK[B.tiles[r][c].t] - 1) * 8;
       // 武勇に優れた武将は前に出て、激しくぶつかる
       if (u.g.war >= 85 && !u.commander && tg.length) score += 6 + (Game.has(u.g, '剛勇') || Game.has(u.g, '猪突') ? 6 : 0);
+      // 武勇の将は、一騎討ちを挑めそうな敵将の隣を目指す
+      if (u.g.war >= 78 && !u.commander && u.gi >= 0 && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0 && o.g.war <= u.g.war + 5; })) score += 8;
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
       // 総大将は、味方が戦っている間は敵に囲まれる位置を避ける
       if (u.commander && B.units.some(o => o.alive && o.side === u.side && o !== u)) {
