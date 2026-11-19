@@ -67,6 +67,7 @@ const Auto = (() => {
       allyYes: ['悪くない話です。受けましょう'], allyLast: ['ここで手を結べば、攻める先がなくなります。お断りしましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
       rec: ['{gen}は使える人物。登用を勧めます'], recruitGo: ['{gen}は得がたい人物。{envoy}殿、{city}へ赴いて口説いてください', '{city}の{gen}を放っておく手はありません。弁の立つ{envoy}殿を向かわせます'], kongming: ['{city}の{gen}は、礼を尽くさねば動かぬ人物。{lord}様ご自身で訪ねましょう'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
       gather: ['{from}の兵を{to}に合流させ、{target}を一気に攻めます', '兵は集めてこそ力。{from}の兵も{to}へ'],
+      attrition: ['{target}は一度では落ちますまい。ですが兵{m}で攻めれば、敵の兵{n}を大きく削れます。次で落とせばよいのです', '一度で落とせずとも、敵の兵を削れば次で落とせます。{gen}殿、{target}へ'],
       braveLord: ['殿……！ お止めしても無駄でしょう。せめて深追いだけはなさいませぬよう', '殿が自ら……。ならば、兵の動きはこちらで整えます'],
       braveOk: ['……よろしい、{gen}殿。ただし深追いは禁物です', '{gen}殿の勢いを止めるのは惜しい。{target}を任せます'], braveNo: ['{gen}殿、今の{target}は分が悪すぎます。もう少し兵を集めてから'],
       deploy: ['{gen}殿ほどの将を後方に置くのは惜しい。{to}へ移っていただきます', '{to}の守りと攻めの要として、{gen}殿を前線へ'],
@@ -85,7 +86,7 @@ const Auto = (() => {
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
       allyYes: ['手を組んでおきましょう'], allyLast: ['全部と仲良くしたら、戦う相手がいなくなっちゃいます。断りましょう'], allyNo: ['今回は断りましょう'],
       rec: ['登用してみましょう'], recruitGo: ['{envoy}殿、{city}の{gen}を誘いに行ってください'], kongming: ['{gen}は殿が直々に会いに行かないとダメみたいです'], rel: ['解放しましょう'], kill: ['ここは処断を'],
-      gather: ['{from}の兵を{to}へ合流させます'], braveLord: ['と、殿！ ご武運を！'], braveOk: ['わかりました、{gen}殿、存分に！'], braveNo: ['{gen}殿、今は待ってください'],
+      gather: ['{from}の兵を{to}へ合流させます'], attrition: ['兵の数ではこちらが上です。{target}を攻めて削りましょう'], braveLord: ['と、殿！ ご武運を！'], braveOk: ['わかりました、{gen}殿、存分に！'], braveNo: ['{gen}殿、今は待ってください'],
       deploy: ['{gen}殿は{to}へ移ってください'], deployCivil: ['{gen}殿は{to}で内政を'], eventMeet: ['{gens}殿、{city}に集まってください'], eventFace: ['{gen}殿、{city}へ。{foe}がいます'],
       transfer: ['{from}から{to}へ{what}を送ります'],
     },
@@ -100,7 +101,7 @@ const Auto = (() => {
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
       allyYes: ['いいよいいよ、組もう！'], allyLast: ['あれ？ 組んだら喧嘩する相手がいなくなるぞ。断る！'], allyNo: ['なんか怪しいから断る！'],
       rec: ['仲間にしちゃおう！'], recruitGo: ['{envoy}、{city}の{gen}を連れてこい！'], kongming: ['殿、{gen}に会いに行ってきてくださいよ！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
-      gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'], braveLord: ['さすが殿！ 俺もついていきたいくらいだ！'], braveOk: ['よし行け{gen}！ 暴れてこい！'], braveNo: ['うーん、やめとけ！'],
+      gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'], attrition: ['数で押せー！ {target}を囲め囲め！'], braveLord: ['さすが殿！ 俺もついていきたいくらいだ！'], braveOk: ['よし行け{gen}！ 暴れてこい！'], braveNo: ['うーん、やめとけ！'],
       deploy: ['{gen}、いつまで後ろにいる！ {to}へ行け！'], deployCivil: ['{gen}は後ろで畑でも耕してろ！'], eventMeet: ['{gens}、みんな{city}に集まれ！ 宴会だ！'], eventFace: ['{gen}、{city}へ行け！ {foe}がいるぞ！'],
       transfer: ['{to}に{what}を送っとけ！'],
     },
@@ -346,13 +347,45 @@ const Auto = (() => {
     const sc = g => g.lead * 1.2 + g.war * 0.5 + g.int * 0.3 + (Game.has(g, '慎重') ? 8 : 0) - (Game.has(g, '猪突') ? (br.tier === 'dumb' ? 0 : 25) : 0) - (Game.has(g, '臆病') ? 15 : 0);
     return br.tier === 'dumb' ? army.sort((a, b) => (b.lead + b.war) - (a.lead + a.war)) : army.sort((a, b) => sc(b) - sc(a));
   }
+  // ---------- 消耗戦 ----------
+  // 一度で落とせる見込みがなくても、兵の数で敵の数倍を出せるなら攻めて敵兵を削る（次の攻めで落とすため）
+  function attritionMult(br) {
+    const g = strategist();
+    return Game.has(g, '慎重') ? 3 : (Game.has(g, '野心') || Game.has(g, '猪突')) ? 2 : 2.5;
+  }
+  function evalAttrition(c, t, br) {
+    const idle = Game.gensIn(c.i, G.player).filter(g => !g.acted);
+    if (!idle.length || t.troops <= 0) return null;
+    const keep = garrison(c, br, t.i);
+    const local = Math.max(0, c.troops - keep);
+    // 周りの自都市から合流させられる兵
+    const r = reach(c);
+    const helpers = Game.citiesOf(G.player).filter(d => d !== c && r.has(d.i))
+      .map(d => ({ d, amt: Math.floor(Math.max(0, d.troops - garrison(d, br)) / 100) * 100 })).filter(x => x.amt >= 1000).sort((a, b) => b.amt - a.amt);
+    const mult = attritionMult(br);
+    const want = Math.round(t.troops * mult);
+    // 率いる武将（君主は他に武将がいれば残す。前線は1人残す）
+    let cands = idle.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
+    if (cands.length > 1) cands = cands.filter(g => !g.isLord || br.tier === 'dumb');
+    if (Game.isFront(c) && cands.length >= Game.gensIn(c.i, G.player).length && cands.length > 1) cands = cands.slice(0, -1).length ? cands.filter(g => g !== cands.slice().sort((a, b) => b.lead - a.lead)[0]) : cands;
+    const army = cands.slice(0, 5);
+    if (!army.length) return null;
+    const cap = army.reduce((s2, g) => s2 + Game.troopCap(g), 0);
+    let have = local; const reinforce = [];
+    for (const h of helpers) { if (have >= Math.min(want, cap)) break; const take = Math.min(h.amt, Math.ceil((Math.min(want, cap) - have) / 100) * 100); reinforce.push({ d: h.d, amt: take }); have += take; }
+    const troops = Math.floor(Math.min(have, cap) / 100) * 100;
+    if (troops < 3000 || troops < t.troops * mult) return null;    // 数倍に届かない
+    orderArmy(army, br);
+    return { c, t, army, troops, keep, ratio: troops * atkFactor(c, army) / defPower(t), need: 0, reinforce: reinforce.length ? reinforce : null, attrition: true };
+  }
+
   function planAttacks(br) {
     const plans = [];
     Game.citiesOf(G.player).forEach(c => {
       c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner))).forEach(t => {
-        const e = evalAttack(c, t, br);
+        const e = evalAttack(c, t, br) || evalAttrition(c, t, br);
         const pairBonus = pairWishes().some(w => w.me.city === c.i && w.foe.city === t.i) ? 0.5 : 0;   // 名場面が起きそうな攻め先
-        if (e) plans.push(Object.assign(e, { score: e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus }));
+        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus }));
       });
     });
     plans.sort((a, b) => b.score - a.score);
@@ -906,7 +939,7 @@ const Auto = (() => {
       const { p } = a;
       if (p.c.owner !== G.player || p.t.owner === G.player || (p.t.owner !== null && Game.isAlly(G.player, p.t.owner))) continue;
       // 内政のあとの最新の状態でもう一度見積もる（攻め先の兵が増えていたら見送る）
-      const e = p.isBrave ? p : evalAttack(p.c, p.t, br);   // 猛将の出陣は軍師の見積もりを通さない
+      const e = p.isBrave ? p : (evalAttack(p.c, p.t, br) || (p.attrition ? evalAttrition(p.c, p.t, br) : null));   // 猛将の出陣は軍師の見積もりを通さない
       if (!e) { await say('hold'); continue; }
       // 武将の合流
       if (e.moved && e.moved.length) {
@@ -940,7 +973,7 @@ const Auto = (() => {
       if (food < troops * 0.03 * 20) { await say('hold'); continue; }
       await press(p.c.i, 'mil', '[data-cmd=attack]');
       MapView.setHighlight([p.t.i]); await wait(500); MapView.setHighlight(null);
-      await say('attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name, m: fmt(troops), k: fmt(p.c.troops - troops), city: p.c.name }, 'angry');
+      await say(e.attrition ? 'attrition' : 'attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name, m: fmt(troops), k: fmt(p.c.troops - troops), city: p.c.name }, 'angry');
       UI.closeSheet();
       const cmdr = army[0];
       Sound.se('march');
