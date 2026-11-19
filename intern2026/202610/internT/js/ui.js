@@ -738,7 +738,10 @@ const App = {
       const ev = Game.endSeason();
       for (const e of ev) {
         if (e.quiet) continue;
-        if (e.gen != null) await UI.talk(G.gens[e.gen], e.expr || 'normal', e.line ? `${G.gens[e.gen].name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, facColor(G.gens[e.gen]).replace('#6a5a4a', G.factions[G.gens[e.gen].faction] ? G.factions[G.gens[e.gen].faction].color : '#6a5a4a'));
+        const eg = e.gen != null ? G.gens[e.gen] : null;
+        const ecol = eg ? (G.factions[eg.faction] ? G.factions[eg.faction].color : '#6a5a4a') : undefined;
+        if (e.hist) { Sound.se('gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag }); }
+        else if (eg) await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag } : {});
         else UI.toast(e.msg, 2600), await new Promise(r => setTimeout(r, 900));
       }
       const end = Game.checkEnd();

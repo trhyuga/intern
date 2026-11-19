@@ -404,6 +404,8 @@ const Game = {
     G.season++; G.turn++;
     if (G.season > 3) { G.season = 0; G.year++; ev.push(...Game.newYear()); }
     G.gens.forEach(g => g.acted = false);
+    // 不定期イベントと史実イベント
+    if (typeof Events !== 'undefined') ev.push(...Events.run());
     return ev;
   },
 
