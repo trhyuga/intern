@@ -200,7 +200,7 @@ const GENERAL_SRC = `
 // 特別な顔立ち（肖像の描き分け）
 const PORTRAIT_OVERRIDE = {
   '関羽': { skin:'#b5452e', beard:'long', hat:'green', brow:3 },
-  '張飛': { skin:'#8a6a50', beard:'tiger', hat:'band', brow:4, eye:'round' },
+  '張飛': { skin:'#c08e68', beard:'tiger', hat:'band', brow:4, eye:'round' },
   '劉備': { beard:'thin', hat:'crown', ears:true },
   '曹操': { beard:'goatee', hat:'crown', eye:'sharp' },
   '孫権': { beard:'red', hat:'crown', eye:'green' },
@@ -217,8 +217,8 @@ const PORTRAIT_OVERRIDE = {
   '典韋': { beard:'tiger', hat:'band', brow:4 },
   '許褚': { beard:'none', hat:'band', fat:true, bald:true },
   '袁紹': { beard:'goatee', hat:'crown' },
-  '孟獲': { skin:'#7a5233', hat:'feather', beard:'full' },
-  '兀突骨': { skin:'#5a4a3a', hat:'band', brow:4, beard:'none' },
+  '孟獲': { skin:'#a87650', hat:'feather', beard:'full' },
+  '兀突骨': { skin:'#8a6448', hat:'band', brow:4, beard:'none' },
   '龐統': { beard:'thin', hat:'scholar', ugly:true },
   '郭嘉': { beard:'thin', hat:'scholar', young:true },
 };
