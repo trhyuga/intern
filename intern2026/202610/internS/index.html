@@ -497,7 +497,7 @@ function simulate(field, rnd, opts){
   const ev = horses.map(h => {
     const tense = useCond && h.cond < -0.3 ? 2 : 1;   // 調子が悪い（イレ込んでいる）馬ほど起きやすい
     const o = {};
-    if(rnd() < SIM.EV_DEOKURE_P * tense) o.deokure = 0.35 + rnd() * 0.4;            // 何秒出遅れるか
+    if(rnd() < SIM.EV_DEOKURE_P * tense) o.deokure = 0.15 + rnd() * 0.2;            // 何秒出遅れるか（短めに: 要望で0.35〜0.75秒→0.15〜0.35秒）
     if(rnd() < SIM.EV_ABARE_P * tense){ const a = 0.22 + rnd() * 0.4; o.abare = [a, a + 0.07]; }
     if(rnd() < SIM.EV_FURUI_P){ const a = 0.7 + rnd() * 0.15; o.furui = [a, a + 0.12]; }
     return o;
@@ -1553,7 +1553,7 @@ function drawRace(fr, st, ph, time, fi){
       { whip: last && !finished && st.findIndex(e => e.i === i) < 4, look: Game.paddock && Game.paddock[i] ? Game.paddock[i].look : null, time });
     if(gateVisible) drawGateFront(g, gateX, y, sc, !Race.started);
     // ハプニング中の印（暴れる＝赤い「！」、奮い立つ＝金色の炎、出遅れ＝「出遅れ」の札）
-    const act = (Race.sim.events || []).find(e => e.i === i && Race.started && fi >= e.from && fi <= e.to + (e.type === 'deokure' ? 24 : 4));
+    const act = (Race.sim.events || []).find(e => e.i === i && Race.started && fi >= e.from && fi <= e.to + (e.type === 'deokure' ? 12 : 4));
     if(act){
       const ix = x + 6*sc, iy = y - 96*sc;
       g.save();
