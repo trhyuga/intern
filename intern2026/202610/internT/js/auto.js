@@ -29,7 +29,8 @@ const Auto = (() => {
     return {
       q, tier: q >= 0.75 ? 'smart' : q >= 0.45 ? 'mid' : 'dumb',
       noise: (1 - q) * 0.6,
-      aggr: 1.35 + (H('慎重') ? 0.3 : 0) + (H('仁徳') ? 0.1 : 0) - (H('野心') ? 0.15 : 0) - (H('猪突') ? 0.3 : 0) - (H('剛勇') ? 0.1 : 0),
+      // 求める力の比（1.0を超えれば勝ち。普通1.15、慎重なら大きな差、猪突なら小さな差で攻める）
+      aggr: 1.15 + (H('慎重') ? 0.2 : 0) + (H('仁徳') ? 0.05 : 0) - (H('野心') ? 0.05 : 0) - (H('猪突') ? 0.1 : 0) - (H('剛勇') ? 0.03 : 0),
       plot: (H('智謀') ? 0.35 : 0) + (H('神算') ? 0.25 : 0) + Math.max(0, (g.int - 70) / 60),
       dom: { farm: H('治世') ? 0.2 : 0, comm: H('治世') ? 0.2 : 0, alms: H('仁徳') ? 0.3 : 0, wall: H('慎重') ? 0.25 : 0, train: (H('慎重') || H('剛勇')) ? 0.15 : 0, draft: (H('野心') || H('猪突')) ? 0.25 : 0, search: H('仁徳') ? 0.15 : 0 },
       diplo: q >= 0.6 || H('仁徳'),
@@ -65,6 +66,7 @@ const Auto = (() => {
       win: ['予定通りです'], lose: ['……読み違えました。立て直しましょう'],
       allyYes: ['悪くない話です。受けましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
       rec: ['{gen}は使える人物。登用を勧めます'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
+      gather: ['{from}の兵を{to}に合流させ、{target}を一気に攻めます', '兵は集めてこそ力。{from}の兵も{to}へ'],
       transfer: ['{to}は{what}が足りません。{from}から回しましょう', '前線の{to}を空にはできません。{from}から{what}を送ります'],
     },
     mid: {
@@ -78,6 +80,7 @@ const Auto = (() => {
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
       allyYes: ['手を組んでおきましょう'], allyNo: ['今回は断りましょう'],
       rec: ['登用してみましょう'], rel: ['解放しましょう'], kill: ['ここは処断を'],
+      gather: ['{from}の兵を{to}へ合流させます'],
       transfer: ['{from}から{to}へ{what}を送ります'],
     },
     dumb: {
@@ -91,6 +94,7 @@ const Auto = (() => {
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
       allyYes: ['いいよいいよ、組もう！'], allyNo: ['なんか怪しいから断る！'],
       rec: ['仲間にしちゃおう！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
+      gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'],
       transfer: ['{to}に{what}を送っとけ！'],
     },
   };
@@ -165,6 +169,7 @@ const Auto = (() => {
     // 徴兵：民忠を下げるので、民忠50未満ではしない
     const canDraft = c.gold >= CONFIG.RECRUIT_COST + 50 && c.loyal >= 50 && c.food > Game.foodReserve(c, c.troops + 3500);
     if (canDraft && front && c.troops < threat * 0.9) { n.draft = 2 + Math.min(1, (threat * 0.9 - c.troops) / 10000); must.draft = true; }
+    else if (canDraft && G.stage && G.stage.c === c.i && c.troops < G.stage.troops) n.draft = 1.5;   // 攻撃の拠点では兵を集める
     else n.draft = canDraft ? (front ? (c.troops < threat * 1.2 ? 0.8 : 0.3) : (c.troops < 8000 ? 0.3 : 0.08)) : 0;
     n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? 1.2 : 0.7) : 0;
     n.search = Game.roninIn(c.i).filter(r => !r.known).length ? 0.5 : 0.1;
@@ -210,9 +215,10 @@ const Auto = (() => {
     const base = Game.isFront(c) ? 4000 : 2000;
     let maxEnemy = 0;
     c.adj.forEach(a => { const o = G.cities[a]; if (o.owner !== null && o.owner !== G.player && !Game.isAlly(G.player, o.owner)) maxEnemy = Math.max(maxEnemy, o.troops * (a === excludeCi ? 0.4 : 1)); });
-    let k = Game.has(g, '慎重') ? 0.9 : (Game.has(g, '野心') || Game.has(g, '猪突')) ? 0.5 : 0.7;
+    // 城の守りは兵1人あたり約1.4倍強いので、隣の敵の兵力の4〜6割を残せば持ちこたえられる
+    let k = Game.has(g, '慎重') ? 0.6 : (Game.has(g, '野心') || Game.has(g, '猪突')) ? 0.35 : 0.45;
     if (br.tier === 'dumb') k *= 0.6;            // 知力が低いと敵の脅威を甘く見る（それでも最低限は残す）
-    return Math.round(Math.max(base, c.troops * 0.3, maxEnemy * k));
+    return Math.round(Math.max(base, c.troops * 0.25, maxEnemy * k));
   }
   const avg = (arr, k) => arr.length ? arr.reduce((s, g) => s + g[k], 0) / arr.length : 40;
   // 戦いの強さの見積もり（AI.autoBattle と同じ考え方）
@@ -228,15 +234,16 @@ const Auto = (() => {
   // 1つの攻め先について、連れていく武将と兵を決める。勝ち目が足りなければ null
   function evalAttack(c, t, br) {
     const idle = Game.gensIn(c.i, G.player).filter(g => !g.acted);
-    if (!idle.length || c.troops < 4000) return null;
+    if (!idle.length) return why('武将がいない');
+    if (c.troops < 4000) return why('兵が4000未満');
     const keep = garrison(c, br, t.i);
     const avail = Math.floor((c.troops - keep) / 100) * 100;
-    if (avail < 3000) return null;
+    if (avail < 3000) return why('守備兵を残すと3000に届かない');
     // 敵の強さの見積もり（知力が低いほどぶれる）
     const defEst = defPower(t) * (1 + (Math.random() - 0.5) * br.noise * 0.6) * (t.owner === null ? 0.9 : 1);
     // 勝つために欲しい力の比：性格で変わる（慎重なら大きな差、猪突なら小さな差で攻める）
-    const want = Math.max(1.3, br.aggr);   // 攻め気の強い軍師でも、最低限の勝ち目（1.3倍）は見る
-    const margin = (br.tier === 'smart' ? 1.4 : br.tier === 'mid' ? 1.25 : 1.05) + (Game.has(strategist(), '慎重') ? 0.15 : 0);
+    const want = Math.max(1.05, br.aggr);   // 攻め気の強い軍師でも、最低限の勝ち目は見る
+    const margin = (br.tier === 'smart' ? 1.3 : br.tier === 'mid' ? 1.2 : 1.05) + (Game.has(strategist(), '慎重') ? 0.1 : 0);
     // 候補の武将（君主は他に武将がいれば残す。前線では最低1人は城に残す）
     let cands = br.tier === 'dumb' ? shuffle(idle.slice()) : idle.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
     if (cands.length > 1) cands = cands.filter(g => !g.isLord || br.tier === 'dumb');
@@ -246,7 +253,7 @@ const Auto = (() => {
       const stay = cands.slice().sort((a, b) => b.lead - a.lead)[br.tier === 'dumb' ? cands.length - 1 : 0];
       if (br.tier !== 'dumb' || Math.random() < 0.7) cands = cands.filter(g => g !== stay);
     }
-    if (!cands.length) return null;
+    if (!cands.length) return why('出せる武将がいない');
     // 必要な兵を満たす最小の顔ぶれを探す
     for (let n = 1; n <= Math.min(5, cands.length); n++) {
       let army = cands.slice(0, n);
@@ -259,8 +266,40 @@ const Auto = (() => {
       const cap = army.reduce((s, g) => s + Game.troopCap(g), 0);
       const send = Math.floor(Math.min(avail, cap, Math.max(need * margin, 3000)) / 100) * 100;
       if (send >= need && send >= 3000) {
-        army.sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
+        orderArmy(army, br);
         return { c, t, army, troops: send, keep, ratio: send * f / defEst, need: Math.round(need) };
+      }
+    }
+    // 1つの都市で足りなければ、周りの自都市から兵を合流させて攻める
+    if (br.tier !== 'dumb' || Math.random() < 0.5) {
+      const r = reach(c);
+      const helpers = Game.citiesOf(G.player).filter(d => d !== c && r.has(d.i))
+        .map(d => ({ d, amt: Math.floor(Math.max(0, d.troops - garrison(d, br)) / 100) * 100 }))
+        .filter(x => x.amt >= 1000).sort((a, b) => b.amt - a.amt);
+      const army = cands.slice(0, 5);
+      // 率いる武将が足りなければ、周りの都市の待機武将も呼ぶ（前線の都市には1人残す）
+      const extraGens = [];
+      let need0 = defEst * want / atkFactor(c, army);
+      if (army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < need0 * margin && army.length < 5) {
+        Game.citiesOf(G.player).filter(d => d !== c && r.has(d.i)).forEach(d => {
+          const idleD = Game.gensIn(d.i, G.player).filter(g => !g.acted && !g.isLord);
+          const allD = Game.gensIn(d.i, G.player).length;
+          const canGive = Game.isFront(d) ? Math.max(0, Math.min(idleD.length, allD - 1)) : idleD.length;
+          idleD.sort((x, y) => (y.lead + y.war) - (x.lead + x.war)).slice(0, canGive).forEach(g => extraGens.push(g));
+        });
+        extraGens.sort((x, y) => (y.lead + y.war) - (x.lead + x.war));
+        while (army.length < 5 && extraGens.length && army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < need0 * margin) army.push(extraGens.shift());
+      }
+      const f = atkFactor(c, army), need = defEst * want / f, cap = army.reduce((s2, g) => s2 + Game.troopCap(g), 0);
+      const send = Math.min(cap, Math.max(need * margin, 3000));
+      let have = Math.max(0, avail);
+      const reinforce = [];
+      for (const h of helpers) { if (have >= send) break; const take = Math.min(h.amt, Math.ceil((send - have) / 100) * 100); reinforce.push({ d: h.d, amt: take }); have += take; }
+      const moved = army.filter(g => g.city !== c.i);
+      if ((reinforce.length || moved.length) && have >= need && cap >= need) {
+        orderArmy(army, br);
+        const troops = Math.floor(Math.min(have, send) / 100) * 100;
+        return { c, t, army, troops, keep, ratio: troops * f / defEst, need: Math.round(need), reinforce, moved };
       }
     }
     // 知力の低い軍師は、勝ち目が少し足りなくても突っ込むことがある
@@ -269,7 +308,15 @@ const Auto = (() => {
       const send = Math.floor(Math.min(avail, army.reduce((s, g) => s + Game.troopCap(g), 0)) / 100) * 100;
       if (send >= 3000 && send * atkFactor(c, army) / defEst >= 1.1) return { c, t, army, troops: send, keep, ratio: send * atkFactor(c, army) / defEst, need: 0 };
     }
-    return null;
+    const army5 = cands.slice(0, 5), need5 = defEst * want / atkFactor(c, army5), cap5 = army5.reduce((s, g) => s + Game.troopCap(g), 0);
+    return why(need5 > avail ? (need5 > c.troops ? '敵が強すぎる（全軍でも足りない）' : '守備兵を残すと足りない') : need5 > cap5 ? '武将が率いられる兵の上限で足りない' : 'その他');
+  }
+  const WHY = {};
+  function why(r) { WHY[r] = (WHY[r] || 0) + 1; return null; }
+  // 総大将を先頭に並べる。賢い軍師は統率が高く、猪突でない者を選ぶ
+  function orderArmy(army, br) {
+    const sc = g => g.lead * 1.2 + g.war * 0.5 + g.int * 0.3 + (Game.has(g, '慎重') ? 8 : 0) - (Game.has(g, '猪突') ? (br.tier === 'dumb' ? 0 : 25) : 0) - (Game.has(g, '臆病') ? 15 : 0);
+    return br.tier === 'dumb' ? army.sort((a, b) => (b.lead + b.war) - (a.lead + a.war)) : army.sort((a, b) => sc(b) - sc(a));
   }
   function planAttacks(br) {
     const plans = [];
@@ -287,6 +334,33 @@ const Auto = (() => {
       chosen.push(p);
     }
     return chosen;
+  }
+
+  // 兵が足りずに攻められないとき、一番取りやすい攻め先を決めて、その手前の拠点に兵を集める
+  function planStage(br, attacks) {
+    G.stage = null;
+    if (br.tier === 'dumb' && Math.random() < 0.5) return null;   // 知力が低いと先を見ないこともある
+    const cities = Game.citiesOf(G.player);
+    let best = null;
+    cities.forEach(c => {
+      if (attacks.some(a => a.c === c)) return;
+      const r = reach(c);
+      // 集められる兵（後方の都市が自分の守りを残して出せる分）
+      const spare = cities.filter(d => d !== c && r.has(d.i)).reduce((s, d) => s + Math.max(0, d.troops - wants(d).troops), 0);
+      c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner))).forEach(t => {
+        const idle = Game.gensIn(c.i, G.player);
+        if (!idle.length) return;
+        const army = idle.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+        const need = defPower(t) * Math.max(1.05, br.aggr) / atkFactor(c, army) * (br.tier === 'smart' ? 1.3 : 1.2);
+        const target = Math.round(need + garrison(c, br, t.i));
+        const short = target - c.troops;
+        if (short <= 0 || short > spare + 6000) return;   // すでに足りている／集めても届かない
+        const score = short / Math.max(1, t.pop / 100000) + (t.owner === null ? -2000 : 0);
+        if (!best || score < best.score) best = { c: c.i, t: t.i, troops: target, score };
+      });
+    });
+    G.stage = best;
+    return best;
   }
 
   // ---------- 計略・外交・人事 ----------
@@ -420,7 +494,7 @@ const Auto = (() => {
       front, threat,
       food: Game.foodReserve(c) + (front ? 3000 : 1000),               // これだけは置いておきたい
       gold: front ? 800 : 400,
-      troops: front ? Math.max(6000, Math.round(threat * 0.8)) : 2500,
+      troops: Math.max(front ? Math.max(6000, Math.round(threat * 0.8)) : 2500, G.stage && G.stage.c === c.i ? G.stage.troops : 0),
     };
   }
   async function doLogistics(br) {
@@ -487,7 +561,8 @@ const Auto = (() => {
     const br = brain(g);
     setBar(`軍師 <b>${g.name}</b> が采配中（${G.year}年${SEASONS[G.season]}）`);
     const attacks = planAttacks(br);
-    const plan = attacks.length ? `今季は${attacks.map(a => a.t.name).join('と')}を攻めます。` : '今季は国力を蓄えます。';
+    const stage = attacks.length < br.maxAttacks ? planStage(br, attacks) : (G.stage = null);
+    const plan = (attacks.length ? `今季は${attacks.map(a => a.t.name).join('と')}を攻めます。` : '') + (stage ? `${G.cities[stage.c].name}に兵を集め、${G.cities[stage.t].name}を攻める支度をします。` : attacks.length ? '' : '今季は国力を蓄えます。');
     await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan }, attacks.length ? 'angry' : 'normal');
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
@@ -541,12 +616,36 @@ const Auto = (() => {
       // 内政のあとの最新の状態でもう一度見積もる（攻め先の兵が増えていたら見送る）
       const e = evalAttack(p.c, p.t, br);
       if (!e) { await say('hold'); continue; }
+      // 武将の合流
+      if (e.moved && e.moved.length) {
+        const names = e.moved.map(g => g.name).join('・');
+        await press(e.moved[0].city, 'per', '[data-cmd=move]');
+        await say('gather', { from: names, to: p.c.name, target: p.t.name });
+        e.moved.forEach(g => { if (g.state === 'serve' && g.faction === G.player && !g.acted) g.city = p.c.i; });
+        UI.toast(`${names} が${p.c.name}に合流`, 2200);
+      }
       const army = e.army.filter(x => x.state === 'serve' && x.faction === G.player && x.city === p.c.i && !x.acted);
       if (!army.length) continue;
-      const troops = e.troops;
+      // 兵の合流
+      if (e.reinforce) {
+        for (const rf of e.reinforce) {
+          if (stopReq) return false;
+          const d = rf.d, amt = Math.min(rf.amt, Math.floor((d.troops - garrison(d, br)) / 100) * 100);
+          if (amt < 500) continue;
+          await press(d.i, 'mil', '[data-cmd=transport]');
+          await say('gather', { from: d.name, to: p.c.name, target: p.t.name });
+          await MapView.march(d.i, p.c.i, G.factions[G.player].color);
+          const food = Math.max(0, Math.min(d.food - Game.foodReserve(d, d.troops - amt), Math.round(amt * 0.03 * 30)));
+          Game.transport(d, p.c, 0, Math.floor(food), amt);
+          UI.toast(`${d.name} → ${p.c.name}　兵${fmt(amt)}・兵糧${fmt(food)} が合流`, 2400);
+          App.refresh();
+        }
+      }
+      const troops = Math.min(e.troops, Math.floor((p.c.troops - e.keep) / 100) * 100);
+      if (troops < 3000) { await say('hold'); continue; }
       const spare = p.c.food - Game.foodReserve(p.c, p.c.troops - troops);
       const food = Math.min(Math.round(troops * 0.03 * 30), Math.floor(spare));
-      if (food < troops * 0.03 * 12) { await say('hold'); continue; }
+      if (food < troops * 0.03 * 20) { await say('hold'); continue; }
       await press(p.c.i, 'mil', '[data-cmd=attack]');
       MapView.setHighlight([p.t.i]); await wait(500); MapView.setHighlight(null);
       await say('attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name, m: fmt(troops), k: fmt(p.c.troops - troops), city: p.c.name }, 'angry');
@@ -652,6 +751,6 @@ const Auto = (() => {
 
   return {
     get running() { return running; }, get speed() { return S.speed; },
-    start, stop, init, openMenu, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks,
+    start, stop, init, openMenu, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
   };
 })();

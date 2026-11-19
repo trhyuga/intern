@@ -7,7 +7,7 @@
 const Battle = (() => {
   const COLS = 9, ROWS = 11;
   const COST = { plain: 1, forest: 2, mount: 3, ford: 2, water: 99, inner: 1, keep: 1, gate: 1, wall: 99, road: 1 };
-  const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.5, keep: 1.75, gate: 1.4, wall: 2, road: 1 };
+  const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.35, keep: 1.6, gate: 1.4, wall: 2, road: 1 };
   const TNAME = { plain: '平地', forest: '森', mount: '山', ford: '浅瀬', water: '川', inner: '城内', keep: '本丸', gate: '城門', wall: '城壁', road: '道' };
   let B = null, cv, ctx, cell, raf, resolveEnd, terrainLayer, anims = [], floaters = [], particles = [];
   const sleep = ms => new Promise(r => setTimeout(r, ms / Math.max(G && G.opts.aiSpeed ? G.opts.aiSpeed : 1, B && B.watch ? Auto.speed : 1)));
@@ -388,7 +388,11 @@ const Battle = (() => {
       // 城門攻撃
       const dmg = Math.round(Math.pow(a.troops, 0.8) * 0.9 * ((a.g.lead || 40) + a.g.war) / 120 * rnd(0.85, 1.15));
       B.gateHP -= dmg; Sound.se('hit'); slash(r, c); addFloater(r, c, `門-${dmg}`, '#ffd23a');
-      if (B.gateHP <= 0) { B.tiles[2][4].t = 'road'; Sound.se('gong'); await banner('城門、破れたり！', 1000); addLog(`${a.g.name}隊が城門を破った！`); }
+      if (B.gateHP <= 0) {
+        B.tiles[2][4].t = 'road'; B.tiles[2][3].t = 'road'; B.tiles[2][5].t = 'road';   // 門の両脇の城壁も崩れる
+        buildTerrainLayer(window.devicePixelRatio || 1);
+        Sound.se('gong'); await banner('城門、破れたり！', 1000); addLog(`${a.g.name}隊が城門を破った！ 城壁も崩れた`);
+      }
       a.acted = true; await sleep(400); return;
     }
     const d = unitAt(r, c);
@@ -470,6 +474,11 @@ const Battle = (() => {
   // ---------- 一騎打ち ----------
   function willAcceptDuel(d, a) {
     if (d.gi < 0) return false;
+    // 総大将は討たれると負け。軍師が止める（賢いほど止める。相手が同格以上のとき）
+    if (d.commander && a.g.war >= d.g.war - 4) {
+      const smart = (B.watch && d.side === B.playerSide) ? B.smart : 0.35;
+      if (Math.random() < 0.45 + 0.5 * smart) { d._held = true; return false; }
+    }
     if (Game.has(d.g, '剛勇')) return true;
     if (Game.has(d.g, '臆病') || Game.has(d.g, '慎重')) return Math.random() < 0.15;
     return Math.random() < 0.45 + (d.g.war - a.g.war) / 60;
@@ -479,7 +488,8 @@ const Battle = (() => {
     if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? G.factions[a.fi].color : '#777', { tag: '一騎討ち' });
     const accept = willAcceptDuel(d, a);
     if (!accept) {
-      if (!auto) await UI.talk(d.g, 'normal', `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
+      if (!auto) await UI.talk(d.g, 'normal', d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
+      d._held = false;
       d.morale = Math.max(0, d.morale - 8); a.morale = Math.min(100, a.morale + 5);
       addLog(`${d.g.name}は一騎打ちを避けた（士気が下がった）`);
       return;
@@ -666,6 +676,7 @@ const Battle = (() => {
       .sort((a, b) => (b.commander ? 20 : 0) + (u.g.war - b.g.war) - ((a.commander ? 20 : 0) + (u.g.war - a.g.war)));
     const t = cands[0];
     if (!t) return false;
+    if (u.commander && u.g.war < t.g.war + 12) return false;   // 総大将は大差で勝てる相手にだけ挑む
     let p = bold ? 0.6 : timid ? 0.2 : 0.4;
     if (t.commander && u.g.war >= t.g.war + 8) p += 0.25;              // 総大将を討てば勝ち
     if (wmine && t.commander && u.g.war >= t.g.war + 10) p += 0.2 * B.smart;   // 賢い軍師は好機を逃さない
@@ -730,6 +741,11 @@ const Battle = (() => {
       }
       score += (DEFK[B.tiles[r][c].t] - 1) * 8;
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
+      // 総大将は、味方が戦っている間は敵に囲まれる位置を避ける
+      if (u.commander && B.units.some(o => o.alive && o.side === u.side && o !== u)) {
+        const adjFoe = DIRS.filter(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side; }).length;
+        score -= adjFoe * (Game.has(u.g, '猪突') ? 4 : 14) * (1.5 - u.troops / u.maxTroops);
+      }
       if (u.troops < u.maxTroops * 0.25 && u.side === 'def') score -= tg.length * 6;
       if (score > bestScore) { bestScore = score; best = [r, c]; }
     });
