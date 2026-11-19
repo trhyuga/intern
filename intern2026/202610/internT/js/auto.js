@@ -69,6 +69,7 @@ const Auto = (() => {
       gather: ['{from}の兵を{to}に合流させ、{target}を一気に攻めます', '兵は集めてこそ力。{from}の兵も{to}へ'],
       deploy: ['{gen}殿ほどの将を後方に置くのは惜しい。{to}へ移っていただきます', '{to}の守りと攻めの要として、{gen}殿を前線へ'],
       deployCivil: ['{gen}殿には{to}で内政を任せます。前線は武の者に'],
+      eventMeet: ['{gens}殿、{city}に集まっていただきましょう。良い縁は近くにあってこそです'], eventFace: ['{gen}殿を{city}へ。{foe}と相まみえる時が来ました', '{foe}の前に{gen}殿を。因縁の相手には、因縁の者を'],
       transfer: ['{to}は{what}が足りません。{from}から回しましょう', '前線の{to}を空にはできません。{from}から{what}を送ります'],
     },
     mid: {
@@ -83,7 +84,7 @@ const Auto = (() => {
       allyYes: ['手を組んでおきましょう'], allyLast: ['全部と仲良くしたら、戦う相手がいなくなっちゃいます。断りましょう'], allyNo: ['今回は断りましょう'],
       rec: ['登用してみましょう'], recruitGo: ['{envoy}殿、{city}の{gen}を誘いに行ってください'], kongming: ['{gen}は殿が直々に会いに行かないとダメみたいです'], rel: ['解放しましょう'], kill: ['ここは処断を'],
       gather: ['{from}の兵を{to}へ合流させます'],
-      deploy: ['{gen}殿は{to}へ移ってください'], deployCivil: ['{gen}殿は{to}で内政を'],
+      deploy: ['{gen}殿は{to}へ移ってください'], deployCivil: ['{gen}殿は{to}で内政を'], eventMeet: ['{gens}殿、{city}に集まってください'], eventFace: ['{gen}殿、{city}へ。{foe}がいます'],
       transfer: ['{from}から{to}へ{what}を送ります'],
     },
     dumb: {
@@ -98,7 +99,7 @@ const Auto = (() => {
       allyYes: ['いいよいいよ、組もう！'], allyLast: ['あれ？ 組んだら喧嘩する相手がいなくなるぞ。断る！'], allyNo: ['なんか怪しいから断る！'],
       rec: ['仲間にしちゃおう！'], recruitGo: ['{envoy}、{city}の{gen}を連れてこい！'], kongming: ['殿、{gen}に会いに行ってきてくださいよ！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
       gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'],
-      deploy: ['{gen}、いつまで後ろにいる！ {to}へ行け！'], deployCivil: ['{gen}は後ろで畑でも耕してろ！'],
+      deploy: ['{gen}、いつまで後ろにいる！ {to}へ行け！'], deployCivil: ['{gen}は後ろで畑でも耕してろ！'], eventMeet: ['{gens}、みんな{city}に集まれ！ 宴会だ！'], eventFace: ['{gen}、{city}へ行け！ {foe}がいるぞ！'],
       transfer: ['{to}に{what}を送っとけ！'],
     },
   };
@@ -273,7 +274,7 @@ const Auto = (() => {
       const cap = army.reduce((s, g) => s + Game.troopCap(g), 0);
       const send = Math.floor(Math.min(avail, cap, Math.max(need * margin, 3000)) / 100) * 100;
       if (send >= need && send >= 3000) {
-        orderArmy(army, br);
+        addPairGens(army, c, t); orderArmy(army, br);
         return { c, t, army, troops: send, keep, ratio: send * f / defEst, need: Math.round(need) };
       }
     }
@@ -304,7 +305,7 @@ const Auto = (() => {
       for (const h of helpers) { if (have >= send) break; const take = Math.min(h.amt, Math.ceil((send - have) / 100) * 100); reinforce.push({ d: h.d, amt: take }); have += take; }
       const moved = army.filter(g => g.city !== c.i);
       if ((reinforce.length || moved.length) && have >= need && cap >= need) {
-        orderArmy(army, br);
+        addPairGens(army, c, t); orderArmy(army, br);
         const troops = Math.floor(Math.min(have, send) / 100) * 100;
         return { c, t, army, troops, keep, ratio: troops * f / defEst, need: Math.round(need), reinforce, moved };
       }
@@ -321,6 +322,15 @@ const Auto = (() => {
   const WHY = {};
   function why(r) { WHY[r] = (WHY[r] || 0) + 1; return null; }
   // 総大将を先頭に並べる。賢い軍師は統率が高く、猪突でない者を選ぶ
+  // 攻め先に因縁の相手がいれば、その武将を必ず連れていく
+  function addPairGens(army, c, t) {
+    pairWishes().forEach(w => {
+      if (w.foe.city !== t.i || w.me.city !== c.i || w.me.acted || army.includes(w.me)) return;
+      if (army.length >= 5) army.sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).pop();
+      army.push(w.me);
+    });
+    return army;
+  }
   function orderArmy(army, br) {
     const sc = g => g.lead * 1.2 + g.war * 0.5 + g.int * 0.3 + (Game.has(g, '慎重') ? 8 : 0) - (Game.has(g, '猪突') ? (br.tier === 'dumb' ? 0 : 25) : 0) - (Game.has(g, '臆病') ? 15 : 0);
     return br.tier === 'dumb' ? army.sort((a, b) => (b.lead + b.war) - (a.lead + a.war)) : army.sort((a, b) => sc(b) - sc(a));
@@ -330,7 +340,8 @@ const Auto = (() => {
     Game.citiesOf(G.player).forEach(c => {
       c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner))).forEach(t => {
         const e = evalAttack(c, t, br);
-        if (e) plans.push(Object.assign(e, { score: e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) }));
+        const pairBonus = pairWishes().some(w => w.me.city === c.i && w.foe.city === t.i) ? 0.5 : 0;   // 名場面が起きそうな攻め先
+        if (e) plans.push(Object.assign(e, { score: e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus }));
       });
     });
     plans.sort((a, b) => b.score - a.score);
@@ -607,6 +618,73 @@ const Auto = (() => {
     }
   }
 
+  // ---------- 史実・人物イベントが起きるように武将を寄せる ----------
+  // 戦場で名場面になる組み合わせ（自軍の人物 → 敵の人物）
+  function battlePairs() {
+    const list = PAIRS.map(p => p.who);
+    ['劉備', '関羽', '張飛'].forEach(n => list.push([n, '呂布']));
+    list.push(['関羽', '曹操']);
+    return list;
+  }
+  // 自軍の誰を、どの敵の人物にぶつけたいか
+  function pairWishes() {
+    const out = [];
+    battlePairs().forEach(([x, y]) => {
+      [[x, y], [y, x]].forEach(([m, f]) => {
+        const a = G.gens.find(g => g.name === m), b = G.gens.find(g => g.name === f);
+        if (!a || !b || a.state !== 'serve' || b.state !== 'serve' || a.faction !== G.player || b.faction === G.player || Game.isAlly(G.player, b.faction)) return;
+        if (m === '関羽' && f === '曹操' && G.events.huarong) return;
+        out.push({ me: a, foe: b });
+      });
+    });
+    return out;
+  }
+  async function eventSeek(br, reserved) {
+    const done = G.events.hist || {};
+    const limit = br.tier === 'smart' ? 4 : br.tier === 'mid' ? 3 : 2;
+    let n = 0;
+    const canMove = g => g && g.state === 'serve' && g.faction === G.player && !g.acted && !reserved.has(g.i) && !(Game.isFront(G.cities[g.city]) && Game.gensIn(g.city, G.player).length <= 1 && !g.isLord);
+    const go = async (g, to, kind, ctx) => {
+      if (n >= limit || g.city === to) return;
+      const from = G.cities[g.city];
+      await press(from.i, 'per', '[data-cmd=move]');
+      await say(kind, ctx);
+      await MapView.march(from.i, to, G.factions[G.player].color);
+      Game.move(g, to); n++;
+      UI.toast(`${g.name}が ${from.name} → ${G.cities[to].name} へ`, 2000);
+      App.refresh();
+    };
+    // 1) 同じ都市に集める
+    for (const m of Events.MEET) {
+      if (stopReq || n >= limit || done[m.id]) continue;
+      const gs = m.who.map(nm => G.gens.find(g => g.name === nm));
+      if (!gs.every(g => g && g.state === 'serve' && g.faction === G.player)) continue;
+      if (gs.every(g => g.city === gs[0].city)) continue;
+      const anchor = gs.find(g => g.isLord) || gs.find(g => !canMove(g)) || gs[0];
+      for (const g of gs) { if (g !== anchor && g.city !== anchor.city && canMove(g)) await go(g, anchor.city, 'eventMeet', { gens: gs.map(x => x.name).join('・'), city: G.cities[anchor.city].name }); }
+    }
+    // 2) 因縁の相手の隣へ
+    for (const f of Events.FACE) {
+      if (stopReq || n >= limit || done[f.id]) continue;
+      if (f.year && (G.year < f.year[0] || G.year > f.year[1])) continue;
+      const me = G.gens.find(g => g.name === f.mine);
+      if (!canMove(me)) continue;
+      let foeCities;
+      if (f.foe[0] === '@') { const fi = G.factions.findIndex(x => x.alive && Game.lordOf(x.i).name === f.foe.slice(1)); if (fi < 0 || fi === G.player || Game.isAlly(G.player, fi)) continue; foeCities = Game.citiesOf(fi).filter(c => !f.river || c.terrain === 'river').map(c => c.i); }
+      else { const y = G.gens.find(g => g.name === f.foe); if (!y || y.state !== 'serve' || y.faction === G.player || Game.isAlly(G.player, y.faction)) continue; foeCities = [y.city]; }
+      if (G.cities[me.city].adj.some(a => foeCities.includes(a))) continue;
+      const spots = Game.citiesOf(G.player).filter(c => c.adj.some(a => foeCities.includes(a))).sort((a, b) => b.troops - a.troops);
+      if (spots[0]) await go(me, spots[0].i, 'eventFace', { gen: me.name, city: spots[0].name, foe: f.foe.replace('@', '') });
+    }
+    // 3) 戦場の名場面：相手のいる敵都市の隣へ
+    for (const w of pairWishes()) {
+      if (stopReq || n >= limit) break;
+      if (!canMove(w.me) || G.cities[w.me.city].adj.includes(w.foe.city)) continue;
+      const spots = Game.citiesOf(G.player).filter(c => c.adj.includes(w.foe.city)).sort((a, b) => b.troops - a.troops);
+      if (spots[0]) await go(w.me, spots[0].i, 'eventFace', { gen: w.me.name, city: spots[0].name, foe: w.foe.name });
+    }
+  }
+
   // 内地（敵に接していない都市）で鍛えた兵を、前線の都市へ送り出す
   async function sendTrained(br) {
     if (br.tier === 'dumb' && Math.random() < 0.6) return;
@@ -711,6 +789,7 @@ const Auto = (() => {
     const armies0 = attacks.map(p => p.army).flat();
     await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
+    await eventSeek(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
     await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     // 出陣する武将はあらかじめ取っておく
