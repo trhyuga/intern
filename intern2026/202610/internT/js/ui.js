@@ -21,16 +21,21 @@ const UI = {
   talk(g, expr, text, color, opts = {}) {
     return new Promise(res => {
       const el = $('#talk');
-      el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/\n/g, '<br>')}<div class="talk-next">▼</div></div></div>`;
+      const autoMs = (typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text) : 0;
+      el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/\n/g, '<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div>` : '<div class="talk-next">▼</div>'}</div></div>`;
       el.classList.add('show');
       let veil = $('.talk-veil');
       if (!veil) { veil = document.createElement('div'); veil.className = 'talk-veil'; el.after(veil); }
-      const close = () => { el.classList.remove('show'); veil.onclick = null; el.onclick = null; Sound.se('tap'); res(); };
+      let closed = false;
+      const close = () => { if (closed) return; closed = true; clearTimeout(tm); el.classList.remove('show'); veil.onclick = null; el.onclick = null; if (!autoMs) Sound.se('tap'); res(); };
       setTimeout(() => { veil.onclick = close; el.onclick = close; }, 180);
+      let tm = null;
+      if (autoMs) { requestAnimationFrame(() => { const bar = $('.talk-auto i', el); if (bar) bar.style.width = '100%'; }); tm = setTimeout(close, autoMs); }
     });
   },
-  modal({ title, body, buttons, wide }) {
+  modal({ title, body, buttons, wide, auto }) {
     return new Promise(res => {
+      if (auto !== undefined && typeof Auto !== 'undefined' && Auto.running) setTimeout(() => { if (m.classList.contains('show') && UI._modalRes === myRes) UI.closeModal(auto); }, 2600 / Auto.speed);
       const m = $('#modal');
       m.innerHTML = `<div class="modal-box">${title ? `<div class="modal-hd">${title}</div>` : ''}<div class="modal-bd">${body || ''}</div>${buttons && buttons.length ? `<div class="modal-ft"></div>` : ''}</div>`;
       const ft = $('.modal-ft', m);
@@ -40,7 +45,7 @@ const UI = {
         ft.appendChild(e);
       });
       m.classList.add('show');
-      UI._modalRes = v => { m.classList.remove('show'); res(v); };
+      const myRes = UI._modalRes = v => { m.classList.remove('show'); res(v); };
     });
   },
   closeModal(v) { if (UI._modalRes) UI._modalRes(v); },
@@ -109,6 +114,7 @@ const App = {
     $('#btnMenu').onclick = () => { Sound.se('tap'); App.menu(); };
     MapView.init($('#mapcv'));
     MapView.onTap = ci => App.tapCity(ci);
+    Auto.init();
     $('#mapHint').onclick = () => { if (App._pickRes) { const r = App._pickRes; App._pickRes = null; App.endPick(); r(null); } };
   },
   async opening() {
@@ -502,7 +508,7 @@ const App = {
     const needFood = Math.round(troops * 0.03 * 30);
     const food = Math.min(c.food, needFood);
     if (food < troops * 0.03 * 8) return UI.alert(`兵糧が足りない（最低 ${fmt(troops * 0.03 * 8)} 必要）`);
-    const how = await UI.choose('戦い方', [{ label: '自ら指揮する', sub: '戦場で部隊を動かす', value: 'manual', cls: 'primary' }, { label: '委任する', sub: '結果だけを見る', value: 'auto' }]);
+    const how = await UI.choose('戦い方', [{ label: '自ら指揮する', sub: '戦場で部隊を動かす', value: 'manual', cls: 'primary' }, { label: '軍師に任せて観戦', sub: `軍師 ${Auto.strategist() ? Auto.strategist().name : ''} の采配を戦場で見る`, value: 'watch' }, { label: '委任する', sub: '結果だけを見る', value: 'auto' }]);
     if (!how) return App.openCity(c.i);
     UI.closeSheet();
     const cmdr = G.gens[sel[0]];
@@ -510,7 +516,7 @@ const App = {
     await UI.talk(cmdr, 'angry', `${cmdr.name}「${line(cmdr, 'sortie')}」`, facColor(cmdr), { tag: '出陣' });
     sel.forEach(gi => G.gens[gi].acted = true);
     const plan = { atkFi: G.player, from: c.i, to: t.i, gens: sel, troops, food };
-    await App.executeBattle(plan, how === 'manual');
+    await App.executeBattle(plan, how === 'manual' ? true : how === 'watch' ? 'watch' : false);
   },
 
   // 戦いを実行して結果を反映
@@ -522,7 +528,7 @@ const App = {
     const playerInvolved = plan.atkFi === G.player || to.owner === G.player;
     let res;
     if (playerInvolved && manual) {
-      res = await Battle.start(plan);
+      res = await Battle.start(plan, { watch: manual === 'watch' });
       UI.show('main'); Sound.bgm('map');
     } else {
       res = AI.autoBattle(plan);
@@ -572,7 +578,8 @@ const App = {
         <p>攻 ${atkName}軍　残兵 ${fmt(res.atkLeft)}<br>守 ${defName}　残兵 ${fmt(res.defLeft)}</p>
         ${res.atkWin ? `<p><b>${to.name}は${atkName}軍のものとなった。</b></p>` : ''}
         ${deaths.length ? `<p>討死：${deaths.map(g => g.name).join('、')}</p>` : ''}
-        ${caps.length ? `<p>捕虜：${caps.map(i => G.gens[i].name).join('、')}</p>` : ''}`, buttons: [{ label: '次へ', cls: 'primary', value: 1 }] });
+        ${caps.length ? `<p>捕虜：${caps.map(i => G.gens[i].name).join('、')}</p>` : ''}`, buttons: [{ label: '次へ', cls: 'primary', value: 1 }], auto: 1 });
+      if (Auto.running && Auto.strategist()) await Auto.say(playerWon ? 'win' : 'lose', {}, playerWon ? 'happy' : 'sad');
       if (playerWon && hero) await UI.talk(hero, 'happy', `${hero.name}「${line(hero, 'victory')}」`);
       if (!playerWon && pAtk) { const lg = atkGens.find(g => g.state === 'serve' && !caps.includes(g.i) && !deaths.includes(g)); if (lg) await UI.talk(lg, 'sad', `${lg.name}「${line(lg, 'defeat')}」`); }
     }
@@ -624,7 +631,7 @@ const App = {
       G.stats.captured++;
       const lordCaptive = g.isLord && ownerAlive;
       await UI.talk(g, Game.has(g, '臆病') ? 'shock' : 'angry', `${g.name}を捕らえた。\n${g.name}「${line(g, 'captured')}」`, facColor(g), { tag: '捕虜' });
-      const act = await UI.choose(`${g.name}をどうする？`, [
+      const act = Auto.running ? await Auto.decideCaptive(g, lordCaptive) : await UI.choose(`${g.name}をどうする？`, [
         { label: '登用する', sub: lordCaptive ? '敵の君主は登用できない' : '配下に誘う', value: 'rec', disabled: lordCaptive, cls: 'primary' },
         { label: '解放する', sub: ownerAlive ? '元の主のもとへ帰す' : '野に放つ', value: 'rel' },
         { label: '処断する', sub: '命を絶つ（武将の忠誠が少し下がることも）', value: 'kill' },
@@ -660,10 +667,10 @@ const App = {
   },
 
   // ---------------- 季節を進める ----------------
-  async endTurn() {
-    if (App.busy) return;
+  async endTurn(fromAuto) {
+    if (App.busy && !fromAuto) return;
     const idle = Game.gensOf(G.player).filter(g => !g.acted).length;
-    if (idle > 0 && !(await UI.confirm(`まだ ${idle}人 の武将が待機中です。季節を進めますか？`))) return;
+    if (!fromAuto && idle > 0 && !(await UI.confirm(`まだ ${idle}人 の武将が待機中です。季節を進めますか？`))) return;
     App.busy = true; UI.closeSheet();
     try {
       // 委任都市
@@ -679,7 +686,7 @@ const App = {
         if (adj && !Game.isAlly(fi, G.player) && Math.random() < 0.04 && Game.power(fi) < Game.power(G.player) * 1.3) {
           $('#mapHint').classList.remove('show');
           await UI.talk(Game.lordOf(fi), 'normal', `${f.name}軍から使者が来た。\n「我が主は貴軍との同盟を望んでおります」`, f.color, { tag: '外交' });
-          if (await UI.confirm(`${f.name}軍と同盟を結びますか？（${CONFIG.ALLY_TURNS / 4}年）`)) { f.allies[G.player] = CONFIG.ALLY_TURNS; G.factions[G.player].allies[fi] = CONFIG.ALLY_TURNS; Game.log(`${f.name}軍と同盟を結んだ。`); }
+          if (Auto.running ? await Auto.decideAlly(fi) : await UI.confirm(`${f.name}軍と同盟を結びますか？（${CONFIG.ALLY_TURNS / 4}年）`)) { f.allies[G.player] = CONFIG.ALLY_TURNS; G.factions[G.player].allies[fi] = CONFIG.ALLY_TURNS; Game.log(`${f.name}軍と同盟を結んだ。`); }
           $('#mapHint').classList.add('show');
         }
         const before = Game.gensOf(G.player).length;
@@ -707,8 +714,11 @@ const App = {
             if (Game.gensIn(to.i, G.player).length) {
               const dg = Game.gensIn(to.i, G.player).sort((x, y) => (y.isLord ? 999 : 0) + y.lead - (x.isLord ? 999 : 0) - x.lead)[0];
               await UI.talk(dg, Game.has(dg, '臆病') ? 'shock' : 'angry', `${dg.name}「${line(dg, 'defend')}」`, facColor(dg));
-              const how = await UI.choose(`${to.name}の防衛`, [{ label: '自ら指揮する', value: 'manual', cls: 'primary' }, { label: '委任する', value: 'auto' }], false);
-              manual = how === 'manual';
+              if (Auto.running) { await Auto.say('defend'); manual = 'watch'; }
+              else {
+                const how = await UI.choose(`${to.name}の防衛`, [{ label: '自ら指揮する', value: 'manual', cls: 'primary' }, { label: '軍師に任せて観戦', value: 'watch' }, { label: '委任する（結果だけ）', value: 'auto' }], false);
+                manual = how === 'manual' ? true : how === 'watch' ? 'watch' : false;
+              }
             }
           }
           const r = await App.executeBattle(b, manual);
@@ -737,6 +747,7 @@ const App = {
   nav(k) {
     if (App.busy) return;
     if (k === 'end') return App.endTurn();
+    if (k === 'auto') return Auto.openMenu();
     if (k === 'cities') {
       const cs = Game.citiesOf(G.player);
       const el = UI.sheet(`<div class="city-hd"><h3>自軍の都市</h3><button class="x">×</button></div>` + cs.map(c => `
@@ -815,6 +826,7 @@ const App = {
 
   async finish(kind) {
     G.gameOver = true;
+    if (Auto.running) Auto.stop(true);
     Game.clearSave();
     UI.closeSheet();
     UI.show('ending');

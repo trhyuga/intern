@@ -10,7 +10,7 @@ const Battle = (() => {
   const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.5, keep: 1.75, gate: 1.4, wall: 2, road: 1 };
   const TNAME = { plain: '平地', forest: '森', mount: '山', ford: '浅瀬', water: '川', inner: '城内', keep: '本丸', gate: '城門', wall: '城壁', road: '道' };
   let B = null, cv, ctx, cell, raf, resolveEnd, terrainLayer, anims = [], floaters = [], particles = [];
-  const sleep = ms => new Promise(r => setTimeout(r, ms / (G && G.opts.aiSpeed ? G.opts.aiSpeed : 1)));
+  const sleep = ms => new Promise(r => setTimeout(r, ms / Math.max(G && G.opts.aiSpeed ? G.opts.aiSpeed : 1, B && B.watch ? Auto.speed : 1)));
 
   // ---------- 地形の生成 ----------
   function genTerrain(city) {
@@ -58,7 +58,9 @@ const Battle = (() => {
       const defGens = defGensAll.slice().sort((a, b) => (b.isLord ? 1000 : 0) + b.lead + b.war - (a.isLord ? 1000 : 0) - a.lead - a.war).slice(0, 5);
       B = { plan, atkFi: plan.atkFi, defFi, from, to, tiles: genTerrain(to), units: [], day: 1, weather: 'sun', food: plan.food,
         playerSide: plan.atkFi === G.player ? 'atk' : 'def', gateHP: to.def * 2 + 300, gateMax: to.def * 2 + 300, log: [], sel: null, mode: 'idle', reach: null, targets: null, over: false,
-        bondAtk: Game.bondOf(atkGens.map(g => g.name)), bondDef: Game.bondOf(defGens.map(g => g.name)) };
+        bondAtk: Game.bondOf(atkGens.map(g => g.name)), bondDef: Game.bondOf(defGens.map(g => g.name)),
+        watch: !!(opts && opts.watch), smart: 0.5 };
+      if (B.watch) { const sg = Auto.strategist(); B.smart = sg ? Auto.brain(sg).q : 0.5; }
       // 攻め手の配置（下段）
       let left = plan.troops;
       const atkCols = [4, 3, 5, 2, 6];
@@ -444,7 +446,7 @@ const Battle = (() => {
     if (kind === 'fire' && B.weather === 'rain') p = 0;
     if (kind === 'fire' && ['water', 'ford', 'wall', 'keep', 'gate'].includes(B.tiles[d.r][d.c].t)) p *= 0.3;
     a.acted = true;
-    if (!auto && a.side === B.playerSide) await say(a, 'normal', `${a.g.name}「${line(a.g, kind === 'fire' ? 'fire' : 'confuse')}」`);
+    if (!auto && a.side === B.playerSide && !B.watch) await say(a, 'normal', `${a.g.name}「${line(a.g, kind === 'fire' ? 'fire' : 'confuse')}」`);
     else bubble(a, line(a.g, kind === 'fire' ? 'fire' : 'confuse'));
     if (Math.random() > clamp(p, 0.05, 0.9)) {
       addFloater(d.r, d.c, '失敗', '#aaa'); addLog(`${a.g.name}の${kind === 'fire' ? '火計' : '混乱'}は${H(d.g, '神算') ? '見破られた' : '失敗した'}`);
@@ -482,7 +484,7 @@ const Battle = (() => {
       addLog(`${d.g.name}は一騎打ちを避けた（士気が下がった）`);
       return;
     }
-    const res = auto ? Duel.quick(a.g, d.g) : await Duel.run(a, d, a.side === B.playerSide ? 'a' : d.side === B.playerSide ? 'd' : null);
+    const res = auto ? Duel.quick(a.g, d.g) : await Duel.run(a, d, B.watch ? null : a.side === B.playerSide ? 'a' : d.side === B.playerSide ? 'd' : null, B.watch);
     Sound.bgm('battle');
     const win = res.winner === 'a' ? a : d, lose = res.winner === 'a' ? d : a;
     win.morale = Math.min(100, win.morale + 20);
@@ -526,6 +528,18 @@ const Battle = (() => {
   async function playerPhase() {
     if (B.over) return;
     if (auto) { await aiPhase(B.playerSide); return endPlayerPhase(); }
+    if (B.watch) {
+      setActions([{ label: '▶ ここから自分で指揮する', cls: 'primary', fn: () => { B.watch = false; setActions([]); UI.toast('この手番のあとから、自分で指揮できます'); } }]);
+      const sg = Auto.strategist();
+      if (sg && ((B.day === 1 && B.playerSide === 'atk') || (B.day > 1 && Math.random() < 0.15))) {
+        const foeCmd = B.units.find(u => u.side !== B.playerSide && u.commander);
+        await UI.talk(sg, 'normal', `軍師 ${sg.name}「${Auto.sl(B.playerSide === 'atk' ? 'battle' : 'defend', { foe: foeCmd ? foeCmd.g.name : '' })}」`, facColor(sg), { tag: '軍師' });
+      }
+      await aiPhase(B.playerSide);
+      if (B.over) return;
+      if (B.watch) return endPlayerPhase();
+      return endPlayerPhase();
+    }
     B.mode = 'idle'; B.sel = null; B.reach = null; B.targets = null;
     // 命令無視（猪突・忠誠の低い武将）
     for (const u of B.units.filter(u => u.alive && u.side === B.playerSide && !u.acted && u.gi >= 0)) {
@@ -647,12 +661,15 @@ const Battle = (() => {
     showInfo(u);
     // 一騎打ち
     const adjFoes = foes.filter(o => dist(o, u) === 1 && o.gi >= 0);
+    B.challenged = B.challenged || new Set();
     if (u.gi >= 0 && adjFoes.length && Math.random() < 0.35) {
-      const t = adjFoes.find(o => u.g.war >= o.g.war + 8);
+      const t = adjFoes.find(o => u.g.war >= o.g.war + 8 && !B.challenged.has(u.gi + '-' + o.gi));
+      if (t) B.challenged.add(u.gi + '-' + t.gi);
       if (t) { await doDuel(u, t); return; }
     }
     // 計略
-    if (u.gi >= 0 && u.g.int >= 75 && !rogue && Math.random() < 0.45) {
+    const wmine = B.watch && u.side === B.playerSide;
+    if (u.gi >= 0 && u.g.int >= (wmine ? 80 - 20 * B.smart : 75) && !rogue && Math.random() < (wmine ? 0.2 + 0.4 * B.smart : 0.45)) {
       const t = foes.filter(o => dist(o, u) <= 2).sort((a, b) => b.troops - a.troops)[0];
       if (t) { await doPlot(u, B.weather !== 'rain' && Math.random() < 0.6 ? 'fire' : 'confuse', t); return; }
     }
@@ -676,7 +693,7 @@ const Battle = (() => {
       const tg = attackTargets(u, r, c);
       let score = -field[r][c] * 1.2;
       if (tg.length) {
-        const best2 = tg.map(([tr, tc]) => { const o = unitAt(tr, tc); return o ? 20 + (o.commander ? 8 : 0) + (1 - o.troops / o.maxTroops) * 10 : 14; });
+        const best2 = tg.map(([tr, tc]) => { const o = unitAt(tr, tc); return o ? 20 + (o.commander ? (wmine ? 8 + 14 * B.smart : 8) : 0) + (1 - o.troops / o.maxTroops) * 10 : 14; });
         score += Math.max(...best2) + 10;
       }
       score += (DEFK[B.tiles[r][c].t] - 1) * 8;
@@ -727,7 +744,7 @@ const Battle = (() => {
     return true;
   }
 
-  return { start };
+  return { start, get watching() { return !!(B && B.watch && !B.over); } };
 })();
 
 // ============================================================
@@ -750,7 +767,7 @@ const Duel = (() => {
     return { winner, outcome: r < 0.3 ? 'killed' : r < 0.75 ? 'captured' : 'fled' };
   }
   // pSide: 'a' or 'd' プレイヤーが操作する側（null なら観戦）
-  function run(ua, ud, pSide) {
+  function run(ua, ud, pSide, autoEnd) {
     return new Promise(resolve => {
       Sound.bgm('duel'); Sound.se('gong');
       const a = ua.g, d = ud.g;
@@ -785,6 +802,7 @@ const Duel = (() => {
         Sound.se('win');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
         btns.querySelector('button').onclick = () => { el.classList.remove('show'); resolve({ winner, outcome }); };
+        if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2200 / Auto.speed);
       };
       const exchange = (modeP) => {
         round++;
@@ -813,6 +831,7 @@ const Duel = (() => {
         Sound.se('ng');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
         btns.querySelector('button').onclick = () => { el.classList.remove('show'); resolve({ winner, outcome: 'fled' }); };
+        if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2000 / Auto.speed);
       };
       if (pSide) {
         btns.innerHTML = `<button class="btn primary" data-m="atk">攻める</button><button class="btn" data-m="power">渾身</button><button class="btn" data-m="guard">守る</button><button class="btn danger" data-m="flee">退く</button>`;
