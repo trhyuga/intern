@@ -64,7 +64,7 @@ const Auto = (() => {
       battle: ['敵の総大将は{foe}。そこを突けば崩れます', '地形を使い、城門を集中して攻めましょう'],
       defend: ['慌てることはありません。守り切れば敵は兵糧が尽きます'],
       win: ['予定通りです'], lose: ['……読み違えました。立て直しましょう'],
-      allyYes: ['悪くない話です。受けましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
+      allyYes: ['悪くない話です。受けましょう'], allyLast: ['ここで手を結べば、攻める先がなくなります。お断りしましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
       rec: ['{gen}は使える人物。登用を勧めます'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
       gather: ['{from}の兵を{to}に合流させ、{target}を一気に攻めます', '兵は集めてこそ力。{from}の兵も{to}へ'],
       transfer: ['{to}は{what}が足りません。{from}から回しましょう', '前線の{to}を空にはできません。{from}から{what}を送ります'],
@@ -78,7 +78,7 @@ const Auto = (() => {
       reward: ['{gen}殿に褒美を与えておきましょう'], recruit: ['人材を探してみましょう'],
       battle: ['敵の城を落とすぞ！'], defend: ['なんとか守り抜きましょう'],
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
-      allyYes: ['手を組んでおきましょう'], allyNo: ['今回は断りましょう'],
+      allyYes: ['手を組んでおきましょう'], allyLast: ['全部と仲良くしたら、戦う相手がいなくなっちゃいます。断りましょう'], allyNo: ['今回は断りましょう'],
       rec: ['登用してみましょう'], rel: ['解放しましょう'], kill: ['ここは処断を'],
       gather: ['{from}の兵を{to}へ合流させます'],
       transfer: ['{from}から{to}へ{what}を送ります'],
@@ -92,7 +92,7 @@ const Auto = (() => {
       reward: ['金をばらまいておけ！'], recruit: ['誰かいないか探してこい！'],
       battle: ['とにかく突っ込め！'], defend: ['ど、どうしよう……とにかく守れ！'],
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
-      allyYes: ['いいよいいよ、組もう！'], allyNo: ['なんか怪しいから断る！'],
+      allyYes: ['いいよいいよ、組もう！'], allyLast: ['あれ？ 組んだら喧嘩する相手がいなくなるぞ。断る！'], allyNo: ['なんか怪しいから断る！'],
       rec: ['仲間にしちゃおう！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
       gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'],
       transfer: ['{to}に{what}を送っとけ！'],
@@ -170,8 +170,9 @@ const Auto = (() => {
     const canDraft = c.gold >= CONFIG.RECRUIT_COST + 50 && c.loyal >= 50 && c.food > Game.foodReserve(c, c.troops + 3500);
     if (canDraft && front && c.troops < threat * 0.9) { n.draft = 2 + Math.min(1, (threat * 0.9 - c.troops) / 10000); must.draft = true; }
     else if (canDraft && G.stage && G.stage.c === c.i && c.troops < G.stage.troops) n.draft = 1.5;   // 攻撃の拠点では兵を集める
-    else n.draft = canDraft ? (front ? (c.troops < threat * 1.2 ? 0.8 : 0.3) : (c.troops < 8000 ? 0.3 : 0.08)) : 0;
-    n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? 1.2 : 0.7) : 0;
+    else n.draft = canDraft ? (front ? (c.troops < threat * 1.2 ? 0.8 : 0.3) : (c.troops < 12000 ? 0.45 : 0.1)) : 0;
+    // 内地は兵を鍛える場所（鍛えた兵を前線へ送る）
+    n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? 1.0 : 1.4) : 0;
     n.search = Game.roninIn(c.i).filter(r => !r.known).length ? 0.5 : 0.1;
     if (c.gold < CONFIG.CMD_COST) n.farm = n.comm = n.wall = 0;
     return { n, must };
@@ -243,7 +244,8 @@ const Auto = (() => {
     const defEst = defPower(t) * (1 + (Math.random() - 0.5) * br.noise * 0.6) * (t.owner === null ? 0.9 : 1);
     // 勝つために欲しい力の比：性格で変わる（慎重なら大きな差、猪突なら小さな差で攻める）
     const want = Math.max(1.05, br.aggr);   // 攻め気の強い軍師でも、最低限の勝ち目は見る
-    const margin = (br.tier === 'smart' ? 1.3 : br.tier === 'mid' ? 1.2 : 1.05) + (Game.has(strategist(), '慎重') ? 0.1 : 0);
+    // 余裕を持たせすぎると必ず勝ってしまい面白くない。勝ち目はあるが、負けることもある程度に
+    const margin = (br.tier === 'smart' ? 1.12 : br.tier === 'mid' ? 1.06 : 1.0) + (Game.has(strategist(), '慎重') ? 0.08 : 0);
     // 候補の武将（君主は他に武将がいれば残す。前線では最低1人は城に残す）
     let cands = br.tier === 'dumb' ? shuffle(idle.slice()) : idle.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
     if (cands.length > 1) cands = cands.filter(g => !g.isLord || br.tier === 'dumb');
@@ -387,7 +389,7 @@ const Auto = (() => {
     if (list.length < 2 && br.tier !== 'smart') return;
     // 一番強い隣国と手を結ぶ
     const strong = list.sort((a, b) => Game.power(b) - Game.power(a))[0];
-    if (strong != null && Game.power(strong) > myPow * 0.7 && list.length >= 2 && Math.random() < 0.6) {
+    if (strong != null && Game.power(strong) > myPow * 0.7 && list.length >= 2 && leavesEnemy(strong) && Math.random() < 0.6) {
       const env = Game.gensOf(G.player).filter(g => !g.acted).sort((a, b) => (b.cha + b.int) - (a.cha + a.int))[0];
       if (!env) return;
       await press(env.city, 'dip', '[data-cmd=ally]');
@@ -496,6 +498,37 @@ const Auto = (() => {
       gold: front ? 800 : 400,
       troops: Math.max(front ? Math.max(6000, Math.round(threat * 0.8)) : 2500, G.stage && G.stage.c === c.i ? G.stage.troops : 0),
     };
+  }
+  // 内地（敵に接していない都市）で鍛えた兵を、前線の都市へ送り出す
+  async function sendTrained(br) {
+    if (br.tier === 'dumb' && Math.random() < 0.6) return;
+    const cities = Game.citiesOf(G.player);
+    const fronts = cities.filter(c => Game.isFront(c));
+    if (!fronts.length) return;
+    let moves = 0;
+    for (const c of cities) {
+      if (stopReq || moves >= (br.tier === 'smart' ? 3 : 2)) return;
+      if (Game.isFront(c) || c.train < (br.tier === 'smart' ? 65 : 55)) continue;
+      const keep = Math.max(2500, Math.round(c.troops * 0.2));
+      const amt = Math.floor((c.troops - keep) / 100) * 100;
+      if (amt < 2000) continue;
+      const r = reach(c);
+      // 送り先：攻撃の拠点 → 兵が脅威に足りない前線 → 兵の少ない前線
+      const dest = fronts.filter(f => r.has(f.i)).sort((a, b) => {
+        const s2 = f => (G.stage && G.stage.c === f.i ? 1e6 : 0) + (AI.threat(f, G.player) - f.troops);
+        return s2(b) - s2(a);
+      })[0];
+      if (!dest) continue;
+      await press(c.i, 'mil', '[data-cmd=transport]');
+      await say('transfer', { from: c.name, to: dest.name, what: `鍛えた兵（訓練${Math.round(c.train)}）` });
+      await MapView.march(c.i, dest.i, G.factions[G.player].color);
+      const food = Math.max(0, Math.min(c.food - Game.foodReserve(c, c.troops - amt), Math.round(amt * 0.12 * 2)));
+      Game.transport(c, dest, 0, Math.floor(food), amt);
+      UI.toast(`${c.name} → ${dest.name}　鍛えた兵${fmt(amt)}（${dest.name}の訓練 ${Math.round(dest.train)}）`, 2600);
+      App.refresh();
+      moves++;
+      await wait(400);
+    }
   }
   async function doLogistics(br) {
     const cities = Game.citiesOf(G.player);
@@ -606,6 +639,7 @@ const Auto = (() => {
       }
     }
     await doRecruit(br); if (stopReq) return false;
+    await sendTrained(br); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     // 出陣
     if (!armies.length) await say('hold');
@@ -693,8 +727,15 @@ const Auto = (() => {
   }
 
   // ---------- 各場面での軍師の判断（ui.js から呼ぶ） ----------
+  // 接している敵勢力のうち、fi と同盟したあとも同盟していない勢力が残るか
+  function leavesEnemy(fi) {
+    const neigh = new Set();
+    Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player) neigh.add(o); }));
+    return [...neigh].some(o => o !== fi && !Game.isAlly(G.player, o));
+  }
   async function decideAlly(fi) {
     const br = brain(strategist());
+    if (!leavesEnemy(fi)) { await say('allyLast'); return false; }   // 攻める相手がいなくなる同盟はしない
     const yes = br.tier === 'dumb' ? Math.random() < 0.7 : Game.power(fi) > Game.power(G.player) * 0.5 || br.tier === 'smart' && Math.random() < 0.6;
     await say(yes ? 'allyYes' : 'allyNo');
     return yes;
