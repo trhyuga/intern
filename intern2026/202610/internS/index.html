@@ -445,7 +445,11 @@ const SIM = { SPEED_W:0.008, KICK_W:0.006, STAM_W:0.02, APT_W:0.3, COND_W:0.22, 
   PACE_P: [0.3, 0.4],
   PACE: { slow: { early:0.7, fade:0.5, late:0.8 }, avg: { early:1, fade:1, late:1 }, high: { early:1.5, fade:1.6, late:1.25 } },
   OONIGE_P: 0.35, OONIGE_V: 0.6, OONIGE_FADE: 1.7,  // 大逃げ: 逃げ馬がこの確率で選ぶ
-  MAKURI_P: 0.18, MAKURI_V: 0.7, MAKURI_COST: 0.5, MAKURI_FROM: 0.5 }; // まくり: 差し・追込がこの確率で選ぶ     // 直線までは差がつきにくい（1=そのまま、小さいほど馬群が固まる）
+  MAKURI_P: 0.18, MAKURI_V: 0.7, MAKURI_COST: 0.5, MAKURI_FROM: 0.5,
+  // レース中のハプニング（1頭あたりの確率）。パドックでイレ込んでいた馬は出遅れ・暴れが2倍起きやすい
+  EV_DEOKURE_P: 0.03,                    // 出遅れ: スタートで少し動けない
+  EV_ABARE_P: 0.03, EV_ABARE_V: 1.1,     // 暴れる（掛かる）: 中盤でしばらく速度が落ちる
+  EV_FURUI_P: 0.03, EV_FURUI_V: 0.9 };   // 奮い立つ: 終盤でしばらく速度が上がる // まくり: 差し・追込がこの確率で選ぶ     // 直線までは差がつきにくい（1=そのまま、小さいほど馬群が固まる）
 function simulate(field, rnd, opts){
   const { race, horses } = field;
   const D = race.dist;
@@ -464,6 +468,17 @@ function simulate(field, rnd, opts){
     oonige: h.style === '逃げ' && rnd() < SIM.OONIGE_P,
     makuri: (h.style === '差し' || h.style === '追込') && rnd() < SIM.MAKURI_P,
   }));
+  // ハプニング（出遅れ・暴れる・奮い立つ）
+  const ev = horses.map(h => {
+    const tense = useCond && h.cond < -0.3 ? 2 : 1;   // 調子が悪い（イレ込んでいる）馬ほど起きやすい
+    const o = {};
+    if(rnd() < SIM.EV_DEOKURE_P * tense) o.deokure = 0.35 + rnd() * 0.4;            // 何秒出遅れるか
+    if(rnd() < SIM.EV_ABARE_P * tense){ const a = 0.22 + rnd() * 0.4; o.abare = [a, a + 0.07]; }
+    if(rnd() < SIM.EV_FURUI_P){ const a = 0.7 + rnd() * 0.15; o.furui = [a, a + 0.12]; }
+    return o;
+  });
+  const events = [];   // 演出用: { type, i, from, to }（フレーム番号）
+  const evOn = {};
   const frames = [];
   let t = 0, done = 0, lastFin = 0;
   const order = [];
@@ -481,6 +496,11 @@ function simulate(field, rnd, opts){
       }
       const h = horses[i];
       const f = pos[i]/D;
+      // 出遅れ: ゲートが開いても少しの間動けない
+      if(ev[i].deokure && t < ev[i].deokure){
+        if(record && !evOn['d'+i]){ evOn['d'+i] = { type:'deokure', i, from: frames.length, to: frames.length + Math.round(ev[i].deokure/DT) }; events.push(evOn['d'+i]); }
+        continue;
+      }
       // その馬の地力（能力・運・距離・馬場・スタミナ）
       let v = 16.4 + h.speed*SIM.SPEED_W + luck[i];
       if(f > 0.55){
@@ -509,6 +529,17 @@ function simulate(field, rnd, opts){
       }
       // 当日の調子（パドックでヒントが出る）
       if(useCond) v += h.cond * SIM.COND_W;
+      // ハプニング: 暴れる（掛かる）／奮い立つ
+      for(const [key, sign, vv] of [['abare', -1, SIM.EV_ABARE_V], ['furui', 1, SIM.EV_FURUI_V]]){
+        const w = ev[i][key];
+        if(w && f >= w[0] && f < w[1]){
+          v += sign * vv;
+          if(record){
+            if(!evOn[key+i]){ evOn[key+i] = { type:key, i, from: frames.length, to: frames.length }; events.push(evOn[key+i]); }
+            evOn[key+i].to = frames.length;
+          }
+        }
+      }
       lastV[i] = Math.max(10, v);
       const prev = pos[i];
       pos[i] += lastV[i] * DT;
@@ -522,7 +553,7 @@ function simulate(field, rnd, opts){
     t += DT;
   }
   order.sort((a,b) => finT[a] - finT[b]);
-  return { order, frames, D, finFrame, finT, pace, plan, lastV };
+  return { order, frames, D, finFrame, finT, pace, plan, lastV, events };
 }
 
 // ---------- オッズ ----------
@@ -1164,6 +1195,15 @@ function commentEvents(prog, st, fi){
   if(Race.said.oonige === 1 && prog > 0.86 && sim.plan[top].oonige && !anyFinished){
     Race.said.oonige = 2; say(pickL([`${H(top).name}まだ逃げる！ 後続は届くのか！`, `${H(top).name}、逃げる逃げる！ 脚色は衰えない！`, `${H(top).name}の逃げ脚が止まらない！`]), true);
   }
+  // ハプニングの実況
+  (sim.events || []).forEach((e, k) => {
+    if(Race.said['ev'+k] || fi < e.from + (e.type === 'deokure' ? 1 : 0)) return;
+    Race.said['ev'+k] = 1;
+    const hh = H(e.i), nm = hh.name;
+    if(e.type === 'deokure') say(pickL([`あっと${hh.no}番${nm}が出遅れた！ ゲートで立ち遅れて後方から！`, `${nm}、スタートで後手を踏んだ！ 痛い出遅れだ！`, `${hh.no}番${nm}が出遅れ！ これは厳しいスタートになった！`]), true);
+    if(e.type === 'abare') say(pickL([`${nm}が掛かっている！ 騎手が懸命になだめている！`, `${nm}、首を振って行きたがる！ これはスタミナを消耗するぞ！`, `${nm}が暴れている！ 落ち着きを欠いて位置を下げる！`]), true);
+    if(e.type === 'furui') say(pickL([`${nm}が奮い立った！ 闘志に火がついた！`, `${nm}、ここで目の色が変わった！ ぐんぐん伸びてくる！`, `${nm}に気合いが入った！ 一気に加速！`]), true);
+  });
   // まくり: 3〜4コーナーで外から進出
   if(prog > 0.6 && prog < SIM.LATE_START){
     st.forEach(({i}, r) => {
@@ -1463,6 +1503,26 @@ function drawRace(fr, st, ph, time, fi){
     drawHorse(g, x, y, sc, h, (Race.started ? time : 0)*(finished ? 11 : 14) + i*1.7, 1,
       { whip: last && !finished && st.findIndex(e => e.i === i) < 4, look: Game.paddock && Game.paddock[i] ? Game.paddock[i].look : null, time });
     if(gateVisible) drawGateFront(g, gateX, y, sc, !Race.started);
+    // ハプニング中の印（暴れる＝赤い「！」、奮い立つ＝金色の炎、出遅れ＝「出遅れ」の札）
+    const act = (Race.sim.events || []).find(e => e.i === i && Race.started && fi >= e.from && fi <= e.to + (e.type === 'deokure' ? 24 : 4));
+    if(act){
+      const ix = x + 6*sc, iy = y - 96*sc;
+      g.save();
+      if(act.type === 'abare'){
+        g.fillStyle = '#e53935'; g.beginPath(); g.arc(ix, iy, 9*sc + 3, 0, Math.PI*2); g.fill();
+        g.fillStyle = '#fff'; g.font = `bold ${Math.round(12*sc + 6)}px sans-serif`; g.textAlign = 'center'; g.fillText('!', ix, iy + 5*sc + 2);
+      } else if(act.type === 'furui'){
+        const fl = 1 + Math.sin(time*18)*0.15;
+        g.fillStyle = 'rgba(255,190,40,.9)';
+        g.beginPath(); g.moveTo(ix, iy - 14*sc*fl); g.quadraticCurveTo(ix + 9*sc, iy, ix, iy + 8*sc); g.quadraticCurveTo(ix - 9*sc, iy, ix, iy - 14*sc*fl); g.fill();
+        g.fillStyle = 'rgba(255,90,30,.9)';
+        g.beginPath(); g.moveTo(ix, iy - 7*sc*fl); g.quadraticCurveTo(ix + 5*sc, iy + 2*sc, ix, iy + 7*sc); g.quadraticCurveTo(ix - 5*sc, iy + 2*sc, ix, iy - 7*sc*fl); g.fill();
+      } else {
+        g.fillStyle = 'rgba(0,0,0,.7)'; g.fillRect(ix - 22, iy - 9, 44, 16);
+        g.fillStyle = '#ffd54f'; g.font = 'bold 11px sans-serif'; g.textAlign = 'center'; g.fillText('出遅れ', ix, iy + 3);
+      }
+      g.restore();
+    }
   });
   // スピード線（ラストスパート）
   if(last){
