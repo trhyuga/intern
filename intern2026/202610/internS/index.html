@@ -161,7 +161,10 @@
 <div id="app">
   <header class="bar">
     <span id="hdrRace">G1 PREDICTOR</span>
-    <span class="money" id="hdrMoney"></span>
+    <span style="display:flex;align-items:center;gap:10px">
+      <button id="btnSound" type="button" aria-label="効果音のオン・オフ" style="background:transparent;border:1px solid var(--line);color:var(--soft);border-radius:999px;padding:2px 10px;font-size:12px;cursor:pointer">音 ON</button>
+      <span class="money" id="hdrMoney"></span>
+    </span>
   </header>
   <main>
     <!-- タイトル -->
@@ -1060,6 +1063,9 @@ function startRace(){
   show('race');
   cancelAnimationFrame(Race.raf);
   clearTimeout(Race.introTimer);
+  // ファンファーレ → それに応える歓声
+  playFanfare();
+  cheer(3.2, 2.6, 0.22);
   // ゲート前の静止画を描いておく
   const fr0 = Race.sim.frames[0];
   Race.slow = 1;
@@ -1107,6 +1113,8 @@ function showIntro(){
     c.classList.remove('on');
     Race.introTimer4 = setTimeout(() => {
       Race.started = true;
+      gateClang();
+      cheer(0.05, 3.5, 0.32);
       say(pickL([`${r.name}、ゲートが開いた！ 各馬いっせいにスタート！`, `スタートしました！ ${r.name}！`, `ゲートオープン！ 8頭がそろって飛び出した！`]), true);
       Race.lastNow = performance.now();
       Race.raf = requestAnimationFrame(raceLoop);
@@ -1267,6 +1275,7 @@ function commentEvents(prog, st, fi){
   }
   // ゴールの瞬間: 決まり手と着差
   const o = sim.order;
+  if(!Race.said.goalCheer && fi >= sim.finFrame[o[0]] - 6){ Race.said.goalCheer = 1; cheer(0, 4.5, Race.story.dramatic ? 0.45 : 0.35); }
   if(!Race.said.g1 && sim.finFrame[o[0]] <= fi){
     Race.said.g1 = 1;
     say(Race.story.line, true);
@@ -1665,17 +1674,70 @@ function showResult(){
 let confettiRAF = 0;
 // ---------- 効果音（WebAudioで鳴らす。音声ファイルは使わない） ----------
 let audioCtx = null;
+let soundOn = true;
+try{ soundOn = localStorage.getItem('internS_g1predictor_sound') !== 'off'; }catch(e){}
+function updateSoundBtn(){ const b = $('btnSound'); if(b) b.textContent = soundOn ? '音 ON' : '音 OFF'; }
+function ensureAudio(){
+  if(!soundOn) return false;
+  if(!audioCtx){ try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return false; } }
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  return true;
+}
 function tone(freq, start, dur, type, vol){
-  if(!audioCtx){ try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return; } }
+  if(!ensureAudio()) return;
   const t0 = audioCtx.currentTime + start;
   const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
   o.type = type || 'triangle'; o.frequency.value = freq;
   gn.gain.setValueAtTime(0, t0); gn.gain.linearRampToValueAtTime(vol || 0.12, t0 + 0.02); gn.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
   o.connect(gn); gn.connect(audioCtx.destination); o.start(t0); o.stop(t0 + dur + 0.05);
 }
+// 歓声: ノイズを帯域フィルタに通して、ふくらませてから引かせる
+function cheer(start, dur, peak){
+  if(!ensureAudio()) return;
+  try{
+    const len = Math.floor(audioCtx.sampleRate * (dur + 0.2));
+    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate), data = buf.getChannelData(0);
+    // 人の声っぽく少しうねるノイズ
+    let v = 0; for(let i=0;i<len;i++){ v = v*0.6 + (Math.random()*2-1)*0.4; data[i] = v * (0.75 + 0.25*Math.sin(i/2200) * Math.sin(i/731)); }
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    const bp = audioCtx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.6;
+    const gn = audioCtx.createGain(); const t0 = audioCtx.currentTime + start;
+    gn.gain.setValueAtTime(0.0001, t0);
+    gn.gain.exponentialRampToValueAtTime(peak || 0.35, t0 + dur*0.3);
+    gn.gain.setValueAtTime(peak || 0.35, t0 + dur*0.6);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(bp); bp.connect(gn); gn.connect(audioCtx.destination);
+    src.start(t0); src.stop(t0 + dur + 0.1);
+  }catch(e){}
+}
+// ゲートが開く音: 金属がガシャンと鳴る（短いノイズ＋金属っぽい響き）
+function gateClang(){
+  if(!ensureAudio()) return;
+  try{
+    const len = Math.floor(audioCtx.sampleRate * 0.25);
+    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate), data = buf.getChannelData(0);
+    for(let i=0;i<len;i++) data[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 3);
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1200;
+    const gn = audioCtx.createGain(); gn.gain.value = 0.5;
+    src.connect(hp); hp.connect(gn); gn.connect(audioCtx.destination); src.start();
+    [[320,0.5],[471,0.4],[813,0.3]].forEach(([f,d]) => tone(f, 0, d, 'square', 0.05));
+  }catch(e){}
+}
+// 発走前のファンファーレ（このゲーム用に作った短いオリジナルの旋律。実在のファンファーレではない）
+function playFanfare(){
+  const q = 0.17;
+  const mel = [[392,0,1],[523,1,1],[659,2,1],[784,3,2],[659,5,1],[784,6,3],
+               [880,9,1],[784,10,1],[659,11,1],[698,12,1],[880,13,1],[1047,14,4]];
+  mel.forEach(([f,b,l]) => { tone(f, b*q, l*q*0.95, 'square', 0.05); tone(f, b*q, l*q*0.95, 'triangle', 0.06); });
+  // 低音の和音で支える
+  [[262,0,5],[330,5,4],[349,9,5],[262,14,4]].forEach(([f,b,l]) => tone(f/2, b*q, l*q, 'triangle', 0.07));
+  [523,659,784].forEach(f => tone(f, 14*q, 4*q, 'triangle', 0.035));
+}
+
 function playHitSound(big){
   try{
-    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if(!ensureAudio()) return;
     if(!big){
       // 的中: 短いチャイム
       [[784,0],[1047,0.12]].forEach(([f,s]) => tone(f, s, 0.35, 'triangle', 0.1));
@@ -1874,6 +1936,13 @@ function showRecords(){
   show('records');
 }
 $('btnRecords').onclick = showRecords;
+$('btnSound').onclick = () => {
+  soundOn = !soundOn;
+  try{ localStorage.setItem('internS_g1predictor_sound', soundOn ? 'on' : 'off'); }catch(e){}
+  if(!soundOn && audioCtx) audioCtx.suspend();
+  updateSoundBtn();
+};
+updateSoundBtn();
 $('btnRecBack').onclick = () => { if($('recDetail').style.display !== 'none') showRecords(); else titleScreen(); };
 
 function titleScreen(){
