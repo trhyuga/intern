@@ -134,37 +134,70 @@ const Auto = (() => {
   // ---------- 内政の判断 ----------
   const STAT = { farm: 'pol', comm: 'pol', wall: 'lead', alms: 'cha', draft: 'cha', train: 'lead', search: 'cha' };
   const NEED_NAME = { farm: '開墾', comm: '商業', wall: '修築', alms: '施し', draft: '徴兵', train: '訓練', search: '人材探し' };
-  function needs(c, br) {
+  // 命令1回で見込める伸び（Game.doCommand と同じ式の平均）
+  function gain(cmd, g, c) {
+    const pk = Game.has(g, '治世') ? 1.3 : 1;
+    switch (cmd) {
+      case 'farm': case 'comm': return (g.pol * 0.35 + 6) * pk;
+      case 'wall': return g.lead * 0.3 + g.pol * 0.15 + 5;
+      case 'alms': return (g.cha * 0.12 + 3) * (Game.has(g, '仁徳') ? 1.5 : 1);
+      case 'train': return (g.lead * 0.18 + 4) * Math.max(0.4, 1 - c.troops / 80000);
+      case 'draft': return (g.cha * 25 + 800) * (c.pop / 400000 + 0.5);
+    }
+    return 0;
+  }
+  // 基本の必要度。上限に達したもの・できないものは必ず 0
+  // 民忠が低い・前線の兵が足りない、は性格や知力に関係なく最優先（「基本」）
+  function baseNeeds(c) {
     const threat = AI.threat(c, G.player);
-    const front = threat > 0;
-    const n = {
-      farm: (1 - c.farm / c.farmMax) * (G.season <= 1 ? 1.2 : 0.9),
-      comm: (1 - c.comm / c.commMax),
-      wall: (1 - c.def / c.defMax) * (front ? 1.1 : 0.4),
-      alms: c.loyal < 60 && c.food - 1500 > Game.foodReserve(c) ? (60 - c.loyal) / 40 * 1.3 : 0,
-      draft: c.gold >= 200 && c.loyal > 30 && c.food > Game.foodReserve(c, c.troops + 3500) ? (front ? clamp((threat * 1.1 - c.troops) / 10000 + 0.5, 0.2, 1.4) : 0.25) : 0,
-      train: c.troops > 3000 ? (85 - c.train) / 85 : 0,
-      search: Game.roninIn(c.i).filter(r => !r.known).length ? 0.3 + br.q * 0.5 : 0.12,
-    };
-    Object.keys(n).forEach(k => { n[k] = Math.max(0, n[k] + br.dom[k] + (Math.random() - 0.5) * br.noise * 2); });
-    if (c.gold < CONFIG.CMD_COST) { n.farm = n.comm = n.wall = 0; }
-    if (c.gold < CONFIG.RECRUIT_COST) n.draft = 0;
-    return n;
+    const front = Game.isFront(c);
+    const foodShort = c.food < Game.foodReserve(c);
+    const room = (v, m) => m - v >= 3 ? (m - v) / m : 0;
+    const n = {}, must = {};
+    n.farm = room(c.farm, c.farmMax) * (G.season <= 1 ? 1.2 : 0.9) * (foodShort ? 1.4 : 1);
+    n.comm = room(c.comm, c.commMax) * (c.gold < 400 ? 1.3 : 1);
+    n.wall = room(c.def, c.defMax) * (front ? 1.1 : 0.35);
+    // 施し：民忠が低いほど優先。40未満は最優先
+    const canAlms = c.food - 1500 > Game.foodReserve(c) && c.loyal < 95;
+    if (canAlms && c.loyal < 40) { n.alms = 3 + (40 - c.loyal) / 10; must.alms = true; }
+    else n.alms = canAlms && c.loyal < 70 ? (70 - c.loyal) / 30 : 0;
+    // 徴兵：民忠を下げるので、民忠50未満ではしない
+    const canDraft = c.gold >= CONFIG.RECRUIT_COST + 50 && c.loyal >= 50 && c.food > Game.foodReserve(c, c.troops + 3500);
+    if (canDraft && front && c.troops < threat * 0.9) { n.draft = 2 + Math.min(1, (threat * 0.9 - c.troops) / 10000); must.draft = true; }
+    else n.draft = canDraft ? (front ? (c.troops < threat * 1.2 ? 0.8 : 0.3) : (c.troops < 8000 ? 0.3 : 0.08)) : 0;
+    n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? 1.2 : 0.7) : 0;
+    n.search = Game.roninIn(c.i).filter(r => !r.known).length ? 0.5 : 0.1;
+    if (c.gold < CONFIG.CMD_COST) n.farm = n.comm = n.wall = 0;
+    return { n, must };
   }
   function planCity(c, br) {
     const idle = Game.gensIn(c.i, G.player).filter(g => !g.acted);
-    const n = needs(c, br);
+    // 試算用の都市（命令を割り振るたびに成果を見込んで更新する）
+    const sim = Object.assign({}, c);
+    // 性格の癖と判断のぶれは、命令ごとに一度だけ決める（掛け算。0 は 0 のまま）
+    const mul = {};
+    Object.keys(STAT).forEach(k => { mul[k] = (1 + br.dom[k]) * (1 + (Math.random() - 0.5) * br.noise); });
     const out = [];
     const pool = idle.slice();
     while (pool.length) {
-      const cmd = Object.keys(n).sort((a, b) => n[b] - n[a])[0];
-      if (n[cmd] <= 0.05) break;
+      const { n, must } = baseNeeds(sim);
+      const score = k => must[k] ? n[k] : n[k] * mul[k];   // 最優先の項目はぶれさせない
+      const cmd = Object.keys(n).sort((a, b) => score(b) - score(a))[0];
+      if (score(cmd) <= 0.05) break;
       let g;
-      if (br.tier === 'dumb' && Math.random() < 0.6) g = pick(pool);
-      else { pool.sort((a, b) => b[STAT[cmd]] - a[STAT[cmd]]); g = br.tier === 'mid' && Math.random() < 0.3 && pool.length > 1 ? pool[1] : pool[0]; }
+      if (br.tier === 'dumb' && Math.random() < 0.5) g = pick(pool);   // 人選は大ざっぱ
+      else { pool.sort((a, b) => b[STAT[cmd]] - a[STAT[cmd]]); g = br.tier === 'mid' && Math.random() < 0.25 && pool.length > 1 ? pool[1] : pool[0]; }
       out.push([g, cmd]);
       pool.splice(pool.indexOf(g), 1);
-      n[cmd] *= 0.55;
+      // 成果を見込む
+      const v = gain(cmd, g, sim);
+      if (cmd === 'farm') { sim.farm = Math.min(sim.farmMax, sim.farm + v); sim.gold -= CONFIG.CMD_COST; }
+      if (cmd === 'comm') { sim.comm = Math.min(sim.commMax, sim.comm + v); sim.gold -= CONFIG.CMD_COST; }
+      if (cmd === 'wall') { sim.def = Math.min(sim.defMax, sim.def + v); sim.gold -= CONFIG.CMD_COST; }
+      if (cmd === 'alms') { sim.loyal = Math.min(100, sim.loyal + v * 0.85); sim.food -= 1500; }
+      if (cmd === 'train') sim.train = Math.min(100, sim.train + v);
+      if (cmd === 'draft') { sim.troops += v; sim.gold -= CONFIG.RECRUIT_COST; sim.loyal -= 6; }
+      if (cmd === 'search') mul.search *= 0.3;
     }
     return out;
   }
@@ -414,9 +447,13 @@ const Auto = (() => {
       const jobs = planCity(c, br);
       reserved.forEach(i => G.gens[i].acted = false);
       let first = true;
-      for (const [gen, cmd] of jobs) {
+      for (let [gen, cmd] of jobs) {
         if (stopReq) return false;
         if (reserved.has(gen.i)) continue;
+        // 実行の直前にもう一度確かめる（見込みと結果のずれ対策）
+        if (cmd === 'draft' && c.loyal < 50) cmd = c.food - 1500 > Game.foodReserve(c) && c.loyal < 95 ? 'alms' : (c.train < 95 && c.troops >= 2000 ? 'train' : null);
+        if (cmd === 'train' && c.train >= 100) cmd = null;
+        if (!cmd) continue;
         await press(c.i, cmd === 'search' ? 'per' : ['draft', 'train'].includes(cmd) ? 'mil' : 'dom', `[data-cmd=${cmd}]`);
         if (first || Math.random() < 0.35) { await say('dom', { city: c.name, need: NEED_NAME[cmd], gen: gen.name }); first = false; }
         const r = Game.doCommand(cmd, gen, c);
@@ -553,6 +590,6 @@ const Auto = (() => {
 
   return {
     get running() { return running; }, get speed() { return S.speed; },
-    start, stop, init, openMenu, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl,
+    start, stop, init, openMenu, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity,
   };
 })();
