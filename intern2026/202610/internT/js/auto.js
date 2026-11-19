@@ -67,6 +67,7 @@ const Auto = (() => {
       allyYes: ['悪くない話です。受けましょう'], allyLast: ['ここで手を結べば、攻める先がなくなります。お断りしましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
       rec: ['{gen}は使える人物。登用を勧めます'], recruitGo: ['{gen}は得がたい人物。{envoy}殿、{city}へ赴いて口説いてください', '{city}の{gen}を放っておく手はありません。弁の立つ{envoy}殿を向かわせます'], kongming: ['{city}の{gen}は、礼を尽くさねば動かぬ人物。{lord}様ご自身で訪ねましょう'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
       gather: ['{from}の兵を{to}に合流させ、{target}を一気に攻めます', '兵は集めてこそ力。{from}の兵も{to}へ'],
+      mass: ['兵は十分に揃いました。{target}へ攻め込みます。総大将は{gen}殿、兵{m}', '{city}の兵は満ちています。待つ理由はありません。{target}を攻めましょう'],
       attrition: ['{target}は一度では落ちますまい。ですが兵{m}で攻めれば、敵の兵{n}を大きく削れます。次で落とせばよいのです', '一度で落とせずとも、敵の兵を削れば次で落とせます。{gen}殿、{target}へ'],
       braveLord: ['殿……！ お止めしても無駄でしょう。せめて深追いだけはなさいませぬよう', '殿が自ら……。ならば、兵の動きはこちらで整えます'],
       braveOk: ['……よろしい、{gen}殿。ただし深追いは禁物です', '{gen}殿の勢いを止めるのは惜しい。{target}を任せます'], braveNo: ['{gen}殿、今の{target}は分が悪すぎます。もう少し兵を集めてから'],
@@ -86,7 +87,7 @@ const Auto = (() => {
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
       allyYes: ['手を組んでおきましょう'], allyLast: ['全部と仲良くしたら、戦う相手がいなくなっちゃいます。断りましょう'], allyNo: ['今回は断りましょう'],
       rec: ['登用してみましょう'], recruitGo: ['{envoy}殿、{city}の{gen}を誘いに行ってください'], kongming: ['{gen}は殿が直々に会いに行かないとダメみたいです'], rel: ['解放しましょう'], kill: ['ここは処断を'],
-      gather: ['{from}の兵を{to}へ合流させます'], attrition: ['兵の数ではこちらが上です。{target}を攻めて削りましょう'], braveLord: ['と、殿！ ご武運を！'], braveOk: ['わかりました、{gen}殿、存分に！'], braveNo: ['{gen}殿、今は待ってください'],
+      gather: ['{from}の兵を{to}へ合流させます'], mass: ['兵が揃いました！ {target}を攻めましょう！'], attrition: ['兵の数ではこちらが上です。{target}を攻めて削りましょう'], braveLord: ['と、殿！ ご武運を！'], braveOk: ['わかりました、{gen}殿、存分に！'], braveNo: ['{gen}殿、今は待ってください'],
       deploy: ['{gen}殿は{to}へ移ってください'], deployCivil: ['{gen}殿は{to}で内政を'], eventMeet: ['{gens}殿、{city}に集まってください'], eventFace: ['{gen}殿、{city}へ。{foe}がいます'],
       transfer: ['{from}から{to}へ{what}を送ります'],
     },
@@ -101,7 +102,7 @@ const Auto = (() => {
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
       allyYes: ['いいよいいよ、組もう！'], allyLast: ['あれ？ 組んだら喧嘩する相手がいなくなるぞ。断る！'], allyNo: ['なんか怪しいから断る！'],
       rec: ['仲間にしちゃおう！'], recruitGo: ['{envoy}、{city}の{gen}を連れてこい！'], kongming: ['殿、{gen}に会いに行ってきてくださいよ！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
-      gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'], attrition: ['数で押せー！ {target}を囲め囲め！'], braveLord: ['さすが殿！ 俺もついていきたいくらいだ！'], braveOk: ['よし行け{gen}！ 暴れてこい！'], braveNo: ['うーん、やめとけ！'],
+      gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'], mass: ['兵がいっぱいだ！ {target}に攻め込め！'], attrition: ['数で押せー！ {target}を囲め囲め！'], braveLord: ['さすが殿！ 俺もついていきたいくらいだ！'], braveOk: ['よし行け{gen}！ 暴れてこい！'], braveNo: ['うーん、やめとけ！'],
       deploy: ['{gen}、いつまで後ろにいる！ {to}へ行け！'], deployCivil: ['{gen}は後ろで畑でも耕してろ！'], eventMeet: ['{gens}、みんな{city}に集まれ！ 宴会だ！'], eventFace: ['{gen}、{city}へ行け！ {foe}がいるぞ！'],
       transfer: ['{to}に{what}を送っとけ！'],
     },
@@ -377,6 +378,40 @@ const Auto = (() => {
     if (troops < 3000 || troops < t.troops * mult) return null;    // 数倍に届かない
     orderArmy(army, br);
     return { c, t, army, troops, keep, ratio: troops * atkFactor(c, army) / defPower(t), need: 0, reinforce: reinforce.length ? reinforce : null, attrition: true };
+  }
+
+  // ---------- 兵が揃ったら攻める（最優先） ----------
+  // 前線の都市に兵が2万以上（攻め気の強い軍師は1.5万以上）いれば、隣で一番落としやすい敵都市へ毎季節攻め込む
+  function massLine() { const g = strategist(); return (Game.has(g, '野心') || Game.has(g, '猪突')) ? 15000 : 20000; }
+  function planMass(br) {
+    const out = [];
+    const usedT = new Set();
+    Game.citiesOf(G.player).forEach(c => {
+      if (c.troops < massLine()) return;
+      const targets = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && !usedT.has(o.i) && (o.owner === null || !Game.isAlly(G.player, o.owner)));
+      if (!targets.length) return;
+      const keep = Math.max(5000, Math.round(c.troops * 0.25));
+      const sendable = Math.floor((c.troops - keep) / 100) * 100;
+      // 率いる武将：この都市の待機武将（君主は他にいれば残す）。足りなければ周りの都市から呼ぶ
+      let army = Game.gensIn(c.i, G.player).filter(g => !g.acted && !g.isLord).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+      const moved = [];
+      if (army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < sendable && army.length < 5) {
+        const r = reach(c);
+        const extra = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord && g.city !== c.i && r.has(g.city) && Game.gensIn(g.city, G.player).length > 1).sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
+        while (army.length < 5 && extra.length && army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < sendable) { const g = extra.shift(); army.push(g); moved.push(g); }
+      }
+      if (!army.length) { const lord = Game.gensIn(c.i, G.player).find(g => g.isLord && !g.acted); if (lord) army = [lord]; else return; }
+      const troops = Math.floor(Math.min(sendable, army.reduce((s2, g) => s2 + Game.troopCap(g), 0)) / 100) * 100;
+      if (troops < 5000) return;
+      // 一番落としやすい攻め先（明らかに敵が上回るときだけ見送る）
+      const f = atkFactor(c, army);
+      const best = targets.map(o => ({ o, ratio: troops * f / Math.max(1, defPower(o)) })).sort((a, b) => b.ratio - a.ratio)[0];
+      if (best.ratio < 1 / 1.5) return;
+      orderArmy(army, br);
+      usedT.add(best.o.i);
+      out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, moved });
+    });
+    return out;
   }
 
   function planAttacks(br) {
@@ -856,7 +891,8 @@ const Auto = (() => {
     if (!g) { UI.toast('軍師がいない'); return false; }
     const br = brain(g);
     setBar(`軍師 <b>${g.name}</b> が采配中（${G.year}年${SEASONS[G.season]}）`);
-    const attacks = planAttacks(br);
+    const mass = planMass(br);
+    const attacks = [...mass, ...planAttacks(br).filter(p => !mass.some(m => m.c === p.c || m.t === p.t))];
     const stage = attacks.length < br.maxAttacks ? planStage(br, attacks) : (G.stage = null);
     const plan = (attacks.length ? `今季は${attacks.map(a => a.t.name).join('と')}を攻めます。` : '') + (stage ? `${G.cities[stage.c].name}に兵を集め、${G.cities[stage.t].name}を攻める支度をします。` : attacks.length ? '' : '今季は国力を蓄えます。');
     await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan }, attacks.length ? 'angry' : 'normal');
@@ -939,7 +975,7 @@ const Auto = (() => {
       const { p } = a;
       if (p.c.owner !== G.player || p.t.owner === G.player || (p.t.owner !== null && Game.isAlly(G.player, p.t.owner))) continue;
       // 内政のあとの最新の状態でもう一度見積もる（攻め先の兵が増えていたら見送る）
-      const e = p.isBrave ? p : (evalAttack(p.c, p.t, br) || (p.attrition ? evalAttrition(p.c, p.t, br) : null));   // 猛将の出陣は軍師の見積もりを通さない
+      const e = (p.isBrave || p.mass) ? p : (evalAttack(p.c, p.t, br) || (p.attrition ? evalAttrition(p.c, p.t, br) : null));   // 猛将・兵が揃った攻めは見積もり直さない
       if (!e) { await say('hold'); continue; }
       // 武将の合流
       if (e.moved && e.moved.length) {
@@ -968,12 +1004,14 @@ const Auto = (() => {
       }
       const troops = Math.min(e.troops, Math.floor((p.c.troops - e.keep) / 100) * 100);
       if (troops < 3000) { await say('hold'); continue; }
-      const spare = p.c.food - Game.foodReserve(p.c, p.c.troops - troops);
+      // 兵糧：通常は次の秋までの分を残し20日分。兵が揃った攻め・猛将は、残る兵の1季節分だけ残して10日分あればよい
+      const loose = p.mass || p.isBrave;
+      const spare = p.c.food - (loose ? Math.round((p.c.troops - troops) * 0.12 + 1000) : Game.foodReserve(p.c, p.c.troops - troops));
       const food = Math.min(Math.round(troops * 0.03 * 30), Math.floor(spare));
-      if (food < troops * 0.03 * 20) { await say('hold'); continue; }
+      if (food < troops * 0.03 * (loose ? 10 : 20)) { await say('hold'); continue; }
       await press(p.c.i, 'mil', '[data-cmd=attack]');
       MapView.setHighlight([p.t.i]); await wait(500); MapView.setHighlight(null);
-      await say(e.attrition ? 'attrition' : 'attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name, m: fmt(troops), k: fmt(p.c.troops - troops), city: p.c.name }, 'angry');
+      await say(e.mass ? 'mass' : e.attrition ? 'attrition' : 'attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name, m: fmt(troops), k: fmt(p.c.troops - troops), city: p.c.name }, 'angry');
       UI.closeSheet();
       const cmdr = army[0];
       Sound.se('march');
