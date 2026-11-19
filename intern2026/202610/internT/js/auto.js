@@ -961,7 +961,7 @@ const Auto = (() => {
           await App.doRecruit(gen, r.found);
         } else {
           Sound.se(r.ok ? 'ok' : 'ng');
-          await UI.talk(gen, r.ok ? r.expr : 'sad', `${gen.name}「${r.ok ? line(gen, cmd) : line(gen, 'fail')}」\n<b>${r.msg}</b>`);
+          await UI.talk(gen, r.ok ? r.expr : 'sad', `${gen.name}「${r.ok ? line(gen, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd) : line(gen, 'fail')}」\n<b>${r.msg}</b>`);
         }
         App.refresh();
       }

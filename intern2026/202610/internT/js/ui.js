@@ -310,7 +310,7 @@ const App = {
       const r = Game.doCommand(cmd, g, c);
       if (r.ok) g.acted = true;
       Sound.se(r.ok ? 'ok' : 'ng');
-      await UI.talk(g, r.ok ? r.expr : 'sad', `${g.name}「${r.ok ? line(g, cmd) : line(g, 'fail')}」\n<b>${r.msg}</b>`);
+      await UI.talk(g, r.ok ? r.expr : 'sad', `${g.name}「${r.ok ? line(g, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd) : line(g, 'fail')}」\n<b>${r.msg}</b>`);
       App.refresh(); return App.openCity(c.i);
     }
     switch (cmd) {

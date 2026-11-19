@@ -140,6 +140,19 @@ const Game = {
   titles(g) { const m = Game.ranks()[g.i] || {}; return Object.keys(m).map(k => ({ k, rank: m[k], name: Game.TITLE[k][m[k] === 1 ? 1 : 0] })); },
   topNote(g, k) { const r = Game.top(g, k); return r ? `（${Game.TITLE[k][r === 1 ? 1 : 0]}の手腕）` : ''; },
 
+  // ---------------- 当たり・はずれ ----------------
+  // 能力が高いほど当たり（大成功）が出やすく、はずれ（いまひとつ）が出にくい。上位者はさらに当たりやすい
+  roll(g, stat, topKey) {
+    const k = (stat - 60) / 200;
+    const pg = clamp(0.15 + k + (Game.top(g, topKey || '') ? 0.12 : 0), 0.05, 0.5);
+    const pp = clamp(0.2 - k, 0.03, 0.35);
+    const r = Math.random();
+    if (r < pg) return { grade: 'great', mult: rnd(1.6, 1.9), tag: '【大成功】' };
+    if (r < pg + pp) return { grade: 'poor', mult: rnd(0.35, 0.6), tag: '【いまひとつ】' };
+    return { grade: 'normal', mult: rnd(0.9, 1.1), tag: '' };
+  },
+  gradeExpr(gr) { return gr === 'great' ? 'happy' : gr === 'poor' ? 'sad' : 'normal'; },
+
   // ---------------- 内政コマンド ----------------
   // 戻り値 { ok, msg, expr }
   doCommand(cmd, g, c, arg) {
@@ -153,51 +166,55 @@ const Game = {
         if ((r = needGold(cost))) return r;
         if (c.farm >= c.farmMax) return { ok: false, msg: 'これ以上は開墾できない', expr: 'sad' };
         c.gold -= cost;
-        let v = Math.round((g.pol * 0.35 + 6) * bonusPol * Game.topK(g, 'pol') * rnd(0.85, 1.15));
-        const big = Game.top(g, 'pol') && Math.random() < 0.2; if (big) v *= 2;
+        const R = Game.roll(g, g.pol, 'pol');
+        const v = Math.max(1, Math.round((g.pol * 0.35 + 6) * bonusPol * Game.topK(g, 'pol') * R.mult));
         c.farm = Math.min(c.farmMax, c.farm + v);
-        return { ok: true, msg: `${big ? '【大成功】' : ''}田畑を開いた。農業 +${v}${Game.topNote(g, 'pol')}`, expr: 'happy' };
+        return { ok: true, grade: R.grade, msg: `${R.tag}田畑を開いた。農業 +${v}${Game.topNote(g, 'pol')}`, expr: Game.gradeExpr(R.grade) };
       }
       case 'comm': {
         if ((r = needGold(cost))) return r;
         if (c.comm >= c.commMax) return { ok: false, msg: 'これ以上は伸ばせない', expr: 'sad' };
         c.gold -= cost;
-        let v = Math.round((g.pol * 0.35 + 6) * bonusPol * Game.topK(g, 'pol') * rnd(0.85, 1.15));
-        const big = Game.top(g, 'pol') && Math.random() < 0.2; if (big) v *= 2;
+        const R = Game.roll(g, g.pol, 'pol');
+        const v = Math.max(1, Math.round((g.pol * 0.35 + 6) * bonusPol * Game.topK(g, 'pol') * R.mult));
         c.comm = Math.min(c.commMax, c.comm + v);
-        return { ok: true, msg: `${big ? '【大成功】' : ''}市を整えた。商業 +${v}${Game.topNote(g, 'pol')}`, expr: 'happy' };
+        return { ok: true, grade: R.grade, msg: `${R.tag}市を整えた。商業 +${v}${Game.topNote(g, 'pol')}`, expr: Game.gradeExpr(R.grade) };
       }
       case 'wall': {
         if ((r = needGold(cost))) return r;
         if (c.def >= c.defMax) return { ok: false, msg: '城壁はすでに万全だ', expr: 'normal' };
         c.gold -= cost;
-        const v = Math.round((g.lead * 0.3 + g.pol * 0.15 + 5) * Math.max(Game.topK(g, 'lead', 1.35, 1.6), Game.topK(g, 'pol', 1.25, 1.4)) * rnd(0.85, 1.15));
+        const R = Game.roll(g, (g.lead + g.pol) / 2, 'lead');
+        const v = Math.max(1, Math.round((g.lead * 0.3 + g.pol * 0.15 + 5) * Math.max(Game.topK(g, 'lead', 1.35, 1.6), Game.topK(g, 'pol', 1.25, 1.4)) * R.mult));
         c.def = Math.min(c.defMax, c.def + v);
-        return { ok: true, msg: `城壁を修築した。防御 +${v}${Game.topNote(g, 'lead') || Game.topNote(g, 'pol')}`, expr: 'happy' };
+        return { ok: true, grade: R.grade, msg: `${R.tag}城壁を修築した。防御 +${v}${Game.topNote(g, 'lead') || Game.topNote(g, 'pol')}`, expr: Game.gradeExpr(R.grade) };
       }
       case 'alms': {
         const food = 1500;
         if (c.food < food) return { ok: false, msg: `兵糧が足りない（${food}必要）`, expr: 'sad' };
         c.food -= food;
-        const v = Math.round((g.cha * 0.12 + 3) * (H(g, '仁徳') ? 1.5 : 1) * Game.topK(g, 'cha') * rnd(0.85, 1.15));
+        const R = Game.roll(g, g.cha, 'cha');
+        const v = Math.max(1, Math.round((g.cha * 0.12 + 3) * (H(g, '仁徳') ? 1.5 : 1) * Game.topK(g, 'cha') * R.mult));
         c.loyal = Math.min(100, c.loyal + v);
-        return { ok: true, msg: `民に施しを行った。民忠 +${v}${Game.topNote(g, 'cha')}`, expr: 'happy' };
+        return { ok: true, grade: R.grade, msg: `${R.tag}民に施しを行った。民忠 +${v}${Game.topNote(g, 'cha')}`, expr: Game.gradeExpr(R.grade) };
       }
       case 'draft': {
         if ((r = needGold(CONFIG.RECRUIT_COST))) return r;
         if (c.loyal < 20) return { ok: false, msg: '民の心が離れていて兵が集まらない', expr: 'sad' };
         c.gold -= CONFIG.RECRUIT_COST;
-        const v = Math.round((g.cha * 25 + 800) * (c.pop / 400000 + 0.5) * Game.topK(g, 'cha', 1.35, 1.6) * rnd(0.8, 1.2) / 10) * 10;
+        const R = Game.roll(g, g.cha, 'cha');
+        const v = Math.max(100, Math.round((g.cha * 25 + 800) * (c.pop / 400000 + 0.5) * Game.topK(g, 'cha', 1.35, 1.6) * R.mult / 10) * 10);
         c.troops += v; c.pop = Math.max(50000, c.pop - v);
         c.loyal = Math.max(0, c.loyal - irnd(3, 6));
         c.train = Math.max(10, Math.round((c.train * (c.troops - v) + 20 * v) / c.troops));
-        return { ok: true, msg: `兵を募った。兵 +${v}${Game.topNote(g, 'cha')}`, expr: 'happy' };
+        return { ok: true, grade: R.grade, msg: `${R.tag}兵を募った。兵 +${v}${Game.topNote(g, 'cha')}`, expr: Game.gradeExpr(R.grade) };
       }
       case 'train': {
         if (c.train >= 100) return { ok: false, msg: '兵はすでに精強だ', expr: 'normal' };
-        const v = Math.round((g.lead * 0.18 + 4) * Game.topK(g, 'lead', 1.5, 1.8) * rnd(0.85, 1.15) * Math.max(0.4, 1 - c.troops / 80000));
+        const R = Game.roll(g, g.lead, 'lead');
+        const v = Math.max(1, Math.round((g.lead * 0.18 + 4) * Game.topK(g, 'lead', 1.5, 1.8) * R.mult * Math.max(0.4, 1 - c.troops / 80000)));
         c.train = Math.min(100, c.train + v);
-        return { ok: true, msg: `兵を鍛えた。訓練 +${v}${Game.topNote(g, 'lead')}`, expr: 'happy' };
+        return { ok: true, grade: R.grade, msg: `${R.tag}兵を鍛えた。訓練 +${v}${Game.topNote(g, 'lead')}`, expr: Game.gradeExpr(R.grade) };
       }
       case 'search': {
         const ronin = Game.roninIn(c.i);
