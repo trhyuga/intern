@@ -596,7 +596,7 @@ const App = {
       const fi = g.faction, wasLord = g.isLord;
       const heir = Game.killGeneral(g, '戦死');
       Game.log(`${g.name}、${to.name}にて討死。`);
-      if (show || fi === G.player) await UI.talk(g, 'sad', `${g.name}「${line(g, 'defeat')}」\n<b>${g.name}、討死――</b>${wasLord ? (heir ? `\n${heir.name}が跡を継いだ。` : `\n${G.factions[fi].name}軍は後継ぎなく滅んだ。`) : ''}`, G.factions[fi].color);
+      if (show || fi === G.player) await UI.talk(g, 'sad', `${g.name}「${line(g, 'defeat')}」\n<b>${g.name}、討死――</b>${wasLord ? (heir ? `\n${heir.name}が跡を継いだ。${Game.succNote(heir)}` : `\n${G.factions[fi].name}軍は後継ぎなく滅んだ。`) : ''}`, G.factions[fi].color);
     }
     // 捕虜
     for (const gi of caps) {
@@ -655,7 +655,7 @@ const App = {
         const heir = Game.killGeneral(g, '処断');
         Game.log(`${g.name}、処断される。`);
         Game.gensOf(G.player).forEach(h => { if (Game.has(h, '仁徳') && !h.isLord) h.loyalty = Math.max(0, h.loyalty - 5); });
-        if (wasLord) await UI.alert(heir ? `${heir.name}が${G.factions[fi].name}軍を継いだ。` : `${g.name}の勢力は滅んだ。`);
+        if (wasLord) await UI.alert(heir ? `${heir.name}が跡を継いだ。${Game.succNote(heir)}` : `${g.name}の勢力は滅んだ。`);
       } else { await UI.talk(g, 'normal', `${g.name}「${line(g, 'release')}」`, facColor(g)); release(); }
       return;
     }

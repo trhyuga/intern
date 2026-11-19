@@ -158,9 +158,9 @@ const Events = (() => {
       run: () => { const f = facByLord('董卓'), dz = G_('董卓'), lu = G_('呂布');
         Game.killGeneral(dz, '暗殺');
         const fac = G.factions[f];
-        if (fac.alive) { Game.gensOf(f).forEach(g => { g.isLord = false; }); lu.isLord = true; lu.loyalty = 100; fac.lord = lu.i; fac.name = '呂布'; Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.max(0, g.loyalty - 20); }); }
+        if (fac.alive) { Game.gensOf(f).forEach(g => { g.isLord = false; }); lu.isLord = true; lu.loyalty = 100; fac.lord = lu.i; lu.succFrom = '董卓'; fac.name = '呂布'; Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.max(0, g.loyalty - 20); }); }
         Game.log('呂布が董卓を討った。');
-        return { title: '王允の計', gen: '呂布', expr: 'angry', fac: f, big: true, text: '王允の策により、呂布は義父・董卓に刃を向けた。\n董卓、討たれる。呂布が軍を継いだが、配下の心は揺れている（忠誠 -20）' }; } },
+        return { title: '王允の計', gen: '呂布', expr: 'angry', fac: f, big: true, text: '王允の策により、呂布は義父・董卓に刃を向けた。\n董卓、討たれる。董卓軍は呂布軍となったが、配下の心は揺れている（忠誠 -20）' }; } },
     { id: 'tianzi', title: '天子を奉じる', chance: 0.5,
       cond: () => { const f = facByLord('曹操'); return f >= 0 && G.year >= 196 && (owns(f, '許昌') || owns(f, '洛陽')); },
       run: () => { const f = facByLord('曹操'), cao = G_('曹操'); up(cao, 'cha', 4); Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + 8); });
