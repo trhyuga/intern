@@ -260,6 +260,7 @@ const Battle = (() => {
 
   // ---------- HUD ----------
   function updateHUD() {
+    if (typeof Auto !== 'undefined' && Auto.running) setTimeout(() => Auto.place(), 0);
     const tot = side => B.units.filter(u => u.alive && u.side === side).reduce((s, u) => s + u.troops, 0);
     const an = B.atkFi === null ? '' : G.factions[B.atkFi].name, dn = B.defFi === null ? '守備隊' : G.factions[B.defFi].name;
     hud.innerHTML = `

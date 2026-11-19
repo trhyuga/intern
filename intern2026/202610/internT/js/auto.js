@@ -135,7 +135,16 @@ const Auto = (() => {
     const el = document.querySelector(sel);
     if (el) { el.classList.add('auto-press'); Sound.se('tap'); await wait(450); el.classList.remove('auto-press'); }
   }
+  // 今見えている画面の見出し（全国地図の上部バー／戦場の日付表示）のすぐ下に置く
+  function place() {
+    const bar = document.getElementById('autobar'), app = document.getElementById('app');
+    const hd = UI.cur === 'battle' ? document.querySelector('#battle .b-hud') : document.querySelector('#main .topbar');
+    if (!hd) return;
+    const top = hd.getBoundingClientRect().bottom - app.getBoundingClientRect().top + 4;
+    bar.style.top = top + 'px';
+  }
   function setBar(text) {
+    place();
     const g = strategist();
     const bar = document.getElementById('autobar');
     bar.querySelector('img').src = g ? Portrait.get(g, 'normal', facColor(g)) : '';
@@ -963,14 +972,14 @@ const Auto = (() => {
     if (!strategist()) return UI.alert('軍師に任命できる武将がいません');
     running = true; stopReq = false; seasonsLeft = n || 0;
     App.busy = true;
-    document.getElementById('autobar').classList.add('show');
+    document.getElementById('autobar').classList.add('show'); document.getElementById('app').classList.add('auto-on'); place();
     loop().finally(() => { App.busy = false; });
   }
   function stop(done) {
     if (!running) return;
     if (!done) { stopReq = true; setBar('この動きが終わったら止めます…'); return; }
     running = false; stopReq = false;
-    document.getElementById('autobar').classList.remove('show');
+    document.getElementById('autobar').classList.remove('show'); document.getElementById('app').classList.remove('auto-on');
     App.busy = false;
     if (UI.cur === 'main') { UI.closeSheet(); App.refresh(); UI.toast('軍師オートを止めました。ここからは自分で操作できます'); }
   }
@@ -1041,6 +1050,6 @@ const Auto = (() => {
 
   return {
     get running() { return running; }, get speed() { return S.speed; },
-    start, stop, init, openMenu, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
+    start, stop, init, openMenu, place, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
   };
 })();
