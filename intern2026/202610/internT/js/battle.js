@@ -634,12 +634,15 @@ const Battle = (() => {
                              : r + prog * 0.6 - (gateBroken ? 0.3 : 0);
     return clamp(v, -1, 1);
   }
+  const isWeakVs = (dg, ag) => dg.war < 65 || ag.war - dg.war >= 15;
   // 一騎討ちを受けるか：負けそうなら一発逆転を狙って受け、勝てそうなら無理に受けない
   function willAcceptDuel(d, a) {
     if (d.gi < 0) return false;
     const adv = outlook(d.side), diff = (d.g.war - a.g.war) / 60;
     const hot = Game.has(d.g, '剛勇') || Game.has(d.g, '猪突');
     const heroes = d.g.war >= 85 && a.g.war >= 85;   // 豪傑同士は引き合う
+    // 弱い武将（武力65未満、または相手より15以上劣る）は基本的に受けない。猪突だけはまれに無謀に受ける
+    if (isWeakVs(d.g, a.g)) return Game.has(d.g, '猪突') && !d.commander && Math.random() < 0.15;
     // 総大将は討たれると負け。基本は受けない。ジリ貧で負けが見えた時だけ、賭けに出る
     if (d.commander) {
       const line0 = hot ? -0.3 : -0.5;
@@ -926,6 +929,7 @@ const Battle = (() => {
     const bold = Game.has(u.g, '剛勇') || Game.has(u.g, '猪突');
     const timid = Game.has(u.g, '臆病') || Game.has(u.g, '慎重');
     const cands = B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && dist(o, u) === 1 && !B.challenged.has(u.gi + '-' + o.gi))
+      .filter(o => !isWeakVs(o.g, u.g) || Math.random() < 0.1)   // 弱い相手はまず受けないので、挑むのは時々（挑発）
       .filter(o => bold ? u.g.war >= o.g.war - 8 : timid ? u.g.war >= o.g.war + 8 : u.g.war >= o.g.war - (u.g.war >= 80 ? 3 : -2))
       .sort((a, b) => { const v = o => (o.commander ? (u.g.war >= o.g.war + 8 ? 20 : -15) : 0) + (u.g.war - o.g.war); return v(b) - v(a); });   // 総大将は応じにくいので、勝ち目が大きい時だけ狙う
     const t = cands[0];
@@ -1006,7 +1010,7 @@ const Battle = (() => {
       // 武勇に優れた武将は前に出て、激しくぶつかる
       if (u.g.war >= 85 && !u.commander && tg.length) score += 6 + (Game.has(u.g, '剛勇') || Game.has(u.g, '猪突') ? 6 : 0);
       // 武勇の将は、一騎討ちを挑めそうな敵将の隣を目指す
-      if (u.g.war >= 78 && !u.commander && u.gi >= 0 && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0 && o.g.war <= u.g.war + 5; })) score += 8;
+      if (u.g.war >= 78 && !u.commander && u.gi >= 0 && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0 && o.g.war <= u.g.war + 5 && !isWeakVs(o.g, u.g); })) score += 10;
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
       // 総大将は、味方が戦っている間は敵に囲まれる位置を避ける
       if (u.commander && B.units.some(o => o.alive && o.side === u.side && o !== u)) {
