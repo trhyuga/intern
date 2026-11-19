@@ -392,12 +392,15 @@ const App = {
     const done = [];
     gens.forEach(g => {
       let cmd;
-      if (c.loyal < 40 && c.food > 3000) cmd = 'alms';
-      else if (g.pol >= g.lead && c.farm < c.farmMax && (c.farm / c.farmMax <= c.comm / c.commMax)) cmd = 'farm';
-      else if (g.pol >= g.lead && c.comm < c.commMax) cmd = 'comm';
-      else if (c.train < 80 && c.troops > 2000) cmd = 'train';
-      else if (c.def < c.defMax) cmd = 'wall';
-      else cmd = 'farm';
+      if (c.loyal < 40 && c.food - 1500 > Game.foodReserve(c)) cmd = 'alms';
+      else if (g.pol >= g.lead && c.farm < c.farmMax - 2 && (c.farm / c.farmMax <= c.comm / c.commMax || c.comm >= c.commMax - 2)) cmd = 'farm';
+      else if (g.pol >= g.lead && c.comm < c.commMax - 2) cmd = 'comm';
+      else if (c.train < 90 && c.troops > 2000) cmd = 'train';
+      else if (c.def < c.defMax - 2) cmd = 'wall';
+      else if (c.farm < c.farmMax - 2) cmd = 'farm';
+      else if (c.comm < c.commMax - 2) cmd = 'comm';
+      else if (c.loyal < 90 && c.food - 1500 > Game.foodReserve(c)) cmd = 'alms';
+      else return;
       const r = Game.doCommand(cmd, g, c);
       if (r.ok) { g.acted = true; done.push(`${g.name}：${r.msg}`); }
     });
