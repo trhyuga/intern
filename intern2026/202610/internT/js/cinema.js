@@ -161,10 +161,18 @@ const Cinema = (() => {
     const g = c.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
     g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${vig})`); c.fillStyle = g; c.fillRect(0, 0, W, H);
   }
+  // 字幕の後ろに敷く半透明の帯（明るい背景でも読めるように）
+  function band(c, W, y, h, alpha) {
+    if (alpha <= 0) return;
+    const g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.2, 'rgba(10,6,4,0.55)'); g.addColorStop(0.8, 'rgba(10,6,4,0.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.globalAlpha = alpha; c.fillStyle = g; c.fillRect(0, y, W, h); c.globalAlpha = 1;
+  }
   function text(c, W, y, str, alpha, size = 20, col = '#f6e8c6') {
     if (alpha <= 0) return;
     c.globalAlpha = alpha; c.textAlign = 'center'; c.font = `500 ${size}px 'Shippori Mincho B1', serif`;
-    c.shadowColor = 'rgba(0,0,0,0.9)'; c.shadowBlur = 10; c.fillStyle = col; c.fillText(str, W / 2, y + (1 - alpha) * 6);
+    const yy = y + (1 - alpha) * 6;
+    c.lineWidth = 4; c.strokeStyle = 'rgba(10,6,4,0.75)'; c.lineJoin = 'round'; c.strokeText(str, W / 2, yy);
+    c.shadowColor = 'rgba(0,0,0,0.9)'; c.shadowBlur = 10; c.fillStyle = col; c.fillText(str, W / 2, yy);
     c.shadowBlur = 0; c.globalAlpha = 1;
   }
   // 縦書きの字幕（右寄せ）
@@ -222,6 +230,7 @@ const Cinema = (() => {
           rider(c, W * 0.22, H * 0.86 - RIDGES[2][14] * 60 + 6, 0.9, '#030206', t * 0.15, null);
           c.globalAlpha = 1;
           vtext(c, W * 0.86, H * 0.36, '後漢の末', fade(t, 1, 9.5) * a, 24);
+          band(c, W, H * 0.62 - 28, 46, fade(t, 2.8, 9.5) * a);
           text(c, W, H * 0.62, '朝廷は乱れ、民は飢えに苦しんだ。', fade(t, 2.8, 9.5) * a, 17);
         }
         // ---- 2. 燃える都（9-18秒）
@@ -244,6 +253,7 @@ const Cinema = (() => {
           army(c, -40, W + 40, H * 0.9, 14, '#050000', lt, null, -1);
           embers.forEach(e => { e.y -= e.v * 1.6; e.x += Math.sin(t * 2 + e.p) * 0.7; if (e.y < -10) { e.y = H; e.x = Math.random() * W; } const tw = 0.5 + Math.sin(t * 10 + e.p) * 0.5; c.fillStyle = `rgba(255,${150 + tw * 90 | 0},60,${0.9 * a})`; c.beginPath(); c.arc(e.x, e.y, e.s * 0.8, 0, 7); c.fill(); });
           c.globalAlpha = 1;
+          band(c, W, H * 0.2 - 30, 78, fade(t, 10, 18) * a);
           text(c, W, H * 0.2, '黄巾の乱ののち、', fade(t, 10, 18) * a, 19);
           text(c, W, H * 0.2 + 36, '都は暴君の手に落ちる。', fade(t, 11.5, 18) * a, 19);
         }
@@ -269,21 +279,29 @@ const Cinema = (() => {
           // 砂煙
           for (let i = 0; i < 8; i++) { glow(c, ((i * 97 + lt * 30) % (W + 100)) - 50, H * 0.84, 40, 'rgba(230,200,160,0.25)'); }
           c.globalAlpha = 1;
-          text(c, W, H * 0.16, '各地に群雄が立ち、', fade(t, 19, 27) * a, 19, '#2a1a10');
-          text(c, W, H * 0.16 + 36, '天下は千々に乱れた。', fade(t, 20.5, 27) * a, 19, '#2a1a10');
+          band(c, W, H * 0.16 - 30, 78, fade(t, 19, 27) * a);
+          text(c, W, H * 0.16, '各地に群雄が立ち、', fade(t, 19, 27) * a, 19);
+          text(c, W, H * 0.16 + 36, '天下は千々に乱れた。', fade(t, 20.5, 27) * a, 19);
         }
         // ---- 4. 英雄（27-33秒）
         if (t > 27 && t < 33.5) {
           const a = fade(t, 27, 33.5, 0.8), lt = t - 27;
           c.globalAlpha = a; sky(c, W, H, [[0, '#0c0805'], [1, '#1e120a']]); c.globalAlpha = 1;
           const pw = Math.min(W * 0.3, 132), ph = pw * 1.25;
+          // 墨しぶきは肖像の後ろ（全員ぶんを先に描く）
+          heroes.forEach((h, i) => {
+            const k = easeOut((lt - 0.2 - i * 0.55) / 0.7);
+            const x = W / 2 + (i - 1) * (pw + 8) - pw / 2, y = H * 0.33 + (1 - k) * 40;
+            c.globalAlpha = a * k * 0.85;
+            inkSplash(c, x + pw / 2, y + ph * 1.02, pw * 0.55, k, shadeCol(hcols[i], 0.4), 20 + i);
+          });
+          c.globalAlpha = 1;
           heroes.forEach((h, i) => {
             const k = easeOut((lt - 0.2 - i * 0.55) / 0.7);
             const x = W / 2 + (i - 1) * (pw + 8) - pw / 2, y = H * 0.33 + (1 - k) * 40;
             c.globalAlpha = a * k;
-            inkSplash(c, x + pw / 2, y + ph * 0.45, pw * 0.75, k, shadeCol(hcols[i], 0.45), 20 + i);
             const z = 1 + lt * 0.015;
-            c.save(); c.translate(x + pw / 2, y + ph / 2); c.scale(z, z); c.drawImage(pcanvas[i], -pw / 2, -ph / 2, pw, ph); c.restore();
+            c.save(); c.beginPath(); c.rect(x, y, pw, ph); c.clip(); c.translate(x + pw / 2, y + ph / 2); c.scale(z, z); c.drawImage(pcanvas[i], -pw / 2, -ph / 2, pw, ph); c.restore();
             c.strokeStyle = '#d4af37'; c.lineWidth = 2; c.strokeRect(x, y, pw, ph);
             c.font = `26px 'Yuji Syuku', serif`; c.textAlign = 'center'; c.fillStyle = '#f6e8c6'; c.shadowColor = '#000'; c.shadowBlur = 8; c.fillText(h.name, x + pw / 2, y + ph + 34); c.shadowBlur = 0;
             seal(c, x + pw - 10, y + ph - 8, 20, ['魏', '蜀', '呉'][i], a * k);
