@@ -53,7 +53,7 @@ const Auto = (() => {
     smart: {
       intro: ['{season}です。{plan}', '敵の動きは読めております。{plan}', '天の時はまだ。ですが、手は打っておきましょう。{plan}'],
       dom: ['{city}は{need}が急務。{gen}殿にお願いします', '{gen}殿の才なら、{city}の{need}は任せて安心です'],
-      attack: ['{target}は兵{n}。いま攻めれば勝てます。総大将は{gen}殿に', '{target}の守りは手薄です。{gen}殿、一気に落としましょう'],
+      attack: ['{target}の兵{n}に対し、こちらは{m}で攻めます。{city}には{k}を残します。総大将は{gen}殿に', '{target}の守りは手薄です。{gen}殿、兵{m}で落としましょう。{city}の守りは{k}で十分です'],
       hold: ['今は攻め時ではありません。力を蓄えましょう', '無理な戦は国を滅ぼします。今季は内を固めます'],
       plot: ['{foe}は主君に不満を抱いている様子。揺さぶってみましょう', '戦わずして敵を崩す。これも兵法です'],
       diplo: ['{target}と手を結び、背後の憂いを断ちましょう', '敵を一度に相手にするのは愚策。{target}とは和を'],
@@ -69,7 +69,7 @@ const Auto = (() => {
     mid: {
       intro: ['{season}になりました。{plan}', 'さて、今季はどう動きましょうか。{plan}'],
       dom: ['{city}で{need}をやりましょう。{gen}殿、頼みます', '{gen}殿に{need}をお願いします'],
-      attack: ['{target}を攻めましょう。{gen}殿、出陣を', 'そろそろ{target}を取りに行きましょう'],
+      attack: ['{target}を攻めましょう。{gen}殿、兵{m}で出陣を。城には{k}を残します', 'そろそろ{target}を取りに行きましょう。兵は{m}です'],
       hold: ['今季は様子を見ましょう'],
       plot: ['{foe}に揺さぶりをかけてみます'], diplo: ['{target}に使者を出してみましょう'],
       reward: ['{gen}殿に褒美を与えておきましょう'], recruit: ['人材を探してみましょう'],
@@ -82,7 +82,7 @@ const Auto = (() => {
     dumb: {
       intro: ['{season}だ！ {plan}', 'えーと……{plan}', 'よし、今季も気合いでいくぞ！ {plan}'],
       dom: ['{gen}殿、とりあえず{need}を！', 'うーん、{need}でいいか！'],
-      attack: ['{target}を攻めるぞ！ 勝てる気がする！', 'つべこべ言わずに{target}へ突撃だ！'],
+      attack: ['{target}を攻めるぞ！ 兵{m}もいれば勝てる気がする！', 'つべこべ言わずに{target}へ突撃だ！ 留守は{k}で何とかなるだろ！'],
       hold: ['……何をすればいいんだっけ', 'まあ、今季はいいか'],
       plot: ['な、何か悪だくみをしてみるか'], diplo: ['仲良くしておこう！'],
       reward: ['金をばらまいておけ！'], recruit: ['誰かいないか探してこい！'],
@@ -203,58 +203,89 @@ const Auto = (() => {
   }
 
   // ---------- 攻撃の判断 ----------
+  // 守備に残す兵：前線4000・後方2000、今の兵の3割、隣の敵の最大兵力×性格の係数、のうち一番多い数
+  function garrison(c, br, excludeCi) {
+    const g = strategist();
+    const base = Game.isFront(c) ? 4000 : 2000;
+    let maxEnemy = 0;
+    c.adj.forEach(a => { const o = G.cities[a]; if (o.owner !== null && o.owner !== G.player && !Game.isAlly(G.player, o.owner)) maxEnemy = Math.max(maxEnemy, o.troops * (a === excludeCi ? 0.4 : 1)); });
+    let k = Game.has(g, '慎重') ? 0.9 : (Game.has(g, '野心') || Game.has(g, '猪突')) ? 0.5 : 0.7;
+    if (br.tier === 'dumb') k *= 0.6;            // 知力が低いと敵の脅威を甘く見る（それでも最低限は残す）
+    return Math.round(Math.max(base, c.troops * 0.3, maxEnemy * k));
+  }
+  const avg = (arr, k) => arr.length ? arr.reduce((s, g) => s + g[k], 0) / arr.length : 40;
+  // 戦いの強さの見積もり（AI.autoBattle と同じ考え方）
+  function atkFactor(c, army) {
+    const bond = Game.bondOf(army.map(g => g.name)).reduce((s, b) => s + b.bonus, 0);
+    return (0.5 + c.train / 200) * (0.6 + (avg(army, 'lead') * 0.6 + avg(army, 'war') * 0.4) / 100) * (1 + bond);
+  }
+  function defPower(t) {
+    const def = Game.gensIn(t.i).slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+    const gf = def.length ? (0.6 + (avg(def, 'lead') * 0.6 + avg(def, 'war') * 0.4) / 100) : 0.85;
+    return t.troops * (0.5 + t.train / 200) * gf * (1.15 + t.def / 2500);
+  }
+  // 1つの攻め先について、連れていく武将と兵を決める。勝ち目が足りなければ null
+  function evalAttack(c, t, br) {
+    const idle = Game.gensIn(c.i, G.player).filter(g => !g.acted);
+    if (!idle.length || c.troops < 4000) return null;
+    const keep = garrison(c, br, t.i);
+    const avail = Math.floor((c.troops - keep) / 100) * 100;
+    if (avail < 3000) return null;
+    // 敵の強さの見積もり（知力が低いほどぶれる）
+    const defEst = defPower(t) * (1 + (Math.random() - 0.5) * br.noise * 0.6) * (t.owner === null ? 0.9 : 1);
+    // 勝つために欲しい力の比：性格で変わる（慎重なら大きな差、猪突なら小さな差で攻める）
+    const want = Math.max(1.3, br.aggr);   // 攻め気の強い軍師でも、最低限の勝ち目（1.3倍）は見る
+    const margin = (br.tier === 'smart' ? 1.4 : br.tier === 'mid' ? 1.25 : 1.05) + (Game.has(strategist(), '慎重') ? 0.15 : 0);
+    // 候補の武将（君主は他に武将がいれば残す。前線では最低1人は城に残す）
+    let cands = br.tier === 'dumb' ? shuffle(idle.slice()) : idle.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
+    if (cands.length > 1) cands = cands.filter(g => !g.isLord || br.tier === 'dumb');
+    const allInCity = Game.gensIn(c.i, G.player);
+    if (Game.isFront(c) && cands.length >= allInCity.length && cands.length > 1) {
+      // 一番守りに向いた武将（統率が高い者）を残す
+      const stay = cands.slice().sort((a, b) => b.lead - a.lead)[br.tier === 'dumb' ? cands.length - 1 : 0];
+      if (br.tier !== 'dumb' || Math.random() < 0.7) cands = cands.filter(g => g !== stay);
+    }
+    if (!cands.length) return null;
+    // 必要な兵を満たす最小の顔ぶれを探す
+    for (let n = 1; n <= Math.min(5, cands.length); n++) {
+      let army = cands.slice(0, n);
+      if (br.tier === 'smart') {
+        // 絆の相方・計略役を加える（強さが増す）
+        BONDS.forEach(bd => { if (army.some(g => bd.members.includes(g.name))) cands.forEach(g => { if (bd.members.includes(g.name) && !army.includes(g) && army.length < 5) army.push(g); }); });
+      }
+      const f = atkFactor(c, army);
+      const need = defEst * want / f;
+      const cap = army.reduce((s, g) => s + Game.troopCap(g), 0);
+      const send = Math.floor(Math.min(avail, cap, Math.max(need * margin, 3000)) / 100) * 100;
+      if (send >= need && send >= 3000) {
+        army.sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
+        return { c, t, army, troops: send, keep, ratio: send * f / defEst, need: Math.round(need) };
+      }
+    }
+    // 知力の低い軍師は、勝ち目が少し足りなくても突っ込むことがある
+    if (br.tier === 'dumb' && Math.random() < 0.1) {
+      const army = cands.slice(0, Math.min(5, cands.length));
+      const send = Math.floor(Math.min(avail, army.reduce((s, g) => s + Game.troopCap(g), 0)) / 100) * 100;
+      if (send >= 3000 && send * atkFactor(c, army) / defEst >= 1.1) return { c, t, army, troops: send, keep, ratio: send * atkFactor(c, army) / defEst, need: 0 };
+    }
+    return null;
+  }
   function planAttacks(br) {
     const plans = [];
-    const used = new Set();
     Game.citiesOf(G.player).forEach(c => {
-      const gens = Game.gensIn(c.i, G.player).filter(g => !g.acted);
-      if (!gens.length || c.troops < 5000) return;
-      const targets = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner)));
-      targets.forEach(t => {
-        if (used.has(t.i)) return;
-        const defGens = Game.gensIn(t.i);
-        const defPow = t.troops * (1 + t.def / 1500) * (1 + defGens.reduce((s, g) => s + g.lead, 0) / 400);
-        const army = gens.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
-        const threat = AI.threat(c, G.player) - t.troops;
-        const keep = br.tier === 'smart' ? Math.max(1500, threat * 0.5) : br.tier === 'mid' ? 1500 : 500;
-        const troops = Math.floor(Math.min(c.troops - keep, army.reduce((s, g) => s + Game.troopCap(g), 0)) / 100) * 100;
-        if (troops < 3000) return;
-        // 出陣しても、残る兵の兵糧（次の収穫まで）を残し、12日分以上を持って行けるか
-        if (c.food - Game.foodReserve(c, c.troops - troops) < troops * 0.03 * 12) return;
-        const atkPow = troops * (0.5 + c.train / 200) * (1 + army.reduce((s, g) => s + g.lead + g.war, 0) / 1000);
-        let score = atkPow / Math.max(1, defPow) * (1 + (Math.random() - 0.5) * br.noise * 1.6);
-        if (t.owner === null) score *= 1.25;
-        plans.push({ c, t, score, army, troops });
+      c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner))).forEach(t => {
+        const e = evalAttack(c, t, br);
+        if (e) plans.push(Object.assign(e, { score: e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) }));
       });
     });
     plans.sort((a, b) => b.score - a.score);
     const chosen = [];
     for (const p of plans) {
       if (chosen.length >= br.maxAttacks) break;
-      if (p.score < br.aggr || used.has(p.t.i) || chosen.some(x => x.c === p.c)) continue;
-      used.add(p.t.i); chosen.push(p);
+      if (chosen.some(x => x.c === p.c || x.t === p.t)) continue;
+      chosen.push(p);
     }
     return chosen;
-  }
-  function pickArmy(p, br) {
-    const gens = Game.gensIn(p.c.i, G.player).filter(g => !g.acted);
-    let army;
-    if (br.tier === 'dumb') army = shuffle(gens.slice()).slice(0, Math.min(5, gens.length));
-    else {
-      army = gens.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 4);
-      // 絆の相方を入れる
-      if (br.tier === 'smart') {
-        BONDS.forEach(bd => { if (army.some(g => bd.members.includes(g.name))) gens.forEach(g => { if (bd.members.includes(g.name) && !army.includes(g) && army.length < 5) army.push(g); }); });
-        // 計略役（知力の高い者）を1人
-        const smart = gens.filter(g => !army.includes(g)).sort((a, b) => b.int - a.int)[0];
-        if (smart && smart.int >= 80 && army.length < 5) army.push(smart);
-      }
-      // 君主は本拠を空けない（守りが手薄なら）
-      army = army.filter(g => !(g.isLord && army.length > 1 && br.tier !== 'dumb'));
-      army.sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
-    }
-    const cap = army.reduce((s, g) => s + Game.troopCap(g), 0);
-    return { army, troops: Math.max(500, Math.min(p.troops, Math.floor(cap / 100) * 100)) };
   }
 
   // ---------- 計略・外交・人事 ----------
@@ -436,7 +467,7 @@ const Auto = (() => {
     await doPlots(br); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     // 出陣する武将はあらかじめ取っておく
-    const armies = attacks.map(p => ({ p, ...pickArmy(p, br) })).filter(a => a.army.length);
+    const armies = attacks.map(p => ({ p, army: p.army, troops: p.troops }));
     const reserved = new Set(armies.flatMap(a => a.army.map(x => x.i)));
     // 内政
     for (const c of Game.citiesOf(G.player)) {
@@ -478,16 +509,18 @@ const Auto = (() => {
       if (stopReq) return false;
       const { p } = a;
       if (p.c.owner !== G.player || p.t.owner === G.player || (p.t.owner !== null && Game.isAlly(G.player, p.t.owner))) continue;
-      const army = a.army.filter(x => x.state === 'serve' && x.faction === G.player && x.city === p.c.i && !x.acted);
+      // 内政のあとの最新の状態でもう一度見積もる（攻め先の兵が増えていたら見送る）
+      const e = evalAttack(p.c, p.t, br);
+      if (!e) { await say('hold'); continue; }
+      const army = e.army.filter(x => x.state === 'serve' && x.faction === G.player && x.city === p.c.i && !x.acted);
       if (!army.length) continue;
-      const troops = Math.min(a.troops, p.c.troops - 300);
-      if (troops < 2000) continue;
+      const troops = e.troops;
       const spare = p.c.food - Game.foodReserve(p.c, p.c.troops - troops);
       const food = Math.min(Math.round(troops * 0.03 * 30), Math.floor(spare));
       if (food < troops * 0.03 * 12) { await say('hold'); continue; }
       await press(p.c.i, 'mil', '[data-cmd=attack]');
       MapView.setHighlight([p.t.i]); await wait(500); MapView.setHighlight(null);
-      await say('attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name }, 'angry');
+      await say('attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name, m: fmt(troops), k: fmt(p.c.troops - troops), city: p.c.name }, 'angry');
       UI.closeSheet();
       const cmdr = army[0];
       Sound.se('march');
@@ -590,6 +623,6 @@ const Auto = (() => {
 
   return {
     get running() { return running; }, get speed() { return S.speed; },
-    start, stop, init, openMenu, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity,
+    start, stop, init, openMenu, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks,
   };
 })();
