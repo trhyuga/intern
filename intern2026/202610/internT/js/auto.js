@@ -56,6 +56,7 @@ const Auto = (() => {
       attack: ['{target}の兵{n}に対し、こちらは{m}で攻めます。{city}には{k}を残します。総大将は{gen}殿に', '{target}の守りは手薄です。{gen}殿、兵{m}で落としましょう。{city}の守りは{k}で十分です'],
       hold: ['今は攻め時ではありません。力を蓄えましょう', '無理な戦は国を滅ぼします。今季は内を固めます'],
       plot: ['{foe}は主君に不満を抱いている様子。揺さぶってみましょう', '戦わずして敵を崩す。これも兵法です'],
+      rumor: ['{target}に流言を放ち、民と兵の心を乱しましょう。攻める前の下ごしらえです', '{target}の守りを内から崩します'],
       diplo: ['{target}と手を結び、背後の憂いを断ちましょう', '敵を一度に相手にするのは愚策。{target}とは和を'],
       reward: ['{gen}殿の心が離れかけています。褒美を'],
       recruit: ['{gen}殿、在野の賢者を探してきてください'],
@@ -71,7 +72,7 @@ const Auto = (() => {
       dom: ['{city}で{need}をやりましょう。{gen}殿、頼みます', '{gen}殿に{need}をお願いします'],
       attack: ['{target}を攻めましょう。{gen}殿、兵{m}で出陣を。城には{k}を残します', 'そろそろ{target}を取りに行きましょう。兵は{m}です'],
       hold: ['今季は様子を見ましょう'],
-      plot: ['{foe}に揺さぶりをかけてみます'], diplo: ['{target}に使者を出してみましょう'],
+      plot: ['{foe}に揺さぶりをかけてみます'], rumor: ['{target}に噂を流してみます'], diplo: ['{target}に使者を出してみましょう'],
       reward: ['{gen}殿に褒美を与えておきましょう'], recruit: ['人材を探してみましょう'],
       battle: ['敵の城を落とすぞ！'], defend: ['なんとか守り抜きましょう'],
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
@@ -84,7 +85,7 @@ const Auto = (() => {
       dom: ['{gen}殿、とりあえず{need}を！', 'うーん、{need}でいいか！'],
       attack: ['{target}を攻めるぞ！ 兵{m}もいれば勝てる気がする！', 'つべこべ言わずに{target}へ突撃だ！ 留守は{k}で何とかなるだろ！'],
       hold: ['……何をすればいいんだっけ', 'まあ、今季はいいか'],
-      plot: ['な、何か悪だくみをしてみるか'], diplo: ['仲良くしておこう！'],
+      plot: ['な、何か悪だくみをしてみるか'], rumor: ['{target}に、あることないこと言いふらしてこい！'], diplo: ['仲良くしておこう！'],
       reward: ['金をばらまいておけ！'], recruit: ['誰かいないか探してこい！'],
       battle: ['とにかく突っ込め！'], defend: ['ど、どうしよう……とにかく守れ！'],
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
@@ -337,32 +338,59 @@ const Auto = (() => {
       if (r.ok) Game.log(r.msg);
     }
   }
-  async function doPlots(br) {
-    if (Math.random() > br.plot) return;
+  // 計略：軍師の能力で回数と狙いが変わる（離間・引き抜き・流言を使い分ける）
+  async function doPlots(br, reserved, attackTargets) {
+    const sg = strategist();
+    const wise = Game.has(sg, '智謀') || Game.has(sg, '神算');
+    let times = br.tier === 'smart' ? 2 : br.tier === 'mid' ? 1 : (Math.random() < 0.6 ? 1 : 0);
+    if (wise) times++;
     const front = new Set();
     Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a]; if (o.owner !== null && o.owner !== G.player && !Game.isAlly(G.player, o.owner)) front.add(a); }));
-    const cands = G.gens.filter(g => g.state === 'serve' && front.has(g.city) && !g.isLord && !Game.has(g, '忠義'));
-    if (!cands.length) return;
-    // 賢い軍師は野心家・忠誠の低い者を狙う
-    cands.sort((a, b) => br.tier === 'dumb' ? Math.random() - 0.5 : (a.loyalty - (Game.has(a, '野心') ? 25 : 0)) - (b.loyalty - (Game.has(b, '野心') ? 25 : 0)));
-    const t = cands[0];
-    const agent = Game.gensOf(G.player).filter(g => !g.acted).sort((a, b) => b.int - a.int)[0];
-    if (!agent) return;
-    const home = G.cities[agent.city];
-    const lure = t.loyalty < 40 && home.gold >= 400;
-    if (!lure && home.gold < 50) return;
-    MapView.centerOn(t.city); App.openCity(t.city); await wait(400);
-    const btn = document.querySelector(lure ? '[data-x=lure]' : '[data-x=sow]');
-    if (btn) { btn.classList.add('auto-press'); Sound.se('tap'); await wait(450); btn.classList.remove('auto-press'); }
-    await say('plot', { foe: t.name });
-    agent.acted = true;
-    let r;
-    if (lure) { home.gold -= 300; r = Game.plotLure(agent, t, 300); }
-    else { home.gold -= 50; r = Game.plotSow(agent, t); }
-    Sound.se(r.ok ? 'ok' : 'ng');
-    if (r.ok && lure) { await UI.talk(t, 'happy', `${t.name}「${line(t, 'join')}」\n<b>${r.msg}</b>`); Game.log(`${t.name}が${G.factions[G.player].name}軍に寝返った。`); }
-    else if (r.ok) await UI.talk(t, Game.has(t, '野心') ? 'angry' : 'sad', `${t.name}「${line(t, 'sown')}」\n<b>${r.msg}</b>`, facColor(t));
-    else await UI.talk(agent, 'sad', `${agent.name}「${line(agent, 'fail')}」\n<b>${r.msg}</b>`);
+    if (!front.size) return;
+    const used = new Set();
+    for (let k = 0; k < times; k++) {
+      if (stopReq) return;
+      // 実行役：出陣予定でない、知力の高い待機中の武将（知力の低い軍師は人選も雑）
+      let agents = Game.gensOf(G.player).filter(g => !g.acted && !reserved.has(g.i));
+      if (!agents.length) return;
+      agents = br.tier === 'dumb' ? shuffle(agents) : agents.sort((a, b) => b.int - a.int);
+      const agent = agents[0];
+      if (br.tier !== 'dumb' && agent.int < 60) return;
+      const home = G.cities[agent.city];
+      // 候補を作って、価値の高い順に選ぶ
+      const opts = [];
+      G.gens.forEach(t => {
+        if (t.state !== 'serve' || !front.has(t.city) || t.isLord || Game.has(t, '忠義') || used.has('g' + t.i)) return;
+        const worth = (t.lead + t.war + t.int + t.pol) / 40;
+        if (t.loyalty < 45 && home.gold >= 400) opts.push({ kind: 'lure', t, city: t.city, v: worth + (45 - t.loyalty) / 5 + (Game.has(t, '野心') ? 2 : 0) });
+        else if (t.loyalty < 85) opts.push({ kind: 'sow', t, city: t.city, v: worth * 0.5 + (Game.has(t, '野心') ? 4 : 0) + (85 - t.loyalty) / 10 });
+      });
+      if (home.gold >= 100) front.forEach(ci => {
+        const c = G.cities[ci];
+        if (used.has('c' + ci) || c.loyal < 35) return;
+        opts.push({ kind: 'rumor', city: ci, v: (attackTargets.includes(ci) ? 3.5 : 0.5) + c.loyal / 40 + c.train / 60 });
+      });
+      if (!opts.length) return;
+      const o = br.tier === 'dumb' ? pick(opts) : opts.sort((a, b) => b.v - a.v)[br.tier === 'mid' && opts.length > 1 && Math.random() < 0.3 ? 1 : 0];
+      used.add(o.t ? 'g' + o.t.i : 'c' + o.city);
+      MapView.centerOn(o.city); App.openCity(o.city); await wait(400);
+      const btn = document.querySelector(`[data-x=${o.kind}]`);
+      if (btn) { btn.classList.add('auto-press'); Sound.se('tap'); await wait(450); btn.classList.remove('auto-press'); }
+      await say(o.kind === 'rumor' ? 'rumor' : 'plot', { foe: o.t ? o.t.name : '', target: G.cities[o.city].name });
+      if (br.tier !== 'dumb' || Math.random() < 0.5) await UI.talk(agent, 'normal', `${agent.name}「${line(agent, 'plotGo')}」`);
+      agent.acted = true;
+      let r;
+      if (o.kind === 'lure') { home.gold -= 300; r = Game.plotLure(agent, o.t, 300); }
+      else if (o.kind === 'sow') { home.gold -= 50; r = Game.plotSow(agent, o.t); }
+      else { home.gold -= 100; r = Game.plotRumor(agent, G.cities[o.city]); }
+      Sound.se(r.ok ? 'ok' : 'ng');
+      if (r.immune) await UI.talk(o.t, 'angry', (SPECIAL_LINES[o.t.name] && SPECIAL_LINES[o.t.name].immune) || `${o.t.name}「${line(o.t, 'refuse')}」`, facColor(o.t), { tag: '忠義' });
+      else if (r.ok && o.kind === 'lure') { await UI.talk(o.t, 'happy', `${o.t.name}「${line(o.t, 'join')}」\n<b>${r.msg}</b>`); Game.log(`${o.t.name}が${G.factions[G.player].name}軍に寝返った。`); }
+      else if (r.ok && o.kind === 'sow') await UI.talk(o.t, Game.has(o.t, '野心') ? 'angry' : 'sad', `${o.t.name}「${line(o.t, 'sown')}」\n<b>${r.msg}</b>`, facColor(o.t));
+      else if (r.ok) await UI.talk(agent, 'happy', `${agent.name}「${line(agent, 'success')}」\n<b>${r.msg}</b>`);
+      else await UI.talk(agent, 'sad', `${agent.name}「${line(agent, 'fail')}」\n<b>${r.msg}</b>`);
+      App.refresh();
+    }
   }
   async function doRecruit(br) {
     for (const c of Game.citiesOf(G.player)) {
@@ -464,7 +492,8 @@ const Auto = (() => {
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
     await doDiplo(br); if (stopReq) return false;
-    await doPlots(br); if (stopReq) return false;
+    const armies0 = attacks.map(p => p.army).flat();
+    await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     // 出陣する武将はあらかじめ取っておく
     const armies = attacks.map(p => ({ p, army: p.army, troops: p.troops }));
