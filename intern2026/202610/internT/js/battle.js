@@ -90,7 +90,9 @@ const Battle = (() => {
         B.units.push(mkUnit(null, 'def', defFi, Math.max(300, Math.min(defTroops, 6000)), 0, 4));
       }
       B.units.find(u => u.side === 'def').commander = true;
-      B.units.forEach(u => { u.train = u.side === 'atk' ? from.train : to.train; });
+      B.units.forEach(u => { u.train = u.side === 'atk' ? from.train : to.train; if (u.gi >= 0 && Game.top(u.g, 'cha')) u.morale = 95; });
+      // 人望の上位者がいる軍は士気が高い
+      ['atk', 'def'].forEach(sd => { if (B.units.some(u => u.side === sd && u.gi >= 0 && Game.top(u.g, 'cha'))) B.units.filter(u => u.side === sd).forEach(u => u.morale = Math.max(u.morale, 90)); });
       B.weather = pickWeather();
       setupDOM(opts && opts.auto);
       Sound.bgm('battle');
@@ -352,6 +354,9 @@ const Battle = (() => {
     if (B.weather === 'rain') k *= 0.9;
     if (B.rally && B.rally[a.side] > 0) k *= 1.3;   // 背水の陣
     if (B.buff) { k *= B.buff[a.side].atk; k *= B.buff[d.side].guard; }   // 必殺技の効果
+    // 能力の上位者：豪傑は攻撃↑、名将は攻撃↑・被害↓
+    if (a.gi >= 0) { k *= Game.topK(ag, 'war', 1.12, 1.22); k *= Game.topK(ag, 'lead', 1.08, 1.15); }
+    if (d.gi >= 0) k /= Game.topK(dg, 'lead', 1.12, 1.2);
     return Math.max(30, Math.round(k * rnd(0.85, 1.15)));
   }
 
@@ -460,7 +465,7 @@ const Battle = (() => {
   // ---------- 計略 ----------
   async function doPlot(a, kind, d) {
     const H = Game.has;
-    let p = 0.35 + (a.g.int - d.g.int) / 90 + (H(a.g, '智謀') ? 0.15 : 0) - (H(d.g, '神算') ? 0.3 : 0);
+    let p = 0.35 + (a.g.int - d.g.int) / 90 + (H(a.g, '智謀') ? 0.15 : 0) - (H(d.g, '神算') ? 0.3 : 0) + (a.gi >= 0 && Game.top(a.g, 'int') ? 0.15 : 0) - (d.gi >= 0 && Game.top(d.g, 'int') ? 0.2 : 0);
     if (kind === 'fire' && B.weather === 'rain') p = 0;
     if (kind === 'fire' && ['water', 'ford', 'wall', 'keep', 'gate'].includes(B.tiles[d.r][d.c].t)) p *= 0.3;
     a.acted = true;
@@ -1046,6 +1051,7 @@ const Duel = (() => {
     let dmg = rnd(8, 16) * Math.pow(a.war / Math.max(30, d.war), 1.4);
     if (mode === 'power') { hit -= 0.25; dmg *= 2; }
     if (Game.has(a, '剛勇')) dmg *= 1.1;
+    dmg *= Game.topK(a, 'war', 1.1, 1.18);   // 豪傑
     return Math.random() < clamp(hit, 0.15, 0.95) ? Math.round(dmg) : 0;
   }
   function quick(a, d) {

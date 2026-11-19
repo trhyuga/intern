@@ -65,6 +65,50 @@ const Events = (() => {
     { w: 2, name: '親孝行', cond: g => g.traits.includes('仁徳') || g.traits.includes('忠義'), run: g => { up(g, 'cha', 2); return { msg: `${g.name}の親孝行ぶりが評判になった。魅力 +2`, expr: 'happy', line: '親を大事にするのは人の道です', good: true }; } },
   ];
 
+  // ---------------- 能力の上位者だけに起きるイベント ----------------
+  const adjEnemy = c => c.adj.map(a => G.cities[a]).filter(o => o.owner !== null && o.owner !== c.owner && !Game.isAlly(c.owner, o.owner));
+  const TOP_EV = {
+    lead: [
+      { name: '練兵の名手', run: (g, c) => { const v = Math.min(100 - c.train, 15); c.train += v; return { msg: `${g.name}の練兵で、${c.name}の兵は見違えるほど精強になった。訓練 +${v}`, line: '号令ひとつで、兵が一つの生き物のように動く' }; } },
+      { name: '鉄壁の布陣', run: (g, c) => { const v = Math.round(c.defMax * 0.08); c.def = Math.min(c.defMax, c.def + v); return { msg: `${g.name}が${c.name}の守りの配置を見直した。城壁 +${v}`, line: '攻め口はすべて塞いだ' }; } },
+    ],
+    war: [
+      { name: '虎退治', run: (g, c) => { c.loyal = Math.min(100, c.loyal + 8); up(g, 'cha', 1); return { msg: `${c.name}を荒らす人食い虎を${g.name}が素手で仕留めた。民忠 +8、${g.name}の魅力 +1`, line: '虎ごとき、物の数ではない' }; } },
+      { name: '武名轟く', run: (g, c) => { const en = adjEnemy(c); en.forEach(o => o.train = Math.max(0, o.train - 6)); return { msg: `${g.name}の武名が轟き、${en.length ? en.map(o => o.name).join('・') + 'の敵兵が震え上がった。訓練 -6' : '近隣に名が知れ渡った'}`, line: '我が名を聞いて逃げ出すなら、それもよし' }; } },
+    ],
+    int: [
+      { name: '天文を読む', run: (g, c) => { c.harvestK = Math.max(c.harvestK || 1, 1.15); c.loyal = Math.min(100, c.loyal + 3); return { msg: `${g.name}が天文を読み、${c.name}の天候の変化に備えさせた。秋の収穫が増えそうだ。民忠 +3`, line: '星の巡りに、雨の兆しが見えます' }; } },
+      { name: '兵法書を著す', run: (g, c) => { const pupil = Game.gensOf(g.faction).filter(x => x !== g && x.int < 90).sort(() => Math.random() - 0.5)[0]; if (!pupil) return null; up(pupil, 'int', 2); return { msg: `${g.name}が兵法書を著し、${pupil.name}に授けた。${pupil.name}の知力 +2`, line: 'これを読めば、戦の理が見えてきましょう' }; } },
+    ],
+    pol: [
+      { name: '名政', run: (g, c) => { pct(c, 'farm', 'farmMax', 0.06); pct(c, 'comm', 'commMax', 0.06); c.loyal = Math.min(100, c.loyal + 4); return { msg: `${g.name}の善政で${c.name}が栄えた。農業・商業 +6%、民忠 +4`, line: '税は軽く、法は公平に。それだけのことです' }; } },
+      { name: '法を整える', run: (g, c) => { Game.citiesOf(g.faction).forEach(x => x.loyal = Math.min(100, x.loyal + 3)); const cap = G.cities[G.factions[g.faction].capital]; cap.gold += 150; return { msg: `${g.name}が国の法を整えた。全都市の民忠 +3、${cap.name}の金 +150`, line: '決まりが明らかなら、民は安心して働けます' }; } },
+    ],
+    cha: [
+      { name: '人が慕い集まる', run: (g, c) => { const near = G.gens.filter(x => x.state === 'ronin' && (x.city === c.i || c.adj.includes(x.city)));
+          if (near.length) { const r = pick(near); r.city = c.i; r.known = true; return { msg: `${g.name}を慕って、在野の${r.name}が${c.name}を訪ねてきた（登用できる）`, line: 'よく来てくれた。話を聞かせてほしい' }; }
+          const v = irnd(10000, 25000); c.pop += v; return { msg: `${g.name}の評判を聞いて、${c.name}に人々が移り住んだ。人口 +${fmt(v)}`, line: '皆、よく来てくれた' }; } },
+      { name: '民の喝采', run: (g, c) => { c.loyal = Math.min(100, c.loyal + 10); return { msg: `${g.name}が${c.name}の町を歩くと、民が道に出て喝采した。民忠 +10`, line: '皆の顔を見ると、力が湧いてくる' }; } },
+    ],
+  };
+  function topEvents() {
+    const ev = [];
+    const map = Game.ranks();
+    Object.keys(map).forEach(gi => {
+      const g = G.gens[gi];
+      if (g.state !== 'serve') return;
+      Object.entries(map[gi]).forEach(([k, rank]) => {
+        if (Math.random() > (rank === 1 ? 0.09 : 0.06)) return;
+        const c = G.cities[g.city];
+        const e = pick(TOP_EV[k]);
+        const r = e.run(g, c);
+        if (!r) return;
+        if (mine(g.faction) && ev.length < 3) ev.push({ type: 'good', msg: r.msg, gen: g.i, expr: 'happy', line: r.line, tag: `${Game.TITLE[k][rank === 1 ? 1 : 0]}・${e.name}`, talk: true });
+      });
+    });
+    return ev;
+  }
+
   function weighted(list) { const tot = list.reduce((s, x) => s + x.w, 0); let r = Math.random() * tot; for (const x of list) { if ((r -= x.w) <= 0) return x; } return list[0]; }
 
   function randomEvents() {
@@ -321,7 +365,7 @@ const Events = (() => {
   }
 
   return {
-    run() { return [...histEvents(), ...randomEvents()]; },
+    run() { return [...histEvents(), ...topEvents(), ...randomEvents()]; },
     counts: () => ({ city: CITY.length, gen: GEN.length, hist: HIST.length }),
     MEET, FACE,
     _HIST: HIST,

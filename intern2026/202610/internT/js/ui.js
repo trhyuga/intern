@@ -75,7 +75,7 @@ const UI = {
     const body = (opts.note ? `<div style="font-size:13px;color:var(--muted);margin-bottom:6px">${opts.note}</div>` : '') + (sorted.length ? sorted.map(g => `
       <div class="list-item ${opts.disabled && opts.disabled(g) ? 'dis' : ''}" data-i="${g.i}">
         <img src="${Portrait.get(g, 'normal', facColor(g))}">
-        <div class="li-body"><div class="li-name">${g.name}${g.isLord ? ' <small>君主</small>' : ''}${opts.extra ? `<small>${opts.extra(g)}</small>` : ''}</div>
+        <div class="li-body"><div class="li-name">${g.name}${g.isLord ? ' <small>君主</small>' : ''}${Game.titles(g).map(t => `<span class="tbadge">${t.name}</span>`).join('')}${opts.extra ? `<small>${opts.extra(g)}</small>` : ''}</div>
         <div class="li-st">${keys.map(k => `<span>${STAT_NAME[k][0]}<b class="${k === stat ? 'hi' : ''}">${Math.round(g[k])}</b></span>`).join('')}</div>
         <div>${g.traits.map(t => `<span class="trait">${t}</span>`).join('')}</div></div>
       </div>`).join('') : '<p>該当する武将がいない</p>');
@@ -784,7 +784,7 @@ const App = {
     const list = Game.gensOf(G.player).sort((a, b) => b[sortKey] - a[sortKey]);
     const el = UI.sheet(`<div class="city-hd"><h3>配下の武将 ${list.length}人</h3><button class="x">×</button></div>
       <div class="sortbar">${Object.entries(STAT_NAME).map(([k, v]) => `<button data-s="${k}" class="${k === sortKey ? 'on' : ''}">${v}</button>`).join('')}</div>` +
-      list.map(g => `<div class="list-item" data-g="${g.i}"><img src="${Portrait.get(g, 'normal', facColor(g))}"><div class="li-body"><div class="li-name">${g.name}<small>${G.cities[g.city].name}${g.acted ? '・行動済' : ''}</small></div>
+      list.map(g => `<div class="list-item" data-g="${g.i}"><img src="${Portrait.get(g, 'normal', facColor(g))}"><div class="li-body"><div class="li-name">${g.name}${Game.titles(g).map(t => `<span class="tbadge">${t.name}</span>`).join('')}<small>${G.cities[g.city].name}${g.acted ? '・行動済' : ''}</small></div>
       <div class="li-st">${['lead', 'war', 'int', 'pol', 'cha', 'loyalty'].map(k => `<span>${STAT_NAME[k][0]}<b class="${k === sortKey ? 'hi' : ''}">${Math.round(g[k])}</b></span>`).join('')}</div>
       <div>${g.traits.map(t => `<span class="trait">${t}</span>`).join('')}</div></div></div>`).join(''));
     $('.x', el).onclick = () => UI.closeSheet();
@@ -803,6 +803,7 @@ const App = {
       </div></div>
       <div class="exprs">${[['normal', '通常'], ['happy', '喜'], ['angry', '怒'], ['sad', '哀'], ['shock', '驚']].map(([e, n]) => `<button data-e="${e}">${n}</button>`).join('')}</div>
       <div style="font-size:13px;margin-top:8px;color:var(--muted)">${g.state === 'serve' ? `${G.factions[g.faction].name}軍　${G.cities[g.city].name}` : g.state === 'ronin' ? `在野　${G.cities[g.city].name}` : ''}　年齢 およそ${age}歳　戦功 ${g.wins}　一騎討ち勝利 ${g.duels}</div>
+      ${Game.titles(g).map(t => `<div class="tr-desc"><span class="trait title">${t.name}</span>${STAT_NAME[t.k]}で天下${t.rank}位。${({ lead: '訓練・修築が大きく伸び、戦場で与える被害↑・受ける被害↓', war: '戦場の攻撃と一騎討ちが強い', int: '計略が成功しやすく、敵の計略を見破りやすい。外交↑', pol: '開墾・商業が大きく伸び、ときどき大成功', cha: '徴兵・施し・登用・外交が効きやすく、率いる軍の士気が高い' })[t.k]}。専用のイベントも起きる</div>`).join('')}
       ${g.traits.length ? g.traits.map(t => `<div class="tr-desc"><span class="trait">${t}</span>${TRAIT_INFO[t]}</div>`).join('') : '<div class="tr-desc">特筆すべき性格はない</div>'}
       ${bonds.map(b => `<div class="tr-desc"><span class="trait" style="background:var(--red)">絆</span>${b.name}（${b.members.join('・')}）同じ戦場で力が増す</div>`).join('')}`;
     const canChat = g.state === 'serve' && g.faction === G.player;
