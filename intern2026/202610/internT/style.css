@@ -238,21 +238,35 @@ button { font-family: inherit; }
 .b-actions .btn { flex: 1 1 28%; }
 
 /* ---------- 一騎討ち ---------- */
-.duel { position: absolute; inset: 0; z-index: 45; background: radial-gradient(#5a1a10, #0a0402 75%); display: none; flex-direction: column; align-items: center; color: #f6e8c6; padding: calc(20px + var(--safe-t)) 12px calc(12px + var(--safe-b)); }
+.duel { position: absolute; inset: 0; z-index: 45; background: radial-gradient(#4a140c, #0a0402 75%); display: none; flex-direction: column; color: #f6e8c6; padding: calc(10px + var(--safe-t)) 10px calc(10px + var(--safe-b)); gap: 8px; }
 .duel.show { display: flex; animation: up .25s; }
-.d-title { font-family: var(--brush); font-size: 42px; color: var(--gold2); text-shadow: 0 0 16px #ff4a2a; }
-.d-row { display: flex; align-items: center; gap: 8px; margin: 14px 0; width: 100%; }
-.d-side { flex: 1; text-align: center; }
-.d-side img { width: 100%; max-width: 140px; aspect-ratio: 4/5; border: 2px solid var(--gold); border-radius: 6px; }
-.d-side.hit img { animation: hit .3s; }
+.d-head { display: flex; align-items: flex-start; gap: 6px; }
+.d-fighter { flex: 1; text-align: center; }
+.d-fighter img { width: 84px; height: 105px; border: 2px solid var(--c); border-radius: 6px; box-shadow: 0 0 12px var(--c); }
+.d-fighter.hit img { animation: hit .3s; }
 @keyframes hit { 30% { transform: translateX(-8px) rotate(-3deg); filter: brightness(2) saturate(.3); } 60% { transform: translateX(6px); } }
-.d-name { font-size: 20px; font-weight: 800; }
-.d-war { font-size: 12px; color: #d8c8a0; }
-.d-hp { height: 10px; background: #0008; border: 1px solid var(--gold); border-radius: 5px; overflow: hidden; margin: 4px 8px; }
-.d-hp i { display: block; height: 100%; background: linear-gradient(90deg, #ffd23a, #e0402a); transition: width .3s; }
-.d-vs { font-family: var(--brush); font-size: 34px; color: #ff6a4a; }
-.d-log { flex: 1; width: 100%; overflow-y: auto; font-size: 14px; line-height: 1.8; background: #0006; border-radius: 6px; padding: 8px 10px; }
-.d-btns { display: flex; gap: 6px; width: 100%; margin-top: 10px; }
+.d-name { font-size: 17px; font-weight: 800; color: #fff; text-shadow: 0 0 6px var(--c); }
+.d-war { font-size: 11px; color: #d8c8a0; }
+.d-hp { position: relative; height: 12px; background: #0008; border: 1px solid var(--c); border-radius: 6px; overflow: hidden; margin: 3px 4px 0; }
+.d-hp i { display: block; height: 100%; background: linear-gradient(90deg, #ffd23a, var(--c)); transition: width .3s; }
+.d-hp span { position: absolute; inset: 0; font-size: 9px; line-height: 12px; color: #fff; text-shadow: 0 0 2px #000; }
+.d-mid { width: 116px; flex: none; text-align: center; padding-top: 12px; }
+.d-title { white-space: nowrap; font-family: var(--brush); font-size: 25px; color: var(--gold2); text-shadow: 0 0 14px #ff4a2a; line-height: 1.1; }
+.d-round { margin-top: 8px; font-size: 14px; color: #fff; background: #0008; border: 1px solid var(--gold); border-radius: 12px; padding: 2px 0; }
+.d-arena { width: 100%; height: 150px; border: 2px solid #6a4a2a; border-radius: 8px; box-shadow: inset 0 0 20px #000; display: block; }
+.d-chat { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; }
+.d-msg { display: flex; gap: 6px; align-items: flex-start; max-width: 86%; }
+.d-msg img { width: 34px; height: 42px; border-radius: 4px; border: 1.5px solid var(--c); flex: none; }
+.d-msg div { background: #f6ecd6; color: #2a1a10; border-radius: 10px; padding: 4px 10px 6px; border-left: 4px solid var(--c); position: relative; }
+.d-msg b { font-size: 12px; color: var(--c); filter: brightness(.7); }
+.d-msg p { margin: 0; font-size: 14px; line-height: 1.5; }
+.d-msg.d { align-self: flex-end; flex-direction: row-reverse; }
+.d-msg.d div { border-left: none; border-right: 4px solid var(--c); text-align: right; }
+.d-act { font-size: 13px; padding: 3px 10px; border-radius: 6px; max-width: 80%; background: linear-gradient(90deg, var(--c), transparent); color: #fff; text-shadow: 0 1px 2px #000; }
+.d-act.d { align-self: flex-end; background: linear-gradient(270deg, var(--c), transparent); text-align: right; }
+.d-act b { color: #ffd23a; font-size: 15px; }
+.d-narr { align-self: center; font-size: 14px; font-weight: 800; color: var(--gold2); background: #0009; border: 1px solid var(--gold); border-radius: 14px; padding: 3px 14px; text-align: center; }
+.d-btns { display: flex; gap: 6px; width: 100%; }
 .d-btns .btn { flex: 1; }
 
 .howto h4 { margin: 12px 0 4px; color: var(--red); }
