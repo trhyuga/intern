@@ -268,8 +268,10 @@ button { font-family: inherit; }
 .ally { color: var(--ok); font-weight: 800; font-size: 12px; }
 
 /* ---------- 軍師オート ---------- */
-.autobar { position: absolute; left: 8px; right: 8px; bottom: calc(66px + var(--safe-b)); z-index: 38; display: none; align-items: center; gap: 8px; background: linear-gradient(#2a1610f2, #160a06f2); border: 1.5px solid var(--gold); border-radius: 26px; padding: 4px 6px 4px 4px; color: #f6e8c6; box-shadow: 0 4px 16px #000a; }
-.autobar.show { display: flex; animation: up .2s; }
+.autobar { position: absolute; left: 8px; right: 8px; top: calc(60px + var(--safe-t)); z-index: 38; display: none; align-items: center; gap: 8px; background: linear-gradient(#2a1610f2, #160a06f2); border: 1.5px solid var(--gold); border-radius: 26px; padding: 4px 6px 4px 4px; color: #f6e8c6; box-shadow: 0 4px 16px #000a; }
+.autobar.show { display: flex; animation: down .2s; }
+@keyframes down { from { transform: translateY(-20px); opacity: 0; } }
+#app.auto-on .map-hint { top: 62px; }
 .autobar img { width: 34px; height: 42px; border-radius: 17px; object-fit: cover; object-position: top; border: 1px solid var(--gold); }
 .autobar .ab-text { flex: 1; font-size: 12.5px; line-height: 1.35; }
 .autobar .ab-text b { color: var(--gold2); }

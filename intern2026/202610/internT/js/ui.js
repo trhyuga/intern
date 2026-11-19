@@ -12,6 +12,7 @@ const UI = {
     $$('.screen').forEach(s => s.classList.toggle('show', s.id === id));
     UI.cur = id;
     if (id === 'main') setTimeout(() => MapView.resize(), 0);
+    if (typeof Auto !== 'undefined' && Auto.running) setTimeout(() => Auto.place(), 0);
   },
   toast(msg, ms = 1800) {
     const t = $('#toast'); t.textContent = msg; t.classList.add('show');
