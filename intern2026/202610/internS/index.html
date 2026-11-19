@@ -122,12 +122,24 @@
   /* エンディングロール */
   #rollView{ position:relative; height:70vh; overflow:hidden; border-radius:12px; background:#000; border:1px solid var(--line); }
   #rollBody{ position:absolute; left:0; right:0; top:100%; text-align:center; padding:0 16px 40px; }
-  #rollBody h3{ color:var(--gold); font-size:13px; letter-spacing:.25em; margin:34px 0 10px; }
-  #rollBody .big{ font-size:30px; font-weight:900; letter-spacing:.05em; }
-  #rollBody .r{ display:flex; justify-content:space-between; gap:10px; font-size:14px; padding:3px 0; border-bottom:1px dashed #223; text-align:left; }
-  #rollBody .r span:last-child{ white-space:nowrap; font-variant-numeric:tabular-nums; }
-  #rollBody .plus{ color:var(--gold); } #rollBody .minus{ color:var(--soft); }
-  #rollBody .fin{ font-size:28px; font-weight:900; color:var(--gold); margin-top:60px; letter-spacing:.2em; }
+  /* 年間成績（あとから見返す） */
+  .rec-list{ display:flex; flex-direction:column; gap:8px; }
+  .rec-list button{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:12px 14px; border-radius:10px;
+    border:1px solid var(--line); background:var(--panel); color:var(--ink); font:inherit; font-size:14px; cursor:pointer; text-align:left; }
+  .rec-list button .tag{ font-size:11px; padding:1px 8px; border-radius:999px; border:1px solid currentColor; white-space:nowrap; }
+  .rec-list .t-clear{ color:var(--gold); } .rec-list .t-over{ color:#f08a80; } .rec-list .t-live{ color:#7fd0a0; }
+  #recDetail{ max-height:62vh; overflow-y:auto; border-radius:12px; background:#000; border:1px solid var(--line); text-align:center; padding:0 14px 24px; }
+  /* 大的中の金色のフラッシュ */
+  #celebrate.big::before{ content:""; position:absolute; inset:0; background:radial-gradient(circle at 50% 40%, rgba(255,215,90,.55), rgba(255,215,90,0) 60%); animation:flash 1.2s ease-out 2; }
+  @keyframes flash{ 0%{ opacity:0; } 20%{ opacity:1; } 100%{ opacity:0; } }
+  #celebrate.big .msg{ animation-duration:4.4s; }
+  #celebrate.big .msg b{ font-size:52px; white-space:nowrap; letter-spacing:.04em; text-shadow:none; background:linear-gradient(90deg,#fff3c4,#f2c94c,#ff9f43,#f2c94c); -webkit-background-clip:text; background-clip:text; color:transparent; filter:drop-shadow(0 0 10px rgba(0,0,0,.85)) drop-shadow(0 0 2px #000); }
+  .report h3{ color:var(--gold); font-size:13px; letter-spacing:.25em; margin:34px 0 10px; }
+  .report .big{ font-size:30px; font-weight:900; letter-spacing:.05em; }
+  .report .r{ display:flex; justify-content:space-between; gap:10px; font-size:14px; padding:3px 0; border-bottom:1px dashed #223; text-align:left; }
+  .report .r span:last-child{ white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .report .plus{ color:var(--gold); } .report .minus{ color:var(--soft); }
+  .report .fin{ font-size:28px; font-weight:900; color:var(--gold); margin-top:60px; letter-spacing:.2em; }
   @media (prefers-reduced-motion: reduce){ #celebrate .msg{ animation:none; } #introCard .ic-name{ animation:none; } }
   #commentary{
     margin-top:10px; height:170px; overflow:hidden; background:#000; border:1px solid var(--line);
@@ -163,6 +175,7 @@
       <div class="panel sub" id="titleInfo"></div>
       <button class="btn" id="btnContinue">つづきから</button>
       <button class="btn ghost" id="btnNew">はじめから</button>
+      <button class="btn ghost" id="btnRecords">年間成績を見る</button>
     </section>
 
     <!-- 競馬新聞 -->
@@ -233,9 +246,18 @@
       <button class="btn" id="btnNext">次のレースへ</button>
     </section>
 
+    <!-- 年間成績（これまでの全シーズン） -->
+    <section class="screen" id="sc-records">
+      <h2>年間成績</h2>
+      <p class="sub" style="margin-bottom:10px">これまでのシーズンの結果をいつでも見返せます。</p>
+      <div class="rec-list" id="recList"></div>
+      <div id="recDetail" class="report" style="display:none"></div>
+      <button class="btn ghost" id="btnRecBack">タイトルへ</button>
+    </section>
+
     <!-- エンディングロール（年間の結果発表） -->
     <section class="screen" id="sc-credits">
-      <div id="rollView"><div id="rollBody"></div></div>
+      <div id="rollView"><div id="rollBody" class="report"></div></div>
       <button class="btn ghost" id="btnRollSkip">結果発表を飛ばす</button>
     </section>
 
@@ -640,7 +662,25 @@ const Save = {
     return this.data;
   },
   write(){ try{ localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(this.data)); }catch(e){} },
-  reset(){ this.data = this.fresh(); this.write(); },
+  reset(){ this.data = this.fresh(); this.data.run = Records.newRun(); this.write(); },
+};
+
+// ---------- 年間成績の記録（セーブを消しても残る） ----------
+const Records = {
+  KEY: 'internS_g1predictor_records_v1',
+  load(){ try{ const r = JSON.parse(localStorage.getItem(this.KEY)); if(r && Array.isArray(r.seasons)) return r; }catch(e){} return { run: 1, seasons: [] }; },
+  save(r){ try{ localStorage.setItem(this.KEY, JSON.stringify(r)); }catch(e){} },
+  // そのシーズンを保存（同じ回・同じ年は上書き）
+  archive(d, status){
+    const r = this.load();
+    const run = d.run || r.run;
+    const s = { run, year: d.year, status, history: (d.history || []).slice(), yearStart: d.yearStart, yearEnd: d.money, savedAt: Date.now() };
+    const k = r.seasons.findIndex(x => x.run === run && x.year === d.year);
+    if(k >= 0) r.seasons[k] = s; else r.seasons.push(s);
+    this.save(r);
+  },
+  // 「はじめから」で新しいプレイの番号をふる
+  newRun(){ const r = this.load(); const used = r.seasons.reduce((m,x) => Math.max(m, x.run || 0), 0); r.run = Math.max(r.run, used) + 1; this.save(r); return r.run; },
 };
 
 // ---------- 画面制御 ----------
@@ -1613,23 +1653,56 @@ function showResult(){
   d.idx++;
   Save.write();
   show('result');
-  if(pay > 0) celebrate(pay, stake);
+  // 当たった馬券のうち一番高いオッズ（10倍以上なら大的中の演出）
+  const bigOdds = Game.tickets.reduce((m,t) => {
+    const hit = t.type === 'win' ? t.sel[0] === o[0] : t.type === 'place' ? o.slice(0,3).includes(t.sel[0]) : quinKey(t.sel[0], t.sel[1]) === quinKey(o[0], o[1]);
+    return hit ? Math.max(m, t.odds) : m;
+  }, 0);
+  if(pay > 0) celebrate(pay, stake, bigOdds);
 }
 
 // 的中したときの紙吹雪
 let confettiRAF = 0;
-function celebrate(pay, stake){
+// ---------- 効果音（WebAudioで鳴らす。音声ファイルは使わない） ----------
+let audioCtx = null;
+function tone(freq, start, dur, type, vol){
+  if(!audioCtx){ try{ audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ return; } }
+  const t0 = audioCtx.currentTime + start;
+  const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
+  o.type = type || 'triangle'; o.frequency.value = freq;
+  gn.gain.setValueAtTime(0, t0); gn.gain.linearRampToValueAtTime(vol || 0.12, t0 + 0.02); gn.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  o.connect(gn); gn.connect(audioCtx.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function playHitSound(big){
+  try{
+    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if(!big){
+      // 的中: 短いチャイム
+      [[784,0],[1047,0.12]].forEach(([f,s]) => tone(f, s, 0.35, 'triangle', 0.1));
+      return;
+    }
+    // 大的中: ファンファーレ（ド・ミ・ソ・ド〜 和音で締め）
+    const n = [[523,0,0.16],[659,0.16,0.16],[784,0.32,0.16],[1047,0.48,0.5],[784,1.0,0.14],[1047,1.14,0.9]];
+    n.forEach(([f,s,d]) => { tone(f, s, d, 'square', 0.06); tone(f/2, s, d, 'triangle', 0.08); });
+    [1047,1319,1568].forEach(f => tone(f, 1.14, 1.1, 'triangle', 0.05));
+  }catch(e){}
+}
+
+function celebrate(pay, stake, bigOdds){
+  const big = (bigOdds || 0) >= 10;
   const box = $('celebrate'), cv = $('confetti'), g = cv.getContext('2d');
   const W = cv.width = innerWidth, Hh = cv.height = innerHeight;
   $('celebrateMsg').innerHTML = '';
-  const b = document.createElement('b'); b.textContent = '的中！';
-  const sp = document.createElement('span'); sp.textContent = `払戻 ${yen(pay)}` + (stake ? `（回収率 ${Math.round(pay/stake*100)}%）` : '');
+  box.classList.toggle('big', big);
+  playHitSound(big);
+  const b = document.createElement('b'); b.textContent = big ? '大的中！！' : '的中！';
+  const sp = document.createElement('span'); sp.textContent = (big ? `${bigOdds.toFixed(1)}倍的中！ ` : '') + `払戻 ${yen(pay)}` + (stake ? `（回収率 ${Math.round(pay/stake*100)}%）` : '');
   $('celebrateMsg').append(b, sp);
   // アニメーションをやり直すため一度外す
   $('celebrateMsg').style.animation = 'none'; void $('celebrateMsg').offsetWidth; $('celebrateMsg').style.animation = '';
   box.classList.add('on');
-  const colors = WAKU.map(w => w.bg).concat(['#f2c94c','#ffffff']);
-  const parts = Array.from({ length: 140 }, () => ({
+  const colors = big ? ['#f2c94c','#ffd96b','#fff3c4','#ff9f43','#ffffff'] : WAKU.map(w => w.bg).concat(['#f2c94c','#ffffff']);
+  const parts = Array.from({ length: big ? 320 : 140 }, () => ({
     x: Math.random()*W, y: -20 - Math.random()*Hh*0.5, vx: (Math.random()-0.5)*2.5, vy: 2 + Math.random()*3.5,
     r: Math.random()*Math.PI, vr: (Math.random()-0.5)*0.3, s: 5 + Math.random()*6, c: colors[Math.floor(Math.random()*colors.length)],
   }));
@@ -1642,8 +1715,10 @@ function celebrate(pay, stake){
       p.x += p.vx; p.y += p.vy; p.r += p.vr;
       g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c; g.fillRect(-p.s/2, -p.s/4, p.s, p.s/2); g.restore();
     });
-    if(t < 2.8) confettiRAF = requestAnimationFrame(loop);
-    else { g.clearRect(0,0,W,Hh); box.classList.remove('on'); }
+    // 大的中は途中で紙吹雪を追加してもう一度降らせる
+    if(big && t > 1.6 && !parts.again){ parts.again = true; parts.forEach(p => { if(p.y > Hh) { p.y = -20 - Math.random()*Hh*0.4; p.x = Math.random()*W; } }); }
+    if(t < (big ? 4.5 : 2.8)) confettiRAF = requestAnimationFrame(loop);
+    else { g.clearRect(0,0,W,Hh); box.classList.remove('on'); box.classList.remove('big'); }
   };
   confettiRAF = requestAnimationFrame(loop);
 }
@@ -1661,6 +1736,7 @@ function endScreen(kind){
     $('endTitle').textContent = 'GAME OVER';
     $('endText').textContent = `${d.year}年目 ${d.idx}戦目で資金が尽きました。最高所持金 ${yen(d.best)}`;
     $('btnEndMain').textContent = 'はじめからやり直す';
+    Records.archive(d, 'over');
     $('btnEndMain').onclick = () => { Save.reset(); prepareRace(); };
   } else {
     $('endTitle').textContent = 'SEASON CLEAR!';
@@ -1676,15 +1752,17 @@ function endScreen(kind){
 // ---------- エンディングロール（年間の結果発表） ----------
 let rollRAF = 0;
 function stopRoll(){ cancelAnimationFrame(rollRAF); }
-function showCredits(){
-  const d = Save.data;
-  const hist = d.history || [];
-  const body = $('rollBody'); body.innerHTML = '';
+// 1シーズン分の結果発表を body に書く（エンディングロールと年間成績で共用）
+function buildSeasonReport(body, s, opts){
+  opts = opts || {};
+  const hist = s.history || [];
+  body.innerHTML = '';
   const add = (tag, cls, text) => { const e = document.createElement(tag); if(cls) e.className = cls; if(text != null) e.textContent = text; body.appendChild(e); return e; };
   const row = (left, right, cls) => { const r = add('div','r'); const a = document.createElement('span'); a.textContent = left;
     const b = document.createElement('span'); b.textContent = right; if(cls) b.className = cls; r.append(a, b); };
+  const d = { year: s.year, yearStart: s.yearStart, money: s.yearEnd };
   add('h3', null, `SEASON ${d.year} RESULTS`);
-  add('div','big', `${d.year}年目 G1 全${CALENDAR.length}戦 結果発表`);
+  add('div','big', s.status === 'live' ? `${d.year}年目（進行中 ${hist.length}/${CALENDAR.length}戦）` : s.status === 'over' ? `${d.year}年目（${hist.length}戦目で終了）` : `${d.year}年目 G1 全${CALENDAR.length}戦 結果発表`);
   add('h3', null, '優勝馬');
   hist.forEach(h => row(`${h.month}月 ${h.race}`, `${h.winner}（${h.winOdds.toFixed(1)}倍）`));
   add('h3', null, 'あなたの戦績');
@@ -1705,8 +1783,15 @@ function showCredits(){
   row('回収率', stake ? `${Math.round(pay/stake*100)}%` : '-');
   row('最高払戻', yen(bestPay));
   row('年初の所持金', yen(d.yearStart));
-  row('年末の所持金', yen(d.money), d.money >= d.yearStart ? 'plus' : 'minus');
-  add('div','fin', 'THANK YOU FOR PLAYING');
+  row(s.status === 'clear' ? '年末の所持金' : '現在の所持金', yen(d.money), d.money >= d.yearStart ? 'plus' : 'minus');
+  if(opts.fin) add('div','fin', 'THANK YOU FOR PLAYING');
+}
+
+function showCredits(){
+  const d = Save.data;
+  Records.archive(d, 'clear');
+  const body = $('rollBody');
+  buildSeasonReport(body, { year: d.year, status: 'clear', history: d.history || [], yearStart: d.yearStart, yearEnd: d.money }, { fin: true });
   Game.field = null;
   show('credits');
   // 下から上へ流す
@@ -1756,6 +1841,40 @@ function startTitleAnim(){
   };
   titleRAF = requestAnimationFrame(loop);
 }
+
+function showRecords(){
+  const r = Records.load();
+  const list = $('recList'); list.innerHTML = '';
+  $('recDetail').style.display = 'none'; list.style.display = '';
+  const items = r.seasons.slice().sort((a,b) => (b.run - a.run) || (b.year - a.year));
+  // 進行中のシーズン（まだ1戦以上走っていれば）
+  const d = Save.load();
+  if(d && d.history && d.history.length && d.idx < CALENDAR.length && !items.some(x => x.run === (d.run || r.run) && x.year === d.year)){
+    items.unshift({ run: d.run || r.run, year: d.year, status: 'live', history: d.history, yearStart: d.yearStart, yearEnd: d.money });
+  }
+  if(!items.length){ const p = document.createElement('p'); p.className = 'sub'; p.textContent = 'まだ記録がありません。G1を予想すると、ここに年ごとの成績が残ります。'; list.appendChild(p); }
+  const multiRun = new Set(items.map(x => x.run)).size > 1;
+  items.forEach(s => {
+    const b = document.createElement('button');
+    const diff = s.yearEnd - s.yearStart;
+    const left = document.createElement('span');
+    left.textContent = `${multiRun ? `${s.run}回目のプレイ ` : ''}${s.year}年目　${diff >= 0 ? '+' : ''}${diff.toLocaleString('ja-JP')}円`;
+    const tag = document.createElement('span');
+    tag.className = 'tag ' + ({ clear:'t-clear', over:'t-over', live:'t-live' }[s.status]);
+    tag.textContent = { clear:'全24戦', over:'終了', live:'進行中' }[s.status];
+    b.append(left, tag);
+    b.onclick = () => {
+      buildSeasonReport($('recDetail'), s);
+      list.style.display = 'none'; $('recDetail').style.display = ''; $('recDetail').scrollTop = 0;
+      $('btnRecBack').textContent = '一覧に戻る';
+    };
+    list.appendChild(b);
+  });
+  $('btnRecBack').textContent = 'タイトルへ';
+  show('records');
+}
+$('btnRecords').onclick = showRecords;
+$('btnRecBack').onclick = () => { if($('recDetail').style.display !== 'none') showRecords(); else titleScreen(); };
 
 function titleScreen(){
   const d = Save.load();
