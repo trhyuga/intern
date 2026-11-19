@@ -419,7 +419,7 @@ const Game = {
       // ついていかない武将は本拠へ
       Game.gensIn(c.i, oldF).forEach(h => { h.city = G.factions[oldF].capital; });
       Game.log(`${g.name}が${c.name}で謀反を起こし、独立した！`);
-      ev.push({ type: oldF === G.player ? 'warn' : 'info', msg: `${g.name}が${G.factions[oldF].name}に背き、${c.name}で独立した！`, gen: g.i, expr: 'angry', city: c.i, line: pick(LINES.rebel) });
+      ev.push({ type: oldF === G.player ? 'warn' : 'info', msg: `${g.name}が${G.factions[oldF].name}に背き、${c.name}で独立した！`, gen: g.i, expr: 'angry', city: c.i, line: line(g, 'rebel') });
     });
     return ev;
   },
@@ -431,9 +431,10 @@ const Game = {
       G.gens.forEach(g => {
         if ((g.state === 'serve' || g.state === 'ronin') && G.year >= g.die && Math.random() < 0.55) {
           const fi = g.faction, wasLord = g.isLord, mine = g.state === 'serve' && fi === G.player;
+          const deathLine = mine ? line(g, 'death') : null;
           const heir = Game.killGeneral(g, '病');
           Game.log(`${g.name}、病に倒れる。`);
-          if (mine || (wasLord)) ev.push({ type: mine ? 'warn' : 'info', msg: `${g.name}が病でこの世を去った${wasLord && heir ? `。跡は${heir.name}が継ぐ` : ''}`, gen: g.i, expr: 'sad', death: true });
+          if (mine || (wasLord)) ev.push({ type: mine ? 'warn' : 'info', msg: `${g.name}が病でこの世を去った${wasLord && heir ? `。跡は${heir.name}が継ぐ` : ''}`, gen: g.i, expr: 'sad', death: true, line: mine ? deathLine : null });
         }
       });
     }
@@ -612,48 +613,3 @@ const AI = {
   },
 };
 
-// ============================================================
-//  台詞（性格ごと）。名前で個別の台詞を上書きできる
-// ============================================================
-const LINES = {
-  accept: { '剛勇': ['任せておけ！', 'この程度、造作もない'], '智謀': ['策はすでに胸の内に', '御意。手は打ってあります'], '仁徳': ['民のためならば', '喜んでお引き受けします'], '猪突': ['よっしゃ、やってやる！'], '慎重': ['抜かりなく進めます'], '野心': ['……承知した', 'まあ、よかろう'], '臆病': ['わ、私にできるでしょうか…'], '治世': ['国の礎、しかと固めましょう'], _: ['かしこまりました', '御意', 'お任せください'] },
-  success: { '剛勇': ['どうだ！', 'はっはっは！'], '野心': ['ふん、当然だ'], _: ['うまくいきました', '首尾は上々です'] },
-  fail: { '猪突': ['くそっ！'], '臆病': ['も、申し訳ございません…'], _: ['面目ない…', '力及ばず…'] },
-  ignore: { '猪突': ['待ってられるか！ 突っ込むぞ！', '細かいことはいい、全軍突撃だ！'], '野心': ['俺は俺のやり方でやる', '指図は受けん'], _: ['ここは攻めるべきだ！'] },
-  flee: { '臆病': ['ひ、退け、退けーっ！'], _: ['これ以上は持たん、退くぞ！'] },
-  duelAccept: { '剛勇': ['望むところだ！', '来い！ 相手になってやる！'], _: ['受けて立つ！'] },
-  duelRefuse: { '臆病': ['冗談ではない！'], '慎重': ['その手には乗らん'], _: ['一騎打ちなど無用'] },
-  duelWin: { _: ['討ち取ったり！', '我が武、思い知ったか！'] },
-  join: { '仁徳': ['天下の民のため、お力になりましょう'], '野心': ['……面白い。しばらく付き合ってやる'], '忠義': ['この身、殿にお預けします'], _: ['よろしくお願いいたします', 'お仕えいたします'] },
-  refuse: { '忠義': ['我が主は一人のみ！', '二君には仕えぬ！'], _: ['お断りします', '今はその時ではありません'] },
-  rebel: ['もはや主の器にあらず！ 天下は我が手で取る！', '機は熟した。この城、いただく！'],
-  victory: { _: ['勝ち鬨を上げよ！'] },
-  defeat: { _: ['無念…'] },
-  fire: { _: ['火を放て！'] },
-  confuse: { _: ['敵陣をかき乱してやれ'] },
-};
-const SPECIAL_LINES = {
-  '関羽': { accept: ['この関雲長にお任せあれ'], duelAccept: ['関雲長の青龍刀、受けてみよ！'], duelWin: ['雑兵が。首を洗って出直せ'], refuse: ['我が主は劉玄徳ただ一人！'], immune: '関羽「忠義の心、金や甘言で揺らぐものか」' },
-  '張飛': { accept: ['おう、やってやるぜ！'], ignore: ['燕人張飛ここにあり！ ぐずぐずするな、突っ込めー！'], duelAccept: ['燕人張飛が相手だ！ かかってこい！'], duelWin: ['弱い弱い！ 次はどいつだ！'] },
-  '趙雲': { accept: ['この子龍、命に代えても'], duelAccept: ['常山の趙子龍、参る！'] },
-  '呂布': { accept: ['ふん、俺に任せておけ'], ignore: ['雑魚どもが、まとめて片付けてやる！'], duelAccept: ['この呂奉先に挑むとは、命知らずめ'], duelWin: ['天下に我が敵なし！'], join: ['俺を使いこなせるなら、仕えてやってもいい'] },
-  '曹操': { accept: ['よかろう'], victory: ['天下の英雄は、我と……ふふ'] },
-  '劉備': { accept: ['皆の力を貸してほしい'], victory: ['皆のおかげだ。民を労わってやってくれ'] },
-  '諸葛亮': { accept: ['すでに手は打ってあります'], join: ['殿の志、しかと承りました。この身を捧げましょう'], fire: ['風向きは読めております。火を'] },
-  '周瑜': { fire: ['東南の風よ、炎を運べ！'] },
-  '許褚': { duelAccept: ['うおおお！ 来いっ！'] },
-  '典韋': { duelAccept: ['殿には指一本触れさせん！'] },
-  '馬超': { duelAccept: ['錦馬超の槍、見せてやる！'], ignore: ['父の仇……いや、目の前の敵を討つ！'] },
-  '黄忠': { duelAccept: ['老いてなお、この弓は衰えぬわ！'] },
-  '夏侯惇': { duelAccept: ['片目でも十分だ！'] },
-  '甘寧': { ignore: ['鈴の音が聞こえたら最期だぜ！ 突っ込め！'] },
-};
-function line(g, kind) {
-  const sp = SPECIAL_LINES[g.name];
-  if (sp && sp[kind]) return Array.isArray(sp[kind]) ? pick(sp[kind]) : sp[kind];
-  const tbl = LINES[kind];
-  if (!tbl) return '';
-  if (Array.isArray(tbl)) return pick(tbl);
-  for (const t of g.traits || []) if (tbl[t]) return pick(tbl[t]);
-  return pick(tbl._ || ['……']);
-}

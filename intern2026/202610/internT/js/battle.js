@@ -351,6 +351,23 @@ const Battle = (() => {
   }
 
   function addFloater(r, c, text, col = '#fff') { floaters.push({ x: c * cell + cell / 2, y: r * cell + cell * 0.4, text, col, t0: performance.now() }); }
+  // 部隊の頭上に吹き出しで台詞を出す（流れを止めない）
+  function bubble(u, text) {
+    if (!text || auto) return;
+    const t0 = performance.now();
+    anims.push({ t0, dur: 1800, draw: k => {
+      const s = cell, x = clamp(u.x * s + s / 2, 50, s * COLS - 50), y = Math.max(16, u.y * s - 4);
+      ctx.globalAlpha = k < 0.1 ? k * 10 : k > 0.8 ? (1 - k) * 5 : 1;
+      ctx.font = `bold ${Math.round(s * 0.3)}px sans-serif`;
+      const w = Math.min(s * COLS - 8, ctx.measureText(text).width + 12), h = s * 0.46;
+      ctx.fillStyle = 'rgba(255,250,235,0.95)'; ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, y - h, w, h, 6) : ctx.rect(x - w / 2, y - h, w, h); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - 4, y); ctx.lineTo(x, y + 6); ctx.lineTo(x + 4, y); ctx.fill();
+      ctx.fillStyle = '#2a1a10'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y - h / 2, w - 8); ctx.textBaseline = 'alphabetic';
+      ctx.globalAlpha = 1;
+    } });
+  }
+
   function slash(r, c) {
     const s = cell; anims.push({ t0: performance.now(), dur: 300, draw: k => { ctx.strokeStyle = `rgba(255,255,255,${1 - k})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(c * s + s * 0.15, r * s + s * (0.15 + k * 0.2)); ctx.lineTo(c * s + s * 0.85, r * s + s * (0.65 + k * 0.2)); ctx.stroke(); } });
   }
@@ -375,6 +392,7 @@ const Battle = (() => {
     const d = unitAt(r, c);
     if (!d) return;
     const ranged = dist(a, d) > 1;
+    if (a.gi >= 0 && Math.random() < (a.side === B.playerSide ? 0.45 : 0.3)) bubble(a, line(a.g, 'attack'));
     const dmg = calcDamage(a, d, ranged);
     if (ranged) { Sound.se('arrow'); arrow(a, d); await sleep(350); } else { Sound.se('hit'); slash(r, c); }
     d.shake = true; setTimeout(() => d.shake = false, 300);
@@ -427,6 +445,7 @@ const Battle = (() => {
     if (kind === 'fire' && ['water', 'ford', 'wall', 'keep', 'gate'].includes(B.tiles[d.r][d.c].t)) p *= 0.3;
     a.acted = true;
     if (!auto && a.side === B.playerSide) await say(a, 'normal', `${a.g.name}「${line(a.g, kind === 'fire' ? 'fire' : 'confuse')}」`);
+    else bubble(a, line(a.g, kind === 'fire' ? 'fire' : 'confuse'));
     if (Math.random() > clamp(p, 0.05, 0.9)) {
       addFloater(d.r, d.c, '失敗', '#aaa'); addLog(`${a.g.name}の${kind === 'fire' ? '火計' : '混乱'}は${H(d.g, '神算') ? '見破られた' : '失敗した'}`);
       Sound.se('ng'); await sleep(500); return;
@@ -455,6 +474,7 @@ const Battle = (() => {
   }
   async function doDuel(a, d) {
     a.acted = true;
+    if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? G.factions[a.fi].color : '#777', { tag: '一騎討ち' });
     const accept = willAcceptDuel(d, a);
     if (!accept) {
       if (!auto) await UI.talk(d.g, 'normal', `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
@@ -750,8 +770,8 @@ const Duel = (() => {
       const hpA = el.querySelector('#dA .d-hp i'), hpD = el.querySelector('#dD .d-hp i');
       let ha = 100, hd = 100, round = 0;
       const log = t => { logEl.innerHTML = `<div>${t}</div>` + logEl.innerHTML; };
-      log(`${a.name}「${line(a, 'duelAccept')}」`);
-      setTimeout(() => log(`${d.name}「${line(d, 'duelAccept')}」`), 500);
+      log(`${a.name}「${line(a, 'duelChallenge', { foe: d.name })}」`);
+      setTimeout(() => log(`${d.name}「${line(d, 'duelAccept', { foe: a.name })}」`), 500);
       const flash = id => { const s = el.querySelector(id); s.classList.remove('hit'); void s.offsetWidth; s.classList.add('hit'); };
       const finish = (winner) => {
         const w = winner === 'a' ? a : d, l = winner === 'a' ? d : a;
@@ -759,7 +779,8 @@ const Duel = (() => {
         const outcome = r < 0.3 ? 'killed' : r < 0.75 ? 'captured' : 'fled';
         el.querySelector(winner === 'a' ? '#dA img' : '#dD img').src = Portrait.get(w, 'happy', winner === 'a' ? ca : cd);
         el.querySelector(winner === 'a' ? '#dD img' : '#dA img').src = Portrait.get(l, 'sad', winner === 'a' ? cd : ca);
-        log(`<b>${w.name}「${line(w, 'duelWin')}」</b>`);
+        log(`${l.name}「${line(l, 'duelLose')}」`);
+        log(`<b>${w.name}「${line(w, 'duelWin', { foe: l.name })}」</b>`);
         log(`${l.name}は${outcome === 'killed' ? '討ち取られた！' : outcome === 'captured' ? '馬から落ち、捕らえられた！' : '馬首を返して逃げ去った！'}`);
         Sound.se('win');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
