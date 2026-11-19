@@ -551,6 +551,19 @@ const AI = {
       const empty = c.adj.map(a => G.cities[a]).filter(o => o.owner === fi && Game.gensIn(o.i, fi).length === 0);
       if (gs.length >= 3 && empty.length) { gs.sort((a, b) => b.lead - a.lead); gs[gs.length - 1].city = empty[0].i; }
     });
+    // 後方の強い武将を前線へ（季節に1〜2人）
+    const fronts = cities.filter(c => Game.isFront(c));
+    let moved = 0;
+    cities.filter(c => !Game.isFront(c)).forEach(c => {
+      if (moved >= 2 || !fronts.length) return;
+      const gs = Game.gensIn(c.i, fi).filter(g => !g.isLord && !g.acted);
+      if (Game.gensIn(c.i, fi).length < 2) return;
+      const best = gs.sort((a, b) => (b.lead + b.war) - (a.lead + a.war))[0];
+      if (best && best.lead + best.war >= 150) {
+        const dest = fronts.slice().sort((a, b) => (AI.threat(b, fi) / 1500 - Game.gensIn(b.i, fi).length * 5) - (AI.threat(a, fi) / 1500 - Game.gensIn(a.i, fi).length * 5))[0];
+        best.city = dest.i; moved++;
+      }
+    });
   },
 
   considerAttack(c, fi) {

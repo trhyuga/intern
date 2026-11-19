@@ -67,6 +67,8 @@ const Auto = (() => {
       allyYes: ['悪くない話です。受けましょう'], allyLast: ['ここで手を結べば、攻める先がなくなります。お断りしましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
       rec: ['{gen}は使える人物。登用を勧めます'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
       gather: ['{from}の兵を{to}に合流させ、{target}を一気に攻めます', '兵は集めてこそ力。{from}の兵も{to}へ'],
+      deploy: ['{gen}殿ほどの将を後方に置くのは惜しい。{to}へ移っていただきます', '{to}の守りと攻めの要として、{gen}殿を前線へ'],
+      deployCivil: ['{gen}殿には{to}で内政を任せます。前線は武の者に'],
       transfer: ['{to}は{what}が足りません。{from}から回しましょう', '前線の{to}を空にはできません。{from}から{what}を送ります'],
     },
     mid: {
@@ -81,6 +83,7 @@ const Auto = (() => {
       allyYes: ['手を組んでおきましょう'], allyLast: ['全部と仲良くしたら、戦う相手がいなくなっちゃいます。断りましょう'], allyNo: ['今回は断りましょう'],
       rec: ['登用してみましょう'], rel: ['解放しましょう'], kill: ['ここは処断を'],
       gather: ['{from}の兵を{to}へ合流させます'],
+      deploy: ['{gen}殿は{to}へ移ってください'], deployCivil: ['{gen}殿は{to}で内政を'],
       transfer: ['{from}から{to}へ{what}を送ります'],
     },
     dumb: {
@@ -95,6 +98,7 @@ const Auto = (() => {
       allyYes: ['いいよいいよ、組もう！'], allyLast: ['あれ？ 組んだら喧嘩する相手がいなくなるぞ。断る！'], allyNo: ['なんか怪しいから断る！'],
       rec: ['仲間にしちゃおう！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
       gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'],
+      deploy: ['{gen}、いつまで後ろにいる！ {to}へ行け！'], deployCivil: ['{gen}は後ろで畑でも耕してろ！'],
       transfer: ['{to}に{what}を送っとけ！'],
     },
   };
@@ -499,6 +503,64 @@ const Auto = (() => {
       troops: Math.max(front ? Math.max(6000, Math.round(threat * 0.8)) : 2500, G.stage && G.stage.c === c.i ? G.stage.troops : 0),
     };
   }
+  // ---------- 武将の配置換え：強い武将は前線へ、文官は内地へ ----------
+  const milScore = g => g.lead + g.war + (Game.has(g, '剛勇') || Game.has(g, '猪突') ? 10 : 0) + (Game.has(g, '騎馬') ? 5 : 0);
+  const civScore = g => g.pol + g.cha * 0.3 + (Game.has(g, '治世') ? 15 : 0);
+  async function deploy(br, reserved, attacks) {
+    const cities = Game.citiesOf(G.player);
+    const fronts = cities.filter(c => Game.isFront(c));
+    const inner = cities.filter(c => !Game.isFront(c));
+    if (!fronts.length || !inner.length) return;
+    const limit = br.tier === 'smart' ? 5 : br.tier === 'mid' ? 3 : 2;
+    const strongLine = br.tier === 'dumb' ? 140 : 150;
+    // 前線の優先度：攻撃の拠点・攻める予定の都市・敵の圧力が強い所。武将が多い所は下げる
+    const prio = f => (G.stage && G.stage.c === f.i ? 40 : 0) + (attacks.some(a => a.c === f) ? 25 : 0)
+      + Math.min(30, AI.threat(f, G.player) / 1500) - Game.gensIn(f.i, G.player).length * 5;
+    // 後方にいる強い武将（内地に内政役を1人残す。君主は動かさない）
+    const movers = [];
+    inner.forEach(c => {
+      const gs = Game.gensIn(c.i, G.player);
+      if (gs.length < 2) return;
+      const keeper = gs.slice().sort((a, b) => civScore(b) - civScore(a))[0];
+      gs.forEach(g => {
+        if (g === keeper || g.isLord || g.acted || reserved.has(g.i)) return;
+        if (milScore(g) >= strongLine && (milScore(g) >= civScore(g) + 20 || milScore(g) >= 170)) movers.push(g);
+      });
+    });
+    if (br.tier === 'dumb') shuffle(movers); else movers.sort((a, b) => milScore(b) - milScore(a));
+    let n = 0, said = false;
+    for (const g of movers) {
+      if (stopReq || n >= limit) break;
+      const dest = fronts.slice().sort((a, b) => prio(b) - prio(a))[br.tier === 'dumb' ? Math.floor(Math.random() * fronts.length) : 0];
+      if (!dest) break;
+      const from = G.cities[g.city];
+      await press(from.i, 'per', '[data-cmd=move]');
+      await say('deploy', { gen: g.name, to: dest.name, from: from.name });
+      await UI.talk(g, Game.has(g, '臆病') ? 'shock' : 'angry', `${g.name}「${line(g, 'deployFront')}」`);
+      await MapView.march(from.i, dest.i, G.factions[G.player].color);
+      Game.move(g, dest.i);
+      UI.toast(`${g.name}（統${g.lead} 武${g.war}）が ${from.name} → ${dest.name} へ`, 2400);
+      App.refresh();
+      n++; said = true;
+    }
+    // 前線に武将が多すぎるときは、文官を内地へ戻して内政を任せる
+    if (br.tier !== 'smart') return;
+    for (const f of fronts) {
+      if (stopReq || n >= limit + 2) break;
+      const gs = Game.gensIn(f.i, G.player);
+      if (gs.length <= 4) continue;
+      const civ = gs.filter(g => !g.isLord && !g.acted && !reserved.has(g.i) && civScore(g) >= milScore(g) * 0.75 && milScore(g) < 140).sort((a, b) => milScore(a) - milScore(b))[0];
+      if (!civ) continue;
+      const dest = inner.slice().sort((a, b) => Game.gensIn(a.i, G.player).length - Game.gensIn(b.i, G.player).length)[0];
+      await press(f.i, 'per', '[data-cmd=move]');
+      await say('deployCivil', { gen: civ.name, to: dest.name });
+      Game.move(civ, dest.i);
+      UI.toast(`${civ.name}が ${f.name} → ${dest.name} へ（内政）`, 2200);
+      App.refresh();
+      n++;
+    }
+  }
+
   // 内地（敵に接していない都市）で鍛えた兵を、前線の都市へ送り出す
   async function sendTrained(br) {
     if (br.tier === 'dumb' && Math.random() < 0.6) return;
@@ -602,6 +664,7 @@ const Auto = (() => {
     await doDiplo(br); if (stopReq) return false;
     const armies0 = attacks.map(p => p.army).flat();
     await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
+    await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     // 出陣する武将はあらかじめ取っておく
     const armies = attacks.map(p => ({ p, army: p.army, troops: p.troops }));
