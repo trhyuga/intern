@@ -65,7 +65,7 @@ const Auto = (() => {
       defend: ['慌てることはありません。守り切れば敵は兵糧が尽きます'],
       win: ['予定通りです'], lose: ['……読み違えました。立て直しましょう'],
       allyYes: ['悪くない話です。受けましょう'], allyLast: ['ここで手を結べば、攻める先がなくなります。お断りしましょう'], allyNo: ['今、手を結ぶ利はありません。断りましょう'],
-      rec: ['{gen}は使える人物。登用を勧めます'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
+      rec: ['{gen}は使える人物。登用を勧めます'], recruitGo: ['{gen}は得がたい人物。{envoy}殿、{city}へ赴いて口説いてください', '{city}の{gen}を放っておく手はありません。弁の立つ{envoy}殿を向かわせます'], kongming: ['{city}の{gen}は、礼を尽くさねば動かぬ人物。{lord}様ご自身で訪ねましょう'], rel: ['恩を売っておくのも策のうち。解放しましょう'], kill: ['生かしておけば後の災いとなります'],
       gather: ['{from}の兵を{to}に合流させ、{target}を一気に攻めます', '兵は集めてこそ力。{from}の兵も{to}へ'],
       deploy: ['{gen}殿ほどの将を後方に置くのは惜しい。{to}へ移っていただきます', '{to}の守りと攻めの要として、{gen}殿を前線へ'],
       deployCivil: ['{gen}殿には{to}で内政を任せます。前線は武の者に'],
@@ -81,7 +81,7 @@ const Auto = (() => {
       battle: ['敵の城を落とすぞ！'], defend: ['なんとか守り抜きましょう'],
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
       allyYes: ['手を組んでおきましょう'], allyLast: ['全部と仲良くしたら、戦う相手がいなくなっちゃいます。断りましょう'], allyNo: ['今回は断りましょう'],
-      rec: ['登用してみましょう'], rel: ['解放しましょう'], kill: ['ここは処断を'],
+      rec: ['登用してみましょう'], recruitGo: ['{envoy}殿、{city}の{gen}を誘いに行ってください'], kongming: ['{gen}は殿が直々に会いに行かないとダメみたいです'], rel: ['解放しましょう'], kill: ['ここは処断を'],
       gather: ['{from}の兵を{to}へ合流させます'],
       deploy: ['{gen}殿は{to}へ移ってください'], deployCivil: ['{gen}殿は{to}で内政を'],
       transfer: ['{from}から{to}へ{what}を送ります'],
@@ -96,7 +96,7 @@ const Auto = (() => {
       battle: ['とにかく突っ込め！'], defend: ['ど、どうしよう……とにかく守れ！'],
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
       allyYes: ['いいよいいよ、組もう！'], allyLast: ['あれ？ 組んだら喧嘩する相手がいなくなるぞ。断る！'], allyNo: ['なんか怪しいから断る！'],
-      rec: ['仲間にしちゃおう！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
+      rec: ['仲間にしちゃおう！'], recruitGo: ['{envoy}、{city}の{gen}を連れてこい！'], kongming: ['殿、{gen}に会いに行ってきてくださいよ！'], rel: ['逃がしてやれ！'], kill: ['えいっ、処断だ！'],
       gather: ['{from}の連中も呼んでこい！ {target}を攻めるぞ！'],
       deploy: ['{gen}、いつまで後ろにいる！ {to}へ行け！'], deployCivil: ['{gen}は後ろで畑でも耕してろ！'],
       transfer: ['{to}に{what}を送っとけ！'],
@@ -177,7 +177,8 @@ const Auto = (() => {
     else n.draft = canDraft ? (front ? (c.troops < threat * 1.2 ? 0.8 : 0.3) : (c.troops < 12000 ? 0.45 : 0.1)) : 0;
     // 内地は兵を鍛える場所（鍛えた兵を前線へ送る）
     n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? 1.0 : 1.4) : 0;
-    n.search = Game.roninIn(c.i).filter(r => !r.known).length ? 0.5 : 0.1;
+    const hidden = Game.roninIn(c.i).filter(r => !r.known);
+    n.search = hidden.length ? 1.0 + Math.min(1, Math.max(...hidden.map(r => r.lead + r.war + r.int + r.pol + r.cha)) / 400) : 0.1;
     if (c.gold < CONFIG.CMD_COST) n.farm = n.comm = n.wall = 0;
     return { n, must };
   }
@@ -472,18 +473,63 @@ const Auto = (() => {
       App.refresh();
     }
   }
-  async function doRecruit(br) {
-    for (const c of Game.citiesOf(G.player)) {
+  // ---------- 登用：見つけた在野の人物は、適任者を向かわせてでも採る ----------
+  const worth = g => g.lead + g.war + g.int + g.pol + g.cha;
+  async function doRecruit(br, reserved) {
+    G.recFail = G.recFail || {};
+    const lord = Game.lordOf(G.player);
+    // 自領にいて、すでに見つけてある在野の人物（価値の高い順）
+    const known = [];
+    Game.citiesOf(G.player).forEach(c => Game.roninIn(c.i).filter(r => r.known).forEach(r => known.push(r)));
+    if (br.tier !== 'dumb') known.sort((a, b) => worth(b) - worth(a)); else shuffle(known);
+    let moves = 0;
+    for (const t of known) {
       if (stopReq) return;
-      const known = Game.roninIn(c.i).filter(r => r.known);
-      if (!known.length) continue;
-      const env = Game.gensIn(c.i, G.player).filter(g => !g.acted).sort((a, b) => b.cha - a.cha)[0];
+      if (t.state !== 'ronin') continue;
+      const c = G.cities[t.city];
+      if (c.owner !== G.player) continue;
+      const fails = G.recFail[t.i] || 0;
+      // 三顧の礼：君主自身が訪ねる
+      if (t.name === '諸葛亮') {
+        if (lord.acted || reserved.has(lord.i)) continue;
+        if (lord.city !== c.i) {
+          if (moves >= 2) continue;
+          await press(lord.city, 'per', '[data-cmd=move]');
+          await say('kongming', { gen: t.name, city: c.name, lord: lord.name });
+          Game.move(lord, c.i); moves++;
+          UI.toast(`${lord.name}が${c.name}へ（${t.name}を訪ねるため）`, 2200);
+          continue;
+        }
+        await press(c.i, 'per', '[data-cmd=recruit]');
+        lord.acted = true;
+        await App.doRecruit(lord, t);
+        continue;
+      }
+      // その都市にいる、まだ動ける武将のうち魅力の高い者
+      const here = Game.gensIn(c.i, G.player).filter(g => !g.acted && !reserved.has(g.i));
+      here.sort((a, b) => br.tier === 'dumb' ? Math.random() - 0.5 : b.cha - a.cha);
+      // 他の都市にもっと魅力の高い者がいれば、向かわせる（失敗が続いた人物や、価値の高い人物ほど）
+      const best = Game.gensOf(G.player).filter(g => !g.acted && !reserved.has(g.i) && g.city !== c.i && !(Game.isFront(G.cities[g.city]) && Game.gensIn(g.city, G.player).length <= 1))
+        .sort((a, b) => b.cha - a.cha)[0];
+      const env = here[0];
+      const wantBetter = best && (!env || (br.tier !== 'dumb' && best.cha >= env.cha + (fails ? 8 : 20) && worth(t) >= 300));
+      if (wantBetter) {
+        if (moves >= (br.tier === 'smart' ? 3 : 2)) continue;
+        const from = G.cities[best.city];
+        await press(from.i, 'per', '[data-cmd=move]');
+        await say('recruitGo', { gen: t.name, envoy: best.name, city: c.name });
+        await MapView.march(from.i, c.i, G.factions[G.player].color);
+        Game.move(best, c.i); moves++;
+        UI.toast(`${best.name}（魅力${best.cha}）が${t.name}を誘いに ${from.name} → ${c.name} へ`, 2400);
+        continue;   // 移動で今季の行動は終わり。次の季節に誘う
+      }
       if (!env) continue;
-      const t = known[0];
       await press(c.i, 'per', '[data-cmd=recruit]');
       await say('rec', { gen: t.name });
       env.acted = true;
+      const before = t.state;
       await App.doRecruit(env, t);
+      if (t.state === before) G.recFail[t.i] = fails + 1; else delete G.recFail[t.i];
     }
   }
   // ---------- 補給（足りない拠点へ金・兵糧・兵を回す） ----------
@@ -665,6 +711,7 @@ const Auto = (() => {
     const armies0 = attacks.map(p => p.army).flat();
     await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
+    await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     // 出陣する武将はあらかじめ取っておく
     const armies = attacks.map(p => ({ p, army: p.army, troops: p.troops }));
@@ -701,7 +748,6 @@ const Auto = (() => {
         App.refresh();
       }
     }
-    await doRecruit(br); if (stopReq) return false;
     await sendTrained(br); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     // 出陣
