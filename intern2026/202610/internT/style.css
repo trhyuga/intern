@@ -272,6 +272,7 @@ button { font-family: inherit; }
 .autobar.show { display: flex; animation: down .2s; }
 @keyframes down { from { transform: translateY(-20px); opacity: 0; } }
 #app.auto-on .map-hint { top: 62px; }
+#app.auto-on #battle .b-info { margin-top: 54px; }
 .autobar img { width: 34px; height: 42px; border-radius: 17px; object-fit: cover; object-position: top; border: 1px solid var(--gold); }
 .autobar .ab-text { flex: 1; font-size: 12.5px; line-height: 1.35; }
 .autobar .ab-text b { color: var(--gold2); }

@@ -119,7 +119,7 @@ const Battle = (() => {
     hud = root.querySelector('.b-hud'); info = root.querySelector('.b-info'); actions = root.querySelector('.b-actions');
     cv = root.querySelector('#bcv'); ctx = cv.getContext('2d');
     const W = Math.min(window.innerWidth, 480) - 8;
-    const avail = root.getBoundingClientRect().height - 250;
+    const avail = root.getBoundingClientRect().height - 250 - (typeof Auto !== 'undefined' && Auto.running ? 54 : 0);   // 軍師のバーの分
     cell = Math.max(28, Math.floor(Math.min(W / COLS, avail / ROWS)));
     const dpr = window.devicePixelRatio || 1;
     cv.width = cell * COLS * dpr; cv.height = cell * ROWS * dpr;
