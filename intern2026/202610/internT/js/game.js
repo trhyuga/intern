@@ -608,8 +608,8 @@ const AI = {
     const bondA = Game.bondOf(atk.map(g => g.name)).reduce((s, x) => s + x.bonus, 0);
     const bondD = Game.bondOf(def.map(g => g.name)).reduce((s, x) => s + x.bonus, 0);
     const avg = (arr, k) => arr.length ? arr.reduce((s, g) => s + g[k], 0) / arr.length : 40;
-    const atkPow = b.troops * (0.5 + from.train / 200) * (0.6 + (avg(atk, 'lead') * 0.6 + avg(atk, 'war') * 0.4) / 100) * (1 + bondA) * rnd(0.85, 1.15);
-    const defPow = to.troops * (0.5 + to.train / 200) * (0.6 + (avg(def, 'lead') * 0.6 + avg(def, 'war') * 0.4) / 100) * (1 + bondD) * (1.15 + to.def / 2500) * rnd(0.85, 1.15);
+    const atkPow = b.troops * (0.5 + from.train / 200) * (0.6 + (avg(atk, 'lead') * 0.6 + avg(atk, 'war') * 0.4) / 100) * (1 + bondA) * rnd(0.78, 1.22);
+    const defPow = to.troops * (0.5 + to.train / 200) * (0.6 + (avg(def, 'lead') * 0.6 + avg(def, 'war') * 0.4) / 100) * (1 + bondD) * (1.15 + to.def / 2500) * rnd(0.78, 1.22);
     const atkWin = atkPow > defPow;
     const ratio = Math.min(atkPow, defPow) / Math.max(atkPow, defPow);
     let atkLoss, defLoss;

@@ -240,7 +240,7 @@ const Battle = (() => {
     ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(cx - s * 0.31, cy - s * 0.45); ctx.lineTo(cx + s * 0.08, cy - s * 0.42); ctx.lineTo(cx - s * 0.02, cy - s * 0.3); ctx.lineTo(cx + s * 0.08, cy - s * 0.16); ctx.lineTo(cx - s * 0.31, cy - s * 0.14); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1; ctx.stroke();
     ctx.fillStyle = isLight(col) ? '#222' : '#fff'; ctx.font = `bold ${Math.round(s * 0.24)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(u.gi >= 0 ? u.g.name[0] : '守', cx - s * 0.13, cy - s * 0.29);
+    ctx.fillText(u.gi >= 0 ? u.g.name[0] : (u.src != null ? '援' : '守'), cx - s * 0.13, cy - s * 0.29);
     if (u.commander) { ctx.fillStyle = '#ffd23a'; ctx.font = `${Math.round(s * 0.22)}px serif`; ctx.fillText('★', cx + s * 0.26, cy - s * 0.36); }
     // 兵力バー
     const w = s * 0.8, bx = x + s * 0.1, by = y + s - 6;
@@ -349,6 +349,7 @@ const Battle = (() => {
     if ((at === 'water' || at === 'ford' || t === 'water' || t === 'ford')) k *= Game.has(ag, '水軍') ? 1.25 : 0.9;
     if (ranged) k *= B.weather === 'rain' ? 0.5 : 0.7;
     if (B.weather === 'rain') k *= 0.9;
+    if (B.rally && B.rally[a.side] > 0) k *= 1.3;   // 背水の陣
     return Math.max(30, Math.round(k * rnd(0.85, 1.15)));
   }
 
@@ -507,6 +508,54 @@ const Battle = (() => {
     await sleep(300);
   }
 
+  // ---------- 逆転の目（援軍・背水の陣） ----------
+  const REINF = { name: '援軍', lead: 60, war: 60, int: 45, pol: 40, cha: 50, appear: 180, traits: [] };
+  function freeTile(side) {
+    const rows = side === 'def' ? [0, 1, 3] : [ROWS - 1, ROWS - 2];
+    for (const r of rows) for (const c of shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8])) { const t = B.tiles[r][c].t; if (!unitAt(r, c) && !['wall', 'water', 'gate'].includes(t) && !B.tiles[r][c].fire) return [r, c]; }
+    return null;
+  }
+  async function dramaEvents() {
+    B.rally = B.rally || { atk: 0, def: 0 };
+    B.reinf = B.reinf || { atk: 0, def: 0 };
+    B.rallied = B.rallied || { atk: false, def: false };
+    ['atk', 'def'].forEach(sd => { if (B.rally[sd] > 0) B.rally[sd]--; });
+    const tot = sd => B.units.filter(u => u.alive && u.side === sd).reduce((s2, u) => s2 + u.troops, 0);
+    const fname = sd => { const fi = sd === 'atk' ? B.atkFi : B.defFi; return fi === null ? '守備隊' : G.factions[fi].name + '軍'; };
+    // 背水の陣：兵が相手の4割を切った側が、一度だけ奮い立つ
+    for (const sd of ['atk', 'def']) {
+      const other = sd === 'atk' ? 'def' : 'atk';
+      const cmd = B.units.find(u => u.side === sd && u.commander);
+      if (!B.rallied[sd] && cmd && cmd.alive && tot(sd) < tot(other) * 0.4 && Math.random() < 0.6) {
+        B.rallied[sd] = true; B.rally[sd] = 3;
+        B.units.filter(u => u.alive && u.side === sd).forEach(u => u.morale = Math.min(100, u.morale + 30));
+        Sound.se('gong');
+        await banner(`${fname(sd)}、背水の陣！`, 1300);
+        addLog(`${fname(sd)}は追い詰められて奮い立った！（3日間、攻撃力が上がる）`);
+        if (cmd.gi >= 0 && !auto) await UI.talk(cmd.g, 'angry', `${cmd.g.name}「退路はない！ ここで死力を尽くせ！」`, cmd.fi === null ? '#777' : G.factions[cmd.fi].color, { tag: '背水の陣' });
+      }
+    }
+    // 援軍：隣の自都市から駆けつけることがある（各陣営1回まで）
+    if (B.day >= 3) for (const sd of ['def', 'atk']) {
+      if (B.reinf[sd]) continue;
+      const fi = sd === 'atk' ? B.atkFi : B.defFi;
+      if (fi === null) continue;
+      if (Math.random() > (sd === 'def' ? 0.08 : 0.05)) continue;
+      const src = B.to.adj.map(a => G.cities[a]).filter(c => c.owner === fi && c.i !== B.from.i && c.troops > 7000).sort((a, b2) => b2.troops - a.troops)[0];
+      if (!src) continue;
+      const pos = freeTile(sd); if (!pos) continue;
+      const amt = Math.round(clamp(src.troops * 0.2, 1500, 6000) / 100) * 100;
+      src.troops -= amt;
+      B.reinf[sd] = true;
+      const u = mkUnit(null, sd, fi, amt, pos[0], pos[1]);
+      u.g = REINF; u.src = src.i; u.train = src.train; u.morale = 95;
+      B.units.push(u);
+      Sound.se('march');
+      await banner(`${src.name}から援軍到着！`, 1300);
+      addLog(`${src.name}から${fname(sd)}の援軍 ${amt} が駆けつけた！`);
+    }
+  }
+
   // ---------- 日の流れ ----------
   async function startDay(first) {
     if (B.over) return;
@@ -528,6 +577,7 @@ const Battle = (() => {
       if (B.food <= 0) { B.units.filter(u => u.alive && u.side === 'atk').forEach(u => u.morale = Math.max(0, u.morale - 25)); addLog('攻め手の兵糧が尽きた！'); }
     }
     B.units.forEach(u => { if (u.alive) { u.acted = false; if (u.confused > 0) { u.confused--; if (u.confused > 0) u.acted = true; } } });
+    if (!first) await dramaEvents();
     if (await checkEnd()) return;
     updateHUD();
     await banner(`${B.day}日目　${WNAME[B.weather]}`, 700);
@@ -781,8 +831,8 @@ const Battle = (() => {
     await banner(pWin ? '勝利！' : '敗北…', 1400);
     const res = {
       atkWin: winner === 'atk', reason,
-      atkLeft: B.units.filter(u => u.side === 'atk' && u.status !== 'killed').reduce((s, u) => s + (u.alive || u.status === 'retreat' ? u.troops : 0), 0),
-      defLeft: B.units.filter(u => u.side === 'def').reduce((s, u) => s + (u.alive || u.status === 'retreat' ? u.troops : 0), 0) + (B.reserve || 0),
+      atkLeft: B.units.filter(u => u.side === 'atk' && u.status !== 'killed' && u.src == null).reduce((s, u) => s + (u.alive || u.status === 'retreat' ? u.troops : 0), 0),
+      defLeft: B.units.filter(u => u.side === 'def' && u.src == null).reduce((s, u) => s + (u.alive || u.status === 'retreat' ? u.troops : 0), 0) + (B.reserve || 0),
       captured: B.units.filter(u => u.gi >= 0 && u.status === 'captured').map(u => u.gi),
       killed: B.units.filter(u => u.gi >= 0 && u.status === 'killed').map(u => u.gi),
       days: B.day,
@@ -790,6 +840,8 @@ const Battle = (() => {
     // 勝った側に残った敵将は捕縛されることがある
     const timeUp = reason.includes('30日') || reason.includes('兵糧');
     if (!timeUp) B.units.filter(u => u.gi >= 0 && u.alive && u.side !== winner).forEach(u => { if (Math.random() < (winner === 'atk' ? 0.3 : 0.15)) res.captured.push(u.gi); });
+    // 援軍の生き残りは元の都市へ帰る
+    B.units.filter(u => u.src != null && (u.alive || u.status === 'retreat')).forEach(u => { const c = G.cities[u.src]; if (c) c.troops += u.troops; });
     cancelAnimationFrame(raf);
     const r = resolveEnd; r(res);
     return true;
