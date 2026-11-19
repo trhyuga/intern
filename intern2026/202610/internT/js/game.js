@@ -148,7 +148,7 @@ const Game = {
     const pp = clamp(0.2 - k, 0.03, 0.35);
     const r = Math.random();
     if (r < pg) return { grade: 'great', mult: rnd(1.6, 1.9), tag: '【大成功】' };
-    if (r < pg + pp) return { grade: 'poor', mult: rnd(0.35, 0.6), tag: '【いまひとつ】' };
+    if (r < pg + pp) return { grade: 'poor', mult: rnd(0.35, 0.6), tag: '' };   // はずれは札を出さない（台詞と表情で伝える）
     return { grade: 'normal', mult: rnd(0.9, 1.1), tag: '' };
   },
   gradeExpr(gr) { return gr === 'great' ? 'happy' : gr === 'poor' ? 'sad' : 'normal'; },
