@@ -313,3 +313,5 @@ button { font-family: inherit; }
 
 .trait.title { background: linear-gradient(#e8c050, #b08820); color: #2a1a10; }
 .tbadge { display: inline-block; font-size: 10px; font-weight: 800; padding: 0 5px; border-radius: 3px; background: linear-gradient(#e8c050, #b08820); color: #2a1a10; line-height: 16px; margin-left: 2px; }
+
+.tb-rank { display: inline-block; font-size: 11px; color: #2a1608; background: linear-gradient(#ffe9a0, #d4a82a); border-radius: 3px; padding: 0 5px; margin-right: 4px; vertical-align: 1px; }

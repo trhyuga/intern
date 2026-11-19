@@ -204,7 +204,7 @@ const App = {
     if (!G) return;
     const f = G.factions[G.player];
     $('#tbDate').textContent = `${G.year}年 ${SEASONS[G.season]}`;
-    $('#tbFac').innerHTML = `<i style="background:${f.color}"></i>${f.name}軍`;
+    $('#tbFac').innerHTML = `<i style="background:${f.color}"></i>${Events.rankName(f.i) ? `<b class="tb-rank">${Events.rankName(f.i)}</b>` : ''}${f.name}軍`;
     const cs = Game.citiesOf(G.player);
     const sum = k => cs.reduce((s, c) => s + c[k], 0);
     const idle = Game.gensOf(G.player).filter(g => !g.acted).length;
@@ -742,7 +742,7 @@ const App = {
         if (e.quiet) continue;
         const eg = e.gen != null ? G.gens[e.gen] : null;
         const ecol = eg ? (G.factions[eg.faction] ? G.factions[eg.faction].color : '#6a5a4a') : undefined;
-        if (e.hist) { Sound.se('gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag }); }
+        if (e.hist) { Sound.se(e.se || 'gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag }); }
         else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag } : {}); }
         else UI.toast(e.msg, 2600), await new Promise(r => setTimeout(r, 900));
       }

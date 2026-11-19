@@ -364,8 +364,56 @@ const Events = (() => {
     return ev;
   }
 
+
+  // ---------------- 即位（公→王→皇帝） ----------------
+  // 都市が一定数に達すると、家臣の勧めで君主が位に就く。位は勢力に残り、跡継ぎも引き継ぐ。
+  // 効果：家臣の忠誠＋、全都市の民忠＋、君主の魅力＋。合戦では位に応じて士気が上がる（battle.js）
+  const RANKS = [null, { n: 10, t: '公' }, { n: 16, t: '王' }, { n: 24, t: '皇帝' }];
+  const STATE = { 曹操: '魏', 曹丕: '魏', 劉備: '漢', 劉禅: '漢', 孫堅: '呉', 孫策: '呉', 孫権: '呉', 袁紹: '冀', 袁術: '仲', 劉表: '楚', 劉璋: '蜀', 馬騰: '涼', 馬超: '涼', 公孫瓚: '燕', 呂布: '徐', 董卓: '秦', 張魯: '漢寧', 孟獲: '南蛮', 陶謙: '徐', 孔融: '北海' };
+  const rankName = fi => { const f = G.factions[fi]; return f && f.rank ? (f.rank === 3 ? '皇帝' : f.state + RANKS[f.rank].t) : ''; };
+  const CROWN_LINES = {
+    曹操: ['わしが{t}か。……天下はまだ定まっておらん。浮かれるでないぞ', '覇道はここからよ。{t}の名に恥じぬ働きをせよ'],
+    劉備: ['私のような者が{t}とは……。いや、民のため、漢室のため、謹んでお受けしよう', '桃園で誓った志、ようやくここまで来た。皆のおかげだ'],
+    孫権: ['父上、兄上……。孫家の志、この孫権が{t}として継ぎます', '江東の地を守り抜いてくれた皆に感謝する'],
+    袁術: ['ふはは！ やはり天命はこの袁術にあったのだ！'],
+    袁紹: ['名門袁家の当主として、当然の位よ'],
+    呂布: ['{t}だと？ 面倒だが……悪くはない'],
+  };
+  const LORD_BY_TRAIT = [['仁徳', '私には過ぎた位だが……民が安らぐのなら、受けよう'], ['野心', '待ちわびたぞ。これで天下に号令をかけられる'], ['猪突', 'がはは！ {t}か！ よし、次は天下だ！'], ['_', '皆の推挙とあらば、謹んで{t}の位に就こう']];
+  const ADVISE = ['殿、今や我が軍は{n}の城を治めております。もはや一勢力の主ではございません。{t}の位にお就きください', '天下の人心は殿に集まっております。{t}を称し、大義を明らかになさいませ', '諸将も民も、殿の即位を待ち望んでおります。どうか{t}に'];
+  function crownEvents() {
+    const ev = [];
+    G.factions.forEach(f => {
+      if (!f.alive) return;
+      const n = Game.citiesOf(f.i).length, cur = f.rank || 0, now = G.year * 4 + G.season;
+      if (f.rankAt == null) f.rankAt = now;            // ゲーム開始時点から数える
+      if (cur >= 3 || n < RANKS[cur + 1].n || now - f.rankAt < 4) return;   // 位が上がるのは1年に1段まで
+      f.rankAt = now;
+      const lord = Game.lordOf(f.i);
+      if (!f.state) f.state = STATE[lord.name] || (G.cities[f.capital] ? G.cities[f.capital].name[0] : lord.name[0]);
+      f.rank = cur + 1;
+      const title = rankName(f.i), full = f.rank === 3 ? `${f.state}の皇帝` : title;
+      // 効果
+      Game.gensOf(f.i).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + 6 + f.rank * 2); });
+      Game.citiesOf(f.i).forEach(c => { c.loyal = Math.min(100, c.loyal + 4 + f.rank * 2); });
+      up(lord, 'cha', f.rank + 1);
+      Game.log(`【即位】${lord.name}が${full}に即位した`);
+      if (mine(f.i)) {
+        const adv = (G.strategist != null && G.gens[G.strategist] && G.gens[G.strategist].faction === f.i && !G.gens[G.strategist].isLord) ? G.gens[G.strategist] : Game.gensOf(f.i).filter(g => !g.isLord).sort((a, b) => (b.int + b.cha) - (a.int + a.cha))[0];
+        const fill = t => t.replace('{t}', full).replace('{n}', n);
+        if (adv) ev.push({ type: 'hist', title: `${full}即位の勧め`, msg: `${adv.name}「${fill(pick(ADVISE))}」`, gen: adv.i, expr: 'happy', tag: '即位', talk: true, hist: true, se: 'bell' });
+        const tl = CROWN_LINES[lord.name] || [(LORD_BY_TRAIT.find(([k]) => k === '_' || Game.has(lord, k)) || LORD_BY_TRAIT[3])[1]];
+        ev.push({ type: 'hist', title: `${full}即位`, msg: `${lord.name}「${fill(pick(tl))}」\n${lord.name}は${full}の位に就いた！\n<small>家臣の忠誠・全都市の民忠が上がった。合戦では将兵の士気が上がる</small>`, gen: lord.i, expr: 'happy', tag: '即位', talk: true, hist: true, se: 'coronation' });
+      } else if (f.rank >= 2) {
+        ev.push({ type: 'hist', title: '天下の動き', msg: `${lord.name}が${full}を称した！\n${f.rank === 3 ? '天下に二人の天子はいらぬ——群雄は色めき立っている' : '勢いを増す' + lord.name + '軍に、諸侯は警戒を強めている'}`, gen: lord.i, expr: 'happy', tag: '天下の動き', talk: true, hist: true });
+      }
+    });
+    return ev;
+  }
+
   return {
-    run() { return [...histEvents(), ...topEvents(), ...randomEvents()]; },
+    run() { return [...crownEvents(), ...histEvents(), ...topEvents(), ...randomEvents()]; },
+    rankName,
     counts: () => ({ city: CITY.length, gen: GEN.length, hist: HIST.length }),
     MEET, FACE,
     _HIST: HIST,
