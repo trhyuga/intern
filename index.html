@@ -98,6 +98,32 @@
   }
   .thumb .logo small{ display:block; font-size:10px; letter-spacing:.3em; color:#9fd2ff; margin-top:4px; text-shadow:0 0 8px rgba(80,160,255,.8); }
 
+  /* 群雄天下のサムネイル（CSSだけの夕焼けと山並み） */
+  .thumb.sangoku{
+    background:
+      radial-gradient(circle at 50% 62%, #ffdcae 0 34px, rgba(255,200,140,.45) 35px, transparent 110px),
+      linear-gradient(180deg, #120608 0%, #4a1210 55%, #c0602a 100%);
+  }
+  .thumb.sangoku::before, .thumb.sangoku::after{
+    content:""; position:absolute; left:-10%; right:-10%; bottom:0;
+  }
+  .thumb.sangoku::before{ height:70px; background:#3a1410; clip-path:polygon(0 100%,0 55%,14% 30%,26% 52%,40% 18%,55% 46%,68% 22%,82% 50%,100% 28%,100% 100%); }
+  .thumb.sangoku::after{ height:40px; background:#120806; clip-path:polygon(0 100%,0 40%,18% 60%,35% 30%,52% 55%,70% 35%,86% 58%,100% 40%,100% 100%); }
+  .thumb.sangoku .logo{
+    top:30px; color:#f6e8c6; font-family:'Hiragino Mincho ProN','Yu Mincho',serif; font-size:34px; letter-spacing:.18em;
+    text-shadow:0 2px 8px #000, 0 0 24px rgba(168,36,26,.9);
+  }
+  .thumb.sangoku .logo small{ color:#f0d27a; font-size:11px; letter-spacing:.4em; text-shadow:0 1px 4px #000; }
+  .thumb.sangoku .flag{
+    position:absolute; z-index:1; bottom:30px; left:62%; width:2px; height:58px; background:#140806;
+  }
+  .thumb.sangoku .flag::after{
+    content:"覇"; position:absolute; left:2px; top:0; width:30px; height:30px; background:#a8241a;
+    color:#fff; font:700 17px/30px 'Hiragino Mincho ProN','Yu Mincho',serif; text-align:center;
+    transform-origin:left center; animation:wave 2.4s ease-in-out infinite;
+  }
+  @keyframes wave{ 0%,100%{transform:skewY(0)} 50%{transform:skewY(-6deg)} }
+
   .card .body{ padding:20px 22px 22px; display:flex; flex-direction:column; gap:10px; flex:1; }
   .card .meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .tag{ font-size:11px; font-weight:700; letter-spacing:.06em; padding:4px 10px; border-radius:999px; }
@@ -190,6 +216,32 @@
         <div class="actions">
           <a class="btn-play" href="intern2026/testtriumph/">▶ あそぶ</a>
           <a class="btn-sub" href="https://github.com/trhyuga/intern/tree/main/intern2026/testtriumph" target="_blank" rel="noopener">コード</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- internT: 群雄天下 -->
+    <div class="card">
+      <div class="thumb sangoku">
+        <div class="logo">群雄天下<small>三国英傑伝</small></div>
+        <div class="flag"></div>
+      </div>
+      <div class="body">
+        <div class="meta">
+          <span class="tag t1">GAME</span>
+          <span class="tag t2">戦略SLG</span>
+          <span class="tag t3">iPhone向け</span>
+        </div>
+        <h3>群雄天下 ― 三国英傑伝 ―</h3>
+        <div class="creator"><span class="avatar">T</span>制作: internT（intern2026）</div>
+        <p class="desc">
+          後漢末の中国で天下統一を目指す、オリジナルの三国志戦略シミュレーション。
+          武将190人・都市44・シナリオ5本。性格で動く武将たちは命令を無視したり謀反を起こしたり。
+          表情の変わる肖像、マス目の攻城戦、一騎討ち。絵も音もすべてプログラムで生成。
+        </p>
+        <div class="actions">
+          <a class="btn-play" href="intern2026/202610/internT/">▶ あそぶ</a>
+          <a class="btn-sub" href="https://github.com/trhyuga/intern/tree/main/intern2026/202610/internT" target="_blank" rel="noopener">コード</a>
         </div>
       </div>
     </div>
