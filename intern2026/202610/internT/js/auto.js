@@ -135,10 +135,10 @@ const Auto = (() => {
     const el = document.querySelector(sel);
     if (el) { el.classList.add('auto-press'); Sound.se('tap'); await wait(450); el.classList.remove('auto-press'); }
   }
-  // 今見えている画面の見出し（全国地図の上部バー／戦場の日付表示）のすぐ下に置く
+  // 全国地図では上部バー（勢力名）のすぐ下、戦場ではマップのすぐ下に置く
   function place() {
     const bar = document.getElementById('autobar'), app = document.getElementById('app');
-    const hd = UI.cur === 'battle' ? document.querySelector('#battle .b-hud') : document.querySelector('#main .topbar');
+    const hd = UI.cur === 'battle' ? document.querySelector('#battle .b-field') : document.querySelector('#main .topbar');
     if (!hd) return;
     const top = hd.getBoundingClientRect().bottom - app.getBoundingClientRect().top + 4;
     bar.style.top = top + 'px';
