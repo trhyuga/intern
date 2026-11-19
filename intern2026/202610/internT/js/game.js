@@ -120,6 +120,26 @@ const Game = {
     return Math.round(t * 0.12 * n + 1500 + (Game.isFront(c) ? 2500 : 0));
   },
 
+  // ---------------- 能力の上位者（称号） ----------------
+  // 各能力で天下の上位5人（現役の武将・在野を含む）。季節ごとに計算し直す
+  TOP_N: 5,
+  TITLE: { lead: ['名将', '天下一の名将'], war: ['豪傑', '天下無双の豪傑'], int: ['智者', '天下一の智者'], pol: ['名臣', '天下一の名宰相'], cha: ['人望', '天下一の人望'] },
+  ranks() {
+    if (G._rank && G._rank.turn === G.turn && G._rank.n === G.gens.length) return G._rank.map;
+    const alive = G.gens.filter(g => g.state === 'serve' || g.state === 'ronin');
+    const map = {};
+    ['lead', 'war', 'int', 'pol', 'cha'].forEach(k => {
+      alive.slice().sort((a, b) => b[k] - a[k]).slice(0, Game.TOP_N).forEach((g, i) => { (map[g.i] = map[g.i] || {})[k] = i + 1; });
+    });
+    G._rank = { turn: G.turn, n: G.gens.length, map };
+    return map;
+  },
+  top(g, k) { if (!g || g.i == null) return 0; const m = Game.ranks()[g.i]; return m && m[k] ? m[k] : 0; },
+  // 上位者の効き目（1位はさらに強い）
+  topK(g, k, mul = 1.4, first = 1.7) { const r = Game.top(g, k); return r === 1 ? first : r ? mul : 1; },
+  titles(g) { const m = Game.ranks()[g.i] || {}; return Object.keys(m).map(k => ({ k, rank: m[k], name: Game.TITLE[k][m[k] === 1 ? 1 : 0] })); },
+  topNote(g, k) { const r = Game.top(g, k); return r ? `（${Game.TITLE[k][r === 1 ? 1 : 0]}の手腕）` : ''; },
+
   // ---------------- 内政コマンド ----------------
   // 戻り値 { ok, msg, expr }
   doCommand(cmd, g, c, arg) {
@@ -133,53 +153,55 @@ const Game = {
         if ((r = needGold(cost))) return r;
         if (c.farm >= c.farmMax) return { ok: false, msg: 'これ以上は開墾できない', expr: 'sad' };
         c.gold -= cost;
-        const v = Math.round((g.pol * 0.35 + 6) * bonusPol * rnd(0.85, 1.15));
+        let v = Math.round((g.pol * 0.35 + 6) * bonusPol * Game.topK(g, 'pol') * rnd(0.85, 1.15));
+        const big = Game.top(g, 'pol') && Math.random() < 0.2; if (big) v *= 2;
         c.farm = Math.min(c.farmMax, c.farm + v);
-        return { ok: true, msg: `田畑を開いた。農業 +${v}`, expr: 'happy' };
+        return { ok: true, msg: `${big ? '【大成功】' : ''}田畑を開いた。農業 +${v}${Game.topNote(g, 'pol')}`, expr: 'happy' };
       }
       case 'comm': {
         if ((r = needGold(cost))) return r;
         if (c.comm >= c.commMax) return { ok: false, msg: 'これ以上は伸ばせない', expr: 'sad' };
         c.gold -= cost;
-        const v = Math.round((g.pol * 0.35 + 6) * bonusPol * rnd(0.85, 1.15));
+        let v = Math.round((g.pol * 0.35 + 6) * bonusPol * Game.topK(g, 'pol') * rnd(0.85, 1.15));
+        const big = Game.top(g, 'pol') && Math.random() < 0.2; if (big) v *= 2;
         c.comm = Math.min(c.commMax, c.comm + v);
-        return { ok: true, msg: `市を整えた。商業 +${v}`, expr: 'happy' };
+        return { ok: true, msg: `${big ? '【大成功】' : ''}市を整えた。商業 +${v}${Game.topNote(g, 'pol')}`, expr: 'happy' };
       }
       case 'wall': {
         if ((r = needGold(cost))) return r;
         if (c.def >= c.defMax) return { ok: false, msg: '城壁はすでに万全だ', expr: 'normal' };
         c.gold -= cost;
-        const v = Math.round((g.lead * 0.3 + g.pol * 0.15 + 5) * rnd(0.85, 1.15));
+        const v = Math.round((g.lead * 0.3 + g.pol * 0.15 + 5) * Math.max(Game.topK(g, 'lead', 1.35, 1.6), Game.topK(g, 'pol', 1.25, 1.4)) * rnd(0.85, 1.15));
         c.def = Math.min(c.defMax, c.def + v);
-        return { ok: true, msg: `城壁を修築した。防御 +${v}`, expr: 'happy' };
+        return { ok: true, msg: `城壁を修築した。防御 +${v}${Game.topNote(g, 'lead') || Game.topNote(g, 'pol')}`, expr: 'happy' };
       }
       case 'alms': {
         const food = 1500;
         if (c.food < food) return { ok: false, msg: `兵糧が足りない（${food}必要）`, expr: 'sad' };
         c.food -= food;
-        const v = Math.round((g.cha * 0.12 + 3) * (H(g, '仁徳') ? 1.5 : 1) * rnd(0.85, 1.15));
+        const v = Math.round((g.cha * 0.12 + 3) * (H(g, '仁徳') ? 1.5 : 1) * Game.topK(g, 'cha') * rnd(0.85, 1.15));
         c.loyal = Math.min(100, c.loyal + v);
-        return { ok: true, msg: `民に施しを行った。民忠 +${v}`, expr: 'happy' };
+        return { ok: true, msg: `民に施しを行った。民忠 +${v}${Game.topNote(g, 'cha')}`, expr: 'happy' };
       }
       case 'draft': {
         if ((r = needGold(CONFIG.RECRUIT_COST))) return r;
         if (c.loyal < 20) return { ok: false, msg: '民の心が離れていて兵が集まらない', expr: 'sad' };
         c.gold -= CONFIG.RECRUIT_COST;
-        const v = Math.round((g.cha * 25 + 800) * (c.pop / 400000 + 0.5) * rnd(0.8, 1.2) / 10) * 10;
+        const v = Math.round((g.cha * 25 + 800) * (c.pop / 400000 + 0.5) * Game.topK(g, 'cha', 1.35, 1.6) * rnd(0.8, 1.2) / 10) * 10;
         c.troops += v; c.pop = Math.max(50000, c.pop - v);
         c.loyal = Math.max(0, c.loyal - irnd(3, 6));
         c.train = Math.max(10, Math.round((c.train * (c.troops - v) + 20 * v) / c.troops));
-        return { ok: true, msg: `兵を募った。兵 +${v}`, expr: 'happy' };
+        return { ok: true, msg: `兵を募った。兵 +${v}${Game.topNote(g, 'cha')}`, expr: 'happy' };
       }
       case 'train': {
         if (c.train >= 100) return { ok: false, msg: '兵はすでに精強だ', expr: 'normal' };
-        const v = Math.round((g.lead * 0.18 + 4) * rnd(0.85, 1.15) * Math.max(0.4, 1 - c.troops / 80000));
+        const v = Math.round((g.lead * 0.18 + 4) * Game.topK(g, 'lead', 1.5, 1.8) * rnd(0.85, 1.15) * Math.max(0.4, 1 - c.troops / 80000));
         c.train = Math.min(100, c.train + v);
-        return { ok: true, msg: `兵を鍛えた。訓練 +${v}`, expr: 'happy' };
+        return { ok: true, msg: `兵を鍛えた。訓練 +${v}${Game.topNote(g, 'lead')}`, expr: 'happy' };
       }
       case 'search': {
         const ronin = Game.roninIn(c.i);
-        if (ronin.length && Math.random() < 0.45 + g.cha / 250) {
+        if (ronin.length && Math.random() < 0.45 + g.cha / 250 + (Game.top(g, 'cha') ? 0.2 : 0)) {
           const t = pick(ronin);
           return { ok: true, found: t, msg: `在野の人物「${t.name}」を見つけた！`, expr: 'happy' };
         }
@@ -198,6 +220,7 @@ const Game = {
     const lord = Game.lordOf(G.factions[g.faction].i);
     let ch = 0.25 + (g.cha - 50) / 150 + (lord.cha - 60) / 200;
     if (Game.has(g, '仁徳') || Game.has(lord, '仁徳')) ch += 0.15;
+    if (Game.top(g, 'cha')) ch += Game.top(g, 'cha') === 1 ? 0.25 : 0.15;   // 人望の上位者
     if (captive) {
       if (Game.has(t, '忠義') && t.faction >= 0 && G.factions[t.faction].alive) ch -= 0.6;
       if (t.respect && G.gens.some(x => x.name === t.respect && x.state === 'serve' && x.faction === g.faction)) ch += 0.6;   // 一騎打ちで認め合った相手
@@ -249,8 +272,8 @@ const Game = {
     const H = Game.has;
     if (t.isLord) return { ok: false, msg: '君主には効かない' };
     if (H(t, '忠義')) return { ok: false, msg: `${t.name}は動じなかった`, immune: true };
-    let p = 0.45 + (g.int - t.int) / 120 + (H(g, '智謀') ? 0.15 : 0) - (H(t, '神算') ? 0.3 : 0);
-    if (Math.random() > clamp(p, 0.08, 0.92)) return { ok: false, msg: '見破られた…' };
+    let p = 0.45 + (g.int - t.int) / 120 + (H(g, '智謀') ? 0.15 : 0) - (H(t, '神算') ? 0.3 : 0) + (Game.top(g, 'int') ? 0.15 : 0) - (Game.top(t, 'int') ? 0.2 : 0);
+    if (Math.random() > clamp(p, 0.08, 0.92)) return { ok: false, msg: Game.top(t, 'int') ? `${Game.TITLE.int[0]}の${t.name}に見破られた…` : '見破られた…' };
     let v = Math.round((g.int / 8 + irnd(2, 8)) * (H(t, '野心') ? 2 : 1));
     t.loyalty = Math.max(0, t.loyalty - v);
     return { ok: true, msg: `${t.name}の忠誠が ${v} 下がった`, v };
@@ -260,7 +283,7 @@ const Game = {
     const H = Game.has;
     if (t.isLord) return { ok: false, msg: '君主は寝返らない' };
     if (H(t, '忠義')) return { ok: false, msg: `${t.name}「二君に仕える気はない」`, immune: true };
-    let p = (75 - t.loyalty) / 60 + (g.cha - 60) / 200 + gold / 3000 + (H(t, '野心') ? 0.15 : 0);
+    let p = (75 - t.loyalty) / 60 + (g.cha - 60) / 200 + gold / 3000 + (H(t, '野心') ? 0.15 : 0) + (Game.top(g, 'cha') ? 0.12 : 0);
     if (Math.random() < clamp(p, 0, 0.9)) {
       const fromCity = G.cities[t.city];
       Game.joinFaction(t, g.faction, g.city);
@@ -273,8 +296,8 @@ const Game = {
   },
   // 流言：都市の民忠・訓練を下げる
   plotRumor(g, c) {
-    let p = 0.5 + (g.int - 70) / 100 + (Game.has(g, '智謀') ? 0.15 : 0);
-    const def = Game.gensIn(c.i).reduce((m, h) => Math.max(m, h.int + (Game.has(h, '神算') ? 20 : 0)), 0);
+    let p = 0.5 + (g.int - 70) / 100 + (Game.has(g, '智謀') ? 0.15 : 0) + (Game.top(g, 'int') ? 0.15 : 0);
+    const def = Game.gensIn(c.i).reduce((m, h) => Math.max(m, h.int + (Game.has(h, '神算') ? 20 : 0) + (Game.top(h, 'int') ? 15 : 0)), 0);
     p -= (def - 70) / 120;
     if (Math.random() > clamp(p, 0.1, 0.9)) return { ok: false, msg: '流言は広まらなかった' };
     const v = irnd(8, 18); c.loyal = Math.max(0, c.loyal - v); c.train = Math.max(0, c.train - Math.round(v / 2));
@@ -285,7 +308,7 @@ const Game = {
   diploAlly(g, fi) {
     const me = G.factions[g.faction], tgt = G.factions[fi];
     const pMe = Game.power(g.faction), pT = Game.power(fi);
-    let p = 0.3 + (g.cha + g.int - 130) / 200 + (pMe / (pT + 1) - 1) * 0.15 - (tgt.hostility[g.faction] || 0) / 100;
+    let p = 0.3 + (g.cha + g.int - 130) / 200 + (pMe / (pT + 1) - 1) * 0.15 - (tgt.hostility[g.faction] || 0) / 100 + (Game.top(g, 'cha') || Game.top(g, 'int') ? 0.12 : 0);
     if (Game.has(Game.lordOf(fi), '野心')) p -= 0.1;
     if (Math.random() < clamp(p, 0.05, 0.85)) {
       me.allies[fi] = CONFIG.ALLY_TURNS; tgt.allies[g.faction] = CONFIG.ALLY_TURNS;
