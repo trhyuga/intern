@@ -655,24 +655,56 @@ const Battle = (() => {
     return d;
   }
 
+  // 一騎打ちを挑むか（性格と武力の差で決める）
+  async function tryDuel(u, wmine) {
+    if (u.gi < 0 || u.acted) return false;
+    B.challenged = B.challenged || new Set();
+    const bold = Game.has(u.g, '剛勇') || Game.has(u.g, '猪突');
+    const timid = Game.has(u.g, '臆病') || Game.has(u.g, '慎重');
+    const cands = B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && dist(o, u) === 1 && !B.challenged.has(u.gi + '-' + o.gi))
+      .filter(o => bold ? u.g.war >= o.g.war - 3 : timid ? u.g.war >= o.g.war + 12 : u.g.war >= o.g.war + 6)
+      .sort((a, b) => (b.commander ? 20 : 0) + (u.g.war - b.g.war) - ((a.commander ? 20 : 0) + (u.g.war - a.g.war)));
+    const t = cands[0];
+    if (!t) return false;
+    let p = bold ? 0.6 : timid ? 0.2 : 0.4;
+    if (t.commander && u.g.war >= t.g.war + 8) p += 0.25;              // 総大将を討てば勝ち
+    if (wmine && t.commander && u.g.war >= t.g.war + 10) p += 0.2 * B.smart;   // 賢い軍師は好機を逃さない
+    if (Math.random() >= p) return false;
+    B.challenged.add(u.gi + '-' + t.gi);
+    await doDuel(u, t);
+    return true;
+  }
+  // 計略（火計・混乱）を使うか（知力と性格で決める）
+  async function tryPlot(u, wmine, foes, after) {
+    if (u.gi < 0 || u.acted) return false;
+    const wise = Game.has(u.g, '智謀') || Game.has(u.g, '神算');
+    let need = wise ? 65 : 75;
+    if (wmine) need = Math.min(need, 80 - 20 * B.smart);
+    if (u.g.int < need) return false;
+    let p = (wise ? 0.55 : 0.4) + (u.g.int - 75) / 100;
+    if (wmine) p += 0.15 * B.smart;
+    if (after) p += 0.15;
+    if (Math.random() >= clamp(p, 0.1, 0.85)) return false;
+    const inRange = foes.filter(o => o.alive && dist(o, u) <= 2);
+    if (!inRange.length) return false;
+    // 火計は森・平地の敵に。雨なら混乱。総大将や大部隊を優先
+    const fireOk = B.weather !== 'rain';
+    const fireT = inRange.filter(o => ['forest', 'plain', 'road'].includes(B.tiles[o.r][o.c].t)).sort((a, b) => (b.troops + (B.tiles[b.r][b.c].t === 'forest' ? 3000 : 0)) - (a.troops + (B.tiles[a.r][a.c].t === 'forest' ? 3000 : 0)))[0];
+    const confT = inRange.slice().sort((a, b) => (b.commander ? 5000 : 0) + b.troops - (a.commander ? 5000 : 0) - a.troops)[0];
+    if (fireOk && fireT && (Math.random() < 0.6 || !confT.commander)) await doPlot(u, 'fire', fireT);
+    else await doPlot(u, 'confuse', confT);
+    return true;
+  }
+
   async function aiUnit(u, rogue) {
     const foes = B.units.filter(o => o.alive && o.side !== u.side);
     if (!foes.length) { u.acted = true; return; }
     showInfo(u);
-    // 一騎打ち
-    const adjFoes = foes.filter(o => dist(o, u) === 1 && o.gi >= 0);
-    B.challenged = B.challenged || new Set();
-    if (u.gi >= 0 && adjFoes.length && Math.random() < 0.35) {
-      const t = adjFoes.find(o => u.g.war >= o.g.war + 8 && !B.challenged.has(u.gi + '-' + o.gi));
-      if (t) B.challenged.add(u.gi + '-' + t.gi);
-      if (t) { await doDuel(u, t); return; }
-    }
-    // 計略
     const wmine = B.watch && u.side === B.playerSide;
-    if (u.gi >= 0 && u.g.int >= (wmine ? 80 - 20 * B.smart : 75) && !rogue && Math.random() < (wmine ? 0.2 + 0.4 * B.smart : 0.45)) {
-      const t = foes.filter(o => dist(o, u) <= 2).sort((a, b) => b.troops - a.troops)[0];
-      if (t) { await doPlot(u, B.weather !== 'rain' && Math.random() < 0.6 ? 'fire' : 'confuse', t); return; }
-    }
+    // 一騎打ち（移動の前にも後にも考える）
+    if (!rogue || Game.has(u.g, '猪突')) { if (await tryDuel(u, wmine)) return; }
+    // 計略
+    if (!rogue && await tryPlot(u, wmine, foes)) return;
     // 守り手（総大将）や城内の部隊は、敵が近づくまで動かない
     const nearest = foes.slice().sort((a, b) => dist(a, u) - dist(b, u))[0];
     if (u.side === 'def' && !rogue) {
@@ -702,6 +734,9 @@ const Battle = (() => {
       if (score > bestScore) { bestScore = score; best = [r, c]; }
     });
     if (best && (best[0] !== u.r || best[1] !== u.c)) await animateMove(u, best[0], best[1]);
+    // 着いた先で、一騎打ちや計略の好機があれば狙う
+    if (await tryDuel(u, wmine)) return;
+    if (!rogue && attackTargets(u).filter(([r, c]) => unitAt(r, c)).length === 0 && await tryPlot(u, wmine, foes, true)) return;
     const tg = attackTargets(u);
     if (tg.length) {
       tg.sort((a, b) => { const oa = unitAt(a[0], a[1]), ob = unitAt(b[0], b[1]); return (oa ? oa.troops - (oa.commander ? 3000 : 0) : 99999) - (ob ? ob.troops - (ob.commander ? 3000 : 0) : 99999); });
