@@ -357,12 +357,17 @@ const Game = {
     const sur = deadLord.name[0];
     cands.sort((a, b) => ((b.name[0] === sur ? 60 : 0) + b.cha + b.lead) - ((a.name[0] === sur ? 60 : 0) + a.cha + a.lead));
     const h = cands[0];
+    const oldName = f.name;
     h.isLord = true; h.loyalty = 100; f.lord = h.i; f.name = h.name;
+    h.succFrom = oldName;   // 引き継ぐ前の軍の名前（知らせに使う）
     if (G.cities[f.capital].owner !== fi) f.capital = G.cities[h.city].owner === fi ? h.city : Game.citiesOf(fi)[0].i;
     Game.gensOf(fi).forEach(g => { if (!g.isLord && !Game.has(g, '忠義')) g.loyalty = Math.max(0, g.loyalty - irnd(0, 15)); });
-    Game.log(`${deadLord.name}の跡を${h.name}が継いだ。`);
+    Game.log(`${deadLord.name}の跡を${h.name}が継いだ。${Game.succNote(h)}`);
     return h;
   },
+
+  // 「◯◯軍は××軍となった」（名前が同じなら何も付けない）
+  succNote(h) { return h && h.succFrom && h.succFrom !== h.name ? `${h.succFrom}軍は${h.name}軍となった。` : ''; },
 
   // 武将の死
   killGeneral(g, reason) {
@@ -468,7 +473,7 @@ const Game = {
           const deathLine = mine ? line(g, 'death') : null;
           const heir = Game.killGeneral(g, '病');
           Game.log(`${g.name}、病に倒れる。`);
-          if (mine || (wasLord)) ev.push({ type: mine ? 'warn' : 'info', msg: `${g.name}が病でこの世を去った${wasLord && heir ? `。跡は${heir.name}が継ぐ` : ''}`, gen: g.i, expr: 'sad', death: true, line: mine ? deathLine : null });
+          if (mine || (wasLord)) ev.push({ type: mine ? 'warn' : 'info', msg: `${g.name}が病でこの世を去った${wasLord && heir ? `。跡は${heir.name}が継ぐ。${Game.succNote(heir)}` : ''}`, gen: g.i, expr: 'sad', death: true, line: mine ? deathLine : null });
         }
       });
     }
