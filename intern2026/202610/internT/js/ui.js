@@ -613,7 +613,7 @@ const App = {
     let caps = [...new Set(res.captured)].filter(gi => G.gens[gi].state === 'serve' && !res.killed.includes(gi));
     if (res.atkWin) {
       to.owner = atkFi; to.troops = Math.max(100, res.atkLeft); to.loyal = Math.max(10, to.loyal - 12); to.train = from.train;
-      to.food = Math.round(to.food * 0.5) + Math.round(plan.food * 0.4); to.gold = Math.round(to.gold * 0.6);
+      to.food = Math.round((res.defFood ?? to.food) * 0.5) + Math.round(plan.food * 0.4); to.gold = Math.round(to.gold * 0.6);
       atkGens.forEach(g => { if (!caps.includes(g.i) && !deaths.includes(g)) { g.city = to.i; if (pAtk) g.wins++; } });
       if (defFi !== null) {
         const df = G.factions[defFi];
@@ -628,6 +628,7 @@ const App = {
     } else {
       to.troops = Math.max(0, res.defLeft);
       from.troops += res.atkLeft;
+      if (res.defFood != null) to.food = res.defFood;   // 籠城で食べた兵糧
       if (pDef) Game.gensIn(to.i, G.player).forEach(g => g.wins++);
       Game.log(`${to.name}の${defFi === null ? '守備隊' : G.factions[defFi].name + '軍'}が${G.factions[atkFi].name}軍を退けた。`);
     }

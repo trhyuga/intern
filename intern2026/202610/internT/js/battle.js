@@ -56,7 +56,7 @@ const Battle = (() => {
       const atkGens = plan.gens.map(i => G.gens[i]);
       const defGensAll = Game.gensIn(to.i, defFi === null ? undefined : defFi);
       const defGens = defGensAll.slice().sort((a, b) => (b.isLord ? 1000 : 0) + b.lead + b.war - (a.isLord ? 1000 : 0) - a.lead - a.war).slice(0, 5);
-      B = { plan, atkFi: plan.atkFi, defFi, from, to, tiles: genTerrain(to), units: [], day: 1, weather: 'sun', food: plan.food,
+      B = { plan, atkFi: plan.atkFi, defFi, from, to, tiles: genTerrain(to), units: [], day: 1, weather: 'sun', food: plan.food, defFood: Math.max(0, to.food || 0),
         playerSide: plan.atkFi === G.player ? 'atk' : 'def', gateHP: Math.round(400 + to.def * (3 + 6 * Game.siegeK(plan.atkFi))), gateMax: Math.round(400 + to.def * (3 + 6 * Game.siegeK(plan.atkFi))), wallK: Game.siegeK(plan.atkFi), log: [], sel: null, mode: 'idle', reach: null, targets: null, over: false,
         bondAtk: Game.bondOf(atkGens.map(g => g.name)), bondDef: Game.bondOf(defGens.map(g => g.name)),
         watch: !!(opts && opts.watch), smart: 0.5,
@@ -268,7 +268,7 @@ const Battle = (() => {
     const tot = side => B.units.filter(u => u.alive && u.side === side).reduce((s, u) => s + u.troops, 0);
     const an = B.atkFi === null ? '' : G.factions[B.atkFi].name, dn = B.defFi === null ? '守備隊' : G.factions[B.defFi].name;
     hud.innerHTML = `
-      <div class="b-hud-row"><span class="b-day">${B.day}<small>/${CONFIG.BATTLE_DAYS}日</small></span><span class="b-w">${WNAME[B.weather]}</span><span class="b-city">${B.to.name}攻防戦</span><span class="b-food">兵糧 ${Math.max(0, Math.round(B.food))}</span></div>
+      <div class="b-hud-row"><span class="b-day">${B.day}<small>/${CONFIG.BATTLE_DAYS}日</small></span><span class="b-w">${WNAME[B.weather]}</span><span class="b-city">${B.to.name}攻防戦</span><span class="b-food">兵糧 攻${foodDays('atk')}日 守${foodDays('def')}日</span></div>
       <div class="b-hud-row b-vs"><span style="color:${G.factions[B.atkFi].color}">攻 ${an} ${tot('atk')}</span><span>vs</span><span style="color:${B.defFi === null ? '#aaa' : G.factions[B.defFi].color}">守 ${dn} ${tot('def')}</span></div>`;
   }
   function showInfo(u) {
@@ -652,6 +652,18 @@ const Battle = (() => {
   // 戦況に応じた合戦の曲（攻め／守り／劣勢）
   function baseBgm() { Sound.bgm(B.playerSide && outlook(B.playerSide) < -0.45 ? 'crisis' : B.playerSide === 'def' ? 'defend' : 'battle'); }
   // 戦況の見通し（-1：ジリ貧で負けそう 〜 +1：このまま押し切れそう）
+  // 兵糧：あと何日もつか（これ以上は表示しない）
+  function troopsOf(side) { return B.units.filter(u => u.alive && u.side === side).reduce((s, u) => s + u.troops, 0); }
+  function foodDays(side) {
+    const f = side === 'atk' ? B.food : B.defFood;
+    return Math.max(0, Math.min(99, Math.floor(f / Math.max(1, troopsOf(side) * 0.03))));
+  }
+  // 時を待てば勝てるか：先に兵糧が尽きる（攻め手は30日の期限も）のが敵の方なら true
+  function timeOnMySide(side) {
+    const daysLeft = CONFIG.BATTLE_DAYS - B.day + 1;
+    const atkEnd = Math.min(daysLeft, foodDays('atk')), defEnd = foodDays('def');
+    return side === 'atk' ? defEnd < atkEnd : atkEnd <= defEnd;
+  }
   function outlook(side) {
     const sum = sd => B.units.filter(u => u.alive && u.side === sd).reduce((t, u) => t + u.troops * (0.5 + u.morale / 200), 0);
     const mine = sum(side), foe = sum(side === 'atk' ? 'def' : 'atk');
@@ -946,6 +958,10 @@ const Battle = (() => {
       const atkTroops = B.units.filter(u => u.alive && u.side === 'atk').reduce((s, u) => s + u.troops, 0);
       B.food -= atkTroops * 0.03;
       if (B.food <= 0) { B.units.filter(u => u.alive && u.side === 'atk').forEach(u => u.morale = Math.max(0, u.morale - 25)); addLog('攻め手の兵糧が尽きた！'); }
+      // 守り手も城の兵糧を食べる。尽きれば士気が落ちる
+      const hadDefFood = B.defFood > 0;
+      B.defFood -= troopsOf('def') * 0.03;
+      if (B.defFood <= 0) { B.defFood = 0; B.units.filter(u => u.alive && u.side === 'def').forEach(u => u.morale = Math.max(0, u.morale - 20)); if (hadDefFood) addLog('城の兵糧が尽きた！'); }
     }
     B.units.forEach(u => { if (u.alive) { u.acted = false; if (u.confused > 0) { u.confused--; if (u.confused > 0) u.acted = true; } } });
     // 包囲：大軍に囲まれた城は、5日目から守り手の士気が落ち、兵が逃げ出す（攻め手が守り手の1.8倍以上のとき）
@@ -1112,6 +1128,7 @@ const Battle = (() => {
   async function tryDuel(u, wmine) {
     if (u.gi < 0 || u.acted) return false;
     B.challenged = B.challenged || new Set();
+    if (u.charge) return chargeDuel(u);
     const bold = Game.has(u.g, '剛勇') || Game.has(u.g, '猪突');
     const timid = Game.has(u.g, '臆病') || Game.has(u.g, '慎重');
     const cands = B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && dist(o, u) === 1 && !B.challenged.has(u.gi + '-' + o.gi))
@@ -1131,6 +1148,32 @@ const Battle = (() => {
     B.challenged.add(u.gi + '-' + t.gi);
     await doDuel(u, t);
     return true;
+  }
+  // 兵糧が持たず、再び斬り込む部隊：隣の敵将に片端から一騎討ちを申し込む（1日に同じ相手へは1度）
+  async function chargeDuel(u) {
+    const t = B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && dist(o, u) === 1 && !B.challenged.has(u.gi + '-' + o.gi + '@' + B.day) && u.g.war >= o.g.war - 20)
+      .sort((a, b) => ((b.commander ? 15 : 0) - b.g.war) - ((a.commander ? 15 : 0) - a.g.war))[0];   // 総大将を優先、次に討ちやすい相手
+    if (!t) return false;
+    B.challenged.add(u.gi + '-' + t.gi + '@' + B.day);
+    await doDuel(u, t);
+    return true;
+  }
+  // 一旦退いた部隊のその後：時が味方なら離れたまま逃げ続け、敵より先に兵糧が尽きるなら再び斬り込む
+  async function afterFallback(u, foes) {
+    if (!u.fellBack || u.commander || u.charge) return false;
+    const near = Math.min(...foes.map(f => dist(f, u)));
+    if (B.day - u.fellBack < 2 && near <= 2) return false;   // 退いたばかり・まだ敵が近いうちは、いつもの立て直し
+    if (B.day - u.fellBack < 2) return 'wait';
+    if (timeOnMySide(u.side)) {
+      if (!u.kiteSaid && u.gi >= 0) { u.kiteSaid = true; bubble(u, pick(['敵の兵糧が先に尽きる。無理に戦うな、離れておれ', '待てば勝てる戦だ。距離を取れ', '追ってくるなら退け。飢えるのは向こうだ'])); addLog(`${u.g.name}隊は、敵の兵糧切れを待って距離を取り続ける`); }
+      return 'wait';
+    }
+    // 時がたつほど不利でも、すぐには出ない。兵糧（攻め手は期限も）が残り10日を切るか、離れて5日たったら斬り込む
+    const myEnd = u.side === 'atk' ? Math.min(CONFIG.BATTLE_DAYS - B.day + 1, foodDays('atk')) : foodDays('def');
+    if (myEnd > 10 && B.day - u.fellBack < 5) return 'wait';
+    u.charge = true;
+    if (u.gi >= 0) { bubble(u, pick(['兵糧が持たぬ……ならば今一度斬り込む！', '飢えて退くくらいなら、ここで決着をつける！', '敵将、出てこい！ 一騎討ちで勝負だ！'])); addLog(`${u.g.name}隊は、兵糧が尽きる前に再び斬り込んだ`); }
+    return false;
   }
   // 計略（火計・混乱）を使うか（知力と性格で決める）
   async function tryPlot(u, wmine, foes, after) {
@@ -1195,7 +1238,11 @@ const Battle = (() => {
         u.acted = true; return;
       }
     }
-    if (!rogue && await woundedFallback(u, foes)) return;
+    if (!rogue) {
+      const af = await afterFallback(u, foes);
+      if (af === 'wait') { if (await woundedFallback(u, foes, true)) return; }
+    }
+    if (!rogue && !u.charge && await woundedFallback(u, foes)) return;
     // 攻めの総大将：味方が残っているうちは最後尾につき、負けそうなら下がる。最後の1部隊になったら自ら攻める
     if (u.commander && u.side === 'atk' && !rogue) {
       const allies = B.units.filter(o => o.alive && o.side === u.side && o !== u);
@@ -1221,6 +1268,7 @@ const Battle = (() => {
       if (u.g.war >= 85 && !u.commander && tg.length) score += 6 + (Game.has(u.g, '剛勇') || Game.has(u.g, '猪突') ? 6 : 0);
       // 武勇の将は、一騎討ちを挑めそうな敵将の隣を目指す
       if (u.g.war >= 78 && !u.commander && u.gi >= 0 && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0 && o.g.war <= u.g.war + 5 && !isWeakVs(o.g, u.g); })) score += 10;
+      if (u.charge && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0; })) score += 14;
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
       // 知力の高い将（知力75以上か智謀・神算）は、門が無事なうち、門を叩く1部隊でなければ城壁の矢が届かない所で待つ
       if (gateHitter && u !== gateHitter && !tg.some(([tr, tc]) => unitAt(tr, tc))) {
@@ -1263,12 +1311,13 @@ const Battle = (() => {
     return best;
   }
   // 深手を負った部隊（兵が2割5分未満）は、味方がいれば後ろへ下がって立て直す。とどめを刺せる相手が隣にいれば討つ
-  async function woundedFallback(u, foes) {
+  async function woundedFallback(u, foes, keepAway) {
     // 攻め手は城を落とすまで手を緩めにくいので、より深手（1割5分未満）になってから下がる
-    if (u.commander || u.troops >= u.maxTroops * (u.side === 'atk' ? 0.15 : 0.25)) return false;
+    if (u.commander || (!keepAway && u.troops >= u.maxTroops * (u.side === 'atk' ? 0.15 : 0.25))) return false;
     if (u.side === 'def' && u.r <= 2) return false;   // 城内の守り手は城壁に拠って戦う
     const allies = B.units.filter(o => o.alive && o.side === u.side && o !== u);
-    if (!allies.length) return false;
+    if (!allies.length && !keepAway) return false;
+    if (!u.fellBack) u.fellBack = B.day;
     const adjKill = attackTargets(u).map(([r, c]) => unitAt(r, c)).filter(o => o && calcDamage(u, o, dist(u, o) > 1) >= o.troops);
     if (adjKill.length) { await doAttack(u, adjKill[0].r, adjKill[0].c); return true; }
     let best = null, bs = -1e9;
@@ -1323,6 +1372,7 @@ const Battle = (() => {
     else if (!atkCmd.alive) { winner = 'def'; reason = `攻めの総大将 ${atkCmd.g.name} が倒れた`; }
     else if (B.day > CONFIG.BATTLE_DAYS) { winner = 'def'; reason = '30日を守り抜いた'; }
     else if (B.food <= 0 && B.day > 3 && atkAlive.every(u => u.morale < 30)) { winner = 'def'; reason = '攻め手の兵糧が尽きた'; }
+    else if (B.defFood <= 0 && B.day > 3 && defAlive.every(u => u.morale < 30)) { winner = 'atk'; reason = '城の兵糧が尽き、城門が開かれた'; }
     if (!winner) return false;
     B.over = true; B.mode = 'busy'; setActions([]); updateHUD();
     const pWin = winner === B.playerSide;
@@ -1336,7 +1386,7 @@ const Battle = (() => {
       defLeft: B.units.filter(u => u.side === 'def' && u.src == null).reduce((s, u) => s + u.troops, 0) + (B.reserve || 0),
       captured: B.units.filter(u => u.gi >= 0 && u.status === 'captured').map(u => u.gi),
       killed: B.units.filter(u => u.gi >= 0 && u.status === 'killed').map(u => u.gi),
-      days: B.day, turncoats: B.turncoats || [],
+      days: B.day, turncoats: B.turncoats || [], defFood: Math.round(Math.max(0, B.defFood)),
     };
     // 市民兵は戦が終われば町へ帰る。守り切ったら、生き残りの半分が兵に志願する
     if (!res.atkWin) res.defLeft += Math.round(B.units.filter(u => u.militia && u.alive).reduce((s, u) => s + u.troops, 0) / 2);
