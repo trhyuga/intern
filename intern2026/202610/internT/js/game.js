@@ -783,6 +783,8 @@ const AI = {
     const army = sorted.filter(g => !(g.isLord && c.i === f.capital && sorted.length > 2 && g !== brave)).slice(0, 5);
     if (brave && !army.includes(brave)) { army.pop(); army.unshift(brave); }
     if (!army.length) return null;
+    // 総大将（先頭）：見立て役が賢い勢力は、統率が高く猪突でない将を選ぶ（猛将が自ら出るときはその将）
+    if (!brave && q >= 0.45) { const sc = g => g.lead * 1.2 + g.war * 0.5 + g.int * 0.3 - (Game.has(g, '猪突') ? 25 : 0) - (Game.has(g, '臆病') ? 15 : 0); army.sort((a, b) => sc(b) - sc(a)); }
     // 守備兵を残す：前線4000・今の兵の3割・隣の敵（攻め先以外）の最大兵力の半分、のうち多い数
     let maxEnemy = 0;
     c.adj.forEach(a => { const o = G.cities[a]; if (a !== best.i && o.owner !== null && o.owner !== fi && !Game.isAlly(fi, o.owner)) maxEnemy = Math.max(maxEnemy, o.troops); });
