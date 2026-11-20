@@ -1058,7 +1058,7 @@ const Auto = (() => {
   async function forwardBig(br) {
     for (const c of Game.citiesOf(G.player)) {
       if (stopReq) return;
-      if (c.troops < (phase().stage === 'late' ? 30000 : BIG_ARMY) || Game.isFront(c)) continue;   // 終盤は3万から前線へ回す
+      if (c.troops < (br.style === 'civil' ? 40000 : 30000) || Game.isFront(c)) continue;   // 兵3万（内政型は4万）以上の後方の都市は、前線へ回す
       // 地続きで、いちばん近い前線の都市
       const dist = { [c.i]: 0 }, q = [c.i]; let to = null;
       while (q.length && !to) { const x = q.shift(); for (const a of G.cities[x].adj) { if (dist[a] != null || G.cities[a].owner !== G.player) continue; dist[a] = dist[x] + 1; if (Game.isFront(G.cities[a])) { to = G.cities[a]; break; } q.push(a); } }
@@ -1094,6 +1094,26 @@ const Auto = (() => {
         shown++;
       } else if (gain) UI.toast(`${g.name} 修行で${NM[k]} +${gain}`, 1600);
     }
+  }
+  // 兵が多いのに攻めない季節は、その理由を軍師が言う（いちばん兵の多い都市で考える）
+  function holdReason(br) {
+    const c = Game.citiesOf(G.player).sort((a, b) => b.troops - a.troops)[0];
+    if (!c || c.troops < 20000) return null;
+    const L = strategist().isLord;
+    const n = fmt(c.troops);
+    if (!Game.isFront(c)) return L ? `${c.name}の兵${n}は敵と接しておらぬ。季節の終わりに前線へ送れ。` : `${c.name}の兵${n}は敵と接していません。季節の終わりに前線へ送ります。`;
+    const ts = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner)));
+    if (!ts.length) return L ? `${c.name}の隣は同盟国ばかりで、攻める相手がおらぬ。` : `${c.name}の隣は同盟国ばかりで、攻める相手がおりません。`;
+    const army = Game.gensIn(c.i, G.player).filter(g => !g.isLord).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+    if (!army.length) return L ? `${c.name}には兵を率いる将がおらぬ。` : `${c.name}には兵を率いる将がおりません。将を回します。`;
+    const best = ts.map(t => { const keep = garrison(c, br, t.i), send = Math.max(0, Math.min(c.troops - keep, army.reduce((s2, g) => s2 + Game.troopCap(g), 0))); return { t, keep, send, ratio: send * atkFactor(c, army) / Math.max(1, defPower(t)) }; }).sort((a, b) => b.ratio - a.ratio)[0];
+    const keepNote = best.keep > c.troops * 0.4 ? `隣の大軍に備えて${fmt(best.keep)}を守りに残すと、出せるのは${fmt(best.send)}。` : '';
+    return L ? `${keepNote}${best.t.name}を攻めても勝ち目は${best.ratio.toFixed(2)}倍ほど。${wantNow(br).toFixed(2)}倍には足りぬ。兵を鍛えて機を待て。`
+             : `${keepNote}いちばん取りやすい${best.t.name}でも、勝ち目は${best.ratio.toFixed(2)}倍ほど。${wantNow(br).toFixed(2)}倍には届きません。兵を鍛えて機を待ちます。`;
+  }
+  async function sayText(text) {
+    const g = strategist(); if (!g) return;
+    await UI.talk(g, 'normal', `${title(g)}${g.name}「${text}」`, facColor(g), { tag: g.isLord ? '君主の采配' : '軍師' });
   }
   async function doLogistics(br) {
     const cities = Game.citiesOf(G.player);
@@ -1205,7 +1225,7 @@ const Auto = (() => {
     }
     // 出陣
     let sorties = 0;
-    if (!armies.length) await say('hold');
+    if (!armies.length) { const why = holdReason(br); if (why) await sayText(why); else await say('hold'); }
     for (const a of armies) {
       if (stopReq) return false;
       const { p } = a;
