@@ -940,15 +940,7 @@ const Auto = (() => {
     await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan }, attacks.length ? 'angry' : 'normal');
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
-    await doDiplo(br, new Set(attacks.map(p => p.army).flat().map(x => x.i))); if (stopReq) return false;
-    // 降伏で味方になった都市への出陣は取りやめ
-    for (let k = attacks.length - 1; k >= 0; k--) if (attacks[k].t.owner === G.player) attacks.splice(k, 1);
-    const armies0 = attacks.map(p => p.army).flat();
-    await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
-    await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
-    await eventSeek(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
-    await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
-    await doLogistics(br); if (stopReq) return false;
+    // 出陣は季節の最初に（将・兵・兵糧を寄せてから攻める。内政や輸送はそのあと）
     // 出陣する武将はあらかじめ取っておく
     const armies = attacks.map(p => ({ p, army: p.army, troops: p.troops }));
     const reserved = new Set(armies.flatMap(a => a.army.map(x => x.i)));
@@ -978,42 +970,6 @@ const Auto = (() => {
       armies.push({ p: bp, army: bp.army, troops: bp.troops });
       bp.army.forEach(x => reserved.add(x.i));
     }
-    // 内政
-    for (const c of Game.citiesOf(G.player)) {
-      if (stopReq) return false;
-      const idleBefore = Game.gensIn(c.i, G.player).filter(x => !x.acted && !reserved.has(x.i));
-      if (!idleBefore.length) continue;
-      reserved.forEach(i => G.gens[i].acted = true); // 一時的に除外
-      const jobs = planCity(c, br);
-      reserved.forEach(i => G.gens[i].acted = false);
-      let first = true;
-      for (let [gen, cmd] of jobs) {
-        if (stopReq) return false;
-        if (reserved.has(gen.i)) continue;
-        // 実行の直前にもう一度確かめる（見込みと結果のずれ対策）
-        if (cmd === 'draft' && c.loyal < 50) cmd = c.food - 1500 > Game.foodReserve(c) && c.loyal < 95 ? 'alms' : (c.train < 95 && c.troops >= 2000 ? 'train' : null);
-        if (cmd === 'train' && c.train >= 100) cmd = null;
-        if (!cmd) continue;
-        await press(c.i, cmd === 'search' ? 'per' : ['draft', 'train'].includes(cmd) ? 'mil' : 'dom', `[data-cmd=${cmd}]`);
-        if (first || Math.random() < 0.35) { await say('dom', { city: c.name, need: NEED_NAME[cmd], gen: gen.name }); first = false; }
-        const r = Game.doCommand(cmd, gen, c);
-        gen.acted = true;
-        if (r.found) {
-          r.found.known = true;
-          await UI.talk(gen, 'happy', `${gen.name}「在野に${r.found.name}という人物がおりました」`);
-          await say('rec', { gen: r.found.name });
-          await App.doRecruit(gen, r.found);
-        } else {
-          Sound.se(r.ok ? ({ farm: 'farm', comm: 'coin', wall: 'build', alms: 'alms', draft: 'draft', train: 'train' }[cmd] || 'ok') : 'ng');
-          if (r.ok && r.grade === 'great') setTimeout(() => Sound.se('great'), 380);
-          await UI.talk(gen, r.ok ? r.expr : 'sad', `${gen.name}「${r.ok ? (r.say || line(gen, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd)) : line(gen, 'fail')}」\n<b>${r.msg}</b>`);
-        }
-        App.refresh();
-      }
-    }
-    await sendTrained(br); if (stopReq) return false;
-    await doLogistics(br); if (stopReq) return false;
-    await forwardBig(br); if (stopReq) return false;
     // 出陣
     if (!armies.length) await say('hold');
     for (const a of armies) {
@@ -1083,6 +1039,52 @@ const Auto = (() => {
       const r = await App.executeBattle({ atkFi: G.player, from: p.c.i, to: p.t.i, gens: army.map(x => x.i), troops, food }, 'watch');
       if (r === 'end') return false;
     }
+    UI.closeSheet();
+    await doDiplo(br, new Set(attacks.map(p => p.army).flat().map(x => x.i))); if (stopReq) return false;
+    // 降伏で味方になった都市への出陣は取りやめ
+    for (let k = attacks.length - 1; k >= 0; k--) if (attacks[k].t.owner === G.player) attacks.splice(k, 1);
+    const armies0 = attacks.map(p => p.army).flat();
+    await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
+    await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
+    await eventSeek(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
+    await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
+    await doLogistics(br); if (stopReq) return false;
+    // 内政
+    for (const c of Game.citiesOf(G.player)) {
+      if (stopReq) return false;
+      const idleBefore = Game.gensIn(c.i, G.player).filter(x => !x.acted && !reserved.has(x.i));
+      if (!idleBefore.length) continue;
+      reserved.forEach(i => G.gens[i].acted = true); // 一時的に除外
+      const jobs = planCity(c, br);
+      reserved.forEach(i => G.gens[i].acted = false);
+      let first = true;
+      for (let [gen, cmd] of jobs) {
+        if (stopReq) return false;
+        if (reserved.has(gen.i)) continue;
+        // 実行の直前にもう一度確かめる（見込みと結果のずれ対策）
+        if (cmd === 'draft' && c.loyal < 50) cmd = c.food - 1500 > Game.foodReserve(c) && c.loyal < 95 ? 'alms' : (c.train < 95 && c.troops >= 2000 ? 'train' : null);
+        if (cmd === 'train' && c.train >= 100) cmd = null;
+        if (!cmd) continue;
+        await press(c.i, cmd === 'search' ? 'per' : ['draft', 'train'].includes(cmd) ? 'mil' : 'dom', `[data-cmd=${cmd}]`);
+        if (first || Math.random() < 0.35) { await say('dom', { city: c.name, need: NEED_NAME[cmd], gen: gen.name }); first = false; }
+        const r = Game.doCommand(cmd, gen, c);
+        gen.acted = true;
+        if (r.found) {
+          r.found.known = true;
+          await UI.talk(gen, 'happy', `${gen.name}「在野に${r.found.name}という人物がおりました」`);
+          await say('rec', { gen: r.found.name });
+          await App.doRecruit(gen, r.found);
+        } else {
+          Sound.se(r.ok ? ({ farm: 'farm', comm: 'coin', wall: 'build', alms: 'alms', draft: 'draft', train: 'train' }[cmd] || 'ok') : 'ng');
+          if (r.ok && r.grade === 'great') setTimeout(() => Sound.se('great'), 380);
+          await UI.talk(gen, r.ok ? r.expr : 'sad', `${gen.name}「${r.ok ? (r.say || line(gen, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd)) : line(gen, 'fail')}」\n<b>${r.msg}</b>`);
+        }
+        App.refresh();
+      }
+    }
+    await sendTrained(br); if (stopReq) return false;
+    await doLogistics(br); if (stopReq) return false;
+    await forwardBig(br); if (stopReq) return false;
     UI.closeSheet();
     return true;
   }
