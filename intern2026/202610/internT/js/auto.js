@@ -250,7 +250,15 @@ const Auto = (() => {
   function defPower(t) {
     const def = Game.gensIn(t.i).slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
     const gf = def.length ? (0.6 + (avg(def, 'lead') * 0.6 + avg(def, 'war') * 0.4) / 100) : 0.85;
-    return t.troops * (0.5 + t.train / 200) * gf * (1.15 + t.def / 2500);
+    // 城壁の効き目と、隣の都市・同盟国から来そうな援軍も見込む（AI.autoBattle と同じ考え方）
+    let help = 0;
+    if (t.owner !== null) {
+      const near = fi => t.adj.map(a => G.cities[a]).filter(c => c.owner === fi).sort((a, b) => b.troops - a.troops)[0];
+      const own = near(t.owner);
+      if (own && own.troops >= 4000) help += Math.min(own.troops - 1500, own.troops * 0.4) * 0.85;
+      Object.keys(G.factions[t.owner].allies).map(Number).forEach(fi => { if (fi !== G.player && G.factions[fi].alive && Game.isAlly(t.owner, fi) && !Game.isAlly(G.player, fi)) { const c = near(fi); if (c && c.troops >= 5000) help += c.troops * 0.4 * 0.55; } });
+    }
+    return (t.troops * (1.15 + t.def / 1200) + help * 0.6) * (0.5 + t.train / 200) * gf;
   }
   // 1つの攻め先について、連れていく武将と兵を決める。勝ち目が足りなければ null
   function evalAttack(c, t, br) {
@@ -972,7 +980,7 @@ const Auto = (() => {
         } else {
           Sound.se(r.ok ? ({ farm: 'farm', comm: 'coin', wall: 'build', alms: 'alms', draft: 'draft', train: 'train' }[cmd] || 'ok') : 'ng');
           if (r.ok && r.grade === 'great') setTimeout(() => Sound.se('great'), 380);
-          await UI.talk(gen, r.ok ? r.expr : 'sad', `${gen.name}「${r.ok ? line(gen, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd) : line(gen, 'fail')}」\n<b>${r.msg}</b>`);
+          await UI.talk(gen, r.ok ? r.expr : 'sad', `${gen.name}「${r.ok ? (r.say || line(gen, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd)) : line(gen, 'fail')}」\n<b>${r.msg}</b>`);
         }
         App.refresh();
       }

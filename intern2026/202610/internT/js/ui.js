@@ -311,7 +311,7 @@ const App = {
       if (r.ok) g.acted = true;
       Sound.se(r.ok ? ({ farm: 'farm', comm: 'coin', wall: 'build', alms: 'alms', draft: 'draft', train: 'train' }[cmd] || 'ok') : 'ng');
       if (r.ok && r.grade === 'great') setTimeout(() => Sound.se('great'), 380);
-      await UI.talk(g, r.ok ? r.expr : 'sad', `${g.name}「${r.ok ? line(g, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd) : line(g, 'fail')}」\n<b>${r.msg}</b>`);
+      await UI.talk(g, r.ok ? r.expr : 'sad', `${g.name}「${r.ok ? (r.say || line(g, r.grade && r.grade !== 'normal' ? cmd + '_' + r.grade : cmd)) : line(g, 'fail')}」\n<b>${r.msg}</b>`);
       App.refresh(); return App.openCity(c.i);
     }
     switch (cmd) {
@@ -327,7 +327,7 @@ const App = {
           r.found.known = true;
           await UI.talk(g, 'happy', `${g.name}「殿、${r.found.name}という人物を見つけました」`);
           if (await UI.confirm(`${r.found.name}を登用しますか？（使者：${g.name}）`)) await App.doRecruit(g, r.found);
-        } else await UI.talk(g, r.expr, `${g.name}「${r.ok ? line(g, 'search') : line(g, 'fail')}」\n<b>${r.msg}</b>`);
+        } else await UI.talk(g, r.expr, `${g.name}「${r.ok ? (r.say || line(g, 'search')) : line(g, 'fail')}」\n<b>${r.msg}</b>`);
         App.refresh(); return App.openCity(c.i);
       }
       case 'recruit': {

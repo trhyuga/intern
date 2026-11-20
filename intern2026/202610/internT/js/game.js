@@ -483,6 +483,7 @@ const Game = {
       g.loyalty = clamp(g.loyalty + drift, 0, 100);
     });
     ev.push(...Game.checkRebellion());
+    ev.push(...Game.checkIndependence());
 
     // 季節を進める
     G.season++; G.turn++;
@@ -515,6 +516,49 @@ const Game = {
       Game.log(`${g.name}が${c.name}で謀反を起こし、独立した！`);
       ev.push({ type: oldF === G.player ? 'warn' : 'info', msg: `${g.name}が${G.factions[oldF].name}に背き、${c.name}で独立した！`, gen: g.i, expr: 'angry', city: c.i, line: line(g, 'rebel') });
     });
+    return ev;
+  },
+
+  // 天下の半分以上を治めると、忠誠の低い太守が独立することがある（季節に1件まで、2季節あける）
+  // 独立した都市は兵が3倍になり、近くの在野武将が3人まで加わる
+  checkIndependence() {
+    const ev = [], pf = G.player;
+    const mineN = Game.citiesOf(pf).length;
+    if (mineN * 2 < G.cities.length) return ev;
+    const now = G.year * 4 + G.season;
+    if (G.events.indepAt != null && now - G.events.indepAt < 2) return ev;
+    const lord = Game.lordOf(pf), cap = G.factions[pf].capital;
+    const cand = [];
+    Game.citiesOf(pf).forEach(c => {
+      if (c.i === cap || c.i === lord.city) return;
+      const gs = Game.gensIn(c.i, pf).filter(g => !g.isLord);
+      if (!gs.length) return;
+      const gov = gs.sort((a, b) => (b.lead + b.war + b.int + b.pol) - (a.lead + a.war + a.int + a.pol))[0];   // 太守：その都市でいちばん格上の武将
+      if (Game.has(gov, '忠義') || gov.loyalty >= 60 || gov.i === G.strategist) return;
+      const p = (60 - gov.loyalty) / 80 + (Game.has(gov, '野心') ? 0.15 : 0) + (c.loyal < 50 ? 0.05 : 0);
+      cand.push({ c, gov, p });
+    });
+    const hit = cand.sort((a, b) => b.p - a.p).find(x => Math.random() < x.p);
+    if (!hit) return ev;
+    const { c, gov: g } = hit;
+    G.events.indepAt = now;
+    const say = line(g, 'indep');   // 主君の名が入るので、勢力を移る前に
+    const nf = { i: G.factions.length, name: g.name, color: '#' + (0x404040 + Math.floor(Math.random() * 0x9f9f9f)).toString(16).padStart(6, '0'), lord: g.i, alive: true, capital: c.i, allies: {}, isPlayer: false, hostility: { [pf]: 60 } };
+    G.factions.push(nf);
+    g.faction = nf.i; g.isLord = true; g.loyalty = 100;
+    c.owner = nf.i;
+    // 同じ都市の、忠誠の低い武将はついていく。残りは本拠へ
+    const followers = [];
+    Game.gensIn(c.i, pf).forEach(h => { if (h.loyalty < 60 && !Game.has(h, '忠義')) { h.faction = nf.i; h.loyalty = irnd(70, 90); followers.push(h.name); } else h.city = cap; });
+    // すぐに潰されないように：兵は3倍、蓄えも足す
+    c.troops = Math.max(3000, c.troops * 3); c.food = Math.max(c.food, Math.round(c.troops * 1.5)); c.gold += 500; c.loyal = Math.max(c.loyal, 60);
+    // 在野の武将が3人まで加わる（同じ都市→隣の都市→どこでも）
+    const ronin = G.gens.filter(x => x.state === 'ronin' && x.name !== '諸葛亮')
+      .sort((a, b) => (a.city === c.i ? 0 : c.adj.includes(a.city) ? 1 : 2) - (b.city === c.i ? 0 : c.adj.includes(b.city) ? 1 : 2) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, 3);
+    ronin.forEach(x => { Game.joinFaction(x, nf.i, c.i); x.loyalty = irnd(75, 95); });
+    Game.log(`${g.name}が${c.name}で独立した！`);
+    const extra = [followers.length ? `${followers.join('・')}がついていった` : '', ronin.length ? `在野の${ronin.map(x => x.name).join('・')}が馳せ参じた` : ''].filter(Boolean).join('。');
+    ev.push({ type: 'warn', msg: `大きくなりすぎた国に、ひびが入り始めた。\n${g.name}が${G.factions[pf].name}軍に背き、${c.name}で独立した！\n兵 ${fmt(c.troops)}。${extra}`, gen: g.i, expr: 'angry', city: c.i, line: say, tag: '独立' });
     return ev;
   },
 

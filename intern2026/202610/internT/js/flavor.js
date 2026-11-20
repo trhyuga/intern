@@ -1,0 +1,282 @@
+// ============================================================
+//  土地柄・名場面・ユーモア
+//  ・土地ごとの名産や気風：内政のときに特別な効果と台詞が出る（Game.doCommand を包む）
+//  ・故郷の武将：生まれた土地で内政をすると、土地の人が力を貸す
+//  ・流言：土地柄によって効き方と知らせが変わる（Game.plotRumor を包む）
+//  ・演義の名場面・名台詞のイベント（Events._HIST に足す）
+//  ・台詞の追加（ありがちな台詞の種類と、思わずにやりとする台詞）
+//  ※名産・気風は史書・演義のイメージをもとにしたゲーム上の味付け
+// ============================================================
+const Flavor = (() => {
+  const capV = v => clamp(Math.round(v), 1, 100);
+  const up = (g, k, v) => { g[k] = capV(g[k] + v); };
+  const pctUp = (c, k, mk, r) => { const b = c[k]; c[k] = Math.max(0, Math.min(c[mk], Math.round(c[k] + c[mk] * r))); return c[k] - b; };
+  const gn = n => G.gens.find(g => g.name === n);
+  const serving = n => { const g = gn(n); return g && g.state === 'serve' ? g : null; };
+  const facOf = n => { const g = serving(n); return g ? g.faction : -1; };
+  const facByLord = n => G.factions.findIndex(f => f.alive && Game.lordOf(f.i) && Game.lordOf(f.i).name === n);
+  const sameFac = (...ns) => { const f = facOf(ns[0]); return f >= 0 && ns.every(n => facOf(n) === f) ? f : -1; };
+  const nearPerson = (n1, n2) => { const a = serving(n1), b = serving(n2); return !!(a && b && a.faction !== b.faction && G.cities[a.city].adj.includes(b.city)); };
+
+  // ---------------- 土地柄（内政） ----------------
+  // cmd: その命令のとき p の確率で起きる。run は効果を加えて { msg, say } を返す
+  const LOCAL = {
+    chengdu: [
+      { cmd: 'comm', p: 0.4, tag: '蜀錦', run: c => { const v = pctUp(c, 'comm', 'commMax', 0.05); c.gold += 80; return { msg: `蜀錦の織り手たちが張り切った。商業さらに +${v}、金 +80`, say: '蜀の錦は天下一品。都の商人が目の色を変えて買っていきます' }; } },
+      { cmd: 'farm', p: 0.3, tag: '天府の国', run: c => { const v = pctUp(c, 'farm', 'farmMax', 0.05); return { msg: `肥えた盆地の土が応えた。農業さらに +${v}`, say: 'さすがは天府の国。種を蒔けば勝手に育つほどです' }; } },
+    ],
+    jiangzhou: [{ cmd: 'comm', p: 0.3, tag: '長江の水運', run: c => { c.gold += 120; return { msg: '長江を下る荷船で賑わった。金 +120', say: '川を下る船が、毎日銭を運んでくれます' }; } }],
+    zitong: [{ cmd: 'wall', p: 0.45, tag: '剣閣の険', run: c => { const v = pctUp(c, 'def', 'defMax', 0.06); return { msg: `切り立った崖をそのまま守りに使った。城壁さらに +${v}`, say: '一人が関を守れば、万人も開けず。この険しさこそ最大の城壁です' }; } }],
+    hanzhong: [
+      { cmd: 'alms', p: 0.5, tag: '五斗米道', run: c => { c.loyal = Math.min(100, c.loyal + 5); c.food += 500; return { msg: '五斗米道の信者たちが義舎の米を足してくれた。民忠さらに +5、兵糧 +500', say: '道すがらに米と肉を置く義舎の習わしが、まだ生きておりました' }; } },
+      { cmd: 'farm', p: 0.25, tag: '漢水の谷', run: c => { const v = pctUp(c, 'farm', 'farmMax', 0.04); return { msg: `漢水の谷あいに新しい田が開けた。農業さらに +${v}`, say: '山に囲まれておりますが、谷の土はよく肥えております' }; } },
+    ],
+    shangyong: [{ cmd: 'wall', p: 0.35, tag: '山城', run: c => { const v = pctUp(c, 'def', 'defMax', 0.05); return { msg: `山の地形を生かして守りを固めた。城壁さらに +${v}`, say: '攻めるに難く、守るに易い。ここは山そのものが砦です' }; } }],
+    wuwei: [
+      { cmd: 'train', p: 0.45, tag: '涼州の騎兵', run: c => { c.train = Math.min(100, c.train + 5); return { msg: '涼州の荒馬を乗りこなす兵が育った。訓練さらに +5', say: '馬は生まれたときから隣にいる。ここの兵は馬上で育ちます' }; } },
+      { cmd: 'draft', p: 0.35, tag: '羌族の勇士', run: c => { const v = irnd(400, 900); c.troops += v; return { msg: `羌族の若者が兵に加わった。兵さらに +${fmt(v)}`, say: '羌の者たちは勇敢です。信を示せば、命を預けてくれます' }; } },
+    ],
+    tianshui: [{ cmd: 'train', p: 0.4, tag: '西涼の気風', run: c => { c.train = Math.min(100, c.train + 4); return { msg: '荒々しい西涼の気風が兵を鍛えた。訓練さらに +4', say: '風も土も厳しい土地です。そのぶん兵は強くなる' }; } }],
+    anding: [{ cmd: 'draft', p: 0.35, tag: '辺境の兵', run: c => { const v = irnd(300, 800); c.troops += v; return { msg: `辺境暮らしで鍛えた男たちが集まった。兵さらに +${fmt(v)}`, say: '国境の暮らしは、そのまま戦の稽古のようなものです' }; } }],
+    changan: [{ cmd: 'comm', p: 0.35, tag: '西の都', run: c => { const v = pctUp(c, 'comm', 'commMax', 0.04); c.gold += 60; return { msg: `西域からの隊商が市に立ち寄った。商業さらに +${v}、金 +60`, say: '西の果てから来た商人が、見たこともない品を並べております' }; } }],
+    luoyang: [
+      { cmd: 'search', p: 0.3, tag: '太学', run: c => { const r = G.gens.find(g => g.state === 'ronin' && !g.known && c.adj.includes(g.city)); if (!r) return null; r.city = c.i; r.known = true; return { msg: `太学の学者のつてで、在野の${r.name}が${c.name}を訪ねてきた（登用できる）`, say: '学問の都には、人のつながりも集まるものです' }; } },
+      { cmd: 'alms', p: 0.35, tag: '旧都の民', run: c => { c.loyal = Math.min(100, c.loyal + 4); return { msg: '戦乱で荒れた都の民が涙を流して喜んだ。民忠さらに +4', say: 'かつての都も、焼け跡ばかり……。少しでも元に戻してやりたい' }; } },
+    ],
+    xuchang: [{ cmd: 'farm', p: 0.4, tag: '屯田', run: c => { const v = pctUp(c, 'farm', 'farmMax', 0.05); c.food += 800; return { msg: `兵と流民に荒れ地を耕させた。農業さらに +${v}、兵糧 +800`, say: '兵も手が空けば鍬を持つ。屯田の仕組みは実によくできております' }; } }],
+    ye: [{ cmd: 'comm', p: 0.3, tag: '河北の大都', run: c => { c.gold += 100; return { msg: '河北一の大都の市が賑わった。金 +100', say: '人も物も多い。鄴の市は、いつ来ても人で溢れております' }; } }],
+    nanpi: [{ cmd: 'comm', p: 0.4, tag: '海の塩', run: c => { c.gold += 130; return { msg: '浜で焼いた塩がよく売れた。金 +130', say: '海の塩は、どこへ持っていっても売れます' }; } }],
+    beihai: [{ cmd: 'comm', p: 0.35, tag: '海の塩', run: c => { c.gold += 110; return { msg: '塩田の塩を売りさばいた。金 +110', say: '潮風の匂いは、銭の匂いでもあります' }; } }],
+    guangling: [{ cmd: 'comm', p: 0.35, tag: '淮南の塩', run: c => { c.gold += 110; return { msg: '塩と魚の商いが伸びた。金 +110', say: '塩と魚があれば、この町は食べていけます' }; } }],
+    shouchun: [{ cmd: 'farm', p: 0.4, tag: '淮南の米', run: c => { const v = pctUp(c, 'farm', 'farmMax', 0.05); return { msg: `淮水の水が田を潤した。農業さらに +${v}`, say: '淮南の米は天下の台所を支えております' }; } }],
+    jianye: [{ cmd: 'comm', p: 0.35, tag: '江南の港', run: c => { c.gold += 120; return { msg: '江南の港に船が集まった。金 +120', say: '川と海の両方から船が来る。商いにはこれ以上ない場所です' }; } }],
+    wu: [{ cmd: 'farm', p: 0.35, tag: '江南の水田', run: c => { const v = pctUp(c, 'farm', 'farmMax', 0.05); return { msg: `水郷の田が実った。農業さらに +${v}`, say: '水が豊かなので、稲がよく育ちます' }; } }],
+    kuaiji: [{ cmd: 'draft', p: 0.3, tag: '山越', run: c => { const v = irnd(500, 1200); c.troops += v; c.loyal = Math.max(0, c.loyal - 2); return { msg: `山越の民を兵に組み入れた。兵さらに +${fmt(v)}、民忠 -2`, say: '山の民は手強いが、味方にすれば頼もしい' }; } }],
+    chaisang: [{ cmd: 'train', p: 0.45, tag: '水軍の調練', run: c => { c.train = Math.min(100, c.train + 5); return { msg: '鄱陽の湖で水軍の調練を行った。訓練さらに +5', say: '揺れる船の上で戦えてこそ、江東の兵です' }; } }],
+    lujiang: [{ cmd: 'train', p: 0.3, tag: '江の兵', run: c => { c.train = Math.min(100, c.train + 3); return { msg: '江を渡る稽古を重ねた。訓練さらに +3', say: '泳げぬ者は、ここでは兵になれません' }; } }],
+    jiangling: [{ cmd: 'farm', p: 0.35, tag: '荊州の倉', run: c => { c.food += 1500; return { msg: '荊州の米が倉に積み上がった。兵糧 +1,500', say: '江陵の倉は荊州の胃袋。いつでも満たしておかねば' }; } }],
+    xiangyang: [{ cmd: 'search', p: 0.35, tag: '荊州の名士', run: c => { const r = G.gens.find(g => g.state === 'ronin' && !g.known && (g.city === c.i || c.adj.includes(g.city))); if (!r) return null; r.city = c.i; r.known = true; return { msg: `名士の集いで、在野の${r.name}の噂を聞いた（登用できる）`, say: '襄陽には、世を避けて暮らす賢者が多いと聞きます' }; } }],
+    jiangxia: [{ cmd: 'wall', p: 0.3, tag: '水の砦', run: c => { const v = pctUp(c, 'def', 'defMax', 0.04); return { msg: `川に杭を打って水の砦とした。城壁さらに +${v}`, say: '川そのものを堀にしてしまえばよいのです' }; } }],
+    changsha: [{ cmd: 'alms', p: 0.3, tag: '湘水の民', run: c => { c.loyal = Math.min(100, c.loyal + 3); return { msg: '湘水のほとりの村々に施しが行き届いた。民忠さらに +3', say: '南の民は情に厚い。恩は忘れません' }; } }],
+    wuling: [{ cmd: 'draft', p: 0.3, tag: '武陵の蛮族', run: c => { const v = irnd(400, 900); c.troops += v; return { msg: `武陵の山の民が兵に志願した。兵さらに +${fmt(v)}`, say: '山を駆ける足の速さは、平地の兵の比ではありません' }; } }],
+    jianning: [{ cmd: 'draft', p: 0.4, tag: '南中の勇士', run: c => { const v = irnd(600, 1400); c.troops += v; return { msg: `南中の勇士が集まった。兵さらに +${fmt(v)}`, say: '藤の鎧に身を包んだ勇士たち。頼もしい限りです' }; } }],
+    yunnan: [{ cmd: 'train', p: 0.35, tag: '象の兵', run: c => { c.train = Math.min(100, c.train + 5); return { msg: '南方の象を戦に慣らした。訓練さらに +5', say: '象に乗った兵など、北の者は見たこともないでしょう' }; } }],
+    jinyang: [{ cmd: 'wall', p: 0.35, tag: '并州の鉄', run: c => { const v = pctUp(c, 'def', 'defMax', 0.05); return { msg: `山で採れる鉄で門を補強した。城壁さらに +${v}`, say: '鉄の門は、火でも槌でも簡単には破れません' }; } }],
+    wan: [{ cmd: 'train', p: 0.3, tag: '南陽の鉄', run: c => { c.train = Math.min(100, c.train + 4); return { msg: '南陽の鍛冶が良い武具を打った。訓練さらに +4', say: '良い鉄は良い刃に、良い刃は良い兵になります' }; } }],
+    runan: [{ cmd: 'search', p: 0.35, tag: '月旦評', run: c => { const r = G.gens.find(g => g.state === 'ronin' && !g.known); if (!r) return null; r.known = true; return { msg: `月ごとの人物評で、在野の${r.name}（${G.cities[r.city].name}）の名が上がった（所在が分かった）`, say: '汝南の人物評は、天下の人材の番付のようなものです' }; } }],
+    qiao: [{ cmd: 'draft', p: 0.3, tag: '譙の若者', run: c => { const v = irnd(300, 700); c.troops += v; return { msg: `曹家・夏侯家ゆかりの若者が集まった。兵さらに +${fmt(v)}`, say: 'この辺りは武門の家が多い。若者も血の気が多くて困ります' }; } }],
+    chenliu: [{ cmd: 'draft', p: 0.3, tag: '挙兵の地', run: c => { const v = irnd(300, 700); c.troops += v; return { msg: `「天下のために立つ者はいないか」の声に人が集まった。兵さらに +${fmt(v)}`, say: '義兵を募る檄文は、この町から天下に飛んだと聞きます' }; } }],
+    beiping: [{ cmd: 'train', p: 0.4, tag: '白馬の騎兵', run: c => { c.train = Math.min(100, c.train + 5); return { msg: '北辺の騎射の稽古で兵が引き締まった。訓練さらに +5', say: '白馬をそろえれば、敵は遠くからでも震え上がります' }; } }],
+    xiangping: [{ cmd: 'farm', p: 0.3, tag: '遼東の地', run: c => { const v = pctUp(c, 'farm', 'farmMax', 0.04); return { msg: `寒さに強い作物を植えた。農業さらに +${v}`, say: '冬は長いが、夏の実りは力強い土地です' }; } }],
+    yongan: [{ cmd: 'wall', p: 0.3, tag: '白帝城', run: c => { const v = pctUp(c, 'def', 'defMax', 0.05); return { msg: `長江の峡谷を見下ろす城を固めた。城壁さらに +${v}`, say: '三峡の入口。ここを抜かれれば蜀は丸裸です' }; } }],
+    xiaopei: [{ cmd: 'wall', p: 0.25, tag: '小さな城', run: c => { const v = pctUp(c, 'def', 'defMax', 0.04); return { msg: `小さな城を補ってやった。城壁さらに +${v}`, say: '小沛は小さい。小さいなりに、隙のない城にいたします' }; } }],
+  };
+  // 地勢ごと（土地に名産がないとき、ときどき）
+  const TERRAIN = {
+    river: { farm: ['川の水を引き込みました。水が多すぎて困るくらいです'], comm: ['船着き場を広げました。荷が早く届きます'], wall: ['川の流れを堀に引き込みました'] },
+    mount: { farm: ['山の斜面に段々の畑を作りました。足腰が鍛えられます'], comm: ['山道を広げました。これで荷車がすれ違えます'], wall: ['石は山ほどあります。文字通り'] },
+    plain: { farm: ['見渡す限りの平野。耕しがいがあります'], comm: ['四方から道が集まる土地です。人の行き来が絶えません'], wall: ['平野の城は、壁だけが頼りです'] },
+  };
+  // 故郷で内政をした武将
+  const HOME_SAY = {
+    farm: ['この畑で、子どものころ泥だらけになって遊んだものです', '故郷の土は、手に馴染みます'],
+    comm: ['市の顔ぶれは昔のまま。皆、値を負けてくれました', '幼なじみの商人が、喜んで力を貸してくれました'],
+    wall: ['この城壁に登って、よく叱られたものです', '故郷の城です。一つの隙もなく直します'],
+    alms: ['故郷の皆の顔を見て、胸が熱くなりました', '「立派になったな」と、村の年寄りに泣かれてしまいました'],
+    draft: ['同郷の者たちが「あんたのためなら」と集まってくれました', '昔の遊び仲間が、そろって兵になると言ってくれました'],
+    train: ['同郷の兵は、言葉が通じる分だけ覚えが早い', '故郷の兵を、故郷のために鍛えます'],
+  };
+  const DOM = ['farm', 'comm', 'wall', 'alms', 'draft', 'train', 'search'];
+
+  function local(cmd, g, c, r) {
+    if (!r.ok || !DOM.includes(cmd)) return r;
+    const notes = [];
+    // 名産・気風
+    const L = (LOCAL[c.id] || []).filter(e => e.cmd === cmd);
+    for (const e of L) {
+      if (Math.random() > e.p) continue;
+      const x = e.run(c, g); if (!x) continue;
+      notes.push(`【${e.tag}】${x.msg}`); if (!r.say) r.say = x.say; r.localTag = e.tag;
+      break;
+    }
+    // 故郷の武将（土地の人が力を貸す）
+    if (g.home === c.i && cmd !== 'search' && Math.random() < 0.45) {
+      let m = '';
+      if (cmd === 'farm') m = `農業さらに +${pctUp(c, 'farm', 'farmMax', 0.03)}`;
+      else if (cmd === 'comm') m = `商業さらに +${pctUp(c, 'comm', 'commMax', 0.03)}`;
+      else if (cmd === 'wall') m = `城壁さらに +${pctUp(c, 'def', 'defMax', 0.03)}`;
+      else if (cmd === 'alms') { c.loyal = Math.min(100, c.loyal + 4); m = '民忠さらに +4'; }
+      else if (cmd === 'draft') { const v = irnd(300, 800); c.troops += v; m = `兵さらに +${fmt(v)}`; }
+      else if (cmd === 'train') { c.train = Math.min(100, c.train + 3); m = '訓練さらに +3'; }
+      c.loyal = Math.min(100, c.loyal + 2);
+      notes.push(`【故郷】${g.name}の帰郷に土地の人々が力を貸した。${m}、民忠 +2`);
+      if (!r.say) r.say = pick(HOME_SAY[cmd]);
+    }
+    // 地勢の一言（名産の台詞がないとき、ときどき）
+    if (!r.say && TERRAIN[c.terrain] && TERRAIN[c.terrain][cmd] && Math.random() < 0.15) r.say = pick(TERRAIN[c.terrain][cmd]);
+    if (notes.length) r.msg += '<br>' + notes.join('<br>');
+    return r;
+  }
+  const origCmd = Game.doCommand;
+  Game.doCommand = function (cmd, g, c, arg) { return local(cmd, g, c, origCmd.call(Game, cmd, g, c, arg)); };
+
+  // ---------------- 流言（土地柄で効き方が変わる） ----------------
+  const BORDER = ['xiangping', 'beiping', 'wuwei', 'anding', 'tianshui', 'jinyang', 'yunnan', 'jianning', 'kuaiji', 'wuling'];
+  const RUMOR = [
+    { when: c => c.id === 'hanzhong', run: c => { const v = irnd(6, 12); c.loyal = Math.max(0, c.loyal - v); return `五斗米道の信者に「天師様が太守を見限った」と噂を流した。信者が騒ぎ、民忠さらに -${v}`; } },
+    { when: c => ['luoyang', 'changan', 'xuchang'].includes(c.id), run: c => { const f = G.factions[c.owner], lord = Game.lordOf(c.owner); up(lord, 'cha', -1); return `「${lord.name}は天子をないがしろにしている」との噂が都を駆け巡った。${lord.name}の魅力 -1`; } },
+    { when: c => BORDER.includes(c.id), run: c => { const v = Math.round(c.troops * 0.06); c.troops -= v; return `国境の異民族に「今なら${c.name}を襲える」と吹き込んだ。異民族が騒ぎ、兵さらに -${fmt(v)}`; } },
+    { when: c => c.terrain === 'river', run: c => { const v = irnd(6, 12); c.train = Math.max(0, c.train - v); return `「水軍の船底が腐っている」と噂を流した。兵が乗船を怖がり、訓練さらに -${v}`; } },
+    { when: c => c.terrain === 'mount', run: c => { const v = Math.min(c.gold, irnd(80, 200)); c.gold -= v; return `「山道に宝が埋まっている」と噂を流した。役人まで宝探しに出かけてしまい、金 -${v}`; } },
+    { when: c => c.comm >= c.commMax * 0.6, run: c => { const v = pctUp(c, 'comm', 'commMax', -0.05); return `「近く銭の値打ちが下がる」と噂を流した。商人が品物を出し渋り、商業 ${v}`; } },
+    { when: c => c.food >= 20000, run: c => { const v = Math.round(c.food * 0.08); c.food -= v; return `「蔵の米に毒が混じっている」と噂を流した。民が米を捨ててしまい、兵糧 -${fmt(v)}`; } },
+  ];
+  const origRumor = Game.plotRumor;
+  Game.plotRumor = function (g, c) {
+    const r = origRumor.call(Game, g, c);
+    if (!r.ok) {
+      if (Math.random() < 0.3) r.msg = pick(['流言は広まらなかった。……どうやら町の噂好きの婆さんが、真っ先に嘘だと見抜いたらしい', '流言は広まらなかった。間者が酒場で酔いつぶれ、何も言わずに帰ってきた', '流言は広まらなかった。もっと面白い噂（太守の恋の話）に、皆の関心を持っていかれた']);
+      return r;
+    }
+    const cand = RUMOR.filter(x => x.when(c));
+    if (cand.length && Math.random() < 0.7) r.msg += '<br>' + pick(cand).run(c);
+    return r;
+  };
+
+  // ---------------- 演義の名場面 ----------------
+  const H = [
+    { id: 'wenjiu', title: '温酒斬華雄', chance: 0.5,
+      cond: () => { const gy = serving('関羽'), hx = serving('華雄'); return G.year <= 194 && gy && hx && gy.faction !== hx.faction; },
+      run: () => { const gy = gn('関羽'), hx = gn('華雄'); up(gy, 'war', 1); up(gy, 'cha', 3); up(hx, 'war', -2);
+        return { title: '温酒斬華雄', gen: '関羽', expr: 'angry', fac: gy.faction, big: true, text: '敵将・華雄に諸侯の将が次々と討たれるなか、名もない弓手と笑われた関羽が名乗り出た。\n「酒は戻ってから頂こう」\n戻った関羽が華雄の首を置いたとき、注がれた酒はまだ温かかった。\n関羽の武力 +1・魅力 +3' }; } },
+    { id: 'sangu', title: '三顧の礼', chance: 0.4,
+      cond: () => { const lb = serving('劉備'), zg = gn('諸葛亮'); return lb && lb.isLord && zg && zg.state === 'ronin' && G.year >= 206 && (zg.city === lb.city || G.cities[lb.city].adj.includes(zg.city)); },
+      run: () => { const lb = gn('劉備'), zg = gn('諸葛亮'); Game.joinFaction(zg, lb.faction, lb.city); zg.loyalty = 100; up(lb, 'cha', 2); const zf = serving('張飛'); if (zf && zf.faction === lb.faction) zf.loyalty = Math.max(0, zf.loyalty - 3);
+        return { title: '三顧の礼', gen: '劉備', expr: 'happy', fac: lb.faction, big: true, text: '劉備は雪の日も草庵を訪ね、三度目にしてようやく諸葛亮に会えた。\n張飛「兄者、あんな若造、縄で縛って連れてきてやる！」\n劉備「無礼を申すな」\n諸葛亮は天下三分の計を説き、劉備に仕えた。\n諸葛亮が加わった（忠誠 100）、劉備の魅力 +2。張飛は少しすねた（忠誠 -3）' }; } },
+    { id: 'caochuan', title: '草船借箭', chance: 0.4,
+      cond: () => { const z = serving('諸葛亮'), y = serving('周瑜'); const fc = facByLord('曹操'); return z && y && fc >= 0 && z.faction !== fc && (z.faction === y.faction || Game.isAlly(z.faction, y.faction)) && G.cities[z.city].adj.some(a => G.cities[a].owner === fc); },
+      run: () => { const z = gn('諸葛亮'); const c = G.cities[z.city]; c.train = Math.min(100, c.train + 12); c.gold += 200; up(gn('周瑜'), 'int', 1);
+        return { title: '草船借箭', gen: '諸葛亮', expr: 'happy', fac: z.faction, text: '「三日で十万本の矢を用意せよ」——周瑜の無理難題に、諸葛亮は涼しい顔で応じた。\n霧の夜、藁を積んだ船で曹操の陣に近づくと、驚いた曹操軍は雨のように矢を射かけた。\n諸葛亮「曹丞相、矢をかたじけない」\n' + c.name + 'の訓練 +12、金 +200（矢代が浮いた）。周瑜は悔しさのあまり知力 +1' }; } },
+    { id: 'kurou', title: '苦肉の計', chance: 0.4,
+      cond: () => { const f = sameFac('周瑜', '黄蓋'); const fc = facByLord('曹操'); return f >= 0 && fc >= 0 && G.year >= 207 && G.year <= 210 && Game.citiesOf(f).some(c => c.adj.some(a => G.cities[a].owner === fc)) && !(G.events.hist && G.events.hist.chibi); },
+      run: () => { const hg = gn('黄蓋'); up(hg, 'cha', 3); hg.loyalty = 100; G.events.kurou = true;
+        return { title: '苦肉の計', gen: '黄蓋', expr: 'angry', fac: hg.faction, text: '軍議の席で周瑜に逆らった老将・黄蓋は、皆の前で百叩きの刑に処された。\n……すべては、曹操に偽りの降伏を信じさせるための芝居だった。\n黄蓋「この老骨の痛み、曹操の船団を焼く火に変えてくれよう」\n黄蓋の魅力 +3、忠誠 100' }; } },
+    { id: 'dandao', title: '単刀赴会', chance: 0.35,
+      cond: () => nearPerson('関羽', '魯粛'),
+      run: () => { const gy = gn('関羽'); up(gy, 'cha', 3);
+        return { title: '単刀赴会', gen: '関羽', expr: 'normal', fac: gy.faction === G.player ? gy.faction : facOf('魯粛'), text: '魯粛は宴に関羽を招き、伏兵を潜ませて荊州の返還を迫った。\n関羽は刀一本と供回りわずかで乗り込み、悠然と酒を飲み、魯粛の手を取ったまま船まで帰っていった。\n関羽の魅力 +3。魯粛は胃が痛くなった' }; } },
+    { id: 'kongcheng', title: '空城の計', chance: 0.35,
+      cond: () => nearPerson('諸葛亮', '司馬懿'),
+      run: () => { const z = gn('諸葛亮'), s = gn('司馬懿'); const c = G.cities[z.city]; c.def = Math.min(c.defMax, c.def + 50); G.cities[s.city].train = Math.max(0, G.cities[s.city].train - 10);
+        return { title: '空城の計', gen: '諸葛亮', expr: 'normal', fac: z.faction === G.player ? z.faction : s.faction, big: true, text: `兵のいない${c.name}に司馬懿の大軍が迫った。\n諸葛亮は城門を開け放ち、楼台でのんびりと琴を弾いた。\n司馬懿「孔明が危ない橋を渡るはずがない。伏兵がいるに違いない、退け！」\n${c.name}の城壁 +50、司馬懿の軍の訓練 -10（引き返し損）` }; } },
+    { id: 'masu', title: '泣いて馬謖を斬る', chance: 0.3,
+      cond: () => { const f = sameFac('諸葛亮', '馬謖'); return f >= 0 && G.year >= 227; },
+      run: () => { const ms = gn('馬謖'), f = ms.faction; const killedName = ms.name; Game.killGeneral(ms, '処刑'); Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + 5); }); Game.citiesOf(f).forEach(c => c.train = Math.min(100, c.train + 4));
+        return { title: '泣いて馬謖を斬る', gen: '諸葛亮', expr: 'sad', fac: f, text: `諸葛亮の指図に背いて山の上に陣を敷いた${killedName}は、水を断たれて大敗した。\n諸葛亮は涙を流しながらも、軍律を守るため${killedName}を斬った。\n配下の忠誠 +5、全都市の訓練 +4` }; } },
+    { id: 'baidi', title: '白帝城の遺言', chance: 0.6,
+      cond: () => { const z = serving('諸葛亮'); const lb = gn('劉備'); const ls = serving('劉禅'); return z && lb && lb.state === 'dead' && ls && ls.isLord && z.faction === ls.faction; },
+      run: () => { const z = gn('諸葛亮'); z.loyalty = 100; up(z, 'pol', 2); up(z, 'cha', 2);
+        return { title: '白帝城の遺言', gen: '諸葛亮', expr: 'sad', fac: z.faction, big: true, text: '劉備は死の床で諸葛亮の手を取った。\n「君の才は曹丕の十倍。もし我が子が助けるに値するなら助けてやってくれ。そうでなければ、君が国を取れ」\n諸葛亮は涙を流して誓った。「臣、力の限りを尽くし、死ぬまで忠を貫きます」\n諸葛亮の忠誠 100、政治 +2、魅力 +2' }; } },
+    { id: 'jilei', title: '鶏肋', chance: 0.3,
+      cond: () => sameFac('曹操', '楊修') >= 0 && G.year >= 215,
+      run: () => { const ys = gn('楊修'), cc = gn('曹操'); ys.loyalty = Math.max(0, ys.loyalty - 15); up(ys, 'int', 1);
+        return { title: '鶏肋', gen: '楊修', expr: 'normal', fac: cc.faction, text: '夜の合言葉を問われた曹操は、鶏のスープをすすりながら「鶏肋」とつぶやいた。\n楊修「鶏のあばら骨。捨てるには惜しいが、食べても腹は膨れぬ。殿は撤退をお考えだ」\n楊修は勝手に荷造りを始め、曹操は顔をしかめた。\n楊修の知力 +1・忠誠 -15（賢すぎるのも考えもの）' }; } },
+    { id: 'wangmei', title: '梅林の渇き', chance: 0.12,
+      cond: () => serving('曹操') && G.season === 1,
+      run: () => { const cc = gn('曹操'), c = G.cities[cc.city]; c.train = Math.min(100, c.train + 5);
+        return { title: '望梅止渇', gen: '曹操', expr: 'happy', fac: cc.faction, text: '真夏の行軍で水が尽き、兵がへたり込んだ。\n曹操「この先に梅の林がある。実がたわわに実っておるぞ！」\n兵は口の中が酸っぱくなり、唾が湧いて元気を取り戻した。……梅の林は、なかった。\n' + c.name + 'の訓練 +5' }; } },
+    { id: 'birou', title: '髀肉の嘆', chance: 0.3,
+      cond: () => { const lb = serving('劉備'); return lb && G.year >= 200 && G.year <= 208 && (lb.isLord ? Game.citiesOf(lb.faction).length <= 2 : true); },
+      run: () => { const lb = gn('劉備'); up(lb, 'lead', 1); up(lb, 'cha', 1);
+        return { title: '髀肉の嘆', gen: '劉備', expr: 'sad', fac: lb.faction, text: '厠から戻った劉備は、涙を浮かべていた。\n「久しく馬に乗らずにいたら、内股に肉がついてしまった。月日は過ぎゆくのに、功は何一つ立てておらぬ……」\n劉備の統率 +1・魅力 +1（ふたたび奮い立った）' }; } },
+    { id: 'zifang', title: '我が子房', chance: 0.4,
+      cond: () => sameFac('曹操', '荀彧') >= 0,
+      run: () => { const xy = gn('荀彧'), cc = gn('曹操'); xy.loyalty = Math.min(100, xy.loyalty + 15); up(cc, 'cha', 1);
+        return { title: '我が子房', gen: '曹操', expr: 'happy', fac: cc.faction, text: '荀彧を迎えた曹操は、手を打って喜んだ。\n「わしの張子房（漢の高祖を支えた名軍師）が来てくれた！」\n荀彧の忠誠 +15、曹操の魅力 +1' }; } },
+    { id: 'yanren', title: '燕人張飛', chance: 0.4,
+      cond: () => { const zf = serving('張飛'); return zf && G.year >= 207 && G.cities[zf.city].adj.some(a => { const o = G.cities[a].owner; return o !== null && o !== zf.faction && !Game.isAlly(zf.faction, o); }); },
+      run: () => { const zf = gn('張飛'); up(zf, 'cha', 2); const en = G.cities[zf.city].adj.map(a => G.cities[a]).filter(o => o.owner !== null && o.owner !== zf.faction && !Game.isAlly(zf.faction, o.owner)); en.forEach(o => o.train = Math.max(0, o.train - 8));
+        return { title: '長坂橋の大喝', gen: '張飛', expr: 'angry', fac: zf.faction, text: '張飛はただ一騎で橋の上に立ちはだかり、雷のような声で叫んだ。\n「我こそは燕人・張翼徳なり！ 死にたい奴からかかってこい！」\nあまりの剣幕に、敵の将の一人は肝をつぶして落馬したという。\n張飛の魅力 +2、' + (en.map(o => o.name).join('・') || '近くの敵') + 'の訓練 -8' }; } },
+    { id: 'guagu', title: '刮骨療毒', chance: 0.2,
+      cond: () => { const gy = serving('関羽'); return gy && G.year >= 215; },
+      run: () => { const gy = gn('関羽'); up(gy, 'cha', 2); up(gy, 'war', -1);
+        return { title: '刮骨療毒', gen: '関羽', expr: 'normal', fac: gy.faction, text: '毒矢を受けた関羽の腕を、医者が切り開いて骨の毒を削った。\n関羽はその間、顔色ひとつ変えずに碁を打ち、酒を飲んでいた。\n医者「わたしは長年医者をしてきましたが、こんな方は初めてです」\n関羽の魅力 +2、武力 -1（さすがに腕は痛む）' }; } },
+    { id: 'yuanmen', title: '轅門射戟', chance: 0.3,
+      cond: () => { const lb = serving('呂布'); const fl = facOf('劉備'), fy = facByLord('袁術'); return lb && lb.isLord && fl >= 0 && fy >= 0 && fl !== lb.faction && G.year <= 199 && Game.citiesOf(lb.faction).some(c => c.adj.some(a => G.cities[a].owner === fl)); },
+      run: () => { const lb = gn('呂布'), fl = facOf('劉備'), fy = facByLord('袁術'); up(lb, 'cha', 2); G.factions[fl].hostility[lb.faction] = Math.max(0, (G.factions[fl].hostility[lb.faction] || 0) - 20); G.factions[fy].hostility[fl] = Math.max(0, (G.factions[fy].hostility[fl] || 0) - 20);
+        return { title: '轅門射戟', gen: '呂布', expr: 'happy', fac: lb.faction === G.player ? lb.faction : fl, text: '袁術軍と劉備軍のにらみ合いに、呂布が割って入った。\n「あの門に立てた戟の小枝を、ここから射抜けたら兵を引け。外れたら好きに戦え」\n百五十歩先の小枝を、呂布の矢は見事に射抜いた。\n呂布の魅力 +2。両軍の敵意が和らいだ' }; } },
+    { id: 'lebu', title: '此間楽し', chance: 0.5,
+      cond: () => { const ls = serving('劉禅'); return ls && !ls.isLord && !Game.isAlly(ls.faction, facOf('諸葛亮') >= 0 ? facOf('諸葛亮') : -99) && G.factions[ls.faction] && Game.lordOf(ls.faction).name !== '劉備'; },
+      run: () => { const ls = gn('劉禅'); ls.loyalty = 100;
+        return { title: '此間楽し', gen: '劉禅', expr: 'happy', fac: ls.faction, text: '宴の席で、故郷の歌と踊りが披露された。周りの者が涙ぐむなか、劉禅はにこにこ笑っていた。\n「ここは楽しいので、蜀のことは思い出しませんなあ」\n……誰も謀反の心配をしなくなった。劉禅の忠誠 100' }; } },
+    { id: 'yiyi', title: '美髯公', chance: 0.15,
+      cond: () => serving('関羽') && G.year >= 196,
+      run: () => { const gy = gn('関羽'); up(gy, 'cha', 1);
+        return { title: '美髯公', gen: '関羽', expr: 'normal', fac: gy.faction, text: '冬になると、関羽は自慢の長い髭が切れないよう、錦の袋に入れて大事にしまっていた。\nその姿を見た人々は、関羽を「美髯公」と呼んだ。\n関羽の魅力 +1。……袋は手作りらしい' }; } },
+    { id: 'luoma', title: '赤兎、主を選ぶ', chance: 0.25,
+      cond: () => { const lb = gn('呂布'); const gy = serving('関羽'); return lb && lb.state === 'dead' && gy && !(G.events.hist && G.events.hist.chitu); },
+      run: () => { const gy = gn('関羽'); up(gy, 'lead', 1); G.events.hist.chitu = true;
+        return { title: '赤兎、主を選ぶ', gen: '関羽', expr: 'normal', fac: gy.faction, text: '主を失った名馬・赤兎は、誰を乗せても暴れて振り落とした。\nところが関羽がそっと首を撫でると、赤兎はおとなしく頭を垂れた。\n関羽の統率 +1' }; } },
+  ];
+  Events._HIST.push(...H);
+
+  // ---------------- 台詞の追加 ----------------
+  const addL = (kind, trait, list) => { const t = LINES[kind] = LINES[kind] || {}; t[trait] = [...new Set([...(t[trait] || []), ...list])]; };
+  [
+    ['farm', '_', ['鍬を振るうと、何も考えずに済みます', '牛を一頭借りてきました。働き者です', '雑草を抜いていたら、日が暮れておりました']],
+    ['farm', '猪突', ['畑ってのは、耕せば耕すほど広がるもんだな！ ……違う？']],
+    ['farm', '剛勇', ['牛の代わりに{I}が鋤を引いた。牛より速かったぞ']],
+    ['farm', '臆病', ['畑の真ん中に蛇が……い、いえ、ちゃんと耕しました']],
+    ['comm', '_', ['値切り上手の商人に、こちらが値切られました。商売は奥が深い', '市に新しい茶店が開きました。繁盛しております']],
+    ['comm', '猪突', ['商人どもが値をごまかすから、ちょっと睨んでやった！ ……客まで逃げた']],
+    ['comm', '智謀', ['噂ひとつで値は動きます。その噂を流すのが、こちらであれば……']],
+    ['wall', '_', ['石を積むのは得意です。崩すのはもっと得意ですが', '見張り櫓から見る夕日が、なかなか良いのです']],
+    ['wall', '猪突', ['城壁なんか高くしなくても、俺が門の前に立ってりゃいいだろ！']],
+    ['alms', '_', ['子どもたちに粥を配ったら、行列が城の外まで伸びました', '「ありがたや」と拝まれてしまいました']],
+    ['alms', '野心', ['施しは安い投資だ。民の心は、いずれ兵になる']],
+    ['draft', '_', ['腕相撲で勝った者から取りました。手っ取り早いので', '志願者の中に、どう見ても七十過ぎの爺様が……丁重にお帰りいただきました']],
+    ['draft', '剛勇', ['{I}と相撲を取って、三合もった者だけ入れてやった']],
+    ['train', '_', ['兵たちの足並みがそろってきました', '稽古が厳しすぎて、兵に「鬼」と呼ばれております']],
+    ['train', '猪突', ['とにかく前へ！ 前へ出ろ！ ……後ろは知らん！']],
+    ['train', '慎重', ['まずは退き方から教えます。生き残らねば次はありません']],
+    ['search', '_', ['酒場で噂を聞いて回りました。酔っ払いの話は半分にしておきます', '山の庵を訪ねたら、留守でした。三度通えば会えるでしょうか']],
+    ['chat', '_', ['最近、兵の間で謎かけが流行っております。「鶏の骨とかけて……」いえ、何でもありません', '{you}、たまには休まれませ。休むのも仕事のうちです', '今日の昼飯は何でしょうな']],
+    ['chat', '猪突', ['なあ、酒ってのは何杯までなら酔わないんだ？ ……もう一杯だけ試してくる']],
+    ['chat', '剛勇', ['昨日、虎と目が合いました。向こうが先に目をそらしましたよ']],
+    ['chat', '智謀', ['今朝の鳥の鳴き声で、明日の天気を当ててみせましょう。……当たったら褒めてください']],
+    ['chat', '臆病', ['夢で敵の大軍に追いかけられました。起きたら布団が汗だくで……']],
+    ['chat', '仁徳', ['迷子の子どもを家まで送ったら、お礼に大根をもらいました']],
+    ['chat', '野心', ['……いや、ただの独り言だ。気にするな']],
+    ['great', '_', ['我ながら、惚れ惚れする出来です', '天の助けか、人の助けか。とにかく大当たりです']],
+    ['poor', '_', ['途中で雨に降られまして……言い訳ですな', '張り切りすぎて空回りしました', '次は……次こそは……']],
+  ].forEach(([k, t, list]) => addL(k, t, list));
+
+  // 人物ごとの、思わずにやりとする台詞（無い場面だけ足す。ある場面は混ぜる）
+  const FUN = {
+    '張飛': { farm: ['畑仕事の後の酒は格別だ！ ……いや、仕事の前にも一杯やったが'], alms: ['ほら、食え食え！ 酒もあるぞ！ ……え、酒は配るなって？'], chat: ['兄者には内緒で、ちょっとだけ飲んできた。ほんのちょっとだ', '関の兄貴は髭の手入れに一刻もかける。俺には分からん'] },
+    '許褚': { farm: ['腹が減っては鍬も振れぬ。まずは飯だ'], chat: ['飯はまだか？ ……さっき食った？ そうだったか'], train: ['鎧を脱いで稽古したら、動きやすいのなんの'] },
+    '曹操': { chat: ['頭が痛い……。誰か腕のいい医者を知らんか', 'わしの詩、聞くか？ 聞くよな？'] },
+    '夏侯惇': { chat: ['片目でも、見えるものは見えておる。……右側から話しかけるのはやめてくれ'] },
+    '劉禅': { chat: ['今日も平和ですなあ。ずっとこうならいいのに', '相父（諸葛亮）に任せておけば、だいたい何とかなります'], farm: ['朕も耕すの？ ……日が暮れる前に帰ってもいい？'] },
+    '龐統': { chat: ['見た目で人を判断するのは、よろしくありませんぞ。……誰のこととは言いませんが'] },
+    '魯粛': { chat: ['周都督と孔明殿の間を取り持っていると、胃が痛くなります'] },
+    '孫権': { chat: ['今宵は皆で飲もう。酔いつぶれた者は、明日の朝議に出なくてよい', '碧い目が珍しいか？ よく言われる'] },
+    '呂布': { chat: ['赤兎の飼い葉代も、馬鹿にならん', '義父上？ ……どの義父上の話だ'], farm: ['方天画戟で畑を耕せと？ ……まあ、刃先は使える'] },
+    '諸葛亮': { chat: ['この羽扇ですか？ 暑い日も寒い日も手放せません', '我が君、また徹夜で書類を見てしまいました。……いつものことです'] },
+    '関羽': { alms: ['某の髭を引っ張る子らがいたが……まあ、許してやった'] },
+    '趙雲': { chat: ['阿斗様を抱えて戦場を駆けたときは、さすがに肝が冷えました'] },
+    '黄忠': { chat: ['年寄り扱いするでない。まだ若い者には負けん', '老将と呼ばれるのは構わんが、「ご老体」はやめてくれ'], train: ['若い者よ、わしについて来られるかな？'] },
+    '袁術': { chat: ['蜂蜜水が飲みたい。……なに、ない？'] },
+    '董卓': { chat: ['もっと料理を持ってこい！ 酒もだ！'] },
+    '典韋': { chat: ['戟が重い？ 八十斤くらい、軽いものだ'] },
+    '司馬懿': { chat: ['持病が出ましたので、しばらく寝込みます。……本当です'] },
+    '馬超': { chat: ['西涼の兵の強さ、存分に見せてやりたい'] },
+    '甘寧': { chat: ['昔は鈴を鳴らしながら江を荒らしていた。今は真面目だ。たぶん'] },
+  };
+  Object.entries(FUN).forEach(([name, kinds]) => {
+    const sp = SPECIAL_LINES[name] = SPECIAL_LINES[name] || {};
+    Object.entries(kinds).forEach(([k, list]) => { sp[k] = sp[k] ? [...sp[k], ...list] : (LINES[k] && LINES[k]._ && k !== 'chat' ? list : list); });
+  });
+
+  return { LOCAL, local, counts: () => ({ local: Object.values(LOCAL).flat().length, hist: H.length, fun: Object.keys(FUN).length }) };
+})();
