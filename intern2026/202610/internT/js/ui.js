@@ -597,7 +597,9 @@ const App = {
   async applyBattle(plan, res, show) {
     const from = G.cities[plan.from], to = G.cities[plan.to];
     const atkFi = plan.atkFi, defFi = to.owner;
-    const atkGens = plan.gens.map(i => G.gens[i]).filter(g => g.state === 'serve');
+    // 合戦中に寝返った武将は、寝返った先の勢力に移る
+    (res.turncoats || []).forEach(t => { const g = G.gens[t.gi]; if (g.state !== 'serve' || !G.factions[t.fi] || !G.factions[t.fi].alive) return; g.faction = t.fi; g.isLord = false; g.loyalty = irnd(55, 75); g.city = G.factions[t.fi].capital; Game.log(`${g.name}が戦場で寝返り、${G.factions[t.fi].name}軍に加わった。`); });
+    const atkGens = plan.gens.map(i => G.gens[i]).filter(g => g.state === 'serve' && g.faction === atkFi);
     const pAtk = atkFi === G.player, pDef = defFi === G.player;
     const playerWon = (pAtk && res.atkWin) || (pDef && !res.atkWin);
     if (pAtk || pDef) { G.stats.battles++; if (playerWon) G.stats.wins++; }
