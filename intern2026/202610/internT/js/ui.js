@@ -23,7 +23,7 @@ const UI = {
     return new Promise(res => {
       const el = $('#talk');
       const autoMs = (typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text) : 0;
-      el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/\n/g, '<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div>` : '<div class="talk-next">▼</div>'}</div></div>`;
+      el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/\n/g, '<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div><div class="talk-skip">タップで次へ ▶</div>` : '<div class="talk-next">▼</div>'}</div></div>`;
       el.classList.add('show');
       let veil = $('.talk-veil');
       if (!veil) { veil = document.createElement('div'); veil.className = 'talk-veil'; el.after(veil); }

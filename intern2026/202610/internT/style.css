@@ -282,7 +282,7 @@ button { font-family: inherit; }
 .ally { color: var(--ok); font-weight: 800; font-size: 12px; }
 
 /* ---------- 軍師オート ---------- */
-.autobar { position: absolute; left: 8px; right: 8px; top: calc(60px + var(--safe-t)); z-index: 38; display: none; align-items: center; gap: 8px; background: linear-gradient(#2a1610f2, #160a06f2); border: 1.5px solid var(--gold); border-radius: 26px; padding: 4px 6px 4px 4px; color: #f6e8c6; box-shadow: 0 4px 16px #000a; }
+.autobar { position: absolute; left: 8px; right: 8px; top: calc(60px + var(--safe-t)); z-index: 41; display: none; align-items: center; gap: 8px; background: linear-gradient(#2a1610f2, #160a06f2); border: 1.5px solid var(--gold); border-radius: 26px; padding: 4px 6px 4px 4px; color: #f6e8c6; box-shadow: 0 4px 16px #000a; }
 .autobar.show { display: flex; animation: down .2s; }
 @keyframes down { from { transform: translateY(-20px); opacity: 0; } }
 #app.auto-on .map-hint { top: 62px; }
@@ -296,6 +296,7 @@ button { font-family: inherit; }
 .auto-press::after { content: '☝'; position: absolute; right: 6px; bottom: -6px; font-size: 24px; filter: drop-shadow(0 2px 2px #0008); }
 @keyframes autoPress { 0% { transform: scale(1); } 45% { transform: scale(.94); } 100% { transform: scale(1); } }
 .talk-auto { height: 3px; background: #d4af3780; margin-top: 4px; border-radius: 2px; overflow: hidden; }
+.talk-skip { text-align: right; font-size: 11px; color: #d4af37b0; margin-top: 2px; }
 .talk-auto i { display: block; height: 100%; background: var(--gold2); width: 0; }
 
 /* ---------- 必殺技のカットイン ---------- */
