@@ -259,7 +259,7 @@ const Auto = (() => {
       Object.keys(G.factions[t.owner].allies).map(Number).forEach(fi => { if (fi !== G.player && G.factions[fi].alive && Game.isAlly(t.owner, fi) && !Game.isAlly(G.player, fi)) { const c = near(fi); if (c && c.troops >= 5000) help += c.troops * 0.4 * 0.55; } });
     }
     const sk = Game.siegeK(G.player);
-    return (t.troops * (1.05 + (0.1 + t.def / 1200) * sk) + help * 0.6 * (0.4 + 0.6 * sk)) * (0.5 + t.train / 200) * gf;
+    return (t.troops * (1.2 + t.def / 1200 * sk) + help * 0.6 * (0.4 + 0.6 * sk)) * (0.5 + t.train / 200) * gf;
   }
   // 1つの攻め先について、連れていく武将と兵を決める。勝ち目が足りなければ null
   function evalAttack(c, t, br) {
