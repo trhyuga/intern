@@ -419,6 +419,9 @@ const Battle = (() => {
         buildTerrainLayer(window.devicePixelRatio || 1);
         B.gateDay = B.day; Sound.se('gateBreak'); await banner('城門、破れたり！', 1000);
         addLog(`${a.g.name}隊が城門を破った！ ${broken.length === 2 ? '両脇の城壁も崩れ落ちた' : broken.length ? '城壁の一角も崩れた' : 'だが城壁は持ちこたえている'}`);
+        if (a.gi >= 0) bubble(a, line(a.g, 'gateBreak'));
+        const dc = B.units.find(o => o.alive && o.side === 'def' && o.commander && o.gi >= 0);
+        if (dc) setTimeout(() => { if (B && !B.over) bubble(dc, line(dc.g, 'gateLost')); }, 900);
         await tryMilitia('gate');
       }
       a.acted = true; await sleep(400); return;
@@ -443,6 +446,8 @@ const Battle = (() => {
     d.shake = true; setTimeout(() => d.shake = false, 300);
     d.troops = Math.max(0, d.troops - dmg); d.morale = Math.max(0, d.morale - dmg / Math.max(500, d.maxTroops) * 40);
     addFloater(d.r, d.c, '-' + dmg, '#ff6a5a');
+    // 兵が3割を切った将は、一度だけ弱音（または意地）を吐く
+    if (d.gi >= 0 && !d.lowSaid && d.troops > 0 && d.troops < d.maxTroops * 0.3) { d.lowSaid = true; setTimeout(() => { if (B && !B.over && d.alive) bubble(d, line(d.g, 'lowTroops')); }, 500); }
     a.morale = Math.min(100, a.morale + 3);
     // 反撃
     if (!ranged && d.troops > 0) {
@@ -466,6 +471,7 @@ const Battle = (() => {
         else if (r < 0.6) { u.status = 'captured'; addLog(`${u.g.name}を捕らえた！`); }
         else { u.status = 'fled'; addLog(`${u.g.name}隊は壊滅し、${u.g.name}は落ち延びた`); }
       } else { addLog('守備隊は壊滅した'); }
+      if (by && by.alive && by.gi >= 0 && Math.random() < 0.6) bubble(by, line(by.g, 'routFoe', { foe: u.g.name }));
       return;
     }
     // 臆病・士気崩壊による退却
@@ -847,9 +853,9 @@ const Battle = (() => {
     if (bad) B.units.filter(o => o.alive && o.side === rf.side).forEach(o => o.morale = Math.min(100, o.morale + 15));
     if (!auto) {
       const col = G.factions[rf.fi].color;
-      if (rf.g) await UI.talk(rf.g, 'angry', `${rf.g.name}「${rf.ally ? `${fname}軍の${rf.g.name}、盟約により助太刀いたす！` : rf.rushed ? '急報を受けて駆けつけた！ 持ちこたえよ！' : 'お待たせした！ 援軍、ただいま到着！'}」`, col, { tag: '援軍' });
+      if (rf.g) await UI.talk(rf.g, 'angry', `${rf.g.name}「${rf.ally ? `${fname}軍の${rf.g.name}、盟約により助太刀いたす！` : rf.rushed ? '急報を受けて駆けつけた！ 持ちこたえよ！' : line(rf.g, 'reinforce')}」`, col, { tag: '援軍' });
       const cmd = B.units.find(o => o.side === rf.side && o.commander && o.alive && o.gi >= 0);
-      if (bad && cmd && rf.side === B.playerSide) await UI.talk(cmd.g, 'happy', `${cmd.g.name}「助かった！ 皆の者、いまこそ押し返せ！」`, G.factions[cmd.fi].color, { tag: '援軍' });
+      if (bad && cmd && rf.side === B.playerSide) await UI.talk(cmd.g, 'happy', `${cmd.g.name}「${line(cmd.g, 'saved')}」`, G.factions[cmd.fi].color, { tag: '援軍' });
     }
   }
   // 寝返り：忠誠40未満の武将（総大将・君主・忠義は除く）が、自軍が苦しいほど敵に寝返りやすい
@@ -1265,7 +1271,7 @@ const Battle = (() => {
       const sc = near * 10 + (u.side === 'atk' ? r : -r) * 2 + (DEFK[B.tiles[r][c].t] - 1) * 10;
       if (sc > bs) { bs = sc; best = [r, c]; }
     });
-    if (best && (best[0] !== u.r || best[1] !== u.c)) { await animateMove(u, best[0], best[1]); if (Math.random() < 0.4) bubble(u, pick(['いったん退け！ 立て直す！', '傷が深い……下がるぞ', '無駄死にはさせん、退け！'])); }
+    if (best && (best[0] !== u.r || best[1] !== u.c)) { await animateMove(u, best[0], best[1]); if (Math.random() < 0.4 && u.gi >= 0) bubble(u, line(u.g, 'regroup')); }
     u.acted = true; await sleep(150);
     return true;
   }
