@@ -222,6 +222,13 @@ const App = {
       const sc = SCENARIOS.find(s => s.id === G.scen);
       await UI.talk(lord, 'normal', `${sc.title}――${sc.dream ? '' : sc.year + '年。'}\n${lord.name}「いよいよだ。この乱世、我らの手で終わらせよう」`, f.color);
       await UI.talk(null, '', '都市をタップして命令を出そう。\n武将は季節ごとに1回ずつ働ける。\n終わったら右下の「季節を進める」。');
+      // 軍師から、オートの説明
+      const sg = Auto.strategist();
+      if (sg && sg !== lord) {
+        const v = VOICE[sg.name] || {}, you = v.you && (!v.youIf || v.youIf === lord.name) ? v.you : '殿', I = v.I || '私';
+        await UI.talk(sg, 'normal', `軍師 ${sg.name}「${you}、内政や戦の采配が手に余るときは、下の「軍師」から${I}にお任せください。この季節だけ・1年・止めるまで、のいずれかで代わりに采配いたします」`, facColor(sg), { tag: '軍師オート' });
+        await UI.talk(sg, 'happy', `軍師 ${sg.name}「任せている間は、上のバーの「止める」でいつでも${you}の手にお戻しします。合戦の観戦中に止めれば、その場で指揮をお返しします。見る速さは 普通・速い・超速。話の途中でも、画面をたたけば先へ進みます」`, facColor(sg), { tag: '軍師オート' });
+      }
     }
   },
   refresh() {
