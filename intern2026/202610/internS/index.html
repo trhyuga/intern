@@ -129,6 +129,18 @@
   .rec-list button .tag{ font-size:11px; padding:1px 8px; border-radius:999px; border:1px solid currentColor; white-space:nowrap; }
   .rec-list .t-clear{ color:var(--gold); } .rec-list .t-over{ color:#f08a80; } .rec-list .t-live{ color:#7fd0a0; }
   #recDetail{ max-height:62vh; overflow-y:auto; border-radius:12px; background:#000; border:1px solid var(--line); text-align:center; padding:0 14px 24px; }
+  /* 節目のおっちゃんとトロフィー */
+  #ojisan{ position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.6); padding:16px; }
+  #ojisan.on{ display:flex; }
+  #ojisan .card{ width:100%; max-width:360px; background:var(--panel); border:2px solid var(--gold); border-radius:16px; padding:16px; text-align:center; animation:pop .45s ease-out; }
+  #ojisan canvas{ width:170px; height:auto; display:block; margin:0 auto; }
+  #ojisan .bubble{ position:relative; background:#fff; color:#222; border-radius:12px; padding:10px 12px; margin:6px 0 10px; font-weight:700; line-height:1.6; text-align:left; }
+  #ojisan .bubble::before{ content:""; position:absolute; top:-10px; left:50%; margin-left:-10px; border:10px solid transparent; border-top:0; border-bottom-color:#fff; }
+  #ojisan .tro{ font-size:13px; color:var(--soft); }
+  .trophies{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .trophy{ display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:800; padding:2px 10px 2px 4px; border-radius:999px; color:#111; }
+  .trophy i{ display:inline-block; width:16px; height:16px; border-radius:50%; box-shadow:inset 0 0 0 2px rgba(0,0,0,.25); }
+  .trophy.none{ background:transparent; color:var(--soft); border:1px dashed var(--line); }
   /* 大的中の金色のフラッシュ */
   #celebrate.big::before{ content:""; position:absolute; inset:0; background:radial-gradient(circle at 50% 40%, rgba(255,215,90,.55), rgba(255,215,90,0) 60%); animation:flash 1.2s ease-out 2; }
   @keyframes flash{ 0%{ opacity:0; } 20%{ opacity:1; } 100%{ opacity:0; } }
@@ -254,6 +266,7 @@
     <section class="screen" id="sc-records">
       <h2>年間成績</h2>
       <p class="sub" style="margin-bottom:10px">これまでのシーズンの結果をいつでも見返せます。</p>
+      <div class="trophies" id="recTrophies" style="margin-bottom:12px"></div>
       <div class="rec-list" id="recList"></div>
       <div id="recDetail" class="report" style="display:none"></div>
       <button class="btn ghost" id="btnRecBack">タイトルへ</button>
@@ -277,6 +290,14 @@
   </main>
 </div>
 <div id="celebrate"><canvas id="confetti"></canvas><div class="msg" id="celebrateMsg"></div></div>
+<div id="ojisan" role="dialog" aria-label="節目のお祝い">
+  <div class="card">
+    <canvas id="ojisanCv" width="170" height="170"></canvas>
+    <div class="bubble" id="ojisanMsg"></div>
+    <div class="tro" id="ojisanTro"></div>
+    <button class="btn" id="btnOjisan">ありがとう！</button>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -692,10 +713,102 @@ const Save = {
   reset(){ this.data = this.fresh(); this.data.run = Records.newRun(); this.write(); },
 };
 
+// ---------- 節目（元手の10倍ごと）とトロフィー ----------
+const MILESTONES = [
+  { amount: 100000,    name: '10万円',  trophy: '銅のトロフィー',       color: '#c98a4b',
+    lines: ['おお、ついに10万円突破や！ 元手の10倍やで！ あんた、ただもんやないな！', 'やるやないか！ 10万円や！ その調子でどんどん増やしたれ！'] },
+  { amount: 1000000,   name: '100万円', trophy: '銀のトロフィー',       color: '#c8ccd2',
+    lines: ['100万円！？ こりゃたまげた！ ワシの予想よりよう当たっとるやないか！', '100万円突破や！ 競馬場中があんたの噂でもちきりやで！'] },
+  { amount: 10000000,  name: '1000万円',trophy: '金のトロフィー',       color: '#f2c94c',
+    lines: ['1000万円…！ これはもう競馬場の伝説やで。新聞の一面に載るで、ほんま！', 'ワシ、長いこと予想屋やっとるけど、こんな人は初めて見たわ…！'] },
+  { amount: 100000000, name: '1億円',   trophy: 'プラチナのトロフィー', color: '#e6f0f5',
+    lines: ['い、1億円！！ もう教えることは何もない。今日からあんたが師匠や！', '1億円達成や！！ あんたこそ真の予想王や！ 一生ついていきまっせ！'] },
+];
+
+// 予想屋のおっちゃん（このゲームのために描いたオリジナルのキャラクター）
+function drawOjisan(g, t){
+  const W = 170, H = 170;
+  g.clearRect(0,0,W,H);
+  const bob = Math.sin(t*6)*2, wave = Math.sin(t*9)*0.5;
+  // 背景の後光
+  const gl = g.createRadialGradient(85, 80, 10, 85, 80, 85);
+  gl.addColorStop(0, 'rgba(255,215,90,.55)'); gl.addColorStop(1, 'rgba(255,215,90,0)');
+  g.fillStyle = gl; g.fillRect(0,0,W,H);
+  g.save(); g.translate(0, bob);
+  // 体（チョッキ）
+  g.fillStyle = '#e9e3d4'; g.beginPath(); g.ellipse(85, 168, 58, 44, 0, Math.PI, 0); g.fill();
+  g.fillStyle = '#3d5a8a'; g.beginPath(); g.moveTo(40,170); g.lineTo(62,128); g.lineTo(78,170); g.closePath(); g.fill();
+  g.beginPath(); g.moveTo(130,170); g.lineTo(108,128); g.lineTo(92,170); g.closePath(); g.fill();
+  // 手を振る腕と、競馬新聞
+  g.save(); g.translate(132, 128); g.rotate(-0.9 + wave);
+  g.fillStyle = '#e9e3d4'; g.fillRect(-6, -42, 12, 44);
+  g.fillStyle = '#f0c9a0'; g.beginPath(); g.arc(0, -46, 8, 0, Math.PI*2); g.fill();
+  g.restore();
+  g.save(); g.translate(30, 140); g.rotate(-0.2);
+  g.fillStyle = '#f4efe1'; g.fillRect(-16, -22, 30, 36); g.strokeStyle = '#999'; g.strokeRect(-16, -22, 30, 36);
+  g.fillStyle = '#c0392b'; g.fillRect(-12, -18, 22, 4); g.fillStyle = '#555'; for(let k=0;k<4;k++) g.fillRect(-12, -10 + k*5, 22, 2);
+  g.restore();
+  // 顔
+  g.fillStyle = '#f0c9a0'; g.beginPath(); g.ellipse(85, 78, 40, 44, 0, 0, Math.PI*2); g.fill();
+  g.beginPath(); g.ellipse(46, 82, 7, 10, 0, 0, Math.PI*2); g.ellipse(124, 82, 7, 10, 0, 0, Math.PI*2); g.fill();
+  // 鉢巻き
+  g.fillStyle = '#d63031'; g.fillRect(45, 46, 80, 11);
+  g.beginPath(); g.moveTo(125, 50); g.lineTo(142, 42 + wave*4); g.lineTo(140, 56 + wave*4); g.closePath(); g.fill();
+  // 耳にかけた赤ペン
+  g.save(); g.translate(128, 70); g.rotate(-0.6); g.fillStyle = '#c0392b'; g.fillRect(-2, -14, 4, 22); g.restore();
+  // 眉・目（にっこり）・口ひげ・口
+  g.strokeStyle = '#3a2a1e'; g.lineCap = 'round'; g.lineWidth = 3.5;
+  g.beginPath(); g.moveTo(62, 66); g.lineTo(78, 63); g.moveTo(92, 63); g.lineTo(108, 66); g.stroke();
+  g.lineWidth = 3;
+  g.beginPath(); g.arc(70, 78, 6, Math.PI*1.1, Math.PI*1.9); g.stroke();
+  g.beginPath(); g.arc(100, 78, 6, Math.PI*1.1, Math.PI*1.9); g.stroke();
+  g.fillStyle = '#3a2a1e';
+  g.beginPath(); g.ellipse(76, 96, 12, 5, -0.2, 0, Math.PI*2); g.ellipse(94, 96, 12, 5, 0.2, 0, Math.PI*2); g.fill();
+  g.fillStyle = '#8a2e2e'; g.beginPath(); g.ellipse(85, 107, 11, 7 + Math.abs(Math.sin(t*8))*3, 0, 0, Math.PI); g.fill();
+  // ほっぺ
+  g.fillStyle = 'rgba(230,110,110,.35)'; g.beginPath(); g.arc(60, 92, 7, 0, Math.PI*2); g.arc(110, 92, 7, 0, Math.PI*2); g.fill();
+  g.restore();
+}
+let ojisanRAF = 0;
+function showOjisan(levels){
+  const top = levels[levels.length - 1], m = MILESTONES[top];
+  $('ojisanMsg').textContent = pickL(m.lines);
+  $('ojisanTro').innerHTML = '';
+  const t = document.createElement('div');
+  t.textContent = `所持金${m.name}突破！ 「${levels.map(k => MILESTONES[k].trophy).join('」「')}」を手に入れた！`;
+  $('ojisanTro').appendChild(t);
+  $('ojisan').classList.add('on');
+  try{ cheer(0, 3, 0.35); playHitSound(true); }catch(e){}
+  const cv = $('ojisanCv'), g = fitCanvas(cv, 170, 170), t0 = performance.now();
+  cancelAnimationFrame(ojisanRAF);
+  const loop = now => { drawOjisan(g, (now - t0)/1000); ojisanRAF = requestAnimationFrame(loop); };
+  ojisanRAF = requestAnimationFrame(loop);
+}
+// トロフィーの一覧（取っていないものは点線）
+function renderTrophies(box){
+  const r = Records.load();
+  box.innerHTML = '';
+  MILESTONES.forEach((m, k) => {
+    const got = r.trophies && r.trophies[k];
+    const sp = document.createElement('span');
+    sp.className = 'trophy' + (got ? '' : ' none');
+    if(got) sp.style.background = m.color;
+    const ic = document.createElement('i'); ic.style.background = got ? 'rgba(255,255,255,.6)' : 'transparent';
+    sp.append(ic, document.createTextNode(got ? `${m.name}達成` : `${m.name}（未達成）`));
+    box.appendChild(sp);
+  });
+}
+
 // ---------- 年間成績の記録（セーブを消しても残る） ----------
 const Records = {
   KEY: 'internS_g1predictor_records_v1',
-  load(){ try{ const r = JSON.parse(localStorage.getItem(this.KEY)); if(r && Array.isArray(r.seasons)) return r; }catch(e){} return { run: 1, seasons: [] }; },
+  load(){ try{ const r = JSON.parse(localStorage.getItem(this.KEY)); if(r && Array.isArray(r.seasons)){ r.trophies = r.trophies || {}; return r; } }catch(e){} return { run: 1, seasons: [], trophies: {} }; },
+  // トロフィーを記録（初めて取ったときの日時・何年目か）
+  addTrophy(level, d){
+    const r = this.load();
+    if(!r.trophies[level]) r.trophies[level] = { at: Date.now(), run: d.run || r.run, year: d.year };
+    this.save(r);
+  },
   save(r){ try{ localStorage.setItem(this.KEY, JSON.stringify(r)); }catch(e){} },
   // そのシーズンを保存（同じ回・同じ年は上書き）
   archive(d, status){
@@ -1708,7 +1821,12 @@ function showResult(){
     html += `<div class="${hit?'win':'lose'}">${BET_LABEL[t.type]} ${t.sel.join(t.type === 'tri' ? '→' : '-')} ${yen(t.amount)} → ${hit ? '的中！ '+yen(back) : 'はずれ'}</div>`;
   });
   if(!Game.tickets.length) html = '<div class="lose">今回は見送り</div>';
+  const before = d.money;
   d.money += pay;
+  // 元手の10倍ごとの節目（このプレイで初めて超えたものだけ）
+  d.milestones = d.milestones || [];
+  const reached = MILESTONES.map((m,k) => k).filter(k => d.money >= MILESTONES[k].amount && !d.milestones.includes(k));
+  reached.forEach(k => { d.milestones.push(k); Records.addTrophy(k, d); });
   d.best = Math.max(d.best, d.money);
   if(Race.story) html = `<div class="sub" style="margin-bottom:6px">着差 <b>${Race.story.margin}</b> ／ <b>${Race.story.kimarite}</b></div>` + html;
   html += `<div style="margin-top:8px">払戻 ${yen(pay)} ／ 所持金 <b>${yen(d.money)}</b></div>`;
@@ -1730,6 +1848,7 @@ function showResult(){
     return hit ? Math.max(m, t.odds) : m;
   }, 0);
   if(pay > 0) celebrate(pay, stake, bigOdds);
+  if(reached.length) setTimeout(() => showOjisan(reached), bigOdds >= 10 ? 4700 : 3000);
 }
 
 // 的中したときの紙吹雪
@@ -1968,6 +2087,7 @@ function startTitleAnim(){
 
 function showRecords(){
   const r = Records.load();
+  renderTrophies($('recTrophies'));
   const list = $('recList'); list.innerHTML = '';
   $('recDetail').style.display = 'none'; list.style.display = '';
   const items = r.seasons.slice().sort((a,b) => (b.run - a.run) || (b.year - a.year));
@@ -1998,6 +2118,7 @@ function showRecords(){
   show('records');
 }
 $('btnRecords').onclick = showRecords;
+$('btnOjisan').onclick = () => { $('ojisan').classList.remove('on'); cancelAnimationFrame(ojisanRAF); };
 $('raceCv').addEventListener('click', e => {
   const r = Race.pipRect; if(!r) return;
   const box = $('raceCv').getBoundingClientRect();
@@ -2020,6 +2141,7 @@ function titleScreen(){
   const d = Save.load();
   Game.field = null;
   $('btnContinue').style.display = d ? 'block' : 'none';
+  setTimeout(() => { const r = Records.load(); if(Object.keys(r.trophies || {}).length){ const box = document.createElement('div'); box.className = 'trophies'; renderTrophies(box); $('titleInfo').appendChild(box); } }, 0);
   $('titleInfo').innerHTML = d
     ? `${d.year}年目 ${d.idx+1}戦目から ／ 所持金 ${yen(d.money)} ／ 最高 ${yen(d.best)}`
     : `元手 ${yen(CONFIG.START_MONEY)} で全${CALENDAR.length}戦のG1に挑戦。<br>資金が${yen(CONFIG.MIN_BET)}を切るとゲームオーバー。`;
