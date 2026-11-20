@@ -1100,7 +1100,8 @@ const Auto = (() => {
     return act;
   }
 
-  function talkMs(text) { return (1100 + Math.min(1600, text.replace(/<[^>]+>/g, '').length * 28)) / S.speed; }
+  // 会話の表示時間：文字数に応じて長く（1文字50ms、最大7秒）。「速い」でも長い文は読めるよう、速さの効きを弱める
+  function talkMs(text) { const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length; return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6); }
 
   function init() {
     const bar = document.getElementById('autobar');
