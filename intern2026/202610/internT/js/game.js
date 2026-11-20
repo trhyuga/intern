@@ -5,8 +5,8 @@ const CONFIG = {
   SAVE_KEY: 'internT_gunyu_save_v1',
   CMD_COST: 50,           // 内政1回の金
   RECRUIT_COST: 100,      // 徴兵1回の金
-  TROOP_CAP_BASE: 1500,   // 武将1人が率いる兵の上限 = BASE + 統率 × 60
-  TROOP_CAP_PER_LEAD: 60,
+  TROOP_CAP_BASE: 2500,   // 武将1人が率いる兵の上限 = BASE + 統率 × 90（統率80で約1万。5人で4〜5万）
+  TROOP_CAP_PER_LEAD: 90,
   ALLY_TURNS: 8,          // 同盟の期間（季節）
   BATTLE_DAYS: 30,
 };

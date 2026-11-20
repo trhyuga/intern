@@ -438,7 +438,7 @@ const Auto = (() => {
     plans.sort((a, b) => b.score - a.score);
     const chosen = [];
     for (const p of plans) {
-      if (chosen.length >= br.maxAttacks) break;
+      if (chosen.length >= br.maxAttacks + Math.floor(Game.citiesOf(G.player).length / 8)) break;   // 国が大きいほど、同時に攻められる
       if (chosen.some(x => x.c === p.c || x.t === p.t)) continue;
       chosen.push(p);
     }

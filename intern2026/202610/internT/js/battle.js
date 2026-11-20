@@ -366,7 +366,7 @@ const Battle = (() => {
     if (d.gi >= 0) k /= Game.topK(dg, 'lead', 1.12, 1.2);
     // 城壁：城内・城門・本丸の守り手は、城壁の値に応じて被害が減る。門が破れると守りは半減
     const castle = ['inner', 'keep', 'gate'];
-    if (d.side === 'def' && castle.includes(t)) k /= 1 + B.to.def / 600 * B.wallK * (gateUp() ? 1 : 0.5);
+    if (d.side === 'def' && castle.includes(t)) k /= 1 + B.to.def / 750 * B.wallK * (gateUp() ? 1 : 0.5);
     // 城壁の上からの矢は届く
     if (a.side === 'def' && ranged && castle.includes(at) && gateUp()) k *= 1 + B.to.def / 1400 * B.wallK;
     return Math.max(30, Math.round(k * rnd(0.85, 1.15)));
@@ -778,6 +778,8 @@ const Battle = (() => {
     }
     // 守り手が苦しくなると、民が立ち上がることがある
     if (outlook('def') < -0.3) await tryMilitia('crisis');
+    // 忠誠の低い武将が、戦の最中に寝返ることがある（1つの合戦で1回まで）
+    if (B.day >= 3 && !B.turned) await tryTurncoat();
   }
 
   const gateUp = () => B.tiles[2][4].t === 'gate';
@@ -788,7 +790,7 @@ const Battle = (() => {
       const gs = Game.gensIn(src.i, fi).filter(g => !g.isLord && !used.has(g.i)).sort((a, b2) => (b2.lead + b2.war) - (a.lead + a.war));
       const g = gs[0] || null;
       const cap = g ? Game.troopCap(g) : 8000;
-      const amt = Math.round(Math.min(cap, clamp(src.troops * 0.4, 2000, 12000), src.troops - 1500) / 100) * 100;
+      const amt = Math.round(Math.min(cap, clamp(src.troops * 0.35, 2000, 9000), src.troops - 1500) / 100) * 100;
       if (amt < 1500) return;
       if (g) used.add(g.i);
       out.push({ side, fi, src: src.i, g, amt, day: day - (g && Game.has(g, '騎馬') ? 1 : 0), ally });
@@ -850,6 +852,28 @@ const Battle = (() => {
       if (bad && cmd && rf.side === B.playerSide) await UI.talk(cmd.g, 'happy', `${cmd.g.name}「助かった！ 皆の者、いまこそ押し返せ！」`, G.factions[cmd.fi].color, { tag: '援軍' });
     }
   }
+  // 寝返り：忠誠40未満の武将（総大将・君主・忠義は除く）が、自軍が苦しいほど敵に寝返りやすい
+  async function tryTurncoat() {
+    if (B.defFi === null) return;
+    const cands = B.units.filter(u => u.alive && u.gi >= 0 && !u.commander && !u.g.isLord && !Game.has(u.g, '忠義') && u.g.loyalty < 40);
+    for (const u of shuffle(cands)) {
+      const other = u.side === 'atk' ? 'def' : 'atk';
+      const p = (40 - u.g.loyalty) / 250 + (Game.has(u.g, '野心') ? 0.04 : 0) + (outlook(u.side) < -0.2 ? 0.05 : 0) - (outlook(u.side) > 0.3 ? 0.03 : 0);
+      if (Math.random() > p) continue;
+      B.turned = true;
+      const fromFi = u.fi, toFi = other === 'atk' ? B.atkFi : B.defFi;
+      const say = line(u.g, 'betray');   // 元の主君の名で話すので、所属を変える前に
+      u.side = other; u.fi = toFi; u.src = null; u.morale = Math.min(100, u.morale + 20); u.acted = true; u.ally = false;
+      (B.turncoats = B.turncoats || []).push({ gi: u.gi, fi: toFi });
+      // 裏切られた側は動揺する
+      B.units.filter(o => o.alive && o.side !== other).forEach(o => o.morale = Math.max(0, o.morale - 10));
+      Sound.se('confuse'); setTimeout(() => Sound.se('warcry'), 300);
+      await banner(`${u.g.name}、寝返り！`, 1400);
+      addLog(`${u.g.name}隊が${G.factions[fromFi].name}軍を裏切り、${G.factions[toFi].name}軍についた！`);
+      if (!auto) await UI.talk(u.g, 'angry', `${u.g.name}「${say}」\n<b>${u.g.name}隊が${G.factions[toFi].name}軍に寝返った！</b>`, G.factions[toFi].color, { tag: '寝返り' });
+      return;
+    }
+  }
   // 市民兵：魅力の高い大将が守り、民忠が高い城では、民が武器を取って立ち上がる（1回まで）
   async function tryMilitia(why) {
     if (B.militia || B.defFi === null) return;
@@ -892,6 +916,17 @@ const Battle = (() => {
       if (B.food <= 0) { B.units.filter(u => u.alive && u.side === 'atk').forEach(u => u.morale = Math.max(0, u.morale - 25)); addLog('攻め手の兵糧が尽きた！'); }
     }
     B.units.forEach(u => { if (u.alive) { u.acted = false; if (u.confused > 0) { u.confused--; if (u.confused > 0) u.acted = true; } } });
+    // 包囲：大軍に囲まれた城は、5日目から守り手の士気が落ち、兵が逃げ出す（攻め手が守り手の1.8倍以上のとき）
+    if (!first && B.day >= 5) {
+      const sum = sd => B.units.filter(u => u.alive && u.side === sd).reduce((s2, u) => s2 + u.troops, 0);
+      const ratio = sum('atk') / Math.max(1, sum('def'));
+      if (ratio >= 1.8) {
+        const drop = Math.min(10, (ratio - 1.5) * 4), flee = Math.min(0.04, 0.01 + (ratio - 1.8) * 0.01);
+        B.units.filter(u => u.alive && u.side === 'def' && !u.militia).forEach(u => { u.morale = Math.max(0, u.morale - drop); u.troops = Math.max(0, Math.round(u.troops * (1 - flee))); });
+        if (!B.sieged) { B.sieged = true; addLog('大軍に囲まれ、城内の兵が逃げ出し始めた'); }
+        for (const u of B.units.filter(o => o.alive && o.side === 'def')) await checkRout(u, null);
+      }
+    }
     if (!first) await dramaEvents();
     if (await checkEnd()) return;
     updateHUD();
@@ -1214,7 +1249,7 @@ const Battle = (() => {
       defLeft: B.units.filter(u => u.side === 'def' && u.src == null).reduce((s, u) => s + (u.alive || u.status === 'retreat' ? u.troops : 0), 0) + (B.reserve || 0),
       captured: B.units.filter(u => u.gi >= 0 && u.status === 'captured').map(u => u.gi),
       killed: B.units.filter(u => u.gi >= 0 && u.status === 'killed').map(u => u.gi),
-      days: B.day,
+      days: B.day, turncoats: B.turncoats || [],
     };
     // 市民兵は戦が終われば町へ帰る。守り切ったら、生き残りの半分が兵に志願する
     if (!res.atkWin) res.defLeft += Math.round(B.units.filter(u => u.militia && u.alive).reduce((s, u) => s + u.troops, 0) / 2);
