@@ -727,19 +727,29 @@ const AI = {
     // 攻める相手
     const targets = c.adj.map(a => G.cities[a]).filter(o => o.owner !== fi && (o.owner === null || !Game.isAlly(fi, o.owner)));
     if (!targets.length) return null;
+    // 見立て役：その勢力でいちばん知力の高い武将。賢いほど見積もりが正確で、確かな勝ち目を求める
+    const sage = Game.gensOf(fi).reduce((m, g) => g.int > m.int ? g : m, gens[0]);
+    const q = clamp((sage.int - 45) / 50, 0, 1), noise = (1 - q) * 0.5;
+    const avgS = arr => arr.length ? arr.reduce((s2, g) => s2 + g.lead * 0.6 + g.war * 0.4, 0) / arr.length : 40;
+    const top5 = gens.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+    // 実際に出せる兵（守備兵の目安を残し、将の率いられる上限まで）
+    const sendable = Math.min(c.troops - Math.max(Game.isFront(c) ? 3000 : 1500, c.troops * 0.25), top5.reduce((s2, g) => s2 + Game.troopCap(g), 0));
+    const atkPow = Math.max(0, sendable) * (0.5 + c.train / 200) * (0.6 + avgS(top5) / 100);
+    const K = Game.siegeK(fi);
     let best = null, bestScore = 0;
     targets.forEach(t => {
-      const defGens = Game.gensIn(t.i);
-      const defPow = t.troops * (1 + t.def / 1500) * (1 + defGens.reduce((s, g) => s + g.lead, 0) / 400) + (t.owner === null ? 0 : 500);
-      const atkTroops = c.troops * 0.75;
-      const atkPow = atkTroops * (0.5 + c.train / 200) * (1 + gens.slice(0, 5).reduce((s, g) => s + g.lead + g.war, 0) / 1000);
-      let score = atkPow / Math.max(1, defPow);
+      const defGens = Game.gensIn(t.i).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+      // 守りの強さ：兵・訓練・将・城壁（序盤の効き目つき）、それに隣の都市から来そうな援軍
+      let help = 0;
+      if (t.owner !== null) { const nb = t.adj.map(a => G.cities[a]).filter(o => o.owner === t.owner).sort((a, b) => b.troops - a.troops)[0]; if (nb) help = Math.min(9000, nb.troops * 0.35) * 0.5; }
+      const defPow = (t.troops * (1.05 + (0.1 + t.def / 1500) * K) + help) * (0.5 + t.train / 200) * (defGens.length ? 0.6 + avgS(defGens) / 100 : 0.85) + (t.owner === null ? 0 : 500);
+      let score = atkPow / Math.max(1, defPow * (1 + (Math.random() - 0.5) * noise));
       // プレイヤーの都市は隙あらば狙う：兵が手薄（出陣直後など）なら大きく、武将がいなければさらに
       // 序盤は様子を見て、ゲームが進むほど（プレイヤーの都市数か経過した季節の多い方）激しく狙う
       if (t.owner === G.player) {
         const pr = AI.pressure();
         score *= 0.8 + 0.45 * pr;
-        const mine = Game.citiesOf(G.player), avgT = mine.reduce((s, x) => s + x.troops, 0) / Math.max(1, mine.length);
+        const mine = Game.citiesOf(G.player), avgT = mine.reduce((s2, x) => s2 + x.troops, 0) / Math.max(1, mine.length);
         if (t.troops < avgT * 0.6) score *= 1 + 0.2 * pr;
         if (!defGens.length) score *= 1 + 0.15 * pr;
       }
@@ -748,7 +758,8 @@ const AI = {
     });
     // 強くて頭の良くない武将が上限まで兵を率いられるなら、攻め気が増す
     const brave = gens.find(g => ((g.war >= 85 && g.int <= 60) || (Game.has(g, '猪突') && g.war >= 80)) && c.troops * 0.8 >= Game.troopCap(g));
-    const aggressive = brave ? 0.8 : Game.has(Game.lordOf(fi), '野心') ? 0.9 : 1.0;
+    // 求める勝ち目：賢い見立て役ほど高く（1.0〜1.2）。野心の君主・猛将は低く
+    const aggressive = (brave ? 0.8 : Game.has(Game.lordOf(fi), '野心') ? 0.9 : 1.0) * (1 + 0.2 * q);
     if (!best || bestScore < aggressive) return null;
     // いつも攻めるわけではない。プレイヤーの都市は、序盤は35%で見送り、終盤は見逃さない
     if (!brave && Math.random() < (best.owner === G.player ? 0.35 * (1 - AI.pressure()) : 0.15)) return null;
