@@ -1185,10 +1185,11 @@ const Battle = (() => {
             t = attackTargets(u).filter(([rr, cc]) => unitAt(rr, cc));
           }
         }
-        if (t.length) { const [r, c] = weakest(t); await doAttack(u, r, c); return; }
+        if (t.length) { const [r, c] = bestTarget(u, t); await doAttack(u, r, c); return; }
         u.acted = true; return;
       }
     }
+    if (!rogue && await woundedFallback(u, foes)) return;
     // 攻めの総大将：味方が残っているうちは最後尾につき、負けそうなら下がる。最後の1部隊になったら自ら攻める
     if (u.commander && u.side === 'atk' && !rogue) {
       const allies = B.units.filter(o => o.alive && o.side === u.side && o !== u);
@@ -1227,10 +1228,46 @@ const Battle = (() => {
     if (await tryDuel(u, wmine)) return;
     if (!rogue && attackTargets(u).filter(([r, c]) => unitAt(r, c)).length === 0 && await tryPlot(u, wmine, foes, true)) return;
     const tg = attackTargets(u);
-    if (tg.length) {
-      tg.sort((a, b) => { const oa = unitAt(a[0], a[1]), ob = unitAt(b[0], b[1]); return (oa ? oa.troops - (oa.commander ? 3000 : 0) : 99999) - (ob ? ob.troops - (ob.commander ? 3000 : 0) : 99999); });
-      await doAttack(u, tg[0][0], tg[0][1]);
-    } else { u.acted = true; await sleep(150); }
+    if (tg.length) { const [r, c] = bestTarget(u, tg); await doAttack(u, r, c); }
+    else { u.acted = true; await sleep(150); }
+  }
+  // 攻撃の相手選び：討ち取れる相手（とくに総大将）を最優先。次に弱った相手。反撃で大きな損害を受ける相手は避ける
+  function bestTarget(u, tg) {
+    let best = tg[0], bs = -1e9;
+    tg.forEach(([r, c]) => {
+      const o = unitAt(r, c);
+      let sc;
+      if (!o) sc = 400;   // 城門（守り手がいなければ門を叩く）
+      else {
+        const ranged = dist(u, o) > 1, dmg = calcDamage(u, o, ranged);
+        const kill = dmg >= o.troops;
+        sc = (kill ? (o.commander ? 20000 : 5000) : 0) + (o.commander ? 2500 : 0) + (1 - o.troops / o.maxTroops) * 1500 + Math.min(dmg, o.troops) * 0.3 - o.troops * 0.05;
+        if (!ranged && !kill) sc -= calcDamage(o, u, false) * 0.5 * 0.6;   // 反撃の損害
+        if (o.gi >= 0 && u.g.war >= o.g.war + 10) sc += 300;              // 格下の将は崩しやすい
+      }
+      if (sc > bs) { bs = sc; best = [r, c]; }
+    });
+    return best;
+  }
+  // 深手を負った部隊（兵が2割5分未満）は、味方がいれば後ろへ下がって立て直す。とどめを刺せる相手が隣にいれば討つ
+  async function woundedFallback(u, foes) {
+    // 攻め手は城を落とすまで手を緩めにくいので、より深手（1割5分未満）になってから下がる
+    if (u.commander || u.troops >= u.maxTroops * (u.side === 'atk' ? 0.15 : 0.25)) return false;
+    if (u.side === 'def' && u.r <= 2) return false;   // 城内の守り手は城壁に拠って戦う
+    const allies = B.units.filter(o => o.alive && o.side === u.side && o !== u);
+    if (!allies.length) return false;
+    const adjKill = attackTargets(u).map(([r, c]) => unitAt(r, c)).filter(o => o && calcDamage(u, o, dist(u, o) > 1) >= o.troops);
+    if (adjKill.length) { await doAttack(u, adjKill[0].r, adjKill[0].c); return true; }
+    let best = null, bs = -1e9;
+    moveRange(u).forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      const near = Math.min(...foes.map(f => dist(f, { r, c })));
+      const sc = near * 10 + (u.side === 'atk' ? r : -r) * 2 + (DEFK[B.tiles[r][c].t] - 1) * 10;
+      if (sc > bs) { bs = sc; best = [r, c]; }
+    });
+    if (best && (best[0] !== u.r || best[1] !== u.c)) { await animateMove(u, best[0], best[1]); if (Math.random() < 0.4) bubble(u, pick(['いったん退け！ 立て直す！', '傷が深い……下がるぞ', '無駄死にはさせん、退け！'])); }
+    u.acted = true; await sleep(150);
+    return true;
   }
 
   async function commanderRear(u, allies, foes) {
