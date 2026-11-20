@@ -485,13 +485,25 @@ const Auto = (() => {
     return out;
   }
 
+  // 攻め先の戦略上の値打ち（賢い軍師ほど重く見る）
+  //  最後の一城（勢力を滅ぼせる）・敵の本拠・すでに自分の都市に囲まれている所は高く、取ったあと強い敵の矢面に立つ所は低く
+  function strategicValue(t, e, br) {
+    const w = br.tier === 'smart' ? 1 : br.tier === 'mid' ? 0.5 : 0;
+    if (!w || t.owner === null) return 0;
+    const last = Game.citiesOf(t.owner).length === 1 ? 0.8 : 0;
+    const cap = G.factions[t.owner].capital === t.i ? 0.3 : 0;
+    const surround = t.adj.filter(a => G.cities[a].owner === G.player).length * 0.1;
+    const exposed = t.adj.map(a => G.cities[a]).filter(o => o.owner !== null && o.owner !== G.player && o.owner !== t.owner && !Game.isAlly(G.player, o.owner)).reduce((s2, o) => s2 + o.troops, 0);
+    const risk = Math.min(0.5, exposed / Math.max(1, (e.troops || 1) * 3));
+    return w * (last + cap + surround - risk);
+  }
   function planAttacks(br) {
     const plans = [];
     Game.citiesOf(G.player).forEach(c => {
       c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner))).forEach(t => {
         const e = evalAttack(c, t, br) || evalAttrition(c, t, br);
         const pairBonus = pairWishes().some(w => w.me.city === c.i && w.foe.city === t.i) ? 0.5 : 0;   // 名場面が起きそうな攻め先
-        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus }));
+        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus + strategicValue(t, e, br) }));
       });
     });
     plans.sort((a, b) => b.score - a.score);

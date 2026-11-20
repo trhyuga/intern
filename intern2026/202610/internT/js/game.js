@@ -783,7 +783,8 @@ const AI = {
     if (!enemies.length) return;
     const smart = Game.gensOf(fi).sort((a, b) => b.int - a.int)[0];
     if (!smart || smart.int < 70) return;
-    const t = pick(enemies);
+    // 忠誠の低い相手ほど狙う（寝返らせやすい）
+    const t = enemies.sort((a, b) => a.loyalty - b.loyalty)[Math.floor(Math.random() * Math.min(3, enemies.length))];
     const r = t.loyalty < 40 ? Game.plotLure(smart, t, 300) : Game.plotSow(smart, t);
     if (t.faction === G.player || (r.ok && t.faction === fi)) {
       if (r.ok && t.faction === fi) Game.log(`${t.name}が${G.factions[fi].name}軍に寝返った。`);
