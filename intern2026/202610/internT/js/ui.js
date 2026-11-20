@@ -639,7 +639,7 @@ const App = {
         ${res.atkWin ? `<p><b>${to.name}は${atkName}軍のものとなった。</b></p>` : ''}
         ${deaths.length ? `<p>討死：${deaths.map(g => g.name).join('、')}</p>` : ''}
         ${caps.length ? `<p>捕虜：${caps.map(i => G.gens[i].name).join('、')}</p>` : ''}`, buttons: [{ label: '次へ', cls: 'primary', value: 1 }], auto: 1 });
-      if (Auto.running && Auto.strategist()) await Auto.say(playerWon ? 'win' : 'lose', {}, playerWon ? 'happy' : 'sad');
+      if (Auto.running && Auto.strategist()) await Auto.say(playerWon ? (pAtk ? 'win' : 'held') : (pAtk ? 'lose' : 'lost'), { city: to.name }, playerWon ? 'happy' : 'sad');
       if (playerWon && hero) await UI.talk(hero, 'happy', `${hero.name}「${line(hero, 'victory')}」`);
       if (!playerWon && pAtk) { const lg = atkGens.find(g => g.state === 'serve' && !caps.includes(g.i) && !deaths.includes(g)); if (lg) await UI.talk(lg, 'sad', `${lg.name}「${line(lg, 'defeat')}」`); }
     }
