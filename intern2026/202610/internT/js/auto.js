@@ -6,7 +6,9 @@
 // ============================================================
 const Auto = (() => {
   let running = false, stopReq = false, seasonsLeft = 0;
-  const S = { speed: 1 }; // 1 普通 / 2 速い
+  const S = { speed: 1 }; // 1 普通 / 2 速い / 4 超速（会話を読み飛ばす）
+  const SPEED_NAME = sp => sp >= 4 ? '超速' : sp >= 2 ? '速い' : '普通';
+  const nextSpeed = sp => sp >= 4 ? 1 : sp >= 2 ? 4 : 2;
   try { S.speed = +(localStorage.getItem('internT_autoSpeed') || 1); } catch (e) {}
   const wait = ms => new Promise(r => setTimeout(r, ms / S.speed));
 
@@ -152,7 +154,7 @@ const Auto = (() => {
     const bar = document.getElementById('autobar');
     bar.querySelector('img').src = g ? Portrait.get(g, 'normal', facColor(g)) : '';
     bar.querySelector('.ab-text').innerHTML = text;
-    bar.querySelector('[data-a=speed]').textContent = S.speed >= 2 ? '速い' : '普通';
+    bar.querySelector('[data-a=speed]').textContent = SPEED_NAME(S.speed);
   }
 
   // ---------- 内政の判断 ----------
@@ -1101,13 +1103,14 @@ const Auto = (() => {
   }
 
   // 会話の表示時間：文字数に応じて長く（1文字50ms、最大7秒）。「速い」でも長い文は読めるよう、速さの効きを弱める
-  function talkMs(text) { const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length; return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6); }
+  function talkMs(text) { if (S.speed >= 4) return 280;   // 超速：会話は一瞬だけ見せて流す
+    const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length; return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6); }
 
   function init() {
     const bar = document.getElementById('autobar');
     bar.querySelector('[data-a=stop]').onclick = e => { e.stopPropagation(); Sound.se('tap'); stop(false); };
     bar.querySelector('[data-a=speed]').onclick = e => {
-      e.stopPropagation(); S.speed = S.speed >= 2 ? 1 : 2;
+      e.stopPropagation(); S.speed = nextSpeed(S.speed);
       try { localStorage.setItem('internT_autoSpeed', S.speed); } catch (er) {}
       if (G) G.opts.aiSpeed = S.speed; setBar(bar.querySelector('.ab-text').innerHTML);
     };
@@ -1122,12 +1125,12 @@ const Auto = (() => {
       { label: '▶ 1年だけ任せる', sub: '4季節ぶん', value: 'year' },
       { label: '▶ この季節だけ任せる', sub: '終わったら自分の操作に戻る', value: 'one' },
       { label: '軍師を替える', sub: grade(g), value: 'change' },
-      { label: `見る速さ：${S.speed >= 2 ? '速い' : '普通'}`, value: 'speed' },
+      { label: `見る速さ：${SPEED_NAME(S.speed)}`, sub: '普通→速い→超速（会話を読み飛ばす）', value: 'speed' },
     ]);
     if (v === 'run') start(0);
     if (v === 'year') start(4);
     if (v === 'one') start(1);
-    if (v === 'speed') { S.speed = S.speed >= 2 ? 1 : 2; try { localStorage.setItem('internT_autoSpeed', S.speed); } catch (e) {} return openMenu(); }
+    if (v === 'speed') { S.speed = nextSpeed(S.speed); if (G) G.opts.aiSpeed = S.speed; try { localStorage.setItem('internT_autoSpeed', S.speed); } catch (e) {} return openMenu(); }
     if (v === 'change') {
       const list = Game.gensOf(G.player);
       const gi = await UI.pickGenerals('軍師に任命する武将（知力が高いほど采配が正確）', list, { stat: 'int', keys: ['int', 'lead', 'pol', 'cha'], extra: x => x.i === G.strategist ? '現軍師' : '' });

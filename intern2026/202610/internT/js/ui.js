@@ -23,8 +23,11 @@ const UI = {
     return new Promise(res => {
       const el = $('#talk');
       const autoMs = (typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text) : 0;
-      el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/\n/g, '<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div>` : '<div class="talk-next">▼</div>'}</div></div>`;
+      el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/<b>[\s\S]*?<\/b>/g, m => m.replace(/\n/g, '<br>')).split('\n').map(t => `<span class="tl">${t}</span>`).join('<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div>` : '<div class="talk-next">▼</div>'}</div></div>`;
       el.classList.add('show');
+      UI.fixOrphans(el);
+      if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => UI.fixOrphans(el));
+      requestAnimationFrame(() => UI.fixOrphans(el));
       let veil = $('.talk-veil');
       if (!veil) { veil = document.createElement('div'); veil.className = 'talk-veil'; el.after(veil); }
       let closed = false;
@@ -32,6 +35,27 @@ const UI = {
       setTimeout(() => { veil.onclick = close; el.onclick = close; }, 180);
       let tm = null;
       if (autoMs) { requestAnimationFrame(() => { const bar = $('.talk-auto i', el); if (bar) bar.style.width = '100%'; }); tm = setTimeout(close, autoMs); }
+    });
+  },
+  // 折り返しで最後の行に2文字以下だけ残る段落は、字間を少し詰めて前の行に収める
+  fixOrphans(root) {
+    root.querySelectorAll('.tl').forEach(sp => {
+      // 何度呼んでも同じ結果になるよう、元の状態に戻してから測る（文字の読み込み後にもう一度呼ぶ）
+      if (sp.dataset.src == null) sp.dataset.src = sp.innerHTML; else { sp.innerHTML = sp.dataset.src; sp.style.letterSpacing = ''; }
+      const fs = parseFloat(getComputedStyle(sp).fontSize) || 16;
+      const orphan = () => { const rs = sp.getClientRects(); return rs.length > 1 && rs[rs.length - 1].width < fs * 2.6 ? rs.length : 0; };
+      const n0 = orphan(); if (!n0) return;
+      for (const ls of [-0.3, -0.6, -0.9, -1.2, -1.5, -2]) {
+        sp.style.letterSpacing = ls + 'px';
+        if (sp.getClientRects().length < n0) return;
+      }
+      sp.style.letterSpacing = '';
+      // 詰めても収まらなければ、最後の5文字を折り返さないようにして、前の行から何文字か連れてくる
+      const w = document.createTreeWalker(sp, NodeFilter.SHOW_TEXT); let last = null; while (w.nextNode()) if (w.currentNode.nodeValue.trim()) last = w.currentNode;
+      if (!last) return;
+      const v = last.nodeValue, k = Math.min(5, v.length);
+      const tail = document.createElement('span'); tail.style.whiteSpace = 'nowrap'; tail.textContent = v.slice(v.length - k);
+      last.nodeValue = v.slice(0, v.length - k); last.after(tail);
     });
   },
   modal({ title, body, buttons, wide, auto }) {
