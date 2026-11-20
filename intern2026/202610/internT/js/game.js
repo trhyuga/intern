@@ -717,6 +717,15 @@ const AI = {
       const empty = c.adj.map(a => G.cities[a]).filter(o => o.owner === fi && Game.gensIn(o.i, fi).length === 0);
       if (gs.length >= 3 && empty.length) { gs.sort((a, b) => b.lead - a.lead); gs[gs.length - 1].city = empty[0].i; }
     });
+    // 前線どうし：脅威に対して余裕のある都市から、兵の足りない隣の自都市へ回す（大軍に狙われた城を固める）
+    cities.filter(c => Game.isFront(c)).forEach(c => {
+      const spare = c.troops - Math.max(5000, AI.threat(c, fi) * 1.5);
+      if (spare < 3000) return;
+      const need = c.adj.map(a => G.cities[a]).filter(o => o.owner === fi && Game.isFront(o)).map(o => ({ o, lack: AI.threat(o, fi) * 0.9 - o.troops })).filter(x => x.lack > 2000).sort((a, b) => b.lack - a.lack)[0];
+      if (!need) return;
+      const amt = Math.round(Math.min(spare, need.lack) / 100) * 100;
+      Game.transport(c, need.o, 0, Math.min(Math.round(c.food * 0.2), Math.round(amt * 0.5)), amt);
+    });
     // 後方の強い武将を前線へ（季節に1〜2人）
     const fronts = cities.filter(c => Game.isFront(c));
     let moved = 0;
