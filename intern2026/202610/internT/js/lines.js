@@ -425,7 +425,7 @@ function line(g, kind, ctx = {}) {
   let pool = null;
   if (!LINES[kind] && !(SPECIAL_LINES[g.name] && SPECIAL_LINES[g.name][kind])) { if (kind.endsWith('_great')) kind = 'great'; else if (kind.endsWith('_poor')) kind = 'poor'; }
   const sp = SPECIAL_LINES[g.name];
-  if (sp && sp[kind] && !(/^(study_|lowTroops|routFoe|gateBreak|gateLost|reinforce|saved|regroup)/.test(kind) && Math.random() < 0.5)) pool = sp[kind];   // 修行の台詞は人物専用と性格の台詞を半々に
+  if (sp && sp[kind] && !(/^(study_|lowTroops|routFoe|gateBreak|gateLost|reinforce|saved|regroup|invade)/.test(kind) && Math.random() < 0.5)) pool = sp[kind];   // 修行の台詞は人物専用と性格の台詞を半々に
   else if (g.isLord && LORD_LINES[kind] && Math.random() < 0.7) pool = LORD_LINES[kind];
   else {
     const tbl = LINES[kind];

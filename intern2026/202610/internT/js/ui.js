@@ -797,7 +797,7 @@ const App = {
             await MapView.march(b.from, b.to, f.color);
             const lead = G.gens[b.gens[0]];
             Sound.se('gong');
-            await UI.talk(lead, 'angry', `${f.name}軍が${to.name}に攻めてきた！\n総大将 ${lead.name}、兵 ${fmt(b.troops)}`, f.color, { tag: '敵襲' });
+            await UI.talk(lead, 'angry', `${lead.name}「${line(lead, 'invade', { foe: to.name })}」\n<b>${f.name}軍が${to.name}に攻めてきた！ 総大将 ${lead.name}、兵 ${fmt(b.troops)}</b>`, f.color, { tag: '敵襲' });
             if (Game.gensIn(to.i, G.player).length) {
               const dg = Game.gensIn(to.i, G.player).sort((x, y) => (y.isLord ? 999 : 0) + y.lead - (x.isLord ? 999 : 0) - x.lead)[0];
               await UI.talk(dg, Game.has(dg, '臆病') ? 'shock' : 'angry', `${dg.name}「${line(dg, 'defend')}」`, facColor(dg));
