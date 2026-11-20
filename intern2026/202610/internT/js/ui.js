@@ -785,6 +785,15 @@ const App = {
           $('#mapHint').classList.add('show');
         }
         AI._lastLure = null;
+        // 合従の知らせ
+        for (const n of (AI._allyNews || [])) {
+          const la = Game.lordOf(n.a), lb = Game.lordOf(n.b);
+          $('#mapHint').classList.remove('show');
+          Sound.se('ally');
+          await UI.talk(la, 'angry', `${la.name}「${G.factions[G.player].name}の勢いは、もはや捨て置けぬ。${lb.name}殿、ここは手を携えよう」\n<b>${G.factions[n.a].name}軍と${G.factions[n.b].name}軍が手を結んだ（反${G.factions[G.player].name}の合従）</b>`, G.factions[n.a].color, { tag: '天下の動き' });
+          $('#mapHint').classList.add('show');
+        }
+        AI._allyNews = [];
         for (const b of battles) {
           const from = G.cities[b.from], to = G.cities[b.to];
           if (from.owner !== fi || to.owner === fi || (to.owner !== null && Game.isAlly(fi, to.owner))) continue;
