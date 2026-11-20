@@ -1005,6 +1005,11 @@ const Auto = (() => {
       }
       // 実際に集まった将が率いられる分までに抑える
       const troops = Math.min(e.troops, Math.floor((p.c.troops - e.keep) / 100) * 100, Math.floor(army.reduce((s2, g) => s2 + Game.troopCap(g), 0) / 100) * 100);
+      // 予定の将が他の出陣に回って減ったときは、勝ち目を確かめ直す（足りなければ見送る）
+      if (army.length < e.army.length && !e.big) {
+        const ratio = troops * atkFactor(p.c, army) / Math.max(1, defPower(p.t));
+        if (ratio < (e.attrition ? 1 : e.mass ? 1 / 1.5 : Math.max(1.05, br.aggr))) { await say('hold'); continue; }
+      }
       if (troops < 3000) { await say('hold'); continue; }
       // 兵糧：通常は次の秋までの分を残し20日分。兵が揃った攻め・猛将は、残る兵の1季節分だけ残して10日分あればよい
       const loose = p.mass || p.isBrave;
