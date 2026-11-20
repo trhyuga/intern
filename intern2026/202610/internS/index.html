@@ -224,6 +224,7 @@
         <button data-t="tri">3連単</button>
       </div>
       <p class="sub" id="betHint" style="margin-top:8px"></p>
+      <button type="button" id="btnBox" style="display:none;margin-top:6px;background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:5px 14px;font-weight:700;cursor:pointer">ボックス買い：OFF</button>
       <div class="picks" id="picks"></div>
       <div class="panel">
         <div style="display:flex;justify-content:space-between"><span>金額</span><b id="amtView">0円</b></div>
@@ -655,6 +656,33 @@ const SIM_TRI = { E2: 0.81, E3: 0.65, CAL: 1, CAL_TRIO: 1 };
 function trioKey(a,b,c){ return [a,b,c].sort((x,y)=>x-y).join('-'); }
 function triKey(a,b,c){ return `${a}-${b}-${c}`; }
 // 馬券が当たったか（o = 着順の馬番の配列）
+// ボックス買い: 選んだ馬のすべての組み合わせ（3連単は並び順も全部）
+function boxCombos(type, sel){
+  const out = [], s = [...sel].sort((a,b)=>a-b);
+  if(type === 'quin'){ for(let i=0;i<s.length;i++) for(let j=i+1;j<s.length;j++) out.push([s[i], s[j]]); }
+  if(type === 'trio'){ for(let i=0;i<s.length;i++) for(let j=i+1;j<s.length;j++) for(let k=j+1;k<s.length;k++) out.push([s[i], s[j], s[k]]); }
+  if(type === 'tri'){ for(const a of s) for(const b of s) for(const c of s) if(a!==b && b!==c && a!==c) out.push([a, b, c]); }
+  return out;
+}
+function oddsOf(type, sel){
+  if(type === 'win') return Game.odds.win[sel[0]-1];
+  if(type === 'place') return Game.odds.place[sel[0]-1];
+  if(type === 'tri') return Game.odds.tri[triKey(sel[0], sel[1], sel[2])];
+  if(type === 'trio') return Game.odds.trio[trioKey(sel[0], sel[1], sel[2])];
+  return Game.odds.quin[quinKey(sel[0], sel[1])];
+}
+// 馬券の購入金額（ボックスは 1点の金額 × 点数）
+function ticketCost(t){ return t.box ? t.amount * t.combos.length : t.amount; }
+// 当たったか、当たったならそのオッズ（ボックスは当たった組み合わせのオッズ）
+function ticketResult(t, o){
+  if(!t.box) return ticketHit(t, o) ? { hit: true, odds: t.odds, sel: t.sel } : { hit: false };
+  const c = t.combos.find(c => ticketHit({ type: t.type, sel: c.sel }, o));
+  return c ? { hit: true, odds: c.odds, sel: c.sel } : { hit: false };
+}
+function ticketLabel(t){
+  const join = sel => sel.join(t.type === 'tri' ? '→' : '-');
+  return t.box ? `${BET_LABEL[t.type]}ボックス ${t.sel.join('・')}（${t.combos.length}点）` : `${BET_LABEL[t.type]} ${join(t.sel)}`;
+}
 function ticketHit(t, o){
   if(t.type === 'win') return t.sel[0] === o[0];
   if(t.type === 'place') return o.slice(0,3).includes(t.sel[0]);
@@ -1142,13 +1170,19 @@ function fitCanvas(cv, w, h){
 // ---------- 馬券 ----------
 function renderBet(){
   document.querySelectorAll('#betType button').forEach(b => b.classList.toggle('on', b.dataset.t === Game.betType));
+  const canBox = ['quin','trio','tri'].includes(Game.betType);
+  if(!canBox) Game.box = false;
+  $('btnBox').style.display = canBox ? '' : 'none';
+  $('btnBox').textContent = `ボックス買い：${Game.box ? 'ON' : 'OFF'}`;
+  $('btnBox').style.background = Game.box ? 'var(--gold)' : 'transparent';
+  $('btnBox').style.color = Game.box ? '#111' : 'var(--ink)';
   $('betHint').textContent = { win:'1着になる馬を1頭選ぶ', place:'3着以内に入る馬を1頭選ぶ（当たりやすいが配当は低め）', quin:'1着・2着になる2頭を選ぶ（順不同。「2連複」と同じ賭け方です）', trio:'1着・2着・3着になる3頭を選ぶ（順不同。3連単より当たりやすく配当は低め）', tri:'1着→2着→3着の順に3頭選ぶ（着順どおりに当てる。難しいぶん高配当）' }[Game.betType];
   const p = $('picks'); p.innerHTML = '';
   Game.field.horses.forEach(x => {
     const b = document.createElement('button');
     const w = WAKU[x.no-1];
     b.style.background = w.bg; b.style.color = w.fg;
-    const ord = Game.betType === 'tri' ? Game.sel.indexOf(x.no) : -1;
+    const ord = Game.betType === 'tri' && !Game.box ? Game.sel.indexOf(x.no) : -1;
     b.textContent = (ord >= 0 ? `${ord+1}着:` : '') + x.no + ' ' + x.name.slice(0, ord >= 0 ? 3 : 5);
     b.classList.toggle('on', Game.sel.includes(x.no));
     b.onclick = () => togglePick(x.no);
@@ -1156,24 +1190,31 @@ function renderBet(){
   });
   $('amtView').textContent = yen(Game.amount);
   const need = { quin:2, tri:3, trio:3 }[Game.betType] || 1;
-  let o = '';
-  if(Game.sel.length === need){
+  let o = '', cost = Game.amount, ok = Game.sel.length === need;
+  if(Game.box){
+    ok = Game.sel.length >= need;
+    if(ok){
+      const cs = boxCombos(Game.betType, Game.sel).map(c => oddsOf(Game.betType, c));
+      cost = Game.amount * cs.length;
+      o = `${cs.length}点 × ${yen(Game.amount)} = ${yen(cost)} ／ オッズ ${Math.min(...cs).toFixed(1)}〜${Math.max(...cs).toFixed(1)}倍`;
+    } else o = `${need}頭以上を選んでください（いま${Game.sel.length}頭）`;
+  } else if(ok){
     const odds = currentOdds();
     o = `オッズ ${odds.toFixed(1)}倍 → 的中で ${yen(Math.floor(Game.amount * odds))}`;
   }
   $('oddsView').textContent = o;
-  $('btnAddTicket').disabled = !(Game.sel.length === need && Game.amount >= CONFIG.MIN_BET && Game.amount <= remaining());
+  $('btnAddTicket').disabled = !(ok && Game.amount >= CONFIG.MIN_BET && cost <= remaining());
   const ul = $('tickets'); ul.innerHTML = '';
   Game.tickets.forEach((t,k) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span>${BET_LABEL[t.type]} ${t.sel.join(t.type === 'tri' ? '→' : '-')}（${t.odds.toFixed(1)}倍）</span><span>${yen(t.amount)} <button data-k="${k}">✕</button></span>`;
+    li.innerHTML = `<span>${ticketLabel(t)}${t.box ? '' : `（${t.odds.toFixed(1)}倍）`}</span><span>${t.box ? `${yen(t.amount)}×${t.combos.length}` : yen(t.amount)} <button data-k="${k}">✕</button></span>`;
     li.querySelector('button').onclick = () => { Game.tickets.splice(k,1); renderBet(); };
     ul.appendChild(li);
   });
-  const sum = Game.tickets.reduce((a,t)=>a+t.amount,0);
+  const sum = Game.tickets.reduce((a,t)=>a+ticketCost(t),0);
   $('ticketSum').textContent = Game.tickets.length ? `合計 ${yen(sum)}（残り ${yen(remaining())}）` : '馬券なし（見送りで発走もできます）';
 }
-function remaining(){ return Save.data.money - Game.tickets.reduce((a,t)=>a+t.amount,0); }
+function remaining(){ return Save.data.money - Game.tickets.reduce((a,t)=>a+ticketCost(t),0); }
 const BET_LABEL = { win:'単勝', place:'複勝', quin:'馬連', trio:'3連複', tri:'3連単' };
 function currentOdds(){
   if(Game.betType === 'win') return Game.odds.win[Game.sel[0]-1];
@@ -1186,7 +1227,7 @@ function togglePick(no){
   const need = { quin:2, tri:3, trio:3 }[Game.betType] || 1;
   const k = Game.sel.indexOf(no);
   if(k >= 0) Game.sel.splice(k,1);
-  else { Game.sel.push(no); if(Game.sel.length > need) Game.sel.shift(); }
+  else { Game.sel.push(no); if(!Game.box && Game.sel.length > need) Game.sel.shift(); }
   renderBet();
 }
 
@@ -1200,7 +1241,7 @@ const Race = { sim:null, t:0, raf:0, lastNow:0, phase:-1, lines:[], said:{}, lea
 
 function startRace(){
   const d = Save.data;
-  d.money -= Game.tickets.reduce((a,t)=>a+t.amount,0);
+  d.money -= Game.tickets.reduce((a,t)=>a+ticketCost(t),0);
   Save.write();
   // 本番は「調子」込みで走る
   const rnd = mulberry32(Math.floor(Math.random()*1e9));
@@ -1436,7 +1477,7 @@ function commentEvents(prog, st, fi){
     Race.said.post = 1;
     const wNo = H(o[0]).no, w2No = H(o[1]).no;
     const oNo = o.map(i => H(i).no);
-    const hit = Game.tickets.some(t => ticketHit(t, oNo) && (t.type !== 'place' || t.sel[0] === wNo));
+    const hit = Game.tickets.some(t => ticketResult(t, oNo).hit && (t.type !== 'place' || t.sel[0] === wNo));
     if(hit) say(praiseLine(o[0], Race.story), true);
     const fv = favIndex(), fNo = H(fv).no, fPos = o.indexOf(fv) + 1;
     const betOnFav = Game.tickets.some(t => t.sel.includes(fNo));
@@ -1825,10 +1866,10 @@ function showResult(){
   const d = Save.data;
   let pay = 0, html = '';
   Game.tickets.forEach(t => {
-    const hit = ticketHit(t, o);
-    const back = hit ? Math.floor(t.amount * t.odds / 10) * 10 : 0; // 10円単位
+    const res = ticketResult(t, o), hit = res.hit;
+    const back = hit ? Math.floor(t.amount * res.odds / 10) * 10 : 0; // 10円単位
     pay += back;
-    html += `<div class="${hit?'win':'lose'}">${BET_LABEL[t.type]} ${t.sel.join(t.type === 'tri' ? '→' : '-')} ${yen(t.amount)} → ${hit ? '的中！ '+yen(back) : 'はずれ'}</div>`;
+    html += `<div class="${hit?'win':'lose'}">${ticketLabel(t)} ${yen(ticketCost(t))} → ${hit ? `的中！${t.box ? `（${res.sel.join(t.type === 'tri' ? '→' : '-')} ${res.odds.toFixed(1)}倍）` : ''} ${yen(back)}` : 'はずれ'}</div>`;
   });
   if(!Game.tickets.length) html = '<div class="lose">今回は見送り</div>';
   const before = d.money;
@@ -1845,7 +1886,7 @@ function showResult(){
   $('resTitle').textContent = `${Game.field.race.name} 確定`;
   $('podium').innerHTML = o.slice(0,3).map((no,k) => `<div><span class="pos">${k+1}着</span>${wakuBadge(no)} ${Game.field.horses[no-1].name}</div>`).join('');
   // 年間の結果発表用に記録
-  const stake = Game.tickets.reduce((a,t)=>a+t.amount,0);
+  const stake = Game.tickets.reduce((a,t)=>a+ticketCost(t),0);
   d.history.push({ race: Game.field.race.name, month: Game.field.race.month, winner: Game.field.horses[o[0]-1].name,
     winOdds: Game.odds.win[o[0]-1], stake, pay });
   // 次へ進める
@@ -1854,8 +1895,8 @@ function showResult(){
   show('result');
   // 当たった馬券のうち一番高いオッズ（10倍以上なら大的中の演出）
   const bigOdds = Game.tickets.reduce((m,t) => {
-    const hit = ticketHit(t, o);
-    return hit ? Math.max(m, t.odds) : m;
+    const res = ticketResult(t, o);
+    return res.hit ? Math.max(m, res.odds) : m;
   }, 0);
   if(pay > 0) celebrate(pay, stake, bigOdds);
   if(reached.length) setTimeout(() => showOjisan(reached), bigOdds >= 10 ? 4700 : 3000);
@@ -2169,7 +2210,12 @@ document.querySelectorAll('#betType button').forEach(b => b.onclick = () => { Ga
 document.querySelectorAll('#amtBtns button').forEach(b => b.onclick = () => {
   const a = +b.dataset.a; Game.amount = a === 0 ? 0 : Math.min(remaining(), Game.amount + a); renderBet();
 });
+$('btnBox').onclick = () => { Game.box = !Game.box; Game.sel = []; renderBet(); };
 $('btnAddTicket').onclick = () => {
+  if(Game.box){
+    const sel = [...Game.sel].sort((a,b)=>a-b);
+    Game.tickets.push({ type: Game.betType, box: true, sel, amount: Game.amount, combos: boxCombos(Game.betType, sel).map(c => ({ sel: c, odds: oddsOf(Game.betType, c) })) });
+  } else
   Game.tickets.push({ type: Game.betType, sel: Game.betType === 'tri' ? [...Game.sel] : [...Game.sel].sort((a,b)=>a-b), amount: Game.amount, odds: currentOdds() });
   Game.sel = []; Game.amount = 0; renderBet();
 };
