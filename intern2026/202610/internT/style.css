@@ -208,6 +208,10 @@ button { font-family: inherit; }
 .modal-ft .btn { flex: 1; }
 .opt { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
 .opt small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; }
+/* 赤・灰色の地のボタンでは、説明文を明るい色にして読みやすく */
+.btn.primary small, .opt.primary small { color: #ffe2cf; }
+.btn.danger small, .opt.danger small { color: #e8dcc6; }
+.btn.gold small, .opt.gold small { color: #4a3510; }
 .rng { width: 100%; margin: 10px 0; accent-color: var(--red); height: 30px; }
 .rng-v { text-align: center; font-size: 28px; font-weight: 800; color: var(--red); }
 
