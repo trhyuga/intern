@@ -239,7 +239,7 @@ const Auto = (() => {
     let maxEnemy = 0;
     c.adj.forEach(a => { const o = G.cities[a]; if (o.owner !== null && o.owner !== G.player && !Game.isAlly(G.player, o.owner)) maxEnemy = Math.max(maxEnemy, o.troops * (a === excludeCi ? 0.4 : 1)); });
     // 城の守りは兵1人あたり約1.4倍強いので、隣の敵の兵力の4〜6割を残せば持ちこたえられる
-    let k = Game.has(g, '慎重') ? 0.6 : (Game.has(g, '野心') || Game.has(g, '猪突')) ? 0.35 : 0.45;
+    let k = Game.has(g, '慎重') ? 0.55 : (Game.has(g, '野心') || Game.has(g, '猪突')) ? 0.3 : 0.4;
     if (br.tier === 'dumb') k *= 0.6;            // 知力が低いと敵の脅威を甘く見る（それでも最低限は残す）
     return Math.round(Math.max(base, c.troops * 0.25, maxEnemy * k));
   }
@@ -261,7 +261,7 @@ const Auto = (() => {
       Object.keys(G.factions[t.owner].allies).map(Number).forEach(fi => { if (fi !== G.player && G.factions[fi].alive && Game.isAlly(t.owner, fi) && !Game.isAlly(G.player, fi)) { const c = near(fi); if (c && c.troops >= 5000) help += c.troops * 0.4 * 0.55; } });
     }
     const sk = Game.siegeK(G.player);
-    return (t.troops * (1.2 + t.def / 1200 * sk) + help * 0.6 * (0.4 + 0.6 * sk)) * (0.5 + t.train / 200) * gf;
+    return (t.troops * (1.1 + t.def / 1500 * sk) + help * 0.4 * (0.4 + 0.6 * sk)) * (0.5 + t.train / 200) * gf;
   }
   // 1つの攻め先について、連れていく武将と兵を決める。勝ち目が足りなければ null
   function evalAttack(c, t, br) {
