@@ -650,6 +650,20 @@ const AI = {
       const t = env && [...nb].map(o => ({ o, p: Game.surrenderOdds(env, o).p })).sort((a, b) => b.p - a.p)[0];
       if (t && t.p >= 0.2 && Math.random() < t.p) { const nm = G.factions[t.o].name; Game.absorbFaction(t.o, fi); Game.log(`${nm}軍が${f.name}軍に降伏した。`); }
     }
+    // 合従：プレイヤーが強大になったら、プレイヤーと接する勢力どうしが手を組んで対抗する
+    const pN = Game.citiesOf(G.player).length;
+    if (pN >= 8 && pN >= myCities.length * 1.5 && !Game.isAlly(fi, G.player) && Math.random() < 0.15) {
+      const touchP = x => Game.citiesOf(x).some(c => c.adj.some(a => G.cities[a].owner === G.player));
+      if (touchP(fi)) {
+        const partner = G.factions.filter(o => o.alive && o.i !== fi && o.i !== G.player && !Game.isAlly(fi, o.i) && !Game.isAlly(o.i, G.player) && touchP(o.i)
+          && myCities.some(c => c.adj.some(a => G.cities[a].owner === o.i))).sort((a, b) => Game.power(b.i) - Game.power(a.i))[0];
+        if (partner) {
+          f.allies[partner.i] = CONFIG.ALLY_TURNS; partner.allies[fi] = CONFIG.ALLY_TURNS;
+          Game.log(`${f.name}軍と${partner.name}軍が、${G.factions[G.player].name}軍に対抗して手を結んだ。`);
+          (AI._allyNews = AI._allyNews || []).push({ a: fi, b: partner.i });
+        }
+      }
+    }
     // 外交（たまにプレイヤーへ同盟を申し出る → UIで処理）
     // 武将の再配置：前線へ
     AI.redistribute(fi);
