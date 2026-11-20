@@ -57,7 +57,7 @@ const Battle = (() => {
       const defGensAll = Game.gensIn(to.i, defFi === null ? undefined : defFi);
       const defGens = defGensAll.slice().sort((a, b) => (b.isLord ? 1000 : 0) + b.lead + b.war - (a.isLord ? 1000 : 0) - a.lead - a.war).slice(0, 5);
       B = { plan, atkFi: plan.atkFi, defFi, from, to, tiles: genTerrain(to), units: [], day: 1, weather: 'sun', food: plan.food,
-        playerSide: plan.atkFi === G.player ? 'atk' : 'def', gateHP: 600 + to.def * 9, gateMax: 600 + to.def * 9, log: [], sel: null, mode: 'idle', reach: null, targets: null, over: false,
+        playerSide: plan.atkFi === G.player ? 'atk' : 'def', gateHP: Math.round(400 + to.def * (3 + 6 * Game.siegeK(plan.atkFi))), gateMax: Math.round(400 + to.def * (3 + 6 * Game.siegeK(plan.atkFi))), wallK: Game.siegeK(plan.atkFi), log: [], sel: null, mode: 'idle', reach: null, targets: null, over: false,
         bondAtk: Game.bondOf(atkGens.map(g => g.name)), bondDef: Game.bondOf(defGens.map(g => g.name)),
         watch: !!(opts && opts.watch), smart: 0.5,
         buff: { atk: { atk: 1, guard: 1, days: 0 }, def: { atk: 1, guard: 1, days: 0 } } };
@@ -366,9 +366,9 @@ const Battle = (() => {
     if (d.gi >= 0) k /= Game.topK(dg, 'lead', 1.12, 1.2);
     // 城壁：城内・城門・本丸の守り手は、城壁の値に応じて被害が減る。門が破れると守りは半減
     const castle = ['inner', 'keep', 'gate'];
-    if (d.side === 'def' && castle.includes(t)) k /= 1 + B.to.def / 600 * (gateUp() ? 1 : 0.5);
+    if (d.side === 'def' && castle.includes(t)) k /= 1 + B.to.def / 600 * B.wallK * (gateUp() ? 1 : 0.5);
     // 城壁の上からの矢は届く
-    if (a.side === 'def' && ranged && castle.includes(at) && gateUp()) k *= 1 + B.to.def / 1400;
+    if (a.side === 'def' && ranged && castle.includes(at) && gateUp()) k *= 1 + B.to.def / 1400 * B.wallK;
     return Math.max(30, Math.round(k * rnd(0.85, 1.15)));
   }
 
@@ -797,13 +797,13 @@ const Battle = (() => {
     if (B.defFi !== null) {
       // 守り手の隣の自都市
       const own = near(B.defFi);
-      if (own && own.troops >= 4000 && Math.random() < 0.85) add('def', B.defFi, own, irnd(3, 7), false);
+      if (own && own.troops >= 4000 && Math.random() < 0.4 + 0.45 * B.wallK) add('def', B.defFi, own, irnd(3, 7), false);
       // 同盟国（攻め手と手を結んでいない国）
       const allies = Object.keys(G.factions[B.defFi].allies).map(Number).filter(fi => G.factions[fi].alive && Game.isAlly(B.defFi, fi) && fi !== B.atkFi && !Game.isAlly(B.atkFi, fi));
       for (const fi of allies) {
         const c = near(fi); if (!c || c.troops < 5000) continue;
         const lord = Game.lordOf(fi);
-        const p = 0.55 + (Game.has(lord, '忠義') || Game.has(lord, '仁徳') ? 0.2 : 0) - (Game.has(lord, '野心') ? 0.15 : 0);
+        const p = 0.25 + 0.3 * B.wallK + (Game.has(lord, '忠義') || Game.has(lord, '仁徳') ? 0.2 : 0) - (Game.has(lord, '野心') ? 0.15 : 0);
         if (Math.random() < p) { add('def', fi, c, irnd(4, 9), true); break; }
       }
     }
