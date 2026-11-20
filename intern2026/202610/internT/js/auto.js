@@ -589,7 +589,7 @@ const Auto = (() => {
         if (t.state !== 'serve' || !front.has(t.city) || t.isLord || Game.has(t, '忠義') || used.has('g' + t.i)) return;
         const worth = (t.lead + t.war + t.int + t.pol) / 40;
         if (t.loyalty < 45 && home.gold >= 400) opts.push({ kind: 'lure', t, city: t.city, v: worth + (45 - t.loyalty) / 5 + (Game.has(t, '野心') ? 2 : 0) });
-        else if (t.loyalty < 85) opts.push({ kind: 'sow', t, city: t.city, v: worth * 0.5 + (Game.has(t, '野心') ? 4 : 0) + (85 - t.loyalty) / 10 });
+        else if (t.loyalty < 85 && home.gold >= 50) opts.push({ kind: 'sow', t, city: t.city, v: worth * 0.5 + (Game.has(t, '野心') ? 4 : 0) + (85 - t.loyalty) / 10 });
       });
       if (home.gold >= 100) front.forEach(ci => {
         const c = G.cities[ci];
@@ -976,9 +976,8 @@ const Auto = (() => {
       if (stopReq) return false;
       const { p } = a;
       if (p.c.owner !== G.player || p.t.owner === G.player || (p.t.owner !== null && Game.isAlly(G.player, p.t.owner))) continue;
-      // 内政のあとの最新の状態でもう一度見積もる（攻め先の兵が増えていたら見送る）
-      const e = (p.isBrave || p.mass) ? p : (evalAttack(p.c, p.t, br) || (p.attrition ? evalAttrition(p.c, p.t, br) : null));   // 猛将・兵が揃った攻めは見積もり直さない
-      if (!e) { await say('hold'); continue; }
+      // 出陣は季節の最初に行うので、計画したときの見積もりのまま進める（見積もり直すと、他の出陣に充てた将を取り合ってしまう）
+      const e = p;
       // 武将の合流
       if (e.moved && e.moved.length) {
         const names = e.moved.map(g => g.name).join('・');
@@ -1004,7 +1003,13 @@ const Auto = (() => {
           App.refresh();
         }
       }
-      const troops = Math.min(e.troops, Math.floor((p.c.troops - e.keep) / 100) * 100);
+      // 実際に集まった将が率いられる分までに抑える
+      const troops = Math.min(e.troops, Math.floor((p.c.troops - e.keep) / 100) * 100, Math.floor(army.reduce((s2, g) => s2 + Game.troopCap(g), 0) / 100) * 100);
+      // 予定の将が他の出陣に回って減ったときは、勝ち目を確かめ直す（足りなければ見送る）
+      if (army.length < e.army.length && !e.big) {
+        const ratio = troops * atkFactor(p.c, army) / Math.max(1, defPower(p.t));
+        if (ratio < (e.attrition ? 1 : e.mass ? 1 / 1.5 : Math.max(1.05, br.aggr))) { await say('hold'); continue; }
+      }
       if (troops < 3000) { await say('hold'); continue; }
       // 兵糧：通常は次の秋までの分を残し20日分。兵が揃った攻め・猛将は、残る兵の1季節分だけ残して10日分あればよい
       const loose = p.mass || p.isBrave;
@@ -1040,10 +1045,10 @@ const Auto = (() => {
       if (r === 'end') return false;
     }
     UI.closeSheet();
-    await doDiplo(br, new Set(attacks.map(p => p.army).flat().map(x => x.i))); if (stopReq) return false;
-    // 降伏で味方になった都市への出陣は取りやめ
-    for (let k = attacks.length - 1; k >= 0; k--) if (attacks[k].t.owner === G.player) attacks.splice(k, 1);
-    const armies0 = attacks.map(p => p.army).flat();
+    // 出陣が済んだら、出陣した将は行動済み。取りやめになった出陣の将は、このあとの外交・内政などで働ける
+    reserved.clear();
+    const armies0 = [];
+    await doDiplo(br, new Set()); if (stopReq) return false;
     await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
     await eventSeek(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
@@ -1054,9 +1059,7 @@ const Auto = (() => {
       if (stopReq) return false;
       const idleBefore = Game.gensIn(c.i, G.player).filter(x => !x.acted && !reserved.has(x.i));
       if (!idleBefore.length) continue;
-      reserved.forEach(i => G.gens[i].acted = true); // 一時的に除外
       const jobs = planCity(c, br);
-      reserved.forEach(i => G.gens[i].acted = false);
       let first = true;
       for (let [gen, cmd] of jobs) {
         if (stopReq) return false;
@@ -1104,14 +1107,18 @@ const Auto = (() => {
   }
 
   // 観戦中は画面を消さない（Screen Wake Lock。対応していない端末では何もしない）
-  let wakeLock = null;
+  let wakeLock = null, wakePending = false;
   async function keepAwake(on) {
     try {
-      if (on && !wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
-        wakeLock = await navigator.wakeLock.request('screen');
+      if (on && !wakeLock && !wakePending && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+        wakePending = true;
+        const w = await navigator.wakeLock.request('screen');
+        wakePending = false;
+        if (!running) { await w.release(); return; }   // 待っている間にオートが止まった
+        wakeLock = w;
         wakeLock.addEventListener('release', () => { wakeLock = null; });
       } else if (!on && wakeLock) { const w = wakeLock; wakeLock = null; await w.release(); }
-    } catch (e) { wakeLock = null; }
+    } catch (e) { wakeLock = null; wakePending = false; }
   }
   // アプリを切り替えると自動で解除されるので、戻ってきたらかけ直す
   document.addEventListener('visibilitychange', () => { if (running && document.visibilityState === 'visible') keepAwake(true); });
@@ -1206,7 +1213,8 @@ const Auto = (() => {
   }
 
   return {
-    get running() { return running && !stopReq; },   // 止める指示のあとは、画面の進み方を手動に戻す get speed() { return S.speed; },
+    get running() { return running && !stopReq; },   // 止める指示のあとは、画面の進み方を手動に戻す
+    get speed() { return S.speed; },
     start, stop, init, openMenu, place, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
   };
 })();

@@ -206,7 +206,7 @@ const Events = (() => {
       run: () => { const f = facByLord('劉禅'), z = G_('諸葛亮'); z.loyalty = 100; Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + 10); }); Game.citiesOf(f).filter(c => Game.isFront(c)).forEach(c => c.train = Math.min(100, c.train + 15));
         return { title: '出師の表', gen: '諸葛亮', expr: 'normal', fac: f, big: true, text: '「先帝の遺志を継ぎ、漢室を興さん」\n諸葛亮は出師の表を奉り、北伐を誓った。\n配下の忠誠 +10、前線の訓練 +15' }; } },
     { id: 'qizong', title: '七縦七擒', chance: 0.5,
-      cond: () => { const f = facOf('諸葛亮'); const mh = G_('孟獲'); return f >= 0 && (owns(f, '建寧') || owns(f, '雲南')) && mh && (mh.state === 'ronin' || (mh.isLord && Game.citiesOf(mh.faction).length <= 1 && mh.faction !== f)); },
+      cond: () => { const f = facOf('諸葛亮'); const mh = G_('孟獲'); return f >= 0 && (owns(f, '建寧') || owns(f, '雲南')) && mh && (mh.state === 'ronin' || (mh.isLord && Game.citiesOf(mh.faction).length <= 1 && mh.faction !== f && mh.faction !== G.player)); },   // プレイヤーが孟獲なら起きない
       run: () => { const f = facOf('諸葛亮'); const mh = G_('孟獲'); const city = owns(f, '雲南') ? cityByName('雲南') : cityByName('建寧');
         if (mh.isLord) Game.absorbFaction(mh.faction, f);
         ['孟獲', '祝融', '兀突骨'].forEach(n => { const g = G_(n); if (g && (g.state === 'ronin' || g.faction === f)) { Game.joinFaction(g, f, city.i); g.loyalty = 100; } });
@@ -351,7 +351,8 @@ const Events = (() => {
       const meet = MEET.find(m => m.id === h.id);
       if (meet) { const gs = meet.who.map(serving); ch *= gs.every(g => g && g.city === gs[0].city) ? 1.6 : 0.35; }   // 同じ都市に集まっていると起きやすい
       if (!ok || Math.random() > Math.min(1, ch)) continue;
-      const r = h.run();
+      let r = null;
+      try { r = h.run(); } catch (e) { console.error('event', h.id, e); }
       if (!h.repeat) G.events.hist[h.id] = true;
       if (!r) continue;
       Game.log(`【${r.title}】${r.text.split('\n')[0]}`);
