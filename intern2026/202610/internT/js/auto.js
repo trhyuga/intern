@@ -226,13 +226,40 @@ const Auto = (() => {
     if (c.gold < CONFIG.CMD_COST) n.farm = n.comm = n.wall = 0;
     return { n, must };
   }
+  // ---------- 局面の見立て ----------
+  // 序盤：都市4以下（かつ開始から3年未満）／終盤：天下の半分以上か都市16以上／その間が中盤
+  // 武将の多さ：1都市あたりの武将が2人未満なら「人手不足」、4人以上なら「人材豊富」
+  function phase() {
+    const n = Game.citiesOf(G.player).length, gens = Game.gensOf(G.player).length;
+    const stage = n * 2 >= G.cities.length || n >= 16 ? 'late' : n <= 4 && (G.turn || 0) < 12 ? 'early' : 'mid';
+    const perCity = gens / Math.max(1, n);
+    return { stage, staff: perCity < 2 ? 'few' : perCity >= 4 ? 'many' : 'ok' };
+  }
+  // 局面ごとの内政の重み（掛け算。「最優先」の項目にはかけない）
+  //  序盤：金と兵糧を増やして国の土台を作り、人材を集める。城壁は後回し
+  //  中盤：前線で兵を集めて鍛え、攻めの力を作る。内地は開墾・商業で前線を支える
+  //  終盤：大軍を養う兵と民忠（太守の独立を防ぐ）を重く。人材探しは控えめ
+  function phaseWeights(c) {
+    const ph = phase(), front = Game.isFront(c);
+    const W = {
+      early: { farm: 1.25, comm: 1.4, wall: 0.7, alms: 1.0, draft: 1.1, train: 0.9, search: 1.4 },
+      mid: { farm: front ? 0.9 : 1.15, comm: front ? 0.9 : 1.15, wall: front ? 1.1 : 0.8, alms: 1.0, draft: front ? 1.35 : 1.0, train: front ? 1.2 : 1.3, search: 1.0 },
+      late: { farm: 0.85, comm: 0.9, wall: front ? 0.9 : 0.6, alms: 1.35, draft: front ? 1.35 : 1.1, train: 1.1, search: 0.6 },
+    }[ph.stage];
+    const w = Object.assign({}, W);
+    if (ph.staff === 'few') w.search *= 1.6;      // 人手不足なら人材探しを急ぐ
+    if (ph.staff === 'many') w.search *= 0.5;     // 人材が豊富なら探すより働かせる
+    return w;
+  }
   function planCity(c, br) {
     const idle = Game.gensIn(c.i, G.player).filter(g => !g.acted);
     // 試算用の都市（命令を割り振るたびに成果を見込んで更新する）
     const sim = Object.assign({}, c);
     // 性格の癖と判断のぶれは、命令ごとに一度だけ決める（掛け算。0 は 0 のまま）
     const mul = {};
-    Object.keys(STAT).forEach(k => { mul[k] = (1 + br.dom[k]) * (1 + (Math.random() - 0.5) * br.noise); });
+    // 知力の低い軍師ほど、局面の見立ても大ざっぱ（重みが1に近づく）
+    const pw = phaseWeights(c);
+    Object.keys(STAT).forEach(k => { const wk = 1 + (pw[k] - 1) * (br.tier === 'dumb' ? 0.3 : br.tier === 'mid' ? 0.7 : 1); mul[k] = (1 + br.dom[k]) * wk * (1 + (Math.random() - 0.5) * br.noise); });
     const out = [];
     const pool = idle.slice();
     while (pool.length) {
@@ -540,7 +567,8 @@ const Auto = (() => {
   // ---------- 計略・外交・人事 ----------
   async function doRewards(br) {
     if (br.tier === 'dumb') return;
-    const lim = br.tier === 'smart' ? 60 : 45;
+    // 終盤は太守の独立（忠誠60未満）に備えて、褒美の目安を上げる
+    const lim = phase().stage === 'late' ? (br.tier === 'smart' ? 65 : 60) : br.tier === 'smart' ? 60 : 45;
     for (const g of Game.gensOf(G.player)) {
       if (stopReq) return;
       if (g.isLord || Game.has(g, '忠義') || g.loyalty >= lim) continue;
@@ -967,7 +995,11 @@ const Auto = (() => {
     const stage = attacks.length < br.maxAttacks ? planStage(br, attacks) : (G.stage = null);
     const L = g.isLord;   // 君主が自ら采配するときは、言い切りの口調で
     const plan = (attacks.length ? `今季は${attacks.map(a => a.t.name).join('と')}を${L ? '攻める' : '攻めます'}。` : '') + (stage ? `${G.cities[stage.c].name}に兵を集め、${G.cities[stage.t].name}を攻める支度を${L ? 'せよ' : 'します'}。` : attacks.length ? '' : `今季は国力を${L ? '蓄える' : '蓄えます'}。`);
-    await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan }, attacks.length ? 'angry' : 'normal');
+    // 局面の見立てを一言添える（知力の低い軍師は言わない）
+    const ph = phase();
+    const PN = { early: L ? '今は国の土台を作る時だ。' : '今は国の土台を作る時です。', mid: L ? '攻めの力を蓄え、前へ出る時だ。' : '攻めの力を蓄え、前へ出る時です。', late: L ? '天下は目前。民と家臣の心を離さぬようにせよ。' : '天下は目前。民と家臣の心を離さぬように。' };
+    const note = br.tier === 'dumb' ? '' : PN[ph.stage] + (ph.staff === 'few' ? (L ? '人手が足りぬ。人材を探せ。' : '人手が足りません。人材を探しましょう。') : '');
+    await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan: note + plan }, attacks.length ? 'angry' : 'normal');
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
     // 出陣は季節の最初に（将・兵・兵糧を寄せてから攻める。内政や輸送はそのあと）
@@ -1245,6 +1277,6 @@ const Auto = (() => {
   return {
     get running() { return running && !stopReq; },   // 止める指示のあとは、画面の進み方を手動に戻す
     get speed() { return S.speed; },
-    start, stop, init, openMenu, title, place, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
+    start, stop, init, openMenu, title, phase, place, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
   };
 })();
