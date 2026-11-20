@@ -695,7 +695,9 @@ const App = {
     if (foeCities.length === 1 && !ms.final) { ms.final = true; kind = 'final'; }
     else if (mine === 1 && G.events.maxCities >= 5 && !ms.cornered) { ms.cornered = true; kind = 'corner'; }
     if (!kind) return;
-    const sg = Auto.strategist();
+    // 軍師を君主が兼ねているときは、知力のいちばん高い家臣が軍師の役で話す
+    const sg0 = Auto.strategist();
+    const sg = sg0 && !sg0.isLord ? sg0 : Game.gensOf(G.player).filter(g => !g.isLord).sort((a, b) => b.int - a.int)[0];
     const merit = g => g.wins + g.duels;
     const hero = Game.gensOf(G.player).filter(g => !g.isLord && g !== sg).sort((a, b) => merit(b) - merit(a) || (b.lead + b.war) - (a.lead + a.war))[0];
     const foe = foeCities[0] ? G.factions[foeCities[0].owner].name + '軍' : '';
