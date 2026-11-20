@@ -59,6 +59,7 @@ const Auto = (() => {
       plot: ['{foe}は主君に不満を抱いている様子。揺さぶってみましょう', '戦わずして敵を崩す。これも兵法です'],
       rumor: ['{target}に流言を放ち、民と兵の心を乱しましょう。攻める前の下ごしらえです', '{target}の守りを内から崩します'],
       diplo: ['{target}と手を結び、背後の憂いを断ちましょう', '敵を一度に相手にするのは愚策。{target}とは和を'],
+      surr: ['{target}はもはや袋の鼠。降伏を勧めれば、無駄な血を流さずに済みます', '{target}に使者を。戦わずして勝つのが上策です'],
       reward: ['{gen}殿の心が離れかけています。褒美を'],
       recruit: ['{gen}殿、在野の賢者を探してきてください'],
       battle: ['敵の総大将は{foe}。そこを突けば崩れます', '地形を使い、城門を集中して攻めましょう'],
@@ -81,7 +82,7 @@ const Auto = (() => {
       dom: ['{city}で{need}をやりましょう。{gen}殿、頼みます', '{gen}殿に{need}をお願いします'],
       attack: ['{target}を攻めましょう。{gen}殿、兵{m}で出陣を。城には{k}を残します', 'そろそろ{target}を取りに行きましょう。兵は{m}です'],
       hold: ['今季は様子を見ましょう'],
-      plot: ['{foe}に揺さぶりをかけてみます'], rumor: ['{target}に噂を流してみます'], diplo: ['{target}に使者を出してみましょう'],
+      plot: ['{foe}に揺さぶりをかけてみます'], rumor: ['{target}に噂を流してみます'], diplo: ['{target}に使者を出してみましょう'], surr: ['{target}に降伏を勧めてみましょう'],
       reward: ['{gen}殿に褒美を与えておきましょう'], recruit: ['人材を探してみましょう'],
       battle: ['敵の城を落とすぞ！'], defend: ['なんとか守り抜きましょう'],
       win: ['勝ちました！'], lose: ['負けてしまいました……'],
@@ -96,7 +97,7 @@ const Auto = (() => {
       dom: ['{gen}殿、とりあえず{need}を！', 'うーん、{need}でいいか！'],
       attack: ['{target}を攻めるぞ！ 兵{m}もいれば勝てる気がする！', 'つべこべ言わずに{target}へ突撃だ！ 留守は{k}で何とかなるだろ！'],
       hold: ['……何をすればいいんだっけ', 'まあ、今季はいいか'],
-      plot: ['な、何か悪だくみをしてみるか'], rumor: ['{target}に、あることないこと言いふらしてこい！'], diplo: ['仲良くしておこう！'],
+      plot: ['な、何か悪だくみをしてみるか'], rumor: ['{target}に、あることないこと言いふらしてこい！'], diplo: ['仲良くしておこう！'], surr: ['{target}、降参しろーっ！'],
       reward: ['金をばらまいておけ！'], recruit: ['誰かいないか探してこい！'],
       battle: ['とにかく突っ込め！'], defend: ['ど、どうしよう……とにかく守れ！'],
       win: ['やったー！ 勝った！'], lose: ['あれぇ……おかしいな……'],
@@ -508,12 +509,32 @@ const Auto = (() => {
       await UI.talk(g, r.expr, `${g.name}「${r.ok ? line(g, 'reward') : '……'}」\n<b>${r.msg}</b>`);
     }
   }
-  async function doDiplo(br) {
-    if (!br.diplo) return;
+  // 降伏勧告：追い詰めた隣国に使者を出す。見込みの読みは軍師の知恵しだい
+  async function doSurrender(br, list, reserved) {
+    const env = Game.gensOf(G.player).filter(g => !g.acted && !reserved.has(g.i)).sort((a, b) => b.cha - a.cha)[0];
+    if (!env) return;
+    const cand = list.map(fi => ({ fi, p: Game.surrenderOdds(env, fi).p })).sort((a, b) => b.p - a.p);
+    let t = null;
+    if (br.tier === 'smart') t = cand.find(x => x.p >= 0.2);
+    else if (br.tier === 'mid') t = cand.find(x => x.p >= 0.3 || (x.p >= 0.15 && Math.random() < 0.4));
+    else t = Math.random() < 0.35 ? pick(cand) : null;   // 考えなしに勧めることもある
+    if (!t) return;
+    await press(env.city, 'dip', '[data-cmd=surr]');
+    await say('surr', { target: G.factions[t.fi].name + '軍' });
+    env.acted = true;
+    const tl = Game.lordOf(t.fi), col = G.factions[t.fi].color;
+    const r = Game.diploSurrender(env, t.fi);
+    Sound.se(r.ok ? 'win' : 'ng');
+    await UI.talk(tl, r.ok ? 'sad' : 'angry', r.msg, col, { tag: '外交' });
+    if (r.ok) Game.log(r.msg);
+  }
+  async function doDiplo(br, reserved = new Set()) {
     const myPow = Game.power(G.player);
     const neigh = new Set();
     Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player) neigh.add(o); }));
-    const list = [...neigh].filter(fi => !Game.isAlly(G.player, fi));
+    let list = [...neigh].filter(fi => !Game.isAlly(G.player, fi));
+    if (list.length) { await doSurrender(br, list, reserved); list = list.filter(fi => G.factions[fi].alive && Game.citiesOf(fi).length); }
+    if (stopReq || !br.diplo) return;
     if (list.length < 2 && br.tier !== 'smart') return;
     // 一番強い隣国と手を結ぶ
     const strong = list.sort((a, b) => Game.power(b) - Game.power(a))[0];
@@ -526,19 +547,6 @@ const Auto = (() => {
       const r = Game.diploAlly(env, strong);
       Sound.se(r.ok ? 'ally' : 'ng');
       await UI.talk(Game.lordOf(strong), r.ok ? 'happy' : 'angry', r.msg, G.factions[strong].color, { tag: '外交' });
-      if (r.ok) Game.log(r.msg);
-    }
-    // 小勢力に降伏勧告
-    const tiny = list.find(fi => Game.citiesOf(fi).length === 1 && Game.power(fi) < myPow / 5);
-    if (tiny != null && br.tier === 'smart' && Math.random() < 0.5) {
-      const env = Game.gensOf(G.player).filter(g => !g.acted).sort((a, b) => b.cha - a.cha)[0];
-      if (!env) return;
-      await press(env.city, 'dip', '[data-cmd=surr]');
-      await say('diplo', { target: G.factions[tiny].name + '軍' });
-      env.acted = true;
-      const r = Game.diploSurrender(env, tiny);
-      Sound.se(r.ok ? 'win' : 'ng');
-      await UI.talk(Game.lordOf(tiny), r.ok ? 'sad' : 'angry', r.msg, G.factions[tiny].color, { tag: '外交' });
       if (r.ok) Game.log(r.msg);
     }
   }
@@ -898,7 +906,9 @@ const Auto = (() => {
     await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan }, attacks.length ? 'angry' : 'normal');
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
-    await doDiplo(br); if (stopReq) return false;
+    await doDiplo(br, new Set(attacks.map(p => p.army).flat().map(x => x.i))); if (stopReq) return false;
+    // 降伏で味方になった都市への出陣は取りやめ
+    for (let k = attacks.length - 1; k >= 0; k--) if (attacks[k].t.owner === G.player) attacks.splice(k, 1);
     const armies0 = attacks.map(p => p.army).flat();
     await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;

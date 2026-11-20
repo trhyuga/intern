@@ -289,7 +289,7 @@ const App = {
       case 'mil': return B('attack', '出陣', '隣の都市を攻める', 'primary') + B('draft', '徴兵', '兵↑ 金100') + B('train', '訓練', '訓練↑') + B('transport', '輸送', '金・糧・兵を送る');
       case 'per': return B('search', '探索', '人材・財宝を探す') + B('recruit', '登用', '在野の人物を誘う') + B('move', '移動', '武将を別の都市へ') + B('reward', '褒美', '忠誠↑ 金100');
       case 'plot': return B('sow', '離間', '敵将の忠誠↓') + B('lure', '引き抜き', '敵将を寝返らせる') + B('rumor', '流言', '敵都市の民忠↓');
-      case 'dip': return B('ally', '同盟', '他勢力と手を結ぶ') + B('surr', '降伏勧告', '弱小勢力を併合');
+      case 'dip': return B('ally', '同盟', '他勢力と手を結ぶ') + B('surr', '降伏勧告', '囲んだ弱小勢力を併合');
     }
     return '';
   },
@@ -370,7 +370,10 @@ const App = {
       }
       case 'ally': case 'surr': {
         const facs = G.factions.filter(f => f.alive && f.i !== G.player);
-        const fi = await UI.choose(cmd === 'ally' ? '同盟を申し込む相手' : '降伏を勧める相手', facs.map(f => ({ label: `<span style="color:${f.color}">■</span> ${f.name}軍`, sub: `都市${Game.citiesOf(f.i).length}　兵${fmt(Game.power(f.i))}${Game.isAlly(G.player, f.i) ? '　同盟中' : ''}`, value: f.i, disabled: cmd === 'ally' && Game.isAlly(G.player, f.i) })));
+        // 降伏勧告は、いちばん魅力の高い使者を立てた場合の見込みを添える
+        const envoy = Game.gensOf(G.player).filter(g => !g.acted).sort((a, b) => b.cha - a.cha)[0] || Game.lordOf(G.player);
+        const hint = f => cmd === 'surr' ? '　' + Game.surrenderHint(Game.surrenderOdds(envoy, f.i).p) + (Game.surrenderOdds(envoy, f.i).touching ? '' : '（国境を接していない）') : '';
+        const fi = await UI.choose(cmd === 'ally' ? '同盟を申し込む相手' : '降伏を勧める相手', facs.map(f => ({ label: `<span style="color:${f.color}">■</span> ${f.name}軍`, sub: `都市${Game.citiesOf(f.i).length}　兵${fmt(Game.power(f.i))}${Game.isAlly(G.player, f.i) ? '　同盟中' : ''}${hint(f)}`, value: f.i, disabled: cmd === 'ally' && Game.isAlly(G.player, f.i) })));
         if (fi == null) return App.openCity(c.i);
         return App.diplo(cmd, fi, c);
       }
