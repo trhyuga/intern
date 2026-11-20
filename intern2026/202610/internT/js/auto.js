@@ -523,12 +523,26 @@ const Auto = (() => {
   function strategicValue(t, e, br) {
     const w = br.tier === 'smart' ? 1 : br.tier === 'mid' ? 0.5 : 0;
     if (!w || t.owner === null) return 0;
-    const last = Game.citiesOf(t.owner).length === 1 ? 0.8 : 0;
-    const cap = G.factions[t.owner].capital === t.i ? 0.3 : 0;
+    const lateK = phase().stage === 'late' ? 1.5 : 1;   // 終盤は勢力ごと崩すことを重く見る
+    const last = (Game.citiesOf(t.owner).length === 1 ? 0.8 : 0) * lateK;
+    const cap = (G.factions[t.owner].capital === t.i ? 0.3 : 0) * lateK;
     const surround = t.adj.filter(a => G.cities[a].owner === G.player).length * 0.1;
     const exposed = t.adj.map(a => G.cities[a]).filter(o => o.owner !== null && o.owner !== G.player && o.owner !== t.owner && !Game.isAlly(G.player, o.owner)).reduce((s2, o) => s2 + o.troops, 0);
     const risk = Math.min(0.5, exposed / Math.max(1, (e.troops || 1) * 3));
     return w * (last + cap + surround - risk);
+  }
+  // 中盤以降の「主敵」：接している（同盟していない）勢力のうち、いちばん倒しやすい所（力が小さく、こちらと接する城が多い）
+  // 敵を一つずつ減らせば、守るべき前線も減る
+  function focusFaction() {
+    const ns = new Map();
+    Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player && !Game.isAlly(G.player, o)) ns.set(o, (ns.get(o) || 0) + 1); }));
+    let best = null, bs = 1e18;
+    ns.forEach((touch, fi) => { const sc = Game.power(fi) / (1 + touch * 0.5); if (sc < bs) { bs = sc; best = fi; } });
+    return best;
+  }
+  function focusValue(t, br) {
+    if (br.tier === 'dumb' || t.owner === null || phase().stage === 'early' || weak()) return 0;
+    return t.owner === G.autoFocus ? (br.tier === 'smart' ? 0.2 : 0.1) : 0;
   }
   // 弱小勢力の攻め先：空き城と、前の季節から兵が大きく減った城（他と戦って消耗した隙）を狙い、大国の城には手を出さない
   function weakValue(t, br) {
@@ -546,7 +560,7 @@ const Auto = (() => {
       c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner))).forEach(t => {
         const e = evalAttack(c, t, br) || evalAttrition(c, t, br);
         const pairBonus = pairWishes().some(w => w.me.city === c.i && w.foe.city === t.i) ? 0.5 : 0;   // 名場面が起きそうな攻め先
-        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus + strategicValue(t, e, br) + weakValue(t, br) }));
+        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus + strategicValue(t, e, br) + weakValue(t, br) + focusValue(t, br) }));
       });
     });
     plans.sort((a, b) => b.score - a.score);
@@ -586,7 +600,7 @@ const Auto = (() => {
       const selfView = t.ratio * (1 + (60 - Math.min(60, brave.int)) / 100);
       if (selfView < 0.95) return;                         // さすがに勝ち目がないと本人も思う
       // 君主が猛将なら、誰の許しも要らない（軍師は止められない）
-      out.push({ c, t: t.o, army, troops, keep, ratio: t.ratio, brave, lordSelf: brave.isLord, restrain: !brave.isLord && br.tier === 'smart' && t.ratio < 0.8 });
+      out.push({ c, t: t.o, army, troops, keep, ratio: t.ratio, brave, lordSelf: brave.isLord, restrain: !brave.isLord && br.tier !== 'dumb' && t.ratio < br.want * (br.tier === 'smart' ? 0.85 : 0.7) });   // 軍師が止める基準は、軍師の優秀さしだい
       usedC.add(c.i); usedT.add(t.o.i);
     });
     return out;
@@ -681,8 +695,8 @@ const Auto = (() => {
     }
     if (!br.diplo) return;
     if (list.length < 2 && br.tier !== 'smart') return;
-    // 一番強い隣国と手を結ぶ
-    const strong = list.sort((a, b) => Game.power(b) - Game.power(a))[0];
+    // 一番強い隣国と手を結ぶ（主敵とは結ばない）
+    const strong = list.filter(fi => fi !== G.autoFocus).sort((a, b) => Game.power(b) - Game.power(a))[0];
     if (strong != null && Game.power(strong) > myPow * 0.7 && list.length >= 2 && leavesEnemy(strong) && Math.random() < 0.6) {
       const env = Game.gensOf(G.player).filter(g => !g.acted).sort((a, b) => (b.cha + b.int) - (a.cha + a.int))[0];
       if (!env) return;
@@ -987,7 +1001,7 @@ const Auto = (() => {
   async function forwardBig(br) {
     for (const c of Game.citiesOf(G.player)) {
       if (stopReq) return;
-      if (c.troops < BIG_ARMY || Game.isFront(c)) continue;
+      if (c.troops < (phase().stage === 'late' ? 30000 : BIG_ARMY) || Game.isFront(c)) continue;   // 終盤は3万から前線へ回す
       // 地続きで、いちばん近い前線の都市
       const dist = { [c.i]: 0 }, q = [c.i]; let to = null;
       while (q.length && !to) { const x = q.shift(); for (const a of G.cities[x].adj) { if (dist[a] != null || G.cities[a].owner !== G.player) continue; dist[a] = dist[x] + 1; if (Game.isFront(G.cities[a])) { to = G.cities[a]; break; } q.push(a); } }
@@ -1087,6 +1101,7 @@ const Auto = (() => {
     if (!g) { UI.toast('軍師がいない'); return false; }
     const br = brain(g);
     setBar(`${g.isLord ? "君主" : "軍師"} <b>${g.name}</b> が${g.isLord ? "自ら" : ""}采配中（${G.year}年${SEASONS[G.season]}）`);
+    G.autoFocus = focusFaction();
     const mass = planMass(br);
     const attacks = [...mass, ...planAttacks(br).filter(p => !mass.some(m => m.c === p.c || m.t === p.t))];
     const stage = attacks.length < br.maxAttacks ? planStage(br, attacks) : (G.stage = null);
@@ -1095,7 +1110,8 @@ const Auto = (() => {
     // 局面の見立てを一言添える（知力の低い軍師は言わない）
     const ph = phase();
     const PN = { early: L ? '今は国の土台を作る時だ。' : '今は国の土台を作る時です。', mid: L ? '攻めの力を蓄え、前へ出る時だ。' : '攻めの力を蓄え、前へ出る時です。', late: L ? '天下は目前。民と家臣の心を離さぬようにせよ。' : '天下は目前。民と家臣の心を離さぬように。' };
-    const note = br.tier === 'dumb' ? '' : (ph.stage === 'early' && weak() ? (L ? '今は小国だ。強国とは争わず、空き城と隙を狙え。' : '今は小国。強国とは争わず、空き城と隙を狙います。') : PN[ph.stage]) + (ph.staff === 'few' ? (L ? '人手が足りぬ。人材を探せ。' : '人手が足りません。人材を探しましょう。') : '');
+    const focusNote = br.tier !== 'dumb' && ph.stage !== 'early' && !weak() && G.autoFocus != null ? (L ? `まずは${G.factions[G.autoFocus].name}軍を討ち、敵を一つずつ減らす。` : `まずは${G.factions[G.autoFocus].name}軍を討ち、敵を一つずつ減らします。`) : '';
+    const note = focusNote + (br.tier === 'dumb' ? '' : (ph.stage === 'early' && weak() ? (L ? '今は小国だ。強国とは争わず、空き城と隙を狙え。' : '今は小国。強国とは争わず、空き城と隙を狙います。') : PN[ph.stage]) + (ph.staff === 'few' ? (L ? '人手が足りぬ。人材を探せ。' : '人手が足りません。人材を探しましょう。') : ''));
     await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan: note + plan }, attacks.length ? 'angry' : 'normal');
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
