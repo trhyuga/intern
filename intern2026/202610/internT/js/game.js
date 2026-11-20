@@ -106,6 +106,9 @@ const Game = {
   roninIn(ci) { return G.gens.filter(g => g.state === 'ronin' && g.city === ci); },
   citiesOf(fi) { return G.cities.filter(c => c.owner === fi); },
   gensOf(fi) { return G.gens.filter(g => g.state === 'serve' && g.faction === fi); },
+  // 城攻めの難しさ：攻める側の勢力が小さいうち（序盤）は城壁と援軍の効き目を弱める。
+  // 都市3以下で0.35、12以上で1（今の強さ）。合戦・自動戦闘・軍師オートの見積もりで共通に使う
+  siegeK(atkFi) { const n = atkFi == null || !G.factions[atkFi] ? 12 : Game.citiesOf(atkFi).length; return 0.35 + 0.65 * clamp((n - 3) / 9, 0, 1); },
   troopCap(g) { return CONFIG.TROOP_CAP_BASE + g.lead * CONFIG.TROOP_CAP_PER_LEAD; },
   isAlly(a, b) { return a === b || (G.factions[a].allies[b] > 0); },
   power(fi) { return G.cities.filter(c => c.owner === fi).reduce((s, c) => s + c.troops, 0); },
@@ -768,12 +771,14 @@ const AI = {
     if (to.owner !== null) {
       const near = fi => to.adj.map(a => G.cities[a]).filter(c => c.owner === fi && c.i !== from.i).sort((a, b2) => b2.troops - a.troops)[0];
       const own = near(to.owner);
-      if (own && own.troops >= 4000 && Math.random() < 0.85) helpers.push({ c: own, amt: Math.round(Math.min(own.troops - 1500, own.troops * 0.4)) });
+      const sk = Game.siegeK(b.atkFi);
+      if (own && own.troops >= 4000 && Math.random() < 0.4 + 0.45 * sk) helpers.push({ c: own, amt: Math.round(Math.min(own.troops - 1500, own.troops * 0.4)) });
       const al = Object.keys(G.factions[to.owner].allies).map(Number).find(fi => G.factions[fi].alive && Game.isAlly(to.owner, fi) && fi !== b.atkFi && !Game.isAlly(b.atkFi, fi) && near(fi) && near(fi).troops >= 5000);
-      if (al != null && Math.random() < 0.55) { const c = near(al); helpers.push({ c, amt: Math.round(Math.min(c.troops - 1500, c.troops * 0.4)) }); }
+      if (al != null && Math.random() < 0.25 + 0.3 * sk) { const c = near(al); helpers.push({ c, amt: Math.round(Math.min(c.troops - 1500, c.troops * 0.4)) }); }
     }
     const help = helpers.reduce((s, h) => s + h.amt, 0) * 0.7;   // 途中から来るので7割の働き
-    const defPow = (to.troops * (1.15 + to.def / 1500) + help) * (0.5 + to.train / 200) * (0.6 + (avg(def, 'lead') * 0.6 + avg(def, 'war') * 0.4) / 100) * (1 + bondD) * rnd(0.78, 1.22);
+    const skD = Game.siegeK(b.atkFi);
+    const defPow = (to.troops * (1.05 + (0.1 + to.def / 1500) * skD) + help) * (0.5 + to.train / 200) * (0.6 + (avg(def, 'lead') * 0.6 + avg(def, 'war') * 0.4) / 100) * (1 + bondD) * rnd(0.78, 1.22);
     const atkWin = atkPow > defPow;
     const ratio = Math.min(atkPow, defPow) / Math.max(atkPow, defPow);
     let atkLoss, defLoss;
