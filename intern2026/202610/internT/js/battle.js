@@ -1197,7 +1197,9 @@ const Battle = (() => {
     return true;
   }
 
-  return { start, get watching() { return !!(B && B.watch && !B.over); }, get _B() { return B; }, _duel: (a, d) => doDuel(a, d), _attack: (a, r, c) => doAttack(a, r, c) };
+  // 観戦中にオートを止めたとき：次の手番から自分で指揮する
+  function takeOver() { if (!B || !B.watch || B.over) return; B.watch = false; setActions([]); UI.toast('合戦は、次の手番から自分で指揮できます'); }
+  return { start, takeOver, get watching() { return !!(B && B.watch && !B.over); }, get _B() { return B; }, _duel: (a, d) => doDuel(a, d), _attack: (a, r, c) => doAttack(a, r, c) };
 })();
 
 // ============================================================

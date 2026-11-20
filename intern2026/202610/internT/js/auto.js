@@ -1083,7 +1083,13 @@ const Auto = (() => {
   }
   function stop(done) {
     if (!running) return;
-    if (!done) { stopReq = true; setBar('この動きが終わったら止めます…'); return; }
+    if (!done) {
+      stopReq = true;
+      // 合戦の観戦中なら、合戦の決着を待たずに指揮を返す（このあとの会話や結果表示も手動で進む）
+      if (typeof Battle !== 'undefined' && Battle.watching) { Battle.takeOver(); setBar('合戦は自分で指揮してください。終わったらオートを止めます'); }
+      else setBar('この動きが終わったら止めます…');
+      return;
+    }
     running = false; stopReq = false; keepAwake(false);
     document.getElementById('autobar').classList.remove('show'); document.getElementById('app').classList.remove('auto-on');
     App.busy = false;
@@ -1157,7 +1163,7 @@ const Auto = (() => {
   }
 
   return {
-    get running() { return running; }, get speed() { return S.speed; },
+    get running() { return running && !stopReq; },   // 止める指示のあとは、画面の進み方を手動に戻す get speed() { return S.speed; },
     start, stop, init, openMenu, place, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
   };
 })();
