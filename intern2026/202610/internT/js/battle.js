@@ -971,7 +971,7 @@ const Battle = (() => {
       const sg = Auto.strategist();
       if (sg && ((B.day === 1 && B.playerSide === 'atk') || (B.day > 1 && Math.random() < 0.15))) {
         const foeCmd = B.units.find(u => u.side !== B.playerSide && u.commander);
-        await UI.talk(sg, 'normal', `軍師 ${sg.name}「${Auto.sl(B.playerSide === 'atk' ? 'battle' : 'defend', { foe: foeCmd ? foeCmd.g.name : '' })}」`, facColor(sg), { tag: '軍師' });
+        await UI.talk(sg, 'normal', `${Auto.title(sg)}${sg.name}「${Auto.sl(B.playerSide === 'atk' ? 'battle' : 'defend', { foe: foeCmd ? foeCmd.g.name : '' })}」`, facColor(sg), { tag: sg.isLord ? '君主の采配' : '軍師' });
       }
       await aiPhase(B.playerSide);
       if (B.over) return;

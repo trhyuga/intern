@@ -37,6 +37,12 @@ const Auto = (() => {
       dom: { farm: H('治世') ? 0.2 : 0, comm: H('治世') ? 0.2 : 0, alms: H('仁徳') ? 0.3 : 0, wall: H('慎重') ? 0.25 : 0, train: (H('慎重') || H('剛勇')) ? 0.15 : 0, draft: (H('野心') || H('猪突')) ? 0.25 : 0, search: H('仁徳') ? 0.15 : 0 },
       diplo: q >= 0.6 || H('仁徳'),
       maxAttacks: q >= 0.75 ? 2 : 1,
+      // 出陣に求める力の比（見積もり。1.0で互角）。優秀な軍師ほど確かな勝ち目がある時だけ攻める。慎重・猪突などの癖で上下する
+      want: (q >= 0.75 ? 1.3 : q >= 0.45 ? 1.15 : 0.95) * (1.15 + (H('慎重') ? 0.2 : 0) + (H('仁徳') ? 0.05 : 0) - (H('野心') ? 0.05 : 0) - (H('猪突') ? 0.1 : 0) - (H('剛勇') ? 0.03 : 0)) / 1.15,
+      // 兵5万以上の大軍でも、これを下回る相手には攻めない（知力の低い軍師は構わず攻める）
+      bigWant: q >= 0.75 ? 1.0 : q >= 0.45 ? 0.85 : 0,
+      // 消耗戦（一度で落とせない相手を削る攻め）に求める力の比
+      attrWant: q >= 0.75 ? 0.9 : q >= 0.45 ? 0.75 : 0,
     };
   }
   function grade(g) {
@@ -110,6 +116,23 @@ const Auto = (() => {
       transfer: ['{to}に{what}を送っとけ！'],
     },
   };
+  // 君主が自ら采配するとき（軍師を兼ねるとき）の言葉。{I} は君主の一人称
+  const SL_LORD = {
+    intro: ['{season}か。{plan}', '皆の者、聞け。{plan}', '{season}だ。{I}の考えを申し伝える。{plan}'],
+    dom: ['{gen}、{city}の{need}を頼む', '{city}は{need}が足りぬ。{gen}、任せたぞ'],
+    attack: ['{target}を攻める。{gen}、兵{m}を率いて行け。{city}には{k}を残す', '{target}を取る。総大将は{gen}だ。兵{m}、存分に働け'],
+    hold: ['今は動く時ではない。力を蓄えよ', '焦りは禁物だ。今季は国を固める'],
+    plot: ['{foe}の心は揺れておる。揺さぶってやれ'], rumor: ['{target}に噂を流せ。攻める前の下ごしらえだ'], diplo: ['{target}と手を結ぶ。使者を出せ'], surr: ['{target}に降伏を勧めよ。無駄な血は流したくない'],
+    reward: ['{gen}には苦労をかけておる。褒美を取らせよ'], recruit: ['在野の賢者を探してまいれ'],
+    battle: ['敵の総大将は{foe}。そこを突け！', '{I}の采配に従え。城門を集中して攻めよ！'], defend: ['この城は渡さぬ。皆、持ち場を守れ！'],
+    win: ['皆、よくやってくれた！'], lose: ['……{I}の采配の誤りだ。立て直すぞ'],
+    allyYes: ['よかろう。手を結ぼう'], allyLast: ['皆と手を結べば、攻める先がなくなる。断れ'], allyNo: ['今は手を結ぶ時ではない。断れ'],
+    rec: ['{gen}か。{I}の陣に迎えよう'], recruitGo: ['{envoy}、{city}の{gen}を口説いてまいれ'], kongming: ['{city}の{gen}……{I}自ら訪ねよう'], rel: ['放してやれ。恩は売っておく'], kill: ['生かしてはおけぬ'],
+    gather: ['{from}の兵を{to}へ集めよ。{target}を攻める'], mass: ['兵は揃った。{target}へ攻め込め！ 総大将は{gen}、兵{m}だ', '{city}の兵は満ちた。{target}を落とすぞ'], attrition: ['{target}は一度では落ちまい。だが兵{m}で削っておけ'],
+    braveLord: ['{I}自ら出る！ 皆、続け！'], braveOk: ['{gen}、行ってこい。深追いはするな'], braveNo: ['{gen}、逸るな。今の{target}は分が悪い'],
+    deploy: ['{gen}、{to}へ移れ。前線を任せる'], deployCivil: ['{gen}は{to}で内政を頼む'], eventMeet: ['{gens}、{city}に集まれ'], eventFace: ['{gen}、{city}へ行け。{foe}が待っておる'],
+    transfer: ['{from}から{to}へ{what}を送れ'],
+  };
   const SL_SPECIAL = {
     '諸葛亮': { intro: ['{season}。星の巡りは我らに味方しております。{plan}'], attack: ['すでに錦の袋に策を入れてあります。{gen}殿、{target}へ'], battle: ['敵の動きは、すべて亮の掌の上です'], hold: ['今は国を富ませる時。北伐の機は必ず来ます'] },
     '郭嘉': { intro: ['{season}ですね。{plan}'], attack: ['{target}の主は優柔不断。今が好機です'], hold: ['焦らずとも、敵は内から崩れます'] },
@@ -123,12 +146,16 @@ const Auto = (() => {
     const g = strategist(); if (!g) return '';
     const b = brain(g);
     const sp = SL_SPECIAL[g.name];
-    const pool = (sp && sp[kind] && Math.random() < 0.7) ? sp[kind] : SL[b.tier][kind] || SL.mid[kind] || [''];
-    return pick(pool).replace(/\{(\w+)\}/g, (m, k) => ctx[k] != null ? ctx[k] : '');
+    const pool = g.isLord ? (SL_LORD[kind] || SL[b.tier][kind] || ['']) : (sp && sp[kind] && Math.random() < 0.7) ? sp[kind] : SL[b.tier][kind] || SL.mid[kind] || [''];
+    const I = (typeof VOICE !== 'undefined' && VOICE[g.name] && VOICE[g.name].I) || '我';
+    return pick(pool).replace(/\{(\w+)\}/g, (m, k) => k === 'I' ? I : ctx[k] != null ? ctx[k] : '');
   }
   async function say(kind, ctx, expr = 'normal') {
     const g = strategist(); if (!g) return;
-    await UI.talk(g, expr, `軍師 ${g.name}「${sl(kind, ctx)}」`, facColor(g), { tag: '軍師' });
+    await UI.talk(g, expr, `${title(g)}${g.name}「${sl(kind, ctx)}」`, facColor(g), { tag: g.isLord ? '君主の采配' : '軍師' });
+  }
+  // 名前の前の肩書き（君主が兼ねるときは付けない）
+  function title(g) { return g && g.isLord ? '' : '軍師 ';
   }
 
   // ---------- 操作している感じの演出 ----------
@@ -274,7 +301,7 @@ const Auto = (() => {
     // 敵の強さの見積もり（知力が低いほどぶれる）
     const defEst = defPower(t) * (1 + (Math.random() - 0.5) * br.noise * 0.6) * (t.owner === null ? 0.9 : 1);
     // 勝つために欲しい力の比：性格で変わる（慎重なら大きな差、猪突なら小さな差で攻める）
-    const want = Math.max(1.05, br.aggr);   // 攻め気の強い軍師でも、最低限の勝ち目は見る
+    const want = br.want;   // 軍師の優秀さと癖で決まる、求める力の比
     // 余裕を持たせすぎると必ず勝ってしまい面白くない。勝ち目はあるが、負けることもある程度に
     const margin = (br.tier === 'smart' ? 1.12 : br.tier === 'mid' ? 1.06 : 1.0) + (Game.has(strategist(), '慎重') ? 0.08 : 0);
     // 候補の武将（君主は他に武将がいれば残す。前線では最低1人は城に残す）
@@ -388,6 +415,7 @@ const Auto = (() => {
     for (const h of helpers) { if (have >= Math.min(want, cap)) break; const take = Math.min(h.amt, Math.ceil((Math.min(want, cap) - have) / 100) * 100); reinforce.push({ d: h.d, amt: take }); have += take; }
     const troops = Math.floor(Math.min(have, cap) / 100) * 100;
     if (troops < 3000 || troops < t.troops * mult) return null;    // 数倍に届かない
+    if (troops < 8000 || troops * atkFactor(c, army) / defPower(t) < br.attrWant) return null;   // 小勢での消耗戦や、見込みの低い消耗戦はしない
     orderArmy(army, br);
     return { c, t, army, troops, keep, ratio: troops * atkFactor(c, army) / defPower(t), need: 0, reinforce: reinforce.length ? reinforce : null, attrition: true };
   }
@@ -420,8 +448,9 @@ const Auto = (() => {
       if (troops < 5000) return;
       // 一番落としやすい攻め先（明らかに敵が上回るときだけ見送る）
       const f = atkFactor(c, army);
-      const best = targets.map(o => ({ o, ratio: troops * f / Math.max(1, defPower(o)) })).sort((a, b) => b.ratio - a.ratio)[0];
-      if (best.ratio < 1 / 1.5 && !big) return;   // 5万以上の大軍は、基本的に攻め込む
+      // 見積もりは軍師の知力しだいでぶれる
+      const best = targets.map(o => ({ o, ratio: troops * f / Math.max(1, defPower(o) * (1 + (Math.random() - 0.5) * br.noise * 0.6)) })).sort((a, b) => b.ratio - a.ratio)[0];
+      if (best.ratio < (big ? br.bigWant : br.want)) return;   // 兵が揃っていても、勝ち目が足りなければ攻めない（5万以上の大軍は基準を下げる）
       orderArmy(army, br);
       usedT.add(best.o.i);
       out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, moved });
@@ -932,11 +961,12 @@ const Auto = (() => {
     const g = strategist();
     if (!g) { UI.toast('軍師がいない'); return false; }
     const br = brain(g);
-    setBar(`軍師 <b>${g.name}</b> が采配中（${G.year}年${SEASONS[G.season]}）`);
+    setBar(`${g.isLord ? "君主" : "軍師"} <b>${g.name}</b> が${g.isLord ? "自ら" : ""}采配中（${G.year}年${SEASONS[G.season]}）`);
     const mass = planMass(br);
     const attacks = [...mass, ...planAttacks(br).filter(p => !mass.some(m => m.c === p.c || m.t === p.t))];
     const stage = attacks.length < br.maxAttacks ? planStage(br, attacks) : (G.stage = null);
-    const plan = (attacks.length ? `今季は${attacks.map(a => a.t.name).join('と')}を攻めます。` : '') + (stage ? `${G.cities[stage.c].name}に兵を集め、${G.cities[stage.t].name}を攻める支度をします。` : attacks.length ? '' : '今季は国力を蓄えます。');
+    const L = g.isLord;   // 君主が自ら采配するときは、言い切りの口調で
+    const plan = (attacks.length ? `今季は${attacks.map(a => a.t.name).join('と')}を${L ? '攻める' : '攻めます'}。` : '') + (stage ? `${G.cities[stage.c].name}に兵を集め、${G.cities[stage.t].name}を攻める支度を${L ? 'せよ' : 'します'}。` : attacks.length ? '' : `今季は国力を${L ? '蓄える' : '蓄えます'}。`);
     await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan }, attacks.length ? 'angry' : 'normal');
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
@@ -1008,7 +1038,7 @@ const Auto = (() => {
       // 予定の将が他の出陣に回って減ったときは、勝ち目を確かめ直す（足りなければ見送る）
       if (army.length < e.army.length && !e.big) {
         const ratio = troops * atkFactor(p.c, army) / Math.max(1, defPower(p.t));
-        if (ratio < (e.attrition ? 1 : e.mass ? 1 / 1.5 : Math.max(1.05, br.aggr))) { await say('hold'); continue; }
+        if (ratio < (e.attrition ? br.attrWant : br.want)) { await say('hold'); continue; }
       }
       if (troops < 3000) { await say('hold'); continue; }
       // 兵糧：通常は次の秋までの分を残し20日分。兵が揃った攻め・猛将は、残る兵の1季節分だけ残して10日分あればよい
@@ -1189,7 +1219,7 @@ const Auto = (() => {
     if (App.busy) return;
     const g = strategist();
     if (!g) return UI.alert('軍師に任命できる武将がいません');
-    const v = await UI.choose(`軍師 ${g.name}（知力${g.int}）`, [
+    const v = await UI.choose(g.isLord ? `${g.name}（君主が自ら采配・知力${g.int}）` : `軍師 ${g.name}（知力${g.int}）`, [
       { label: '▶ 軍師オート開始', sub: '止めるまで季節を進め続ける', value: 'run', cls: 'primary' },
       { label: '▶ 1年だけ任せる', sub: '4季節ぶん', value: 'year' },
       { label: '▶ この季節だけ任せる', sub: '終わったら自分の操作に戻る', value: 'one' },
@@ -1215,6 +1245,6 @@ const Auto = (() => {
   return {
     get running() { return running && !stopReq; },   // 止める指示のあとは、画面の進み方を手動に戻す
     get speed() { return S.speed; },
-    start, stop, init, openMenu, place, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
+    start, stop, init, openMenu, title, place, strategist, brain, talkMs, decideAlly, decideCaptive, say, sl, _plan: planCity, _attacks: planAttacks, _why: WHY, _dbg: { garrison, defPower, atkFactor, evalAttack },
   };
 })();
