@@ -280,6 +280,8 @@ const Auto = (() => {
     const w = Object.assign({}, W);
     if (ph.staff === 'few') w.search *= 1.6;      // 人手不足なら人材探しを急ぐ
     if (ph.staff === 'many') w.search *= 0.5;     // 人材が豊富なら探すより働かせる
+    // 攻めの拠点（兵を集めている都市）では、訓練と徴兵を重く：強い軍を作ってから攻める
+    if (G.stage && G.stage.c === c.i) { w.train *= 1.5; w.draft *= 1.3; }
     // 弱小勢力：前線は兵を集め、強い隣国に脅かされている城は守りを固める（まず生き残る）
     if (weak() && front) { w.draft *= 1.25; if (AI.threat(c, G.player) > c.troops) w.wall *= 1.3; }
     return w;
@@ -361,7 +363,7 @@ const Auto = (() => {
     // 敵の強さの見積もり（知力が低いほどぶれる）
     const defEst = defPower(t) * (1 + (Math.random() - 0.5) * br.noise * 0.6) * (t.owner === null ? 0.9 : 1);
     // 勝つために欲しい力の比：性格で変わる（慎重なら大きな差、猪突なら小さな差で攻める）
-    const want = br.want;   // 軍師の優秀さと癖で決まる、求める力の比
+    const want = wantNow(br);   // 軍師の優秀さと癖で決まる、求める力の比（攻めない季節が続くと下がる）
     // 余裕を持たせすぎると必ず勝ってしまい面白くない。勝ち目はあるが、負けることもある程度に
     const margin = (br.tier === 'smart' ? 1.12 : br.tier === 'mid' ? 1.06 : 1.0) + (Game.has(strategist(), '慎重') ? 0.08 : 0);
     // 候補の武将（君主は他に武将がいれば残す。前線では最低1人は城に残す）
@@ -384,7 +386,8 @@ const Auto = (() => {
       const f = atkFactor(c, army);
       const need = defEst * want / f;
       const cap = army.reduce((s, g) => s + Game.troopCap(g), 0);
-      const send = Math.floor(Math.min(avail, cap, Math.max(need * margin, 3000)) / 100) * 100;
+      // 出せる兵はすべて連れていく（守備兵は残したうえで）。兵が多いほど勝ち目は上がり、生き残った兵は戻ってくる
+      const send = Math.floor(Math.min(avail, cap) / 100) * 100;
       if (send >= need && send >= 3000) {
         addPairGens(army, c, t); orderArmy(army, br);
         return { c, t, army, troops: send, keep, ratio: send * f / defEst, need: Math.round(need) };
@@ -411,7 +414,7 @@ const Auto = (() => {
         while (army.length < 5 && extraGens.length && army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < need0 * margin) army.push(extraGens.shift());
       }
       const f = atkFactor(c, army), need = defEst * want / f, cap = army.reduce((s2, g) => s2 + Game.troopCap(g), 0);
-      const send = Math.min(cap, Math.max(need * margin, 3000));
+      const send = Math.min(cap, Math.max(need * margin * 1.3, 3000));   // 合流させる兵は、勝ち目に余裕が出るくらいまで
       let have = Math.max(0, avail);
       const reinforce = [];
       for (const h of helpers) { if (have >= send) break; const take = Math.min(h.amt, Math.ceil((send - have) / 100) * 100); reinforce.push({ d: h.d, amt: take }); have += take; }
@@ -510,7 +513,7 @@ const Auto = (() => {
       const f = atkFactor(c, army);
       // 見積もりは軍師の知力しだいでぶれる
       const best = targets.map(o => ({ o, ratio: troops * f / Math.max(1, defPower(o) * (1 + (Math.random() - 0.5) * br.noise * 0.6)) })).sort((a, b) => b.ratio - a.ratio)[0];
-      if (best.ratio < (big ? br.bigWant : br.want)) return;   // 兵が揃っていても、勝ち目が足りなければ攻めない（5万以上の大軍は基準を下げる）
+      if (best.ratio < (big ? br.bigWant : wantNow(br))) return;   // 兵が揃っていても、勝ち目が足りなければ攻めない（5万以上の大軍は基準を下げる）
       orderArmy(army, br);
       usedT.add(best.o.i);
       out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, moved });
@@ -554,6 +557,8 @@ const Auto = (() => {
     if (t.owner !== null && Game.power(t.owner) > Game.power(G.player) * 2) v -= 0.4;
     return v * (br.tier === 'smart' ? 1 : 0.6);
   }
+  // 攻めない季節が続くと、勝ち目の基準を少しずつ下げる（1季節5%、最大20%）。出陣できたら元に戻る
+  function wantNow(br) { return br.want * (1 - Math.min(0.2, 0.05 * (G.autoIdle || 0))); }
   function planAttacks(br) {
     const plans = [];
     Game.citiesOf(G.player).forEach(c => {
@@ -1146,6 +1151,7 @@ const Auto = (() => {
       bp.army.forEach(x => reserved.add(x.i));
     }
     // 出陣
+    let sorties = 0;
     if (!armies.length) await say('hold');
     for (const a of armies) {
       if (stopReq) return false;
@@ -1191,7 +1197,7 @@ const Auto = (() => {
       // 予定の将が他の出陣に回って減ったときは、勝ち目を確かめ直す（足りなければ見送る）
       if (army.length < e.army.length && !e.big) {
         const ratio = troops * atkFactor(p.c, army) / Math.max(1, defPower(p.t));
-        if (ratio < (e.attrition ? br.attrWant : br.want)) { await say('hold'); continue; }
+        if (ratio < (e.attrition ? br.attrWant : wantNow(br))) { await say('hold'); continue; }
       }
       if (troops < 3000) { await say('hold'); continue; }
       // 兵糧：通常は次の秋までの分を残し20日分。兵が揃った攻め・猛将は、残る兵の1季節分だけ残して10日分あればよい
@@ -1224,10 +1230,12 @@ const Auto = (() => {
       Sound.se('march');
       await UI.talk(cmdr, 'angry', `${cmdr.name}「${line(cmdr, 'sortie')}」`, facColor(cmdr), { tag: '出陣' });
       army.forEach(x => x.acted = true);
+      sorties++;
       const r = await App.executeBattle({ atkFi: G.player, from: p.c.i, to: p.t.i, gens: army.map(x => x.i), troops, food }, 'watch');
       if (r === 'end') return false;
     }
     UI.closeSheet();
+    G.autoIdle = sorties ? 0 : (G.autoIdle || 0) + 1;
     // 出陣が済んだら、出陣した将は行動済み。取りやめになった出陣の将は、このあとの外交・内政などで働ける
     reserved.clear();
     const armies0 = [];
