@@ -57,7 +57,7 @@ const Battle = (() => {
       const defGensAll = Game.gensIn(to.i, defFi === null ? undefined : defFi);
       const defGens = defGensAll.slice().sort((a, b) => (b.isLord ? 1000 : 0) + b.lead + b.war - (a.isLord ? 1000 : 0) - a.lead - a.war).slice(0, 5);
       B = { plan, atkFi: plan.atkFi, defFi, from, to, tiles: genTerrain(to), units: [], day: 1, weather: 'sun', food: plan.food,
-        playerSide: plan.atkFi === G.player ? 'atk' : 'def', gateHP: to.def * 2 + 300, gateMax: to.def * 2 + 300, log: [], sel: null, mode: 'idle', reach: null, targets: null, over: false,
+        playerSide: plan.atkFi === G.player ? 'atk' : 'def', gateHP: 600 + to.def * 9, gateMax: 600 + to.def * 9, log: [], sel: null, mode: 'idle', reach: null, targets: null, over: false,
         bondAtk: Game.bondOf(atkGens.map(g => g.name)), bondDef: Game.bondOf(defGens.map(g => g.name)),
         watch: !!(opts && opts.watch), smart: 0.5,
         buff: { atk: { atk: 1, guard: 1, days: 0 }, def: { atk: 1, guard: 1, days: 0 } } };
@@ -80,7 +80,7 @@ const Battle = (() => {
         const capSum = caps.reduce((s, x) => s + x, 0);
         const use = Math.min(defTroops, capSum);
         B.reserve = defTroops - use;
-        const pos = [[0, 4], [1, 3], [1, 5], [3, 3], [3, 5]];
+        const pos = [[0, 4], [1, 3], [1, 5], [1, 2], [1, 6]];   // 全員城内に構える
         defGens.forEach((g, k) => {
           const tr = Math.max(100, Math.round(use * caps[k] / capSum));
           B.units.push(mkUnit(g, 'def', defFi, tr, pos[k][0], pos[k][1]));
@@ -95,6 +95,7 @@ const Battle = (() => {
       ['atk', 'def'].forEach(sd => { if (B.units.some(u => u.side === sd && u.gi >= 0 && Game.top(u.g, 'cha'))) B.units.filter(u => u.side === sd).forEach(u => u.morale = Math.max(u.morale, 90)); });
       // 君主の位（公・王・皇帝）に応じて、その勢力の将兵の士気が上がる
       B.units.forEach(u => { const f = u.fi != null && G.factions[u.fi]; if (f && f.rank) u.morale = Math.min(100, u.morale + f.rank * 4); });
+      B.reinfPlan = planReinf();
       B.weather = pickWeather();
       setupDOM(opts && opts.auto);
       baseBgm();
@@ -333,7 +334,9 @@ const Battle = (() => {
     return Object.keys(best).filter(k => { const [r, c] = k.split(',').map(Number); const o = unitAt(r, c); return !o || o === u; });
   }
   function attackTargets(u, r = u.r, c = u.c) {
-    const range = Game.has(u.g, '弓術') ? 2 : 1;
+    let range = Game.has(u.g, '弓術') ? 2 : 1;
+    // 城壁の上からは、城外の敵にも矢が届く
+    if (u.side === 'def' && r <= 2 && B.tiles[2][4].t === 'gate' && ['inner', 'gate'].includes(B.tiles[r][c].t)) range = 2;
     const res = B.units.filter(o => o.alive && o.side !== u.side && Math.abs(o.r - r) + Math.abs(o.c - c) <= range);
     const out = res.map(o => [o.r, o.c]);
     if (u.side === 'atk' && B.tiles[2][4].t === 'gate' && Math.abs(2 - r) + Math.abs(4 - c) <= 1) out.push([2, 4]);
@@ -361,6 +364,11 @@ const Battle = (() => {
     // 能力の上位者：豪傑は攻撃↑、名将は攻撃↑・被害↓
     if (a.gi >= 0) { k *= Game.topK(ag, 'war', 1.12, 1.22); k *= Game.topK(ag, 'lead', 1.08, 1.15); }
     if (d.gi >= 0) k /= Game.topK(dg, 'lead', 1.12, 1.2);
+    // 城壁：城内・城門・本丸の守り手は、城壁の値に応じて被害が減る。門が破れると守りは半減
+    const castle = ['inner', 'keep', 'gate'];
+    if (d.side === 'def' && castle.includes(t)) k /= 1 + B.to.def / 600 * (gateUp() ? 1 : 0.5);
+    // 城壁の上からの矢は届く
+    if (a.side === 'def' && ranged && castle.includes(at) && gateUp()) k *= 1 + B.to.def / 1400;
     return Math.max(30, Math.round(k * rnd(0.85, 1.15)));
   }
 
@@ -402,9 +410,16 @@ const Battle = (() => {
       const dmg = Math.round(Math.pow(a.troops, 0.8) * 0.9 * ((a.g.lead || 40) + a.g.war) / 120 * rnd(0.85, 1.15));
       B.gateHP -= dmg; Sound.se('hit'); slash(r, c); addFloater(r, c, `門-${dmg}`, '#ffd23a');
       if (B.gateHP <= 0) {
-        B.tiles[2][4].t = 'road'; B.tiles[2][3].t = 'road'; B.tiles[2][5].t = 'road';   // 門の両脇の城壁も崩れる
+        // 城壁が堅いほど、崩れるのは門だけで済みやすい（門だけ／片側も／両脇まで）
+        const q = clamp(B.to.def / 800, 0, 1), rr = Math.random();
+        const pOnly = 0.2 + 0.45 * q, pBoth = 0.45 - 0.3 * q;
+        const side = Math.random() < 0.5 ? 3 : 5;
+        const broken = rr < pOnly ? [] : rr < pOnly + pBoth ? [3, 5] : [side];
+        B.tiles[2][4].t = 'road'; broken.forEach(c => { B.tiles[2][c].t = 'road'; });
         buildTerrainLayer(window.devicePixelRatio || 1);
-        Sound.se('gateBreak'); await banner('城門、破れたり！', 1000); addLog(`${a.g.name}隊が城門を破った！ 城壁も崩れた`);
+        B.gateDay = B.day; Sound.se('gateBreak'); await banner('城門、破れたり！', 1000);
+        addLog(`${a.g.name}隊が城門を破った！ ${broken.length === 2 ? '両脇の城壁も崩れ落ちた' : broken.length ? '城壁の一角も崩れた' : 'だが城壁は持ちこたえている'}`);
+        await tryMilitia('gate');
       }
       a.acted = true; await sleep(400); return;
     }
@@ -726,7 +741,8 @@ const Battle = (() => {
   }
 
   // ---------- 逆転の目（援軍・背水の陣） ----------
-  const REINF = { name: '援軍', lead: 60, war: 60, int: 45, pol: 40, cha: 50, appear: 180, traits: [] };
+  const REINF = { name: '援軍', lead: 66, war: 64, int: 45, pol: 40, cha: 50, appear: 180, traits: [] };
+  const MILITIA = { name: '市民兵', lead: 50, war: 52, int: 30, pol: 30, cha: 40, appear: 180, traits: [] };
   function freeTile(side) {
     const rows = side === 'def' ? [0, 1, 3] : [ROWS - 1, ROWS - 2];
     for (const r of rows) for (const c of shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8])) { const t = B.tiles[r][c].t; if (!unitAt(r, c) && !['wall', 'water', 'gate'].includes(t) && !B.tiles[r][c].fire) return [r, c]; }
@@ -752,25 +768,107 @@ const Battle = (() => {
         if (cmd.gi >= 0 && !auto) await UI.talk(cmd.g, 'angry', `${cmd.g.name}「退路はない！ ここで死力を尽くせ！」`, cmd.fi === null ? '#777' : G.factions[cmd.fi].color, { tag: '背水の陣' });
       }
     }
-    // 援軍：隣の自都市から駆けつけることがある（各陣営1回まで）
-    if (B.day >= 3) for (const sd of ['def', 'atk']) {
-      if (B.reinf[sd]) continue;
-      const fi = sd === 'atk' ? B.atkFi : B.defFi;
-      if (fi === null) continue;
-      if (Math.random() > (sd === 'def' ? 0.08 : 0.05)) continue;
-      const src = B.to.adj.map(a => G.cities[a]).filter(c => c.owner === fi && c.i !== B.from.i && c.troops > 7000).sort((a, b2) => b2.troops - a.troops)[0];
-      if (!src) continue;
-      const pos = freeTile(sd); if (!pos) continue;
-      const amt = Math.round(clamp(src.troops * 0.2, 1500, 6000) / 100) * 100;
-      src.troops -= amt;
-      B.reinf[sd] = true;
-      const u = mkUnit(null, sd, fi, amt, pos[0], pos[1]);
-      u.g = REINF; u.src = src.i; u.train = src.train; u.morale = 95;
-      B.units.push(u);
-      Sound.se('horn');
-      await banner(`${src.name}から援軍到着！`, 1300);
-      addLog(`${src.name}から${fname(sd)}の援軍 ${amt} が駆けつけた！`);
+    // 援軍：開戦時に決めた到着日に駆けつける。守り手が危ないと急報を受けて急ぐ
+    const defBad = outlook('def') < -0.3 || !gateUp();
+    for (const rf of B.reinfPlan) {
+      if (rf.done) continue;
+      if (rf.side === 'def' && defBad && rf.day > B.day && Math.random() < 0.5) { rf.day = B.day; rf.rushed = true; }
+      if (rf.day > B.day) continue;
+      await arriveReinf(rf);
     }
+    // 守り手が苦しくなると、民が立ち上がることがある
+    if (outlook('def') < -0.3) await tryMilitia('crisis');
+  }
+
+  const gateUp = () => B.tiles[2][4].t === 'gate';
+  // 開戦時に、どこから・いつ援軍が来るかを決める
+  function planReinf() {
+    const out = [], used = new Set(B.units.map(u => u.gi));
+    const add = (side, fi, src, day, ally) => {
+      const gs = Game.gensIn(src.i, fi).filter(g => !g.isLord && !used.has(g.i)).sort((a, b2) => (b2.lead + b2.war) - (a.lead + a.war));
+      const g = gs[0] || null;
+      const cap = g ? Game.troopCap(g) : 8000;
+      const amt = Math.round(Math.min(cap, clamp(src.troops * 0.4, 2000, 12000), src.troops - 1500) / 100) * 100;
+      if (amt < 1500) return;
+      if (g) used.add(g.i);
+      out.push({ side, fi, src: src.i, g, amt, day: day - (g && Game.has(g, '騎馬') ? 1 : 0), ally });
+    };
+    const near = fi => B.to.adj.map(a => G.cities[a]).filter(c => c.owner === fi && c.i !== B.from.i).sort((a, b2) => b2.troops - a.troops)[0];
+    if (B.defFi !== null) {
+      // 守り手の隣の自都市
+      const own = near(B.defFi);
+      if (own && own.troops >= 4000 && Math.random() < 0.85) add('def', B.defFi, own, irnd(3, 7), false);
+      // 同盟国（攻め手と手を結んでいない国）
+      const allies = Object.keys(G.factions[B.defFi].allies).map(Number).filter(fi => G.factions[fi].alive && Game.isAlly(B.defFi, fi) && fi !== B.atkFi && !Game.isAlly(B.atkFi, fi));
+      for (const fi of allies) {
+        const c = near(fi); if (!c || c.troops < 5000) continue;
+        const lord = Game.lordOf(fi);
+        const p = 0.55 + (Game.has(lord, '忠義') || Game.has(lord, '仁徳') ? 0.2 : 0) - (Game.has(lord, '野心') ? 0.15 : 0);
+        if (Math.random() < p) { add('def', fi, c, irnd(4, 9), true); break; }
+      }
+    }
+    const atkOwn = near(B.atkFi);
+    if (atkOwn && atkOwn.troops >= 6000 && Math.random() < 0.45) add('atk', B.atkFi, atkOwn, irnd(5, 11), false);
+    return out;
+  }
+  // 守りの援軍は、攻め手の側面か背後を突ける場所に現れる
+  function reinfTile(side) {
+    if (side === 'atk') return freeTile('atk');
+    const foes = B.units.filter(u => u.alive && u.side === 'atk');
+    let best = null, bs = 1e9;
+    for (let r = 3; r < ROWS; r++) for (const c of [0, 1, 7, 8]) {
+      const t = B.tiles[r][c].t;
+      if (unitAt(r, c) || ['wall', 'water', 'gate'].includes(t) || B.tiles[r][c].fire) continue;
+      const d = foes.length ? Math.min(...foes.map(f => dist(f, { r, c }))) : 3;
+      const sc = Math.abs(d - 2) + Math.random() * 0.5;
+      if (sc < bs) { bs = sc; best = [r, c]; }
+    }
+    return best || freeTile('def');
+  }
+  async function arriveReinf(rf) {
+    rf.done = true;
+    const src = G.cities[rf.src];
+    if (src.owner !== rf.fi || rf.g && (rf.g.state !== 'serve' || rf.g.faction !== rf.fi)) return;
+    const amt = Math.min(rf.amt, src.troops - 1000); if (amt < 1000) return;
+    const pos = reinfTile(rf.side); if (!pos) return;
+    src.troops -= amt;
+    const u = mkUnit(rf.g, rf.side, rf.fi, amt, pos[0], pos[1]);
+    if (!rf.g) u.g = REINF;
+    u.src = src.i; u.train = src.train; u.morale = 95; u.ally = rf.ally;
+    B.units.push(u);
+    const fname = G.factions[rf.fi].name;
+    Sound.se('horn'); setTimeout(() => Sound.se('warcry'), 400);
+    await banner(rf.ally ? `${fname}軍の援軍到着！` : `${src.name}から援軍到着！`, 1300);
+    addLog(`${rf.ally ? '同盟国 ' + fname + '軍' : src.name}の援軍 ${rf.g ? rf.g.name + '隊 ' : ''}${amt} が${rf.rushed ? '急報を受けて' : ''}駆けつけた！`);
+    // 苦しい側に届いた援軍は、全軍を奮い立たせる
+    const bad = outlook(rf.side) < -0.15;
+    if (bad) B.units.filter(o => o.alive && o.side === rf.side).forEach(o => o.morale = Math.min(100, o.morale + 15));
+    if (!auto) {
+      const col = G.factions[rf.fi].color;
+      if (rf.g) await UI.talk(rf.g, 'angry', `${rf.g.name}「${rf.ally ? `${fname}軍の${rf.g.name}、盟約により助太刀いたす！` : rf.rushed ? '急報を受けて駆けつけた！ 持ちこたえよ！' : 'お待たせした！ 援軍、ただいま到着！'}」`, col, { tag: '援軍' });
+      const cmd = B.units.find(o => o.side === rf.side && o.commander && o.alive && o.gi >= 0);
+      if (bad && cmd && rf.side === B.playerSide) await UI.talk(cmd.g, 'happy', `${cmd.g.name}「助かった！ 皆の者、いまこそ押し返せ！」`, G.factions[cmd.fi].color, { tag: '援軍' });
+    }
+  }
+  // 市民兵：魅力の高い大将が守り、民忠が高い城では、民が武器を取って立ち上がる（1回まで）
+  async function tryMilitia(why) {
+    if (B.militia || B.defFi === null) return;
+    const cmd = B.units.find(u => u.side === 'def' && u.commander && u.alive && u.gi >= 0);
+    if (!cmd) return;
+    const cha = cmd.g.cha, loyal = B.to.loyal;
+    if (cha < 78 || loyal < 75) return;
+    B.militia = true;   // 判定は1回だけ
+    if (Math.random() > clamp(0.35 + (cha - 78) / 40 + (loyal - 75) / 50, 0.2, 0.9)) return;
+    const pos = freeTile('def'); if (!pos) return;
+    const amt = Math.round(clamp(B.to.pop / 80, 1000, 5000) / 100) * 100;
+    const u = mkUnit(null, 'def', B.defFi, amt, pos[0], pos[1]);
+    u.g = MILITIA; u.src = -1; u.militia = true; u.train = 30; u.morale = 100;
+    B.units.push(u);
+    B.units.filter(o => o.alive && o.side === 'def').forEach(o => o.morale = Math.min(100, o.morale + 10));
+    Sound.se('warcry'); setTimeout(() => Sound.se('cheer'), 500);
+    await banner('民が立ち上がった！', 1300);
+    addLog(`${cmd.g.name}を慕う${B.to.name}の民 ${amt} が、市民兵として加わった！`);
+    if (!auto) await UI.talk(cmd.g, 'happy', `民「${cmd.g.name}様をお守りしろ！ この町は俺たちの町だ！」\n${cmd.g.name}「……皆、かたじけない！」`, G.factions[B.defFi].color, { tag: '市民兵' });
   }
 
   // ---------- 日の流れ ----------
@@ -820,7 +918,7 @@ const Battle = (() => {
     }
     B.mode = 'idle'; B.sel = null; B.reach = null; B.targets = null;
     // 命令無視（猪突・忠誠の低い武将）
-    for (const u of B.units.filter(u => u.alive && u.side === B.playerSide && !u.acted && u.gi >= 0)) {
+    for (const u of B.units.filter(u => u.alive && u.side === B.playerSide && !u.acted && u.gi >= 0 && !u.ally)) {
       const g = u.g;
       if (g.isLord || Game.has(g, '慎重') || Game.has(g, '忠義') && !Game.has(g, '猪突')) continue;
       let p = Game.has(g, '猪突') ? 0.15 : 0;
@@ -845,6 +943,8 @@ const Battle = (() => {
     if (B.over) return;
     B.sel = null; B.reach = null; B.targets = null; B.mode = 'busy'; setActions([]);
     if (await checkEnd()) return;
+    // 同盟国の援軍は自分たちで動く
+    for (const u of B.units.filter(o => o.alive && o.ally && o.side === B.playerSide && !o.acted)) { await aiUnit(u, false); updateHUD(); if (await checkEnd()) return; }
     const enemy = B.playerSide === 'atk' ? 'def' : 'atk';
     if (B.playerSide === 'atk') { await aiPhase(enemy); if (B.over) return; }
     startDay(false);
@@ -871,7 +971,7 @@ const Battle = (() => {
     if (u) {
       Sound.se('tap');
       showInfo(u);
-      if (u.side === B.playerSide && !u.acted) { B.sel = u; B.mode = 'move'; B.reach = moveRange(u); B.targets = null; setActions([{ label: 'この場で行動', cls: 'primary', fn: () => { B.reach = null; u.prev = [u.r, u.c]; actMenu(u); } }, { label: '戻る', fn: () => { B.sel = null; B.reach = null; B.mode = 'idle'; showInfo(null); idleActions(); } }]); }
+      if (u.side === B.playerSide && !u.acted && !u.ally) { B.sel = u; B.mode = 'move'; B.reach = moveRange(u); B.targets = null; setActions([{ label: 'この場で行動', cls: 'primary', fn: () => { B.reach = null; u.prev = [u.r, u.c]; actMenu(u); } }, { label: '戻る', fn: () => { B.sel = null; B.reach = null; B.mode = 'idle'; showInfo(null); idleActions(); } }]); }
       else { B.sel = null; B.reach = null; B.mode = 'idle'; }
     } else { B.sel = null; B.reach = null; B.mode = 'idle'; showInfo(null); idleActions(); }
   }
@@ -998,11 +1098,23 @@ const Battle = (() => {
     if (!rogue && await tryPlot(u, wmine, foes)) return;
     // 守り手（総大将）や城内の部隊は、敵が近づくまで動かない
     const nearest = foes.slice().sort((a, b) => dist(a, u) - dist(b, u))[0];
-    if (u.side === 'def' && !rogue) {
+    if (u.side === 'def' && !rogue && u.src == null) {
       const keepGuard = u.commander && B.tiles[u.r][u.c].t === 'keep';
-      if (keepGuard || (dist(nearest, u) > 4 && B.tiles[2][4].t === 'gate')) {
-        const t = attackTargets(u).filter(([r, c]) => unitAt(r, c));
-        if (t.length) { const [r, c] = t.sort((a, b) => unitAt(a[0], a[1]).troops - unitAt(b[0], b[1]).troops)[0]; await doAttack(u, r, c); return; }
+      // 門が無事なうちは、城内の部隊は城壁に拠って戦う（よほど優勢なら打って出る）
+      const holdWall = u.r <= 2 && gateUp() && outlook('def') < 0.3;
+      if (keepGuard || holdWall || (dist(nearest, u) > 4 && gateUp())) {
+        const weakest = t => t.sort((a, b) => unitAt(a[0], a[1]).troops - unitAt(b[0], b[1]).troops)[0];
+        let t = attackTargets(u).filter(([r, c]) => unitAt(r, c));
+        if (!t.length && holdWall && !keepGuard) {
+          // 城内で、矢の届く場所（城門の上を含む）へ移る
+          const spots = moveRange(u).map(k => k.split(',').map(Number)).filter(([r, c]) => r <= 2 && !unitAt(r, c) && attackTargets(u, r, c).some(([rr, cc]) => unitAt(rr, cc)));
+          if (spots.length) {
+            const [r, c] = spots.sort((a, b) => (b[0] === 2 && b[1] === 4 ? 1 : 0) - (a[0] === 2 && a[1] === 4 ? 1 : 0))[0];
+            await animateMove(u, r, c);
+            t = attackTargets(u).filter(([rr, cc]) => unitAt(rr, cc));
+          }
+        }
+        if (t.length) { const [r, c] = weakest(t); await doAttack(u, r, c); return; }
         u.acted = true; return;
       }
     }
@@ -1073,6 +1185,8 @@ const Battle = (() => {
       killed: B.units.filter(u => u.gi >= 0 && u.status === 'killed').map(u => u.gi),
       days: B.day,
     };
+    // 市民兵は戦が終われば町へ帰る。守り切ったら、生き残りの半分が兵に志願する
+    if (!res.atkWin) res.defLeft += Math.round(B.units.filter(u => u.militia && u.alive).reduce((s, u) => s + u.troops, 0) / 2);
     // 勝った側に残った敵将は捕縛されることがある
     const timeUp = reason.includes('30日') || reason.includes('兵糧');
     if (!timeUp) B.units.filter(u => u.gi >= 0 && u.alive && u.side !== winner).forEach(u => { if (Math.random() < (winner === 'atk' ? 0.3 : 0.15)) res.captured.push(u.gi); });

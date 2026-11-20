@@ -333,18 +333,56 @@ const Game = {
     }
     return { ok: false, msg: `${tgt.name}に同盟を断られた` };
   },
+  // 降伏の見込み：兵力差・都市数・囲まれ方（隣接しているか）・相手君主の気性・使者の魅力で決まる
+  surrenderOdds(g, fi) {
+    const me = g.faction, tgt = G.factions[fi], lord = Game.lordOf(fi);
+    const pMe = Game.power(me), pT = Game.power(fi);
+    const tCities = Game.citiesOf(fi), nT = tCities.length, nMe = Game.citiesOf(me).length;
+    // 囲まれ方：相手の都市の隣のうち、こちら（と同盟国）の都市が占める割合
+    let adjMine = 0, adjAll = 0, touching = false;
+    tCities.forEach(c => c.adj.forEach(a => {
+      const o = G.cities[a].owner; if (o === fi) return;
+      adjAll++;
+      if (o === me) { adjMine++; touching = true; } else if (o !== null && Game.isAlly(me, o)) adjMine += 0.7;
+    }));
+    const enc = adjAll ? adjMine / adjAll : 0;
+    const ratio = pMe / Math.max(1, pT);
+    let cap = 0.85;
+    let p = (Math.log2(Math.max(1, ratio)) - 1.6) * 0.13 + enc * 0.3 + Math.min(0.12, Math.max(0, nMe / nT - 3) * 0.015) + (g.cha - 70) / 160 + (Game.top(g, 'cha') ? 0.08 : 0);
+    if (nT === 1) p += 0.12;                                 // 最後の一城
+    p -= (nT - 1) * 0.06;                                    // 国が大きいほど粘る
+    cap = Math.min(cap, 0.35 + enc * 0.6);                    // 囲みが甘いうちは、まだ逃げ道がある
+    if (tCities.every(c => c.troops < 3000)) p += 0.08;      // もはや兵がいない
+    p -= (tgt.hostility[me] || 0) / 150;
+    // 相手の君主の気性
+    let spirit = '';
+    if (lord) {
+      if (Game.has(lord, '野心')) { p -= 0.22; spirit = 'proud'; cap = 0.5; }
+      if (Game.has(lord, '剛勇') || Game.has(lord, '猪突')) { p -= 0.15; spirit = spirit || 'brave'; cap = Math.min(cap, 0.6); }
+      if (Game.has(lord, '忠義')) { p -= 0.15; spirit = spirit || 'loyal'; }
+      if (Game.has(lord, '臆病')) p += 0.15;
+      if (Game.has(lord, '慎重')) p += 0.05;
+      if (lord.war >= 95 || ['曹操', '劉備', '孫権', '孫策'].includes(lord.name)) { p -= 0.3; spirit = 'hero'; cap = 0.3; }   // 天下に名だたる者は膝を屈しない
+    }
+    if (!touching) { p = p * 0.15 - 0.05; cap = Math.min(cap, 0.1); }   // 国境を接していなければ脅しにならない
+    return { p: clamp(p, 0, cap), spirit, touching, enc };
+  },
   diploSurrender(g, fi) {
     const tgt = G.factions[fi];
-    const pMe = Game.power(g.faction), pT = Game.power(fi);
-    const nMe = Game.citiesOf(g.faction).length, nT = Game.citiesOf(fi).length;
-    let p = (pMe / (pT + 1) - 3) * 0.08 + (nMe / nT - 4) * 0.04 + (g.cha - 70) / 200;
-    if (Game.has(Game.lordOf(fi), '野心')) p -= 0.25;
-    if (Math.random() < clamp(p, 0, 0.7)) {
+    const o = Game.surrenderOdds(g, fi);
+    if (Math.random() < o.p) {
       Game.absorbFaction(fi, g.faction);
       return { ok: true, msg: `${tgt.name}が降伏した！ 領地と配下がすべて加わった` };
     }
-    return { ok: false, msg: `${tgt.name}「降伏などせぬ！」` };
+    const say = !o.touching ? '遠く離れた者の脅しなど、恐るるに足らん'
+      : o.spirit === 'hero' ? '天下を望む者が、膝を屈するものか！'
+      : o.spirit === 'proud' ? 'わしの野望は、まだ終わっておらぬ！'
+      : o.spirit === 'brave' ? '降伏だと？ 最後の一兵まで戦うのみ！'
+      : o.spirit === 'loyal' ? '節を曲げて生き長らえる気はない'
+      : o.p < 0.15 ? '降伏などせぬ！' : '……まだ戦える。降伏はせぬ';
+    return { ok: false, msg: `${tgt.name}「${say}」` };
   },
+  surrenderHint(p) { return p >= 0.5 ? '見込み 高' : p >= 0.25 ? '見込み 中' : p >= 0.08 ? '見込み 低' : '見込み なし'; },
   absorbFaction(fi, toFi) {
     G.cities.forEach(c => { if (c.owner === fi) c.owner = toFi; });
     G.gens.forEach(g => { if (g.state === 'serve' && g.faction === fi) { g.faction = toFi; g.isLord = false; g.loyalty = irnd(55, 75); } });
@@ -445,6 +483,7 @@ const Game = {
       g.loyalty = clamp(g.loyalty + drift, 0, 100);
     });
     ev.push(...Game.checkRebellion());
+    ev.push(...Game.checkIndependence());
 
     // 季節を進める
     G.season++; G.turn++;
@@ -477,6 +516,49 @@ const Game = {
       Game.log(`${g.name}が${c.name}で謀反を起こし、独立した！`);
       ev.push({ type: oldF === G.player ? 'warn' : 'info', msg: `${g.name}が${G.factions[oldF].name}に背き、${c.name}で独立した！`, gen: g.i, expr: 'angry', city: c.i, line: line(g, 'rebel') });
     });
+    return ev;
+  },
+
+  // 天下の半分以上を治めると、忠誠の低い太守が独立することがある（季節に1件まで、2季節あける）
+  // 独立した都市は兵が3倍になり、近くの在野武将が3人まで加わる
+  checkIndependence() {
+    const ev = [], pf = G.player;
+    const mineN = Game.citiesOf(pf).length;
+    if (mineN * 2 < G.cities.length) return ev;
+    const now = G.year * 4 + G.season;
+    if (G.events.indepAt != null && now - G.events.indepAt < 2) return ev;
+    const lord = Game.lordOf(pf), cap = G.factions[pf].capital;
+    const cand = [];
+    Game.citiesOf(pf).forEach(c => {
+      if (c.i === cap || c.i === lord.city) return;
+      const gs = Game.gensIn(c.i, pf).filter(g => !g.isLord);
+      if (!gs.length) return;
+      const gov = gs.sort((a, b) => (b.lead + b.war + b.int + b.pol) - (a.lead + a.war + a.int + a.pol))[0];   // 太守：その都市でいちばん格上の武将
+      if (Game.has(gov, '忠義') || gov.loyalty >= 60 || gov.i === G.strategist) return;
+      const p = (60 - gov.loyalty) / 80 + (Game.has(gov, '野心') ? 0.15 : 0) + (c.loyal < 50 ? 0.05 : 0);
+      cand.push({ c, gov, p });
+    });
+    const hit = cand.sort((a, b) => b.p - a.p).find(x => Math.random() < x.p);
+    if (!hit) return ev;
+    const { c, gov: g } = hit;
+    G.events.indepAt = now;
+    const say = line(g, 'indep');   // 主君の名が入るので、勢力を移る前に
+    const nf = { i: G.factions.length, name: g.name, color: '#' + (0x404040 + Math.floor(Math.random() * 0x9f9f9f)).toString(16).padStart(6, '0'), lord: g.i, alive: true, capital: c.i, allies: {}, isPlayer: false, hostility: { [pf]: 60 } };
+    G.factions.push(nf);
+    g.faction = nf.i; g.isLord = true; g.loyalty = 100;
+    c.owner = nf.i;
+    // 同じ都市の、忠誠の低い武将はついていく。残りは本拠へ
+    const followers = [];
+    Game.gensIn(c.i, pf).forEach(h => { if (h.loyalty < 60 && !Game.has(h, '忠義')) { h.faction = nf.i; h.loyalty = irnd(70, 90); followers.push(h.name); } else h.city = cap; });
+    // すぐに潰されないように：兵は3倍、蓄えも足す
+    c.troops = Math.max(3000, c.troops * 3); c.food = Math.max(c.food, Math.round(c.troops * 1.5)); c.gold += 500; c.loyal = Math.max(c.loyal, 60);
+    // 在野の武将が3人まで加わる（同じ都市→隣の都市→どこでも）
+    const ronin = G.gens.filter(x => x.state === 'ronin' && x.name !== '諸葛亮')
+      .sort((a, b) => (a.city === c.i ? 0 : c.adj.includes(a.city) ? 1 : 2) - (b.city === c.i ? 0 : c.adj.includes(b.city) ? 1 : 2) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, 3);
+    ronin.forEach(x => { Game.joinFaction(x, nf.i, c.i); x.loyalty = irnd(75, 95); });
+    Game.log(`${g.name}が${c.name}で独立した！`);
+    const extra = [followers.length ? `${followers.join('・')}がついていった` : '', ronin.length ? `在野の${ronin.map(x => x.name).join('・')}が馳せ参じた` : ''].filter(Boolean).join('。');
+    ev.push({ type: 'warn', msg: `大きくなりすぎた国に、ひびが入り始めた。\n${g.name}が${G.factions[pf].name}軍に背き、${c.name}で独立した！\n兵 ${fmt(c.troops)}。${extra}`, gen: g.i, expr: 'angry', city: c.i, line: say, tag: '独立' });
     return ev;
   },
 
@@ -546,6 +628,13 @@ const AI = {
     });
     // 計略（プレイヤーの武将に離間・引き抜き）を時々
     if (Math.random() < 0.25) AI.plot(fi);
+    // 降伏勧告：追い詰めた隣国（プレイヤー以外）に使者を出す
+    if (Math.random() < 0.3) {
+      const env = Game.gensOf(fi).sort((a, b) => b.cha - a.cha)[0];
+      const nb = new Set(); myCities.forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== fi && o !== G.player && !Game.isAlly(fi, o)) nb.add(o); }));
+      const t = env && [...nb].map(o => ({ o, p: Game.surrenderOdds(env, o).p })).sort((a, b) => b.p - a.p)[0];
+      if (t && t.p >= 0.2 && Math.random() < t.p) { const nm = G.factions[t.o].name; Game.absorbFaction(t.o, fi); Game.log(`${nm}軍が${f.name}軍に降伏した。`); }
+    }
     // 外交（たまにプレイヤーへ同盟を申し出る → UIで処理）
     // 武将の再配置：前線へ
     AI.redistribute(fi);
@@ -674,12 +763,24 @@ const AI = {
     const bondD = Game.bondOf(def.map(g => g.name)).reduce((s, x) => s + x.bonus, 0);
     const avg = (arr, k) => arr.length ? arr.reduce((s, g) => s + g[k], 0) / arr.length : 40;
     const atkPow = b.troops * (0.5 + from.train / 200) * (0.6 + (avg(atk, 'lead') * 0.6 + avg(atk, 'war') * 0.4) / 100) * (1 + bondA) * rnd(0.78, 1.22);
-    const defPow = to.troops * (0.5 + to.train / 200) * (0.6 + (avg(def, 'lead') * 0.6 + avg(def, 'war') * 0.4) / 100) * (1 + bondD) * (1.15 + to.def / 2500) * rnd(0.78, 1.22);
+    // 援軍：隣の自都市や同盟国から駆けつける（合戦画面の援軍に相当）
+    const helpers = [];
+    if (to.owner !== null) {
+      const near = fi => to.adj.map(a => G.cities[a]).filter(c => c.owner === fi && c.i !== from.i).sort((a, b2) => b2.troops - a.troops)[0];
+      const own = near(to.owner);
+      if (own && own.troops >= 4000 && Math.random() < 0.85) helpers.push({ c: own, amt: Math.round(Math.min(own.troops - 1500, own.troops * 0.4)) });
+      const al = Object.keys(G.factions[to.owner].allies).map(Number).find(fi => G.factions[fi].alive && Game.isAlly(to.owner, fi) && fi !== b.atkFi && !Game.isAlly(b.atkFi, fi) && near(fi) && near(fi).troops >= 5000);
+      if (al != null && Math.random() < 0.55) { const c = near(al); helpers.push({ c, amt: Math.round(Math.min(c.troops - 1500, c.troops * 0.4)) }); }
+    }
+    const help = helpers.reduce((s, h) => s + h.amt, 0) * 0.7;   // 途中から来るので7割の働き
+    const defPow = (to.troops * (1.15 + to.def / 1500) + help) * (0.5 + to.train / 200) * (0.6 + (avg(def, 'lead') * 0.6 + avg(def, 'war') * 0.4) / 100) * (1 + bondD) * rnd(0.78, 1.22);
     const atkWin = atkPow > defPow;
     const ratio = Math.min(atkPow, defPow) / Math.max(atkPow, defPow);
     let atkLoss, defLoss;
     if (atkWin) { atkLoss = Math.round(b.troops * ratio * 0.5); defLoss = Math.round(to.troops * (0.6 + 0.3 * (1 - ratio))); }
     else { defLoss = Math.round(to.troops * ratio * 0.5); atkLoss = Math.round(b.troops * (0.5 + 0.3 * (1 - ratio))); }
+    // 援軍の損害
+    helpers.forEach(h => { h.c.troops = Math.max(0, h.c.troops - Math.round(h.amt * (atkWin ? 0.5 : ratio * 0.4))); });
     const result = { atkWin, atkLeft: Math.max(0, b.troops - atkLoss), defLeft: Math.max(0, to.troops - defLoss), captured: [], killed: [], reason: atkWin ? '攻め手が押し切った' : '守り手が持ちこたえた' };
     if (atkWin) {
       // 守備側の武将：一部捕縛、残りは逃走
