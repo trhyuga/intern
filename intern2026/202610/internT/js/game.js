@@ -242,6 +242,7 @@ const Game = {
     const v = g[k];
     const gain = v >= 99 ? 0 : v >= 95 ? (Math.random() < 0.1 ? 1 : 0) : v >= 90 ? (Math.random() < 0.5 ? 1 : 0) : v >= 80 ? 1 : v >= 70 ? irnd(1, 2) : v >= 50 ? irnd(2, 3) : irnd(3, 5);
     g[k] = Math.min(99, v + gain);
+    G._rank = null;   // 称号（能力の上位者）を計算し直す
     return gain;
   },
 
@@ -271,7 +272,7 @@ const Game = {
     return { ok: false };
   },
   joinFaction(t, fi, ci) {
-    t.faction = fi; t.state = 'serve'; t.city = ci; t.loyalty = Game.has(t, '忠義') ? 90 : irnd(60, 80); t.joined = G.year;
+    t.faction = fi; t.state = 'serve'; t.city = ci; t.isLord = false; t.loyalty = Game.has(t, '忠義') ? 90 : irnd(60, 80); t.joined = G.year;
     if (fi === G.player) G.stats.recruited++;
   },
 
@@ -417,8 +418,9 @@ const Game = {
     const f = G.factions[fi];
     const cands = Game.gensOf(fi).filter(g => g.i !== deadLord.i);
     if (!cands.length || !Game.citiesOf(fi).length) {
-      // 後継なし：都市は空白地に
+      // 後継なし（または都市がない）：都市は空白地に、残った家臣は在野に
       G.cities.forEach(c => { if (c.owner === fi) c.owner = null; });
+      cands.forEach(g => { g.faction = -1; g.isLord = false; g.state = 'ronin'; });
       Game.killFaction(fi);
       return null;
     }
@@ -516,14 +518,14 @@ const Game = {
       if (c.owner !== g.faction) return;
       const oldF = g.faction;
       // 本拠では謀反しない（君主と同じ都市）
-      if (Game.lordOf(oldF).city === c.i) return;
+      if (Game.lordOf(oldF).city === c.i || G.factions[oldF].capital === c.i) return;
       // 独立：新勢力を作る
       const nf = { i: G.factions.length, name: g.name, color: '#' + (0x404040 + Math.floor(Math.random() * 0x9f9f9f)).toString(16).padStart(6, '0'), lord: g.i, alive: true, capital: c.i, allies: {}, isPlayer: false, hostility: {} };
       G.factions.push(nf);
       g.faction = nf.i; g.isLord = true; g.loyalty = 100;
       c.owner = nf.i;
       // 同じ都市の、忠誠の低い武将がついていく
-      Game.gensIn(c.i, oldF).forEach(h => { if (h !== g && h.loyalty < 60 && !Game.has(h, '忠義')) { h.faction = nf.i; } });
+      Game.gensIn(c.i, oldF).forEach(h => { if (h !== g && h.loyalty < 60 && !Game.has(h, '忠義')) { h.faction = nf.i; h.loyalty = irnd(70, 90); } });
       // ついていかない武将は本拠へ
       Game.gensIn(c.i, oldF).forEach(h => { h.city = G.factions[oldF].capital; });
       Game.log(`${g.name}が${c.name}で謀反を起こし、独立した！`);
@@ -599,7 +601,7 @@ const Game = {
     G.gens.forEach(g => {
       if (g.state !== 'ronin') return;
       const c = G.cities[g.city];
-      if (c.owner !== null && c.owner !== G.player && Math.random() < 0.25) Game.joinFaction(g, c.owner, c.i);
+      if (c.owner !== null && c.owner !== G.player && g.name !== '諸葛亮' && Math.random() < 0.25) Game.joinFaction(g, c.owner, c.i);   // 諸葛亮は三顧の礼でしか仕えない
     });
     return ev;
   },

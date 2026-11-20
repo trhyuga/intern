@@ -247,7 +247,7 @@ const Battle = (() => {
     ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(cx - s * 0.31, cy - s * 0.45); ctx.lineTo(cx + s * 0.08, cy - s * 0.42); ctx.lineTo(cx - s * 0.02, cy - s * 0.3); ctx.lineTo(cx + s * 0.08, cy - s * 0.16); ctx.lineTo(cx - s * 0.31, cy - s * 0.14); ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1; ctx.stroke();
     ctx.fillStyle = isLight(col) ? '#222' : '#fff'; ctx.font = `bold ${Math.round(s * 0.24)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(u.gi >= 0 ? u.g.name[0] : (u.src != null ? '援' : '守'), cx - s * 0.13, cy - s * 0.29);
+    ctx.fillText(u.gi >= 0 ? u.g.name[0] : u.militia ? '民' : (u.src != null ? '援' : '守'), cx - s * 0.13, cy - s * 0.29);
     if (u.commander) { ctx.fillStyle = '#ffd23a'; ctx.font = `${Math.round(s * 0.22)}px serif`; ctx.fillText('★', cx + s * 0.26, cy - s * 0.36); }
     // 兵力バー
     const w = s * 0.8, bx = x + s * 0.1, by = y + s - 6;
@@ -339,7 +339,7 @@ const Battle = (() => {
     if (u.side === 'def' && r <= 2 && B.tiles[2][4].t === 'gate' && ['inner', 'gate'].includes(B.tiles[r][c].t)) range = 2;
     const res = B.units.filter(o => o.alive && o.side !== u.side && Math.abs(o.r - r) + Math.abs(o.c - c) <= range);
     const out = res.map(o => [o.r, o.c]);
-    if (u.side === 'atk' && B.tiles[2][4].t === 'gate' && Math.abs(2 - r) + Math.abs(4 - c) <= 1) out.push([2, 4]);
+    if (u.side === 'atk' && B.tiles[2][4].t === 'gate' && !unitAt(2, 4) && Math.abs(2 - r) + Math.abs(4 - c) <= 1) out.push([2, 4]);   // 門の上に誰かいれば、その部隊が相手
     return out;
   }
   function plotTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && dist(u, o) <= 2).map(o => [o.r, o.c]); }
@@ -870,7 +870,9 @@ const Battle = (() => {
     const other = u.side === 'atk' ? 'def' : 'atk';
     const fromFi = u.fi, toFi = other === 'atk' ? B.atkFi : B.defFi;
     const say = line(u.g, 'betray');   // 元の主君の名で話すので、所属を変える前に
-    u.side = other; u.fi = toFi; u.src = null; u.turned = true; u.morale = Math.min(100, u.morale + 20); u.acted = true; u.ally = false; u.confused = 0;
+    u.side = other; u.fi = toFi; u.src = null; u.turned = true;
+    // 城内の守り手が攻め手に寝返ったときは、城外の攻め手の陣へ移る（城内から本丸を取って即勝ち、にならないように）
+    if (other === 'atk' && u.r <= 2) { const pos = freeTile('atk'); if (pos) { u.r = pos[0]; u.c = pos[1]; u.x = u.c; u.y = u.r; } } u.morale = Math.min(100, u.morale + 20); u.acted = true; u.ally = false; u.confused = 0;
     (B.turncoats = B.turncoats || []).push({ gi: u.gi, fi: toFi });
     // 裏切られた側は動揺する
     B.units.filter(o => o.alive && o.side !== other).forEach(o => o.morale = Math.max(0, o.morale - 10));
@@ -946,11 +948,12 @@ const Battle = (() => {
       const ratio = sum('atk') / Math.max(1, sum('def'));
       if (ratio >= 1.8) {
         const drop = Math.min(10, (ratio - 1.5) * 4), flee = Math.min(0.04, 0.01 + (ratio - 1.8) * 0.01);
-        B.units.filter(u => u.alive && u.side === 'def' && !u.militia).forEach(u => { u.morale = Math.max(0, u.morale - drop); u.troops = Math.max(0, Math.round(u.troops * (1 - flee))); });
+        B.units.filter(u => u.alive && u.side === 'def' && !u.militia && u.src == null && !u.turned && u.r <= 2).forEach(u => { u.morale = Math.max(0, u.morale - drop); u.troops = Math.max(0, Math.round(u.troops * (1 - flee))); });
         if (!B.sieged) { B.sieged = true; addLog('大軍に囲まれ、城内の兵が逃げ出し始めた'); }
         for (const u of B.units.filter(o => o.alive && o.side === 'def')) await checkRout(u, null);
       }
     }
+    if (await checkEnd()) return;   // 火や包囲で決着がついていたら、その日の出来事は起こさない
     if (!first) await dramaEvents();
     if (await checkEnd()) return;
     updateHUD();
@@ -1016,12 +1019,12 @@ const Battle = (() => {
     if (!inb(r, c)) return;
     const u = unitAt(r, c);
     if (B.mode === 'target') {
-      if (B.targets.some(([tr, tc]) => tr === r && tc === c)) { const fn = B.onTarget; B.targets = null; B.mode = 'busy'; await fn(r, c); afterAct(); }
+      if (B.targets.some(([tr, tc]) => tr === r && tc === c)) { const fn = B.onTarget; B.targets = null; B.mode = 'busy'; setActions([]); await fn(r, c); afterAct(); }
       else { Sound.se('tap'); }
       return;
     }
     if (B.mode === 'move' && B.sel && B.reach.includes(r + ',' + c) && (!u || u === B.sel)) {
-      const s = B.sel; B.mode = 'busy'; B.reach = null;
+      const s = B.sel; B.mode = 'busy'; B.reach = null; setActions([]);
       s.prev = [s.r, s.c];
       await animateMove(s, r, c);
       actMenu(s);
@@ -1045,7 +1048,7 @@ const Battle = (() => {
       { label: '混乱', disabled: !pt.length || u.gi < 0, fn: () => choose(pt, (r, c) => doPlot(u, 'confuse', unitAt(r, c))) },
       { label: '内応', disabled: !pt.some(([r, c]) => unitAt(r, c).gi >= 0) || u.gi < 0, fn: () => choose(pt.filter(([r, c]) => unitAt(r, c).gi >= 0), (r, c) => doLure(u, unitAt(r, c))) },
       { label: '一騎討ち', disabled: !dt.length, fn: () => choose(dt, (r, c) => doDuel(u, unitAt(r, c))) },
-      ...(SKILLS[u.g.name] && u.gi >= 0 ? [{ label: `必殺：${SKILLS[u.g.name].name}`, cls: 'gold', disabled: u.skillUsed || !skillReady(u), fn: () => { const sk = SKILLS[u.g.name], tg = skillTargets(u, sk); if (tg) choose(tg, (r, c) => useSkill(u, unitAt(r, c))); else { B.mode = 'busy'; useSkill(u, null).then(afterAct); } } }] : []),
+      ...(SKILLS[u.g.name] && u.gi >= 0 ? [{ label: `必殺：${SKILLS[u.g.name].name}`, cls: 'gold', disabled: u.skillUsed || !skillReady(u), fn: () => { const sk = SKILLS[u.g.name], tg = skillTargets(u, sk); if (tg) choose(tg, (r, c) => useSkill(u, unitAt(r, c))); else { B.mode = 'busy'; setActions([]); useSkill(u, null).then(afterAct); } } }] : []),
       { label: '待機', fn: () => { u.acted = true; afterAct(); } },
       { label: '取消', fn: async () => { if (u.prev) { u.r = u.prev[0]; u.c = u.prev[1]; u.x = u.c; u.y = u.r; } B.sel = null; B.mode = 'idle'; showInfo(null); idleActions(); } },
     ]);
@@ -1055,7 +1058,7 @@ const Battle = (() => {
     updateHUD();
     if (await checkEnd()) return;
     showInfo(null);
-    if (B.units.filter(u => u.alive && u.side === B.playerSide && !u.acted).length === 0) return endPlayerPhase();
+    if (B.units.filter(u => u.alive && u.side === B.playerSide && !u.acted && !u.ally).length === 0) return endPlayerPhase();
     idleActions();
   }
 
@@ -1086,7 +1089,12 @@ const Battle = (() => {
         const nr = r + dr, nc = c + dc;
         if (!inb(nr, nc)) return;
         let cost = tileCost(u, nr, nc);
-        if (cost >= 99) { if (B.tiles[nr][nc].fire > 0) cost = 4; else return; }
+        if (cost >= 99) {
+          // 燃えているだけなら、火が消えれば通れる。川や城門など、もともと通れない所はそのまま
+          const tl = B.tiles[nr][nc], f = tl.fire; if (!(f > 0)) return;
+          tl.fire = 0; const base = tileCost(u, nr, nc); tl.fire = f;
+          if (base >= 99) return; cost = 4;
+        }
         const o = unitAt(nr, nc); if (o && o.side === u.side && o !== u) cost += 1;
         if (d[r][c] + cost < d[nr][nc]) { d[nr][nc] = d[r][c] + cost; q.push([nr, nc]); }
       });
@@ -1161,7 +1169,7 @@ const Battle = (() => {
     if (!rogue && await tryPlot(u, wmine, foes)) return;
     // 守り手（総大将）や城内の部隊は、敵が近づくまで動かない
     const nearest = foes.slice().sort((a, b) => dist(a, u) - dist(b, u))[0];
-    if (u.side === 'def' && !rogue && u.src == null) {
+    if (u.side === 'def' && !rogue && (u.src == null || u.militia)) {
       const keepGuard = u.commander && B.tiles[u.r][u.c].t === 'keep';
       // 門が無事なうちは、城内の部隊は城壁に拠って戦う（よほど優勢なら打って出る）
       const holdWall = u.r <= 2 && gateUp() && outlook('def') < 0.3;
@@ -1273,8 +1281,9 @@ const Battle = (() => {
     await banner(pWin ? '勝利！' : '敗北…', 1400);
     const res = {
       atkWin: winner === 'atk', reason,
-      atkLeft: B.units.filter(u => u.side === 'atk' && u.status !== 'killed' && u.src == null).reduce((s, u) => s + (u.alive || u.status === 'retreat' ? u.troops : 0), 0),
-      defLeft: B.units.filter(u => u.side === 'def' && u.src == null).reduce((s, u) => s + (u.alive || u.status === 'retreat' ? u.troops : 0), 0) + (B.reserve || 0),
+      // 残った兵：生き残り・退却した部隊のほか、一騎討ちに敗れた将の部隊（兵は半分になって引き上げる）も数える
+      atkLeft: B.units.filter(u => u.side === 'atk' && u.src == null).reduce((s, u) => s + u.troops, 0),
+      defLeft: B.units.filter(u => u.side === 'def' && u.src == null).reduce((s, u) => s + u.troops, 0) + (B.reserve || 0),
       captured: B.units.filter(u => u.gi >= 0 && u.status === 'captured').map(u => u.gi),
       killed: B.units.filter(u => u.gi >= 0 && u.status === 'killed').map(u => u.gi),
       days: B.day, turncoats: B.turncoats || [],
