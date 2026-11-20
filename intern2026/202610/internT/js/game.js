@@ -706,6 +706,8 @@ const AI = {
     });
   },
 
+  // プレイヤーへの攻め気（0〜1）：プレイヤーの都市3以下・開始直後は0、都市10以上か4年（16季節）たてば1
+  pressure() { return clamp(Math.max((Game.citiesOf(G.player).length - 3) / 7, (G.turn || 0) / 16), 0, 1); },
   considerAttack(c, fi) {
     const gens = Game.gensIn(c.i, fi).filter(g => !g.acted || true);
     if (!gens.length || c.troops < 5000 || c.food < 4000) return null;
@@ -721,11 +723,13 @@ const AI = {
       const atkPow = atkTroops * (0.5 + c.train / 200) * (1 + gens.slice(0, 5).reduce((s, g) => s + g.lead + g.war, 0) / 1000);
       let score = atkPow / Math.max(1, defPow);
       // プレイヤーの都市は隙あらば狙う：兵が手薄（出陣直後など）なら大きく、武将がいなければさらに
+      // 序盤は様子を見て、ゲームが進むほど（プレイヤーの都市数か経過した季節の多い方）激しく狙う
       if (t.owner === G.player) {
-        score *= 1.1 + (G.turn > 4 ? 0.1 : 0);
+        const pr = AI.pressure();
+        score *= 0.8 + 0.45 * pr;
         const mine = Game.citiesOf(G.player), avgT = mine.reduce((s, x) => s + x.troops, 0) / Math.max(1, mine.length);
-        if (t.troops < avgT * 0.6) score *= 1.2;
-        if (!defGens.length) score *= 1.15;
+        if (t.troops < avgT * 0.6) score *= 1 + 0.2 * pr;
+        if (!defGens.length) score *= 1 + 0.15 * pr;
       }
       if (t.owner === null) score *= 1.3;
       if (score > bestScore) { bestScore = score; best = t; }
@@ -734,7 +738,8 @@ const AI = {
     const brave = gens.find(g => ((g.war >= 85 && g.int <= 60) || (Game.has(g, '猪突') && g.war >= 80)) && c.troops * 0.8 >= Game.troopCap(g));
     const aggressive = brave ? 0.8 : Game.has(Game.lordOf(fi), '野心') ? 0.9 : 1.0;
     if (!best || bestScore < aggressive) return null;
-    if (!brave && best.owner !== G.player && Math.random() < 0.15) return null; // いつも攻めるわけではない（プレイヤーの都市は見逃さない）
+    // いつも攻めるわけではない。プレイヤーの都市は、序盤は35%で見送り、終盤は見逃さない
+    if (!brave && Math.random() < (best.owner === G.player ? 0.35 * (1 - AI.pressure()) : 0.15)) return null;
     // 出陣武将を選ぶ（最大5人、本拠の君主は残す場合あり）
     const sorted = gens.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
     // 君主は本拠を空けない。ただし猛将の君主は自分の判断で出る
