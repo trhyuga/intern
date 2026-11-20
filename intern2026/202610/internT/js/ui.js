@@ -129,6 +129,15 @@ const UI = {
 // ============================================================
 //  アプリ全体の流れ
 // ============================================================
+// 修行のときの一言
+const STUDY_LINES = {
+  lead: ['兵の動かし方が、少し見えてきた', '陣形の組み替えが、前より速くなった', '孫子を読み返して、得るものがあった'],
+  war: ['はっ！ せいっ！ ……腕が上がった気がする', '素振り千回。手のひらの豆も、もう痛くない', '槍の穂先が、前よりよく見える'],
+  int: ['夜通し書物を読んでいたら、朝になっていた', 'なるほど、古人はこう考えたのか', '一つ分かると、分からぬことが三つ増える。それが学問だ'],
+  pol: ['帳簿の読み方ひとつで、国の姿が見えてくる', '法と税の仕組み、だいぶ頭に入った', '民の暮らしを知らずして、政はできぬ'],
+  cha: ['町の者と酒を酌み交わしてきた。良い話がたくさん聞けた', '人の話を最後まで聞く。それだけで、人は心を開くものだ', '礼を尽くせば、人は応えてくれる'],
+};
+
 const App = {
   busy: false,
   init() {
@@ -318,7 +327,7 @@ const App = {
     switch (tab) {
       case 'dom': return B('farm', '開墾', '農業↑ 金50') + B('comm', '商業', '商業↑ 金50') + B('wall', '修築', '城壁↑ 金50') + B('alms', '施し', '民忠↑ 糧1500') + B('auto', '一括内政', '待機武将に自動', 'gold');
       case 'mil': return B('attack', '出陣', '隣の都市を攻める', 'primary') + B('draft', '徴兵', '兵↑ 金100') + B('train', '訓練', '訓練↑') + B('transport', '輸送', '金・糧・兵を送る');
-      case 'per': return B('search', '探索', '人材・財宝を探す') + B('recruit', '登用', '在野の人物を誘う') + B('move', '移動', '武将を別の都市へ') + B('reward', '褒美', '忠誠↑ 金100');
+      case 'per': return B('search', '探索', '人材・財宝を探す') + B('recruit', '登用', '在野の人物を誘う') + B('move', '移動', '武将を別の都市へ') + B('reward', '褒美', '忠誠↑ 金100') + B('study', '修行', '武将の能力を伸ばす');
       case 'plot': return B('sow', '離間', '敵将の忠誠↓') + B('lure', '引き抜き', '敵将を寝返らせる') + B('rumor', '流言', '敵都市の民忠↓');
       case 'dip': return B('ally', '同盟', '他勢力と手を結ぶ') + B('surr', '降伏勧告', '囲んだ弱小勢力を併合');
     }
@@ -383,6 +392,20 @@ const App = {
         sel.forEach(gi => Game.move(G.gens[gi], to));
         UI.toast(`${sel.length}人が${G.cities[to].name}へ移動した`);
         App.refresh(); return App.openCity(to);
+      }
+      case 'study': {
+        const gi = await App.pickActor(c, 'war', '修行する武将', 'その武将の行動を1回使って、能力を1つ伸ばす。低い能力ほど大きく伸び、高い能力ほど伸びにくい（99が上限）');
+        if (gi == null) return App.openCity(c.i);
+        const g = G.gens[gi];
+        const K = { lead: ['統率', '兵法書と陣形の稽古'], war: ['武力', '武芸の稽古'], int: ['知力', '書物を読みふける'], pol: ['政治', '政務と法を学ぶ'], cha: ['魅力', '人々と語らい、礼を学ぶ'] };
+        const k = await UI.choose(`${g.name}の修行`, Object.entries(K).map(([key, [nm, how]]) => ({ label: `${nm} ${g[key]}`, sub: `${how}　見込み ${Game.studyHint(g[key])}`, value: key, disabled: g[key] >= 99 })));
+        if (k == null) return App.openCity(c.i);
+        const before = g[k], gain = Game.study(g, k);
+        g.acted = true;
+        Sound.se(gain ? 'train' : 'ng'); if (gain >= 3) setTimeout(() => Sound.se('great'), 380);
+        const say = gain ? pick(STUDY_LINES[k]) : pick(['……今日は、どうにも身が入らなかった', '極めた先は、なかなか遠いものだ', '一日では何も変わらぬ。だが、続けるしかない']);
+        await UI.talk(g, gain ? 'happy' : 'normal', `${g.name}「${say}」\n<b>${K[k][0]} ${before} → ${g[k]}${gain ? `（+${gain}）` : '（変わらず）'}</b>`);
+        App.refresh(); return App.openCity(c.i);
       }
       case 'reward': {
         const list = Game.gensIn(c.i, G.player).filter(g => !g.isLord);

@@ -235,6 +235,16 @@ const Game = {
     return { ok: false, msg: '?' };
   },
 
+  // 修行：武将の1回の行動を使って、能力を1つ伸ばす。低い値ほど伸びやすく、高い値ほど伸びにくい
+  //  〜49: +3〜5 / 50〜69: +2〜3 / 70〜79: +1〜2 / 80〜89: +1 / 90〜94: 50%で+1 / 95〜98: 10%で+1 / 99〜: 上がらない
+  studyHint(v) { return v >= 99 ? '上限' : v >= 95 ? 'まれに+1' : v >= 90 ? '50%で+1' : v >= 80 ? '+1' : v >= 70 ? '+1〜2' : v >= 50 ? '+2〜3' : '+3〜5'; },
+  study(g, k) {
+    const v = g[k];
+    const gain = v >= 99 ? 0 : v >= 95 ? (Math.random() < 0.1 ? 1 : 0) : v >= 90 ? (Math.random() < 0.5 ? 1 : 0) : v >= 80 ? 1 : v >= 70 ? irnd(1, 2) : v >= 50 ? irnd(2, 3) : irnd(3, 5);
+    g[k] = Math.min(99, v + gain);
+    return gain;
+  },
+
   // 登用（在野 or 捕虜）。g=使者, t=対象
   tryRecruit(g, t, captive) {
     const lord = Game.lordOf(G.factions[g.faction].i);
