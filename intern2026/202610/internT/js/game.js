@@ -708,7 +708,7 @@ const AI = {
 
   considerAttack(c, fi) {
     const gens = Game.gensIn(c.i, fi).filter(g => !g.acted || true);
-    if (!gens.length || c.troops < 6000 || c.food < 5000) return null;
+    if (!gens.length || c.troops < 5000 || c.food < 4000) return null;
     const f = G.factions[fi];
     // 攻める相手
     const targets = c.adj.map(a => G.cities[a]).filter(o => o.owner !== fi && (o.owner === null || !Game.isAlly(fi, o.owner)));
@@ -720,15 +720,21 @@ const AI = {
       const atkTroops = c.troops * 0.75;
       const atkPow = atkTroops * (0.5 + c.train / 200) * (1 + gens.slice(0, 5).reduce((s, g) => s + g.lead + g.war, 0) / 1000);
       let score = atkPow / Math.max(1, defPow);
-      if (t.owner === G.player) score *= 0.9 + (G.turn > 8 ? 0.15 : 0); // 序盤はプレイヤーへの猛攻を少し控える
+      // プレイヤーの都市は隙あらば狙う：兵が手薄（出陣直後など）なら大きく、武将がいなければさらに
+      if (t.owner === G.player) {
+        score *= 1.1 + (G.turn > 4 ? 0.1 : 0);
+        const mine = Game.citiesOf(G.player), avgT = mine.reduce((s, x) => s + x.troops, 0) / Math.max(1, mine.length);
+        if (t.troops < avgT * 0.6) score *= 1.2;
+        if (!defGens.length) score *= 1.15;
+      }
       if (t.owner === null) score *= 1.3;
       if (score > bestScore) { bestScore = score; best = t; }
     });
     // 強くて頭の良くない武将が上限まで兵を率いられるなら、攻め気が増す
     const brave = gens.find(g => ((g.war >= 85 && g.int <= 60) || (Game.has(g, '猪突') && g.war >= 80)) && c.troops * 0.8 >= Game.troopCap(g));
-    const aggressive = brave ? 1.0 : Game.has(Game.lordOf(fi), '野心') ? 1.15 : 1.3;
+    const aggressive = brave ? 0.8 : Game.has(Game.lordOf(fi), '野心') ? 0.9 : 1.0;
     if (!best || bestScore < aggressive) return null;
-    if (!brave && Math.random() < 0.25) return null; // いつも攻めるわけではない
+    if (!brave && best.owner !== G.player && Math.random() < 0.15) return null; // いつも攻めるわけではない（プレイヤーの都市は見逃さない）
     // 出陣武将を選ぶ（最大5人、本拠の君主は残す場合あり）
     const sorted = gens.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
     // 君主は本拠を空けない。ただし猛将の君主は自分の判断で出る
@@ -738,10 +744,10 @@ const AI = {
     // 守備兵を残す：前線4000・今の兵の3割・隣の敵（攻め先以外）の最大兵力の半分、のうち多い数
     let maxEnemy = 0;
     c.adj.forEach(a => { const o = G.cities[a]; if (a !== best.i && o.owner !== null && o.owner !== fi && !Game.isAlly(fi, o.owner)) maxEnemy = Math.max(maxEnemy, o.troops); });
-    const keep = Math.max(Game.isFront(c) ? 4000 : 2000, c.troops * 0.3, maxEnemy * 0.5);
+    const keep = Math.max(Game.isFront(c) ? 3000 : 1500, c.troops * 0.25, maxEnemy * 0.4);
     const troops = Math.floor(Math.min(c.troops - keep, army.reduce((s, g) => s + Game.troopCap(g), 0)) / 100) * 100;
     if (troops < 3000) return null;
-    return { atkFi: fi, from: c.i, to: best.i, gens: army.map(g => g.i), troops, food: Math.min(c.food, Math.round(troops * 0.5)) };
+    return { atkFi: fi, from: c.i, to: best.i, gens: army.map(g => g.i), troops, food: Math.min(c.food, Math.round(troops * 0.7)) };
   },
 
   plot(fi) {
