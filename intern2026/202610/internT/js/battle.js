@@ -855,24 +855,48 @@ const Battle = (() => {
   // 寝返り：忠誠40未満の武将（総大将・君主・忠義は除く）が、自軍が苦しいほど敵に寝返りやすい
   async function tryTurncoat() {
     if (B.defFi === null) return;
-    const cands = B.units.filter(u => u.alive && u.gi >= 0 && !u.commander && !u.g.isLord && !Game.has(u.g, '忠義') && u.g.loyalty < 40);
+    const cands = B.units.filter(u => u.alive && u.gi >= 0 && !u.turned && !u.commander && !u.g.isLord && !Game.has(u.g, '忠義') && u.g.loyalty < 40);
     for (const u of shuffle(cands)) {
       const other = u.side === 'atk' ? 'def' : 'atk';
       const p = (40 - u.g.loyalty) / 250 + (Game.has(u.g, '野心') ? 0.04 : 0) + (outlook(u.side) < -0.2 ? 0.05 : 0) - (outlook(u.side) > 0.3 ? 0.03 : 0);
       if (Math.random() > p) continue;
       B.turned = true;
-      const fromFi = u.fi, toFi = other === 'atk' ? B.atkFi : B.defFi;
-      const say = line(u.g, 'betray');   // 元の主君の名で話すので、所属を変える前に
-      u.side = other; u.fi = toFi; u.src = null; u.morale = Math.min(100, u.morale + 20); u.acted = true; u.ally = false;
-      (B.turncoats = B.turncoats || []).push({ gi: u.gi, fi: toFi });
-      // 裏切られた側は動揺する
-      B.units.filter(o => o.alive && o.side !== other).forEach(o => o.morale = Math.max(0, o.morale - 10));
-      Sound.se('confuse'); setTimeout(() => Sound.se('warcry'), 300);
-      await banner(`${u.g.name}、寝返り！`, 1400);
-      addLog(`${u.g.name}隊が${G.factions[fromFi].name}軍を裏切り、${G.factions[toFi].name}軍についた！`);
-      if (!auto) await UI.talk(u.g, 'angry', `${u.g.name}「${say}」\n<b>${u.g.name}隊が${G.factions[toFi].name}軍に寝返った！</b>`, G.factions[toFi].color, { tag: '寝返り' });
+      await flipUnit(u);
       return;
     }
+  }
+  // 部隊が敵方に寝返る（自然な寝返り・内応の計の両方で使う）
+  async function flipUnit(u, by) {
+    const other = u.side === 'atk' ? 'def' : 'atk';
+    const fromFi = u.fi, toFi = other === 'atk' ? B.atkFi : B.defFi;
+    const say = line(u.g, 'betray');   // 元の主君の名で話すので、所属を変える前に
+    u.side = other; u.fi = toFi; u.src = null; u.turned = true; u.morale = Math.min(100, u.morale + 20); u.acted = true; u.ally = false; u.confused = 0;
+    (B.turncoats = B.turncoats || []).push({ gi: u.gi, fi: toFi });
+    // 裏切られた側は動揺する
+    B.units.filter(o => o.alive && o.side !== other).forEach(o => o.morale = Math.max(0, o.morale - 10));
+    Sound.se('confuse'); setTimeout(() => Sound.se('warcry'), 300);
+    await banner(`${u.g.name}、寝返り！`, 1400);
+    addLog(`${by ? by.g.name + 'の内応の計で、' : ''}${u.g.name}隊が${G.factions[fromFi].name}軍を裏切り、${G.factions[toFi].name}軍についた！`);
+    if (!auto) await UI.talk(u.g, 'angry', `${u.g.name}「${say}」\n<b>${u.g.name}隊が${G.factions[toFi].name}軍に寝返った！</b>`, G.factions[toFi].color, { tag: by ? '内応' : '寝返り' });
+  }
+  // 内応の計：敵将に寝返りを誘う。忠誠が低いほど、知力・魅力で勝るほど決まりやすい。総大将・君主・忠義には効かない
+  const lureable = d => d.gi >= 0 && !d.turned && !d.commander && !d.g.isLord && !Game.has(d.g, '忠義') && B.defFi !== null;
+  function lureChance(a, d) {
+    if (!lureable(d)) return 0;
+    return clamp(0.05 + (60 - d.g.loyalty) / 90 + (a.g.int - d.g.int) / 150 + (a.g.cha - 70) / 250 + (Game.has(a.g, '智謀') || Game.has(a.g, '神算') ? 0.08 : 0) + (Game.has(d.g, '野心') ? 0.08 : 0) + (outlook(d.side) < -0.2 ? 0.1 : 0), 0.02, 0.75);
+  }
+  async function doLure(a, d) {
+    a.acted = true; a.plots = (a.plots || 0) + 1;
+    const p = lureChance(a, d);
+    if (!auto && a.side === B.playerSide && !B.watch) await say(a, 'normal', `${a.g.name}「${d.g.name}よ、そなたほどの者が、なぜその主に仕える？ こちらへ来ぬか」`);
+    else bubble(a, `${d.g.name}、こちらへ来ぬか`);
+    if (Math.random() >= p) {
+      addFloater(d.r, d.c, '拒否', '#aaa'); Sound.se('ng');
+      addLog(`${a.g.name}は${d.g.name}に内応を誘ったが、${!lureable(d) ? (Game.has(d.g, '忠義') ? '忠義の士は動かなかった' : '相手にされなかった') : 'はねつけられた'}`);
+      if (d.gi >= 0 && Math.random() < 0.5) bubble(d, pick(['見くびるな！', '笑止！', '主を売る気はない']));
+      await sleep(500); return;
+    }
+    await flipUnit(d, a);
   }
   // 市民兵：魅力の高い大将が守り、民忠が高い城では、民が武器を取って立ち上がる（1回まで）
   async function tryMilitia(why) {
@@ -1019,6 +1043,7 @@ const Battle = (() => {
       { label: Game.has(u.g, '弓術') ? '攻撃/射撃' : '攻撃', cls: 'primary', disabled: !at.length, fn: () => choose(at, (r, c) => doAttack(u, r, c)) },
       { label: '火計', disabled: !pt.length || u.gi < 0, fn: () => choose(pt, (r, c) => doPlot(u, 'fire', unitAt(r, c))) },
       { label: '混乱', disabled: !pt.length || u.gi < 0, fn: () => choose(pt, (r, c) => doPlot(u, 'confuse', unitAt(r, c))) },
+      { label: '内応', disabled: !pt.some(([r, c]) => unitAt(r, c).gi >= 0) || u.gi < 0, fn: () => choose(pt.filter(([r, c]) => unitAt(r, c).gi >= 0), (r, c) => doLure(u, unitAt(r, c))) },
       { label: '一騎討ち', disabled: !dt.length, fn: () => choose(dt, (r, c) => doDuel(u, unitAt(r, c))) },
       ...(SKILLS[u.g.name] && u.gi >= 0 ? [{ label: `必殺：${SKILLS[u.g.name].name}`, cls: 'gold', disabled: u.skillUsed || !skillReady(u), fn: () => { const sk = SKILLS[u.g.name], tg = skillTargets(u, sk); if (tg) choose(tg, (r, c) => useSkill(u, unitAt(r, c))); else { B.mode = 'busy'; useSkill(u, null).then(afterAct); } } }] : []),
       { label: '待機', fn: () => { u.acted = true; afterAct(); } },
@@ -1110,6 +1135,9 @@ const Battle = (() => {
     if (Math.random() >= clamp(p, 0.1, 0.85)) return false;
     const inRange = foes.filter(o => o.alive && dist(o, u) <= 2 && !o.confused);
     if (!inRange.length) return false;
+    // 内応：寝返りそうな敵将（見込み25%以上）がいれば、まずそれを誘う
+    const lureT = inRange.map(o => ({ o, p: lureChance(u, o) })).filter(x => x.p >= 0.25).sort((a, b) => b.p - a.p)[0];
+    if (lureT && Math.random() < 0.7) { await doLure(u, lureT.o); return true; }
     u.plots = (u.plots || 0) + 1;
     // 火計は森・平地の敵に。雨なら混乱。総大将や大部隊を優先
     const fireOk = B.weather !== 'rain';
