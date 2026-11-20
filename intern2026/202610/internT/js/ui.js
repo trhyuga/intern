@@ -220,6 +220,9 @@ const App = {
     if (isNew) {
       const lord = Game.lordOf(G.player);
       const sc = SCENARIOS.find(s => s.id === G.scen);
+      // 君主の人物紹介
+      Sound.se('gong');
+      await UI.talk(lord, 'normal', `<b>君主　${lord.name}</b>\n${Flavor.lordIntro(lord)}`, f.color, { tag: '人物紹介' });
       await UI.talk(lord, 'normal', `${sc.title}――${sc.dream ? '' : sc.year + '年。'}\n${lord.name}「いよいよだ。この乱世、我らの手で終わらせよう」`, f.color);
       await UI.talk(null, '', '都市をタップして命令を出そう。\n武将は季節ごとに1回ずつ働ける。\n終わったら右下の「季節を進める」。');
       // 軍師から、オートの説明
