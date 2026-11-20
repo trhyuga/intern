@@ -706,8 +706,8 @@ const AI = {
     });
   },
 
-  // プレイヤーへの攻め気（0〜1）：プレイヤーの都市3以下・開始直後は0、都市12以上か6年（24季節）たてば1
-  pressure() { return clamp(Math.max((Game.citiesOf(G.player).length - 3) / 9, (G.turn || 0) / 24), 0, 1); },
+  // プレイヤーへの攻め気（0〜1）：プレイヤーの都市3以下・開始直後は0、都市10以上か4年（16季節）たてば1
+  pressure() { return clamp(Math.max((Game.citiesOf(G.player).length - 3) / 7, (G.turn || 0) / 16), 0, 1); },
   considerAttack(c, fi) {
     const gens = Game.gensIn(c.i, fi).filter(g => !g.acted || true);
     if (!gens.length || c.troops < 5000 || c.food < 4000) return null;
