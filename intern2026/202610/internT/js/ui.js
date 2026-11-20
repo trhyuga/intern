@@ -129,15 +129,6 @@ const UI = {
 // ============================================================
 //  アプリ全体の流れ
 // ============================================================
-// 修行のときの一言
-const STUDY_LINES = {
-  lead: ['兵の動かし方が、少し見えてきた', '陣形の組み替えが、前より速くなった', '孫子を読み返して、得るものがあった'],
-  war: ['はっ！ せいっ！ ……腕が上がった気がする', '素振り千回。手のひらの豆も、もう痛くない', '槍の穂先が、前よりよく見える'],
-  int: ['夜通し書物を読んでいたら、朝になっていた', 'なるほど、古人はこう考えたのか', '一つ分かると、分からぬことが三つ増える。それが学問だ'],
-  pol: ['帳簿の読み方ひとつで、国の姿が見えてくる', '法と税の仕組み、だいぶ頭に入った', '民の暮らしを知らずして、政はできぬ'],
-  cha: ['町の者と酒を酌み交わしてきた。良い話がたくさん聞けた', '人の話を最後まで聞く。それだけで、人は心を開くものだ', '礼を尽くせば、人は応えてくれる'],
-};
-
 const App = {
   busy: false,
   init() {
@@ -403,7 +394,7 @@ const App = {
         const before = g[k], gain = Game.study(g, k);
         g.acted = true;
         Sound.se(gain ? 'train' : 'ng'); if (gain >= 3) setTimeout(() => Sound.se('great'), 380);
-        const say = gain ? pick(STUDY_LINES[k]) : pick(['……今日は、どうにも身が入らなかった', '極めた先は、なかなか遠いものだ', '一日では何も変わらぬ。だが、続けるしかない']);
+        const say = !gain ? line(g, 'study_fail') : gain >= 3 && Math.random() < 0.35 ? line(g, 'study_big') : before < 60 && Math.random() < 0.5 ? line(g, 'study_low_' + k) : line(g, 'study_' + k);
         await UI.talk(g, gain ? 'happy' : 'normal', `${g.name}「${say}」\n<b>${K[k][0]} ${before} → ${g[k]}${gain ? `（+${gain}）` : '（変わらず）'}</b>`);
         App.refresh(); return App.openCity(c.i);
       }
