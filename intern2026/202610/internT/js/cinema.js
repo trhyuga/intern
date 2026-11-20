@@ -296,6 +296,7 @@ const Cinema = (() => {
           // 墨しぶきは肖像の後ろ（全員ぶんを先に描く）
           heroes.forEach((h, i) => {
             const k = easeOut((lt - 0.2 - i * 0.55) / 0.7);
+            if (k <= 0 || a <= 0) return;   // まだ出ていない顔は描かない（透明度0が効かない端末で、先に全員が見えてしまうのを防ぐ）
             const x = W / 2 + (i - 1) * (pw + 8) - pw / 2, y = H * 0.33 + (1 - k) * 40;
             c.globalAlpha = a * k * 0.85;
             inkSplash(c, x + pw / 2, y + ph * 1.02, pw * 0.55, k, shadeCol(hcols[i], 0.4), 20 + i);
@@ -303,6 +304,7 @@ const Cinema = (() => {
           c.globalAlpha = 1;
           heroes.forEach((h, i) => {
             const k = easeOut((lt - 0.2 - i * 0.55) / 0.7);
+            if (k <= 0 || a <= 0) return;
             const x = W / 2 + (i - 1) * (pw + 8) - pw / 2, y = H * 0.33 + (1 - k) * 40;
             c.globalAlpha = a * k;
             const z = 1 + lt * 0.015;

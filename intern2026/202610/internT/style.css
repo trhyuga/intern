@@ -240,6 +240,9 @@ button { font-family: inherit; }
 .b-unit-stat { font-size: 12px; color: #d8c8a0; }
 .b-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 8px calc(8px + var(--safe-b)); margin-top: auto; }
 .b-actions .btn { flex: 1 1 28%; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
+/* 合戦画面（暗い地）で押せないボタンは、薄くせず、暗い地に明るめの文字ではっきり「押せない」と分かるように */
+.b-actions .btn:disabled, .d-btns .btn:disabled { opacity: 1; filter: none; background: #2c241e; color: #a8998a; border: 1px dashed #6a5a4a; box-shadow: none; }
+.b-actions .btn, .d-btns .btn { font-size: 16px; }
 
 /* ---------- 一騎討ち ---------- */
 .duel { position: absolute; inset: 0; z-index: 45; background: radial-gradient(#4a140c, #0a0402 75%); display: none; flex-direction: column; color: #f6e8c6; padding: calc(10px + var(--safe-t)) 10px calc(10px + var(--safe-b)); gap: 8px; }
