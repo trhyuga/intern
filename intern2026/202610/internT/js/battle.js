@@ -1118,6 +1118,11 @@ const Battle = (() => {
         u.acted = true; return;
       }
     }
+    // 攻めの総大将：味方が残っているうちは最後尾につき、負けそうなら下がる。最後の1部隊になったら自ら攻める
+    if (u.commander && u.side === 'atk' && !rogue) {
+      const allies = B.units.filter(o => o.alive && o.side === u.side && o !== u);
+      if (allies.length) { await commanderRear(u, allies, foes); return; }
+    }
     // 移動先を評価
     const reach = moveRange(u);
     let best = null, bestScore = -1e9;
@@ -1155,6 +1160,32 @@ const Battle = (() => {
       tg.sort((a, b) => { const oa = unitAt(a[0], a[1]), ob = unitAt(b[0], b[1]); return (oa ? oa.troops - (oa.commander ? 3000 : 0) : 99999) - (ob ? ob.troops - (ob.commander ? 3000 : 0) : 99999); });
       await doAttack(u, tg[0][0], tg[0][1]);
     } else { u.acted = true; await sleep(150); }
+  }
+
+  async function commanderRear(u, allies, foes) {
+    const losing = outlook(u.side) < -0.2 || u.troops < u.maxTroops * 0.45;
+    const rearAlly = Math.max(...allies.map(o => o.r));          // 攻め手は下から上（城）へ進む。r が大きいほど後ろ
+    const backRow = Math.min(ROWS - 1, rearAlly + 1);
+    const colC = allies.reduce((s, o) => s + o.c, 0) / allies.length;
+    let best = null, bs = -1e9;
+    moveRange(u).forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      if (B.tiles[r][c].t === 'keep') { best = [r, c]; bs = 1e9; return; }   // 本丸に入れるなら勝ち
+      const adjFoe = DIRS.filter(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side; }).length;
+      const near = Math.min(...foes.map(f => dist(f, { r, c })));
+      let sc;
+      if (losing) sc = near * 10 + r * 3 - adjFoe * 60;                        // 一時的に下がって立て直す
+      else sc = -Math.abs(r - backRow) * 6 - Math.abs(c - colC) * 1.5 - adjFoe * 40 - (r < rearAlly ? 30 : 0) + Math.min(near, 3) * 2;
+      sc += (DEFK[B.tiles[r][c].t] - 1) * 4;
+      if (sc > bs) { bs = sc; best = [r, c]; }
+    });
+    if (best && (best[0] !== u.r || best[1] !== u.c)) await animateMove(u, best[0], best[1]);
+    // 攻撃は最後の番手として、弱った敵か、隣に迫られたときだけ
+    const tg = attackTargets(u).filter(([r, c]) => unitAt(r, c));
+    const pickT = tg.sort((a, b) => unitAt(a[0], a[1]).troops - unitAt(b[0], b[1]).troops)[0];
+    const adjacent = pickT && dist(unitAt(pickT[0], pickT[1]), u) === 1;
+    if (pickT && (adjacent || (!losing && unitAt(pickT[0], pickT[1]).troops < u.troops * 0.6))) { await doAttack(u, pickT[0], pickT[1]); return; }
+    u.acted = true; await sleep(150);
   }
 
   // ---------- 決着 ----------
