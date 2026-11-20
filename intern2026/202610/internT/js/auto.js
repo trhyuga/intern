@@ -394,6 +394,7 @@ const Auto = (() => {
 
   // ---------- 兵が揃ったら攻める（最優先） ----------
   // 前線の都市に兵が2万以上（攻め気の強い軍師は1.5万以上）いれば、隣で一番落としやすい敵都市へ毎季節攻め込む
+  const BIG_ARMY = 50000;   // これ以上の兵がいる都市は、基本的に毎季節攻め込む
   function massLine() { const g = strategist(); return (Game.has(g, '野心') || Game.has(g, '猪突')) ? 15000 : 20000; }
   function planMass(br) {
     const out = [];
@@ -407,8 +408,10 @@ const Auto = (() => {
       // 率いる武将：この都市の待機武将（君主は他にいれば残す）。足りなければ周りの都市から呼ぶ
       let army = Game.gensIn(c.i, G.player).filter(g => !g.acted && !g.isLord).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
       const moved = [];
+      const big = c.troops >= BIG_ARMY;
       if (army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < sendable && army.length < 5) {
         const r = reach(c);
+        // 地続きの都市から将を呼ぶ（その都市に1人は残す。5万以上の大軍なら前線・後方を問わず呼ぶ）
         const extra = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord && g.city !== c.i && r.has(g.city) && Game.gensIn(g.city, G.player).length > 1).sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
         while (army.length < 5 && extra.length && army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < sendable) { const g = extra.shift(); army.push(g); moved.push(g); }
       }
@@ -418,10 +421,10 @@ const Auto = (() => {
       // 一番落としやすい攻め先（明らかに敵が上回るときだけ見送る）
       const f = atkFactor(c, army);
       const best = targets.map(o => ({ o, ratio: troops * f / Math.max(1, defPower(o)) })).sort((a, b) => b.ratio - a.ratio)[0];
-      if (best.ratio < 1 / 1.5) return;
+      if (best.ratio < 1 / 1.5 && !big) return;   // 5万以上の大軍は、基本的に攻め込む
       orderArmy(army, br);
       usedT.add(best.o.i);
-      out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, moved });
+      out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, moved });
     });
     return out;
   }
@@ -847,6 +850,26 @@ const Auto = (() => {
       await wait(400);
     }
   }
+  // 敵と接していない都市に5万以上の兵がいれば、敵と接する都市へ送る（次の季節にそこから攻め込むため）
+  async function forwardBig(br) {
+    for (const c of Game.citiesOf(G.player)) {
+      if (stopReq) return;
+      if (c.troops < BIG_ARMY || Game.isFront(c)) continue;
+      // 地続きで、いちばん近い前線の都市
+      const dist = { [c.i]: 0 }, q = [c.i]; let to = null;
+      while (q.length && !to) { const x = q.shift(); for (const a of G.cities[x].adj) { if (dist[a] != null || G.cities[a].owner !== G.player) continue; dist[a] = dist[x] + 1; if (Game.isFront(G.cities[a])) { to = G.cities[a]; break; } q.push(a); } }
+      if (!to) continue;
+      const amt = Math.floor((c.troops - Math.max(8000, wants(c).troops)) / 100) * 100;
+      if (amt < 10000) continue;
+      const food = Math.floor(Math.max(0, Math.min(c.food - Game.foodReserve(c, c.troops - amt), Math.round(amt * 0.03 * 30))) / 100) * 100;
+      await press(c.i, 'mil', '[data-cmd=transport]');
+      await say('transfer', { from: c.name, to: to.name, what: '兵' });
+      await MapView.march(c.i, to.i, G.factions[G.player].color);
+      Game.transport(c, to, 0, food, amt);
+      UI.toast(`${c.name} → ${to.name}　兵${fmt(amt)}・兵糧${fmt(food)} を前線へ`, 2400);
+      App.refresh();
+    }
+  }
   async function doLogistics(br) {
     const cities = Game.citiesOf(G.player);
     if (cities.length < 2) return;
@@ -990,6 +1013,7 @@ const Auto = (() => {
     }
     await sendTrained(br); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
+    await forwardBig(br); if (stopReq) return false;
     // 出陣
     if (!armies.length) await say('hold');
     for (const a of armies) {
@@ -1028,6 +1052,23 @@ const Auto = (() => {
       if (troops < 3000) { await say('hold'); continue; }
       // 兵糧：通常は次の秋までの分を残し20日分。兵が揃った攻め・猛将は、残る兵の1季節分だけ残して10日分あればよい
       const loose = p.mass || p.isBrave;
+      // 大軍の攻めで兵糧が20日分に足りなければ、地続きの都市から集める
+      if (e.big) {
+        let lack = Math.round(troops * 0.03 * 20) - (p.c.food - Math.round((p.c.troops - troops) * 0.12 + 1000));
+        if (lack > 0) {
+          const r = reach(p.c);
+          for (const d of Game.citiesOf(G.player).filter(d => d !== p.c && r.has(d.i)).sort((a, b) => (b.food - Game.foodReserve(b)) - (a.food - Game.foodReserve(a)))) {
+            if (lack <= 0) break;
+            const give = Math.floor(Math.min(lack * 1.2, d.food - Game.foodReserve(d)) / 100) * 100;
+            if (give < 1000) continue;
+            await press(d.i, 'mil', '[data-cmd=transport]');
+            await MapView.march(d.i, p.c.i, G.factions[G.player].color);
+            Game.transport(d, p.c, 0, give, 0); lack -= give;
+            UI.toast(`${d.name} → ${p.c.name}　兵糧${fmt(give)} を送った（大軍の出陣のため）`, 2200);
+          }
+          App.refresh();
+        }
+      }
       const spare = p.c.food - (loose ? Math.round((p.c.troops - troops) * 0.12 + 1000) : Game.foodReserve(p.c, p.c.troops - troops));
       const food = Math.min(Math.round(troops * 0.03 * 30), Math.floor(spare));
       if (food < troops * 0.03 * (loose ? 10 : 20)) { await say('hold'); continue; }
