@@ -1206,6 +1206,8 @@ const Battle = (() => {
     let best = null, bestScore = -1e9;
     const goal = u.side === 'atk' ? (B.tiles[2][4].t === 'gate' ? { r: 3, c: 4 } : { r: 0, c: 4 }) : nearest;
     const field = distField(u, goal);
+    const wise = u.gi >= 0 && (u.g.int >= 75 || Game.has(u.g, '智謀') || Game.has(u.g, '神算'));
+    const gateHitter = wise && u.side === 'atk' && gateUp() ? B.units.filter(o => o.alive && o.side === 'atk' && !o.commander).sort((a, b) => (dist(a, { r: 3, c: 4 }) - dist(b, { r: 3, c: 4 })) || (b.troops - a.troops))[0] : null;
     reach.forEach(k => {
       const [r, c] = k.split(',').map(Number);
       const tg = attackTargets(u, r, c);
@@ -1220,6 +1222,11 @@ const Battle = (() => {
       // 武勇の将は、一騎討ちを挑めそうな敵将の隣を目指す
       if (u.g.war >= 78 && !u.commander && u.gi >= 0 && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0 && o.g.war <= u.g.war + 5 && !isWeakVs(o.g, u.g); })) score += 10;
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
+      // 知力の高い将（知力75以上か智謀・神算）は、門が無事なうち、門を叩く1部隊でなければ城壁の矢が届かない所で待つ
+      if (gateHitter && u !== gateHitter && !tg.some(([tr, tc]) => unitAt(tr, tc))) {
+        const archers = B.units.filter(o => o.alive && o.side === 'def' && o.r <= 2 && ['inner', 'gate'].includes(B.tiles[o.r][o.c].t) && dist(o, { r, c }) <= 2).length;
+        score -= archers * 12;
+      }
       // 総大将は、味方が戦っている間は敵に囲まれる位置を避ける
       if (u.commander && B.units.some(o => o.alive && o.side === u.side && o !== u)) {
         const adjFoe = DIRS.filter(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side; }).length;

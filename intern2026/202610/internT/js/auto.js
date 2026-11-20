@@ -680,8 +680,10 @@ const Auto = (() => {
       G.gens.forEach(t => {
         if (t.state !== 'serve' || !front.has(t.city) || t.isLord || Game.has(t, '忠義') || used.has('g' + t.i)) return;
         const worth = (t.lead + t.war + t.int + t.pol) / 40;
-        if (t.loyalty < 45 && home.gold >= 400) opts.push({ kind: 'lure', t, city: t.city, v: worth + (45 - t.loyalty) / 5 + (Game.has(t, '野心') ? 2 : 0) });
-        else if (t.loyalty < 85 && home.gold >= 50) opts.push({ kind: 'sow', t, city: t.city, v: worth * 0.5 + (Game.has(t, '野心') ? 4 : 0) + (85 - t.loyalty) / 10 });
+        // 次に攻める都市の将を崩しておくと、合戦で内応・寝返りが起きやすい（賢い軍師ほど重く見る）
+        const nextT = attackTargets.includes(t.city) || (G.stage && G.stage.t === t.city) ? (br.tier === 'smart' ? 3 : 1.5) : 0;
+        if (t.loyalty < 45 && home.gold >= 400) opts.push({ kind: 'lure', t, city: t.city, v: worth + (45 - t.loyalty) / 5 + (Game.has(t, '野心') ? 2 : 0) + nextT });
+        else if (t.loyalty < 85 && home.gold >= 50) opts.push({ kind: 'sow', t, city: t.city, v: worth * 0.5 + (Game.has(t, '野心') ? 4 : 0) + (85 - t.loyalty) / 10 + nextT });
       });
       if (home.gold >= 100) front.forEach(ci => {
         const c = G.cities[ci];
@@ -962,6 +964,27 @@ const Auto = (() => {
       App.refresh();
     }
   }
+  // 手の空いた将に修行をさせる（武の将は統率・武力、文の将は政治・知力の低い方を伸ばす）
+  async function idleStudy(br) {
+    if (br.tier === 'dumb') return;
+    const idle = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord);
+    let shown = 0;
+    for (const g of idle) {
+      if (stopReq) return;
+      if (br.tier === 'mid' && Math.random() < 0.5) continue;
+      const keys = milScore(g) >= civScore(g) * 1.1 ? ['lead', 'war'] : ['pol', 'int'];
+      const k = keys.filter(x => g[x] < 95).sort((a, b) => g[a] - g[b])[0];
+      if (!k) continue;
+      const before = g[k], gain = Game.study(g, k);
+      g.acted = true;
+      const NM = { lead: '統率', war: '武力', int: '知力', pol: '政治' };
+      if (shown < 2) {   // 全員分の会話は長くなるので、2人まで見せて残りは知らせだけ
+        await press(g.city, 'per', '[data-cmd=study]');
+        await UI.talk(g, gain ? 'happy' : 'normal', `${g.name}「${gain ? line(g, 'study_' + k) : line(g, 'study_fail')}」\n<b>修行：${NM[k]} ${before} → ${g[k]}</b>`);
+        shown++;
+      } else if (gain) UI.toast(`${g.name} 修行で${NM[k]} +${gain}`, 1600);
+    }
+  }
   async function doLogistics(br) {
     const cities = Game.citiesOf(G.player);
     if (cities.length < 2) return;
@@ -1083,7 +1106,15 @@ const Auto = (() => {
         e.moved.forEach(g => { if (g.state === 'serve' && g.faction === G.player && !g.acted) g.city = p.c.i; });
         UI.toast(`${names} が${p.c.name}に合流`, 2200);
       }
-      const army = e.army.filter(x => x.state === 'serve' && x.faction === G.player && x.city === p.c.i && !x.acted);
+      let army = e.army.filter(x => x.state === 'serve' && x.faction === G.player && x.city === p.c.i && !x.acted);
+      // 寝返りに備える：忠誠40未満の将は、褒美で引き締める。それでも足りなければ連れていかない（知力の低い軍師は気づかない）
+      if (br.tier !== 'dumb') {
+        for (const g of army.filter(x => !x.isLord && !Game.has(x, '忠義') && x.loyalty < 40)) {
+          for (let k = 0; k < 3 && g.loyalty < 40 && p.c.gold >= 150; k++) Game.reward(g, p.c);
+          if (g.loyalty < 40) { army = army.filter(x => x !== g); UI.toast(`${g.name}は忠誠が低く、寝返りのおそれがあるので留守番`, 2200); }
+          else UI.toast(`${g.name}に褒美を与え、出陣前に引き締めた（忠誠${Math.round(g.loyalty)}）`, 2200);
+        }
+      }
       if (!army.length) continue;
       // 兵の合流
       if (e.reinforce) {
@@ -1146,7 +1177,7 @@ const Auto = (() => {
     reserved.clear();
     const armies0 = [];
     await doDiplo(br, new Set()); if (stopReq) return false;
-    await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
+    await doPlots(br, new Set(armies0.map(x => x.i)), [...new Set([...attacks.filter(p => p.t.owner !== G.player).map(p => p.t.i), ...(G.stage ? [G.stage.t] : [])])]); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
     await eventSeek(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
     await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
@@ -1182,6 +1213,7 @@ const Auto = (() => {
         App.refresh();
       }
     }
+    await idleStudy(br); if (stopReq) return false;
     await sendTrained(br); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     await forwardBig(br); if (stopReq) return false;
