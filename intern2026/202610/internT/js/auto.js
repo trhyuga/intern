@@ -1060,18 +1060,31 @@ const Auto = (() => {
     stop(true);
   }
 
+  // 観戦中は画面を消さない（Screen Wake Lock。対応していない端末では何もしない）
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!on && wakeLock) { const w = wakeLock; wakeLock = null; await w.release(); }
+    } catch (e) { wakeLock = null; }
+  }
+  // アプリを切り替えると自動で解除されるので、戻ってきたらかけ直す
+  document.addEventListener('visibilitychange', () => { if (running && document.visibilityState === 'visible') keepAwake(true); });
+
   function start(n) {
     if (running || App.busy) return;
     if (!strategist()) return UI.alert('軍師に任命できる武将がいません');
     running = true; stopReq = false; seasonsLeft = n || 0;
-    App.busy = true;
+    App.busy = true; keepAwake(true);
     document.getElementById('autobar').classList.add('show'); document.getElementById('app').classList.add('auto-on'); place();
     loop().finally(() => { App.busy = false; });
   }
   function stop(done) {
     if (!running) return;
     if (!done) { stopReq = true; setBar('この動きが終わったら止めます…'); return; }
-    running = false; stopReq = false;
+    running = false; stopReq = false; keepAwake(false);
     document.getElementById('autobar').classList.remove('show'); document.getElementById('app').classList.remove('auto-on');
     App.busy = false;
     if (UI.cur === 'main') { UI.closeSheet(); App.refresh(); UI.toast('軍師オートを止めました。ここからは自分で操作できます'); }
