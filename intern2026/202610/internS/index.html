@@ -1470,11 +1470,42 @@ function drawGateFront(g, gx, y, sc, closed){
 
 // 描画: 序盤＝横からの引きの絵 / 中盤＝俯瞰のコース図 / ラスト＝寄りの絵
 // 戻り値: 全頭が画面の右へ走り去ったか
+// レース画面: メインの視点と、右上の小窓（ワイプ）にもう一方の視点。小窓をタップすると入れ替わる
 function drawRace(fr, st, ph, time, fi){
   const g = fitCanvas($('raceCv'), RACE_W, RACE_H);
   const W = RACE_W, Hh = RACE_H, D = Race.sim.D;
   g.clearRect(0,0,W,Hh);
-  if(ph === 1){ drawOverhead(g, W, Hh, fr, D, fi); return false; }
+  const defaultKind = ph === 1 ? 'over' : 'side';
+  const mainKind = Race.started && Race.viewSwap ? (defaultKind === 'side' ? 'over' : 'side') : defaultKind;
+  let allGone = false;
+  if(mainKind === 'side') allGone = drawSideView(g, fr, st, ph, time, fi, false);
+  else drawOverhead(g, W, Hh, fr, D, fi, false);
+  Race.pipRect = null;
+  if(Race.started){
+    const altKind = mainKind === 'side' ? 'over' : 'side';
+    const off = Race.pipCv || (Race.pipCv = document.createElement('canvas'));
+    if(off.width !== W){ off.width = W; off.height = Hh; }
+    const og = off.getContext('2d'); og.setTransform(1,0,0,1,0,0); og.clearRect(0,0,W,Hh);
+    if(altKind === 'side') allGone = drawSideView(og, fr, st, ph, time, fi, true);
+    else drawOverhead(og, W, Hh, fr, D, fi, true);
+    const pw = Math.round(W*0.36), phh = Math.round(Hh*0.36), px = W - pw - 8, py = 36;
+    g.save();
+    g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(px+3, py+3, pw, phh);   // 影
+    g.drawImage(off, px, py, pw, phh);
+    g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(px, py, pw, phh);
+    g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(px, py + phh - 16, pw, 16);
+    g.fillStyle = '#fff'; g.font = 'bold 10px sans-serif'; g.textAlign = 'center';
+    g.fillText(`${altKind === 'side' ? '横から' : '俯瞰'}（タップで切替）`, px + pw/2, py + phh - 4);
+    g.restore();
+    Race.pipRect = { x: px, y: py, w: pw, h: phh };
+  }
+  return allGone;
+}
+
+// 横から見た絵。mini=true のときは小窓用（順位帯や残り距離は描かない）
+function drawSideView(g, fr, st, ph, time, fi, mini){
+  const W = RACE_W, Hh = RACE_H, D = Race.sim.D;
+  g.clearRect(0,0,W,Hh);
   const last = ph === 2;
   const lead = Math.max(...fr);
   // カメラ: 序盤は馬群全体、直線は先頭と（結末の）1・2着が入るように自動でズーム
@@ -1611,6 +1642,7 @@ function drawRace(fr, st, ph, time, fi){
     v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.35)');
     g.fillStyle = v; g.fillRect(0,0,W,Hh);
   }
+  if(mini) return allGone;
   // 発走前は全頭横一線なので順位は出さない
   if(Race.started) drawRankStrip(g, W, Hh, st);
   const left = Race.started ? D - lead : D;
@@ -1620,7 +1652,7 @@ function drawRace(fr, st, ph, time, fi){
   return allGone;
 }
 
-function drawOverhead(g, W, Hh, fr, D, fi){
+function drawOverhead(g, W, Hh, fr, D, fi, mini){
   g.fillStyle = '#1b3d26'; g.fillRect(0,0,W,Hh);
   const cx = W/2, cy = (Hh-36)/2 + 4, rx = W*0.40, ry = (Hh-36)*0.36;
   g.strokeStyle = Game.field.race.surface === 'ダート' ? '#a9814f' : '#3fae63'; g.lineWidth = 38;
@@ -1638,8 +1670,13 @@ function drawOverhead(g, W, Hh, fr, D, fi){
     g.beginPath(); g.arc(x, y, 9, 0, Math.PI*2); g.fill(); g.stroke();
     g.fillStyle = w.fg; g.font = 'bold 11px sans-serif'; g.textAlign = 'center'; g.fillText(h.no, x, y+4); g.textAlign = 'left';
   });
+  if(mini) return;
   g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.fillText('俯瞰カメラ', 10, 20);
   drawRankStrip(g, W, Hh, standings(fr, fi));
+  const left = Math.max(0, D - Math.max(...fr));
+  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(W-112, 6, 106, 24);
+  g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif';
+  g.fillText(left > 0 ? `残り ${Math.round(left)}m` : 'ゴール！', W-104, 23);
 }
 
 function drawRankStrip(g, W, Hh, st){
@@ -1961,6 +1998,15 @@ function showRecords(){
   show('records');
 }
 $('btnRecords').onclick = showRecords;
+$('raceCv').addEventListener('click', e => {
+  const r = Race.pipRect; if(!r) return;
+  const box = $('raceCv').getBoundingClientRect();
+  const x = (e.clientX - box.left) * RACE_W / box.width, y = (e.clientY - box.top) * RACE_H / box.height;
+  if(x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h){
+    Race.viewSwap = !Race.viewSwap;   // 次のレースでも同じ向きのまま
+    Race.camPx = null;
+  }
+});
 $('btnSound').onclick = () => {
   soundOn = !soundOn;
   try{ localStorage.setItem('internS_g1predictor_sound', soundOn ? 'on' : 'off'); }catch(e){}
