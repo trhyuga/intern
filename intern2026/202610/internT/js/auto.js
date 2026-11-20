@@ -513,34 +513,47 @@ const Auto = (() => {
   function planMass(br) {
     const out = [];
     const usedT = new Set();
+    const pulled = new Map();   // 都市ごとに、ほかの出陣へ回した将の数（どの都市にも1人は残す）
+    const leftIn = ci => Game.gensIn(ci, G.player).length - (pulled.get(ci) || 0);
     Game.citiesOf(G.player).forEach(c => {
-      if (c.troops < massLine()) return;
+      if (c.troops < 5000) return;
       const targets = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && !usedT.has(o.i) && (o.owner === null || !Game.isAlly(G.player, o.owner)));
       if (!targets.length) return;
       const keep = Math.max(5000, Math.round(c.troops * 0.25));
       const sendable = Math.floor((c.troops - keep) / 100) * 100;
+      if (sendable < 3000) return;
       // 率いる武将：この都市の待機武将（君主は他にいれば残す）。足りなければ周りの都市から呼ぶ
       let army = Game.gensIn(c.i, G.player).filter(g => !g.acted && !g.isLord).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
       { const lord = Game.gensIn(c.i, G.player).find(g => g.isLord && !g.acted); if (lord && army.length < 3 && lord.lead + lord.war >= 140) army.push(lord); }   // 将が足りなければ君主も出る
+      // この都市に将を1人は残す（全員が出ると、武将のいない都市になってしまう）
+      if (army.length && leftIn(c.i) - army.length < 1) { army.sort((a, b) => milScore(b) - milScore(a)); army.pop(); }
       const moved = [];
       const big = c.troops >= BIG_ARMY;
-      if (army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < sendable && army.length < 5) {
+      const cap = () => army.reduce((s2, g) => s2 + Game.troopCap(g), 0);
+      if (cap() < sendable && army.length < 5) {
         const r = reach(c);
-        // 地続きの都市から将を呼ぶ（その都市に1人は残す。5万以上の大軍なら前線・後方を問わず呼ぶ）
-        const extra = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord && g.city !== c.i && r.has(g.city) && Game.gensIn(g.city, G.player).length > 1 && (G.cities[g.city].troops < 20000 || G.cities[g.city].troops < c.troops)).sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
-        while (army.length < 5 && extra.length && army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < sendable) { const g = extra.shift(); army.push(g); moved.push(g); }
+        // 地続きの都市から将を呼ぶ（呼ばれた都市にも1人は残す。大軍のいる都市の将は、その都市のために残す）
+        const extra = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord && g.city !== c.i && r.has(g.city) && (G.cities[g.city].troops < 20000 || G.cities[g.city].troops < c.troops)).sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
+        for (const g of extra) {
+          if (army.length >= 5 || cap() >= sendable) break;
+          if (leftIn(g.city) <= 1) continue;
+          army.push(g); moved.push(g); pulled.set(g.city, (pulled.get(g.city) || 0) + 1);
+        }
       }
-      if (!army.length) { const lord = Game.gensIn(c.i, G.player).find(g => g.isLord && !g.acted); if (lord) army = [lord]; else return; }
-      const troops = Math.floor(Math.min(sendable, army.reduce((s2, g) => s2 + Game.troopCap(g), 0)) / 100) * 100;
-      if (troops < 5000) return;
-      // 一番落としやすい攻め先（明らかに敵が上回るときだけ見送る）
+      if (!army.length) return;
+      const troops = Math.floor(Math.min(sendable, cap()) / 100) * 100;
+      if (troops < 3000) return;
+      // 将が率いられる最大まで兵が揃った（兵の方が多い）なら、勝ち目に関係なく必ず攻める
+      const full = sendable >= cap();
+      if (!full && c.troops < massLine()) return;
       const f = atkFactor(c, army);
       // 見積もりは軍師の知力しだいでぶれる
       const best = targets.map(o => ({ o, ratio: troops * f / Math.max(1, defPower(o) * (1 + (Math.random() - 0.5) * br.noise * 0.6)) })).sort((a, b) => b.ratio - a.ratio)[0];
-      if (best.ratio < (big ? br.bigWant : wantNow(br))) return;   // 兵が揃っていても、勝ち目が足りなければ攻めない（5万以上の大軍は基準を下げる）
+      if (!full && best.ratio < (big ? br.bigWant : wantNow(br))) { moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1)); return; }   // 兵が揃いきっていなければ、勝ち目も見る
       orderArmy(army, br);
       usedT.add(best.o.i);
-      out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, moved });
+      pulled.set(c.i, (pulled.get(c.i) || 0) + army.filter(g => g.city === c.i).length);
+      out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, full, moved });
     });
     return out;
   }
@@ -933,6 +946,23 @@ const Auto = (() => {
     }
   }
 
+  // 季節の最後に、武将のいない自分の都市をなくす（将が2人以上いる、近い都市から1人回す。前線を優先）
+  async function ensureGovernors() {
+    const cities = Game.citiesOf(G.player);
+    const empty = cities.filter(c => Game.gensIn(c.i, G.player).length === 0).sort((a, b) => (Game.isFront(b) ? 1 : 0) - (Game.isFront(a) ? 1 : 0) || b.troops - a.troops);
+    for (const c of empty) {
+      const r = reach(c);
+      const dist = d => { const seen = { [c.i]: 0 }, q = [c.i]; while (q.length) { const x = q.shift(); if (x === d.i) return seen[x]; G.cities[x].adj.forEach(a => { if (seen[a] == null && G.cities[a].owner === G.player) { seen[a] = seen[x] + 1; q.push(a); } }); } return 99; };
+      const donor = cities.filter(d => d !== c && r.has(d.i) && Game.gensIn(d.i, G.player).length >= 2).sort((a, b) => dist(a) - dist(b) || Game.gensIn(b.i, G.player).length - Game.gensIn(a.i, G.player).length)[0];
+      if (!donor) continue;
+      // 守りに向いた（統率の高い）将を、君主以外から
+      const g = Game.gensIn(donor.i, G.player).filter(x => !x.isLord).sort((a, b) => b.lead - a.lead)[Game.isFront(c) ? 0 : Game.gensIn(donor.i, G.player).filter(x => !x.isLord).length - 1];
+      if (!g) continue;
+      g.city = c.i;
+      UI.toast(`${g.name}が ${donor.name} → ${c.name} へ（武将のいない城を守るため）`, 2200);
+    }
+    App.refresh();
+  }
   // 兵の多い前線の都市に、率いる将が足りなければ、将に余裕のある都市（兵に比べて将が多い所）から回す（季節に3人まで）
   async function balanceCommanders(br) {
     if (br.tier === 'dumb') return;
@@ -1305,7 +1335,7 @@ const Auto = (() => {
       // 実際に集まった将が率いられる分までに抑える
       const troops = Math.min(e.troops, Math.floor((p.c.troops - e.keep) / 100) * 100, Math.floor(army.reduce((s2, g) => s2 + Game.troopCap(g), 0) / 100) * 100);
       // 予定の将が他の出陣に回って減ったときは、勝ち目を確かめ直す（足りなければ見送る）
-      if (army.length < e.army.length && !e.big) {
+      if (army.length < e.army.length && !e.big && !e.full) {
         const ratio = troops * atkFactor(p.c, army) / Math.max(1, defPower(p.t));
         if (ratio < (e.attrition ? br.attrWant : wantNow(br))) { await say('hold'); continue; }
       }
@@ -1334,6 +1364,7 @@ const Auto = (() => {
       if (food < troops * 0.03 * (loose ? 10 : 20)) { await sayText(`${p.c.name}の兵糧が足りず、${p.t.name}への出陣は見送ります（${loose ? 10 : 20}日分に届きません）。`); continue; }
       await press(p.c.i, 'mil', '[data-cmd=attack]');
       MapView.setHighlight([p.t.i]); await wait(500); MapView.setHighlight(null);
+      if (e.full) await sayText(`${p.c.name}の兵は、将が率いられる最大まで揃いました。勝ち負けは天に任せ、${p.t.name}へ攻め込みます。`);
       await say(e.mass ? 'mass' : e.attrition ? 'attrition' : 'attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name, m: fmt(troops), k: fmt(p.c.troops - troops), city: p.c.name }, 'angry');
       UI.closeSheet();
       const cmdr = army[0];
@@ -1395,6 +1426,7 @@ const Auto = (() => {
     await sendTrained(br); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     await forwardBig(br); if (stopReq) return false;
+    await ensureGovernors();
     UI.closeSheet();
     return true;
   }
