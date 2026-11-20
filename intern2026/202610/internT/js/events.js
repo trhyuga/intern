@@ -44,6 +44,13 @@ const Events = (() => {
     { w: 2, name: '名工の来訪', run: c => { const v = Math.round(c.defMax * 0.06); c.def = Math.min(c.defMax, c.def + v); return { msg: `${c.name}に名高い工匠が訪れ、城壁の修理を手伝った。城壁 +${v}`, expr: 'happy', line: 'これで守りも安心です', good: true }; } },
     { w: 2, name: '兵の脱走', cond: c => c.loyal < 50, run: c => { const v = Math.round(c.troops * 0.06); c.troops -= v; return { msg: `${c.name}で兵が夜のうちに逃げ出した。兵 -${fmt(v)}`, expr: 'angry', line: '士気が緩んでおるのか……' }; } },
     { w: 2, name: '鍛冶の名人', run: c => { c.train = Math.min(100, c.train + 8); return { msg: `${c.name}に鍛冶の名人が現れ、良い武器が揃った。訓練 +8`, expr: 'happy', line: '刃の切れ味がまるで違います', good: true }; } },
+    { w: 3, name: '豊作', cond: () => G.season === 2, run: c => { const v = irnd(3000, 7000); c.food += v; c.loyal = Math.min(100, c.loyal + 3); return { msg: `${c.name}は大豊作。兵糧 +${fmt(v)}、民忠 +3`, expr: 'happy', line: '倉に入りきらぬほどの実りです！', good: true }; } },
+    { w: 2, name: '蝗の害', cond: () => G.season === 1 || G.season === 2, run: c => { const v = Math.round(c.food * 0.12); c.food -= v; pct(c, 'farm', 'farmMax', -0.04); return { msg: `${c.name}に蝗の大群が押し寄せた。兵糧 -${fmt(v)}、農業 -4%`, expr: 'shock', line: '空が蝗で黒く……！ 田が食い尽くされる！' }; } },
+    { w: 2, name: '疫病', cond: () => G.season === 1, run: c => { const v = Math.round(c.troops * 0.05); c.troops -= v; c.pop = Math.round(c.pop * 0.98); c.loyal = Math.max(0, c.loyal - 4); return { msg: `${c.name}で疫病がはやった。兵 -${fmt(v)}、民忠 -4`, expr: 'sad', line: '医者と薬をかき集めろ！' }; } },
+    { w: 2, name: '大雪', cond: () => G.season === 3, run: c => { const v = Math.min(c.gold, irnd(50, 150)); c.gold -= v; return { msg: `${c.name}に大雪が降った。雪かきと炊き出しに金 -${v}`, expr: 'sad', line: '雪で道が埋まってしまいました' }; } },
+    { w: 2, name: '名士の来訪', run: c => { c.loyal = Math.min(100, c.loyal + 5); c.gold += 80; return { msg: `名高い学者が${c.name}に立ち寄り、講義を開いた。民忠 +5、金 +80`, expr: 'happy', line: '学問の香りが町に満ちております', good: true }; } },
+    { w: 2, name: '偽商人', run: c => { const v = Math.min(c.gold, irnd(60, 180)); c.gold -= v; return { msg: `${c.name}の役人が偽の商人に騙され、金 -${v}`, expr: 'angry', line: '「西域の珍品」が、ただの石ころでした……' }; } },
+    { w: 2, name: '井戸の発見', run: c => { pct(c, 'farm', 'farmMax', 0.03); c.loyal = Math.min(100, c.loyal + 2); return { msg: `${c.name}で良い水の出る井戸が掘り当てられた。農業 +3%、民忠 +2`, expr: 'happy', line: '冷たくて甘い水です！', good: true }; } },
   ];
 
   // ---------------- 不定期イベント（武将） ----------------
@@ -63,6 +70,12 @@ const Events = (() => {
     { w: 2, name: '献策', cond: g => g.int >= 80, run: g => { const c = G.cities[g.city]; const v = irnd(200, 400); c.gold += v; return { msg: `${g.name}の献策で${c.name}の財政が改善した。金 +${v}`, expr: 'happy', line: '無駄を省けば、金は湧いて出るものです', good: true }; } },
     { w: 2, name: '決闘騒ぎ', cond: g => g.war >= 80 && !g.isLord, run: g => { const win = Math.random() < g.war / 120; if (win) { up(g, 'war', 1); return { msg: `${g.name}が腕自慢の豪傑と勝負し、打ち負かした。武力 +1`, expr: 'happy', line: '口ほどにもない', good: true }; } g.loyalty = Math.max(0, g.loyalty - 3); return { msg: `${g.name}が腕自慢の豪傑に後れを取った。忠誠 -3`, expr: 'sad', line: '不覚……！' }; } },
     { w: 2, name: '親孝行', cond: g => g.traits.includes('仁徳') || g.traits.includes('忠義'), run: g => { up(g, 'cha', 2); return { msg: `${g.name}の親孝行ぶりが評判になった。魅力 +2`, expr: 'happy', line: '親を大事にするのは人の道です', good: true }; } },
+    { w: 2, name: '寝坊', cond: g => !g.isLord, run: g => { g.loyalty = Math.max(0, g.loyalty - 1); return { msg: `${g.name}が軍議に寝坊して遅れてきた。忠誠 -1（気まずい）`, expr: 'shock', line: 'す、すみません！ 鶏が鳴かなかったもので……' }; } },
+    { w: 2, name: '料理自慢', run: g => { g.loyalty = Math.min(100, g.loyalty + 3); up(g, 'cha', 1); return { msg: `${g.name}が自慢の料理を皆に振る舞った。魅力 +1、忠誠 +3`, expr: 'happy', line: '鍋はな、火加減が命なのだ', good: true }; } },
+    { w: 2, name: '詩会', cond: g => g.int >= 60, run: g => { up(g, 'int', 1); up(g, 'cha', 1); return { msg: `${g.name}が詩会で見事な詩を詠んだ。知力 +1、魅力 +1`, expr: 'happy', line: '月を詠むなら、今宵に限ります', good: true }; } },
+    { w: 2, name: '馬が逃げた', cond: g => g.war >= 60, run: g => { up(g, 'lead', -1); return { msg: `${g.name}の愛馬が厩から逃げ出し、一日中追いかける羽目になった。統率 -1`, expr: 'shock', line: '待てーっ！ 戻ってこーい！' }; } },
+    { w: 2, name: '腕相撲大会', cond: g => g.war >= 75 && !g.isLord, run: g => { const win = Math.random() < g.war / 110; if (win) { up(g, 'war', 1); g.loyalty = Math.min(100, g.loyalty + 2); return { msg: `${g.name}が兵の腕相撲大会で優勝した。武力 +1`, expr: 'happy', line: '次の挑戦者は誰だ！', good: true }; } return { msg: `${g.name}が兵の腕相撲大会で、炊事係に負けた`, expr: 'shock', line: '……あの男、何者だ……' }; } },
+    { w: 1, name: '夢のお告げ', run: g => { up(g, 'int', 1); return { msg: `${g.name}が不思議な夢を見たと言っている。知力 +1`, expr: 'normal', line: '夢に古の賢者が現れて、何か大事なことを……忘れました', good: true }; } },
   ];
 
   // ---------------- 能力の上位者だけに起きるイベント ----------------
