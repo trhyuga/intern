@@ -67,6 +67,7 @@ const Auto = (() => {
       plot: ['{foe}は主君に不満を抱いている様子。揺さぶってみましょう', '戦わずして敵を崩す。これも兵法です'],
       rumor: ['{target}に流言を放ち、民と兵の心を乱しましょう。攻める前の下ごしらえです', '{target}の守りを内から崩します'],
       diplo: ['{target}と手を結び、背後の憂いを断ちましょう', '敵を一度に相手にするのは愚策。{target}とは和を'],
+      weakAlly: ['今は背中を守ることが先決。{target}と手を結びましょう', '小国が生き残る道は、強国と争わぬこと。{target}に使者を'],
       surr: ['{target}はもはや袋の鼠。降伏を勧めれば、無駄な血を流さずに済みます', '{target}に使者を。戦わずして勝つのが上策です'],
       reward: ['{gen}殿の心が離れかけています。褒美を'],
       recruit: ['{gen}殿、在野の賢者を探してきてください'],
@@ -92,7 +93,7 @@ const Auto = (() => {
       dom: ['{city}で{need}をやりましょう。{gen}殿、頼みます', '{gen}殿に{need}をお願いします'],
       attack: ['{target}が手薄です。{gen}殿、兵{m}でお願いします', '{target}を攻めましょう。{gen}殿、兵{m}で出陣を。城には{k}を残します', 'そろそろ{target}を取りに行きましょう。兵は{m}です'],
       hold: ['今季は無理をせず、力を蓄えましょう', '今季は様子を見ましょう'],
-      plot: ['{foe}に揺さぶりをかけてみます'], rumor: ['{target}に噂を流してみます'], diplo: ['{target}に使者を出してみましょう'], surr: ['{target}に降伏を勧めてみましょう'],
+      plot: ['{foe}に揺さぶりをかけてみます'], rumor: ['{target}に噂を流してみます'], diplo: ['{target}に使者を出してみましょう'], weakAlly: ['{target}とは仲良くしておきましょう。今は戦えません'], surr: ['{target}に降伏を勧めてみましょう'],
       reward: ['{gen}殿に褒美を与えておきましょう'], recruit: ['人材を探してみましょう'],
       battle: ['敵の城を落とすぞ！'], defend: ['なんとか守り抜きましょう'],
       win: ['{city}を取りました！', 'やりましたね！ 次もこの調子で', '勝ちました！'], lose: ['{city}は落とせませんでした……', 'うーん、今回は分が悪かったようです', '負けてしまいました……'],
@@ -128,7 +129,7 @@ const Auto = (() => {
     dom: ['{gen}、{city}の{need}を頼む', '{city}は{need}が足りぬ。{gen}、任せたぞ'],
     attack: ['{target}を攻める。{gen}、兵{m}を率いて行け。{city}には{k}を残す', '{target}を取る。総大将は{gen}だ。兵{m}、存分に働け'],
     hold: ['今は動く時ではない。力を蓄えよ', '焦りは禁物だ。今季は国を固める'],
-    plot: ['{foe}の心は揺れておる。揺さぶってやれ'], rumor: ['{target}に噂を流せ。攻める前の下ごしらえだ'], diplo: ['{target}と手を結ぶ。使者を出せ'], surr: ['{target}に降伏を勧めよ。無駄な血は流したくない'],
+    plot: ['{foe}の心は揺れておる。揺さぶってやれ'], rumor: ['{target}に噂を流せ。攻める前の下ごしらえだ'], diplo: ['{target}と手を結ぶ。使者を出せ'], weakAlly: ['今は{target}と争う時ではない。手を結べ'], surr: ['{target}に降伏を勧めよ。無駄な血は流したくない'],
     reward: ['{gen}には苦労をかけておる。褒美を取らせよ'], recruit: ['在野の賢者を探してまいれ'],
     battle: ['敵の総大将は{foe}。そこを突け！', '{I}の采配に従え。城門を集中して攻めよ！'], defend: ['この城は渡さぬ。皆、持ち場を守れ！'],
     win: ['皆、よくやってくれた！', '{city}を取ったか。よくやった'], lose: ['……{I}の采配の誤りだ。立て直すぞ', '{city}は手強いな。次は必ず'],
@@ -258,6 +259,13 @@ const Auto = (() => {
     const perCity = gens / Math.max(1, n);
     return { stage, staff: perCity < 2 ? 'few' : perCity >= 4 ? 'many' : 'ok' };
   }
+  // 弱小勢力か：都市3以下、または隣国のいちばん強い勢力の6割に満たない力しかない
+  function weak() {
+    const my = Game.power(G.player), n = Game.citiesOf(G.player).length;
+    const neigh = new Set(); Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player) neigh.add(o); }));
+    const top = Math.max(0, ...[...neigh].map(fi => Game.power(fi)));
+    return n <= 3 || my < top * 0.6;
+  }
   // 局面ごとの内政の重み（掛け算。「最優先」の項目にはかけない）
   //  序盤：金と兵糧を増やして国の土台を作り、人材を集める。城壁は後回し
   //  中盤：前線で兵を集めて鍛え、攻めの力を作る。内地は開墾・商業で前線を支える
@@ -272,6 +280,8 @@ const Auto = (() => {
     const w = Object.assign({}, W);
     if (ph.staff === 'few') w.search *= 1.6;      // 人手不足なら人材探しを急ぐ
     if (ph.staff === 'many') w.search *= 0.5;     // 人材が豊富なら探すより働かせる
+    // 弱小勢力：前線は兵を集め、強い隣国に脅かされている城は守りを固める（まず生き残る）
+    if (weak() && front) { w.draft *= 1.25; if (AI.threat(c, G.player) > c.troops) w.wall *= 1.3; }
     return w;
   }
   function planCity(c, br) {
@@ -520,13 +530,23 @@ const Auto = (() => {
     const risk = Math.min(0.5, exposed / Math.max(1, (e.troops || 1) * 3));
     return w * (last + cap + surround - risk);
   }
+  // 弱小勢力の攻め先：空き城と、前の季節から兵が大きく減った城（他と戦って消耗した隙）を狙い、大国の城には手を出さない
+  function weakValue(t, br) {
+    if (br.tier === 'dumb' || !weak()) return 0;
+    let v = 0;
+    if (t.owner === null) v += 0.5;
+    const prev = G.autoPrev && G.autoPrev[t.i];
+    if (prev && t.troops < prev * 0.7) v += 0.5;
+    if (t.owner !== null && Game.power(t.owner) > Game.power(G.player) * 2) v -= 0.4;
+    return v * (br.tier === 'smart' ? 1 : 0.6);
+  }
   function planAttacks(br) {
     const plans = [];
     Game.citiesOf(G.player).forEach(c => {
       c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner))).forEach(t => {
         const e = evalAttack(c, t, br) || evalAttrition(c, t, br);
         const pairBonus = pairWishes().some(w => w.me.city === c.i && w.foe.city === t.i) ? 0.5 : 0;   // 名場面が起きそうな攻め先
-        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus + strategicValue(t, e, br) }));
+        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus + strategicValue(t, e, br) + weakValue(t, br) }));
       });
     });
     plans.sort((a, b) => b.score - a.score);
@@ -640,7 +660,26 @@ const Auto = (() => {
     Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player) neigh.add(o); }));
     let list = [...neigh].filter(fi => !Game.isAlly(G.player, fi));
     if (list.length) { await doSurrender(br, list, reserved); list = list.filter(fi => G.factions[fi].alive && Game.citiesOf(fi).length); }
-    if (stopReq || !br.diplo) return;
+    if (stopReq) return;
+    // 弱小勢力の外交：強い隣国とは手を結んで背後を固め、空き城や弱い相手へ伸びる（ふつう以上の軍師）
+    if (weak() && br.tier !== 'dumb') {
+      const vacantNear = Game.citiesOf(G.player).some(c => c.adj.some(a => G.cities[a].owner === null));
+      const cand = list.filter(fi => Game.power(fi) > myPow * 1.1 && (leavesEnemy(fi) || vacantNear)).sort((a, b) => Game.power(b) - Game.power(a))[0];
+      if (cand != null && Math.random() < 0.85) {
+        const env = Game.gensOf(G.player).filter(g => !g.acted && !reserved.has(g.i)).sort((a, b) => (b.cha + b.int) - (a.cha + a.int))[0];
+        if (env) {
+          await press(env.city, 'dip', '[data-cmd=ally]');
+          await say('weakAlly', { target: G.factions[cand].name + '軍' });
+          env.acted = true;
+          const r = Game.diploAlly(env, cand);
+          Sound.se(r.ok ? 'ally' : 'ng');
+          await UI.talk(Game.lordOf(cand), r.ok ? 'happy' : 'angry', r.msg, G.factions[cand].color, { tag: '外交' });
+          if (r.ok) Game.log(r.msg);
+          return;
+        }
+      }
+    }
+    if (!br.diplo) return;
     if (list.length < 2 && br.tier !== 'smart') return;
     // 一番強い隣国と手を結ぶ
     const strong = list.sort((a, b) => Game.power(b) - Game.power(a))[0];
@@ -1056,7 +1095,7 @@ const Auto = (() => {
     // 局面の見立てを一言添える（知力の低い軍師は言わない）
     const ph = phase();
     const PN = { early: L ? '今は国の土台を作る時だ。' : '今は国の土台を作る時です。', mid: L ? '攻めの力を蓄え、前へ出る時だ。' : '攻めの力を蓄え、前へ出る時です。', late: L ? '天下は目前。民と家臣の心を離さぬようにせよ。' : '天下は目前。民と家臣の心を離さぬように。' };
-    const note = br.tier === 'dumb' ? '' : PN[ph.stage] + (ph.staff === 'few' ? (L ? '人手が足りぬ。人材を探せ。' : '人手が足りません。人材を探しましょう。') : '');
+    const note = br.tier === 'dumb' ? '' : (ph.stage === 'early' && weak() ? (L ? '今は小国だ。強国とは争わず、空き城と隙を狙え。' : '今は小国。強国とは争わず、空き城と隙を狙います。') : PN[ph.stage]) + (ph.staff === 'few' ? (L ? '人手が足りぬ。人材を探せ。' : '人手が足りません。人材を探しましょう。') : '');
     await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan: note + plan }, attacks.length ? 'angry' : 'normal');
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
@@ -1214,6 +1253,7 @@ const Auto = (() => {
       }
     }
     await idleStudy(br); if (stopReq) return false;
+    G.autoPrev = {}; G.cities.forEach(c => { G.autoPrev[c.i] = c.troops; });   // 次の季節に「兵が減った城」を見つけるため
     await sendTrained(br); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     await forwardBig(br); if (stopReq) return false;
