@@ -517,6 +517,7 @@ const App = {
     await UI.talk(tl, r.ok ? 'happy' : 'angry', `${r.msg}`, G.factions[fi].color);
     if (r.ok) Game.log(r.msg);
     App.refresh();
+    await App.milestones();
     if (Game.checkEnd() === 'win') return App.finish('win');
   },
 
@@ -653,8 +654,33 @@ const App = {
     // 自勢力の武将で、他勢力の都市に取り残された者は本拠へ
     G.gens.forEach(g => { if (g.state === 'serve' && G.factions[g.faction].alive && G.cities[g.city].owner !== g.faction) g.city = G.factions[g.faction].capital; });
     App.refresh();
+    await App.milestones();
     const end = Game.checkEnd();
     if (end) { await App.finish(end); return 'end'; }
+  },
+
+  // 節目の言葉：天下統一まで敵の都市が残り1つ（労い）／5都市以上に広げたあと残り1都市に追い込まれた（励まし）
+  // 軍師と、功績（戦功＋一騎討ちの勝ち）がいちばん多い武将が声をかける。それぞれ1回まで（立て直して3都市に戻れば、また励ます）
+  async milestones() {
+    if (!G || G.gameOver || !G.factions[G.player].alive) return;
+    const ms = G.events.ms = G.events.ms || {};
+    const mine = Game.citiesOf(G.player).length;
+    G.events.maxCities = Math.max(G.events.maxCities || 0, mine);
+    if (mine >= 3) ms.cornered = false;
+    const foeCities = G.cities.filter(c => c.owner !== null && c.owner !== G.player);
+    let kind = null;
+    if (foeCities.length === 1 && !ms.final) { ms.final = true; kind = 'final'; }
+    else if (mine === 1 && G.events.maxCities >= 5 && !ms.cornered) { ms.cornered = true; kind = 'corner'; }
+    if (!kind) return;
+    const sg = Auto.strategist();
+    const merit = g => g.wins + g.duels;
+    const hero = Game.gensOf(G.player).filter(g => !g.isLord && g !== sg).sort((a, b) => merit(b) - merit(a) || (b.lead + b.war) - (a.lead + a.war))[0];
+    const foe = foeCities[0] ? G.factions[foeCities[0].owner].name + '軍' : '';
+    const ctx = { foe, city: foeCities[0] ? foeCities[0].name : '' };
+    const fill = t => t.replace(/\{city\}/g, ctx.city);
+    Sound.se(kind === 'final' ? 'bell' : 'horn');
+    if (sg) await UI.talk(sg, kind === 'final' ? 'happy' : 'normal', `軍師 ${sg.name}「${fill(line(sg, kind + 'Sg', ctx))}」`, facColor(sg), { tag: kind === 'final' ? '天下統一目前' : '再起を誓う' });
+    if (hero) await UI.talk(hero, kind === 'final' ? 'happy' : 'angry', `${hero.name}「${fill(line(hero, kind + 'Hero', ctx))}」${merit(hero) ? `\n<small>戦功 ${hero.wins}・一騎討ち ${hero.duels}勝</small>` : ''}`, facColor(hero), { tag: kind === 'final' ? '功臣の言葉' : '忠臣の言葉' });
   },
 
   async handleCaptive(g, captor, city) {
@@ -773,6 +799,7 @@ const App = {
         else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag } : {}); }
         else UI.toast(e.msg, 2600), await new Promise(r => setTimeout(r, 900));
       }
+      await App.milestones();
       const end = Game.checkEnd();
       if (end) return App.finish(end);
       Game.save();
