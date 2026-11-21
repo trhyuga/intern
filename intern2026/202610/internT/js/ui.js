@@ -940,17 +940,33 @@ const App = {
   async saveMenu() {
     const opts = [];
     for (let n = 1; n <= Game.SLOTS; n++) { const t = App.slotText(n); opts.push({ label: t.label, sub: t.sub || 'ここに保存する', value: n }); }
+    if (App.usedSlots().length) opts.push({ label: '記録を消す', sub: 'いらなくなった記録の枠を空ける', value: 'del', cls: 'danger' });
     const n = await UI.choose('どの枠に保存しますか', opts);
     if (n == null) return;
+    if (n === 'del') { await App.deleteMenu(); return App.saveMenu(); }
     if (Game.slotInfo(n) && !await UI.confirm(`記録${n}に上書きしますか？<br><small>${App.slotText(n).sub}</small>`)) return App.saveMenu();
     if (Game.saveSlot(n)) UI.toast(`記録${n}に保存しました`);
     else UI.alert('保存できませんでした（端末の保存容量が足りないか、プライベートブラウズでは保存できないことがあります）');
   },
+  usedSlots() { const a = []; for (let n = 1; n <= Game.SLOTS; n++) if (Game.slotInfo(n)) a.push(n); return a; },
+  // 記録の枠を消す（自動セーブは消さない）
+  async deleteMenu() {
+    const used = App.usedSlots();
+    if (!used.length) return UI.toast('消せる記録はありません');
+    const n = await UI.choose('どの記録を消しますか', used.map(k => { const t = App.slotText(k); return { label: t.label, sub: t.sub, value: k }; }));
+    if (n == null) return;
+    if (!await UI.confirm(`記録${n}を消しますか？<br>消した記録は元に戻せません。<br><small>${App.slotText(n).sub}</small>`, '消す', 'やめる')) return;
+    Game.deleteSlot(n);
+    UI.toast(`記録${n}を消しました`);
+  },
   async loadMenu(inGame) {
     const opts = ['auto'];
     for (let n = 1; n <= Game.SLOTS; n++) opts.push(n);
-    const n = await UI.choose('どの記録を読み込みますか', opts.map(k => { const t = App.slotText(k); return { label: t.label, sub: t.sub, value: k, disabled: t.empty }; }));
+    const list = opts.map(k => { const t = App.slotText(k); return { label: t.label, sub: t.sub, value: k, disabled: t.empty }; });
+    if (App.usedSlots().length) list.push({ label: '記録を消す', sub: 'いらなくなった記録の枠を空ける', value: 'del', cls: 'danger' });
+    const n = await UI.choose('どの記録を読み込みますか', list);
     if (n == null) return;
+    if (n === 'del') { await App.deleteMenu(); if (!inGame && !Game.anySave()) return; return App.loadMenu(inGame); }
     if (inGame && !await UI.confirm('今の進行は失われます（保存していない分）。読み込みますか？')) return;
     if (!Game.loadSlot(n)) return UI.alert('読み込めませんでした');
     if (Auto.running) Auto.stop(true);
