@@ -327,6 +327,19 @@ const Sound = (() => {
         o.connect(f); f.connect(g); g.connect(S); o.start(t); o.stop(t + 0.55);
         gong(t + 0.45, 0.35, S); drum(t + 0.45, 0.7, 42, S, 0.9); metal(t + 0.5, 0.3, S); break;
       }
+      // 一騎討ちのとどめ（ko：ふつう / koBig：会心・必殺技で討ち取った時）
+      case 'ko': whoosh(t, 0.4, 0.14, S); drum(t + 0.08, 0.9, 36, S, 1.1); metal(t + 0.08, 0.4, S); noise(t + 0.08, 0.6, 0.9, 900, S, 'lowpass'); cymbal(t + 0.1, 0.14, 1.4, S); gong(t + 0.3, 0.3, S); shout(t + 0.55, 0.22, 1.2, S, 420); break;
+      case 'koBig': {
+        const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(1400, t + 0.38);
+        const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2400; g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.14, t + 0.34); g.gain.linearRampToValueAtTime(0.0001, t + 0.42);
+        o.connect(f); f.connect(g); g.connect(S); o.start(t); o.stop(t + 0.45);
+        const h = t + 0.4;
+        drum(h, 1.0, 32, S, 1.4); drum(h + 0.03, 0.8, 48, S, 0.9); metal(h, 0.45, S); metal(h + 0.05, 0.3, S); noise(h, 0.75, 1.6, 700, S, 'lowpass'); noise(h, 0.4, 0.25, 4000, S);
+        cymbal(h + 0.02, 0.2, 2.2, S); gong(h + 0.15, 0.45, S);
+        [0, 4, 7, 12, 16, 19].forEach((d, i) => bell(h + 0.35 + i * 0.06, 84 + d, 0.07, 1.4, S));
+        shout(h + 0.6, 0.3, 1.6, S, 420); shout(h + 0.75, 0.2, 1.4, S, 520); for (let i = 0; i < 3; i++) drum(h + 0.7 + i * 0.22, 0.35, 60, S, 0.4);
+        break;
+      }
       case 'arrow': whoosh(t, 0.18, 0.12, S); noise(t, 0.2, 0.15, 6000, S, 'highpass'); break;
       case 'volley': for (let i = 0; i < 6; i++) { whoosh(t + i * 0.04, 0.14, 0.15, S); } noise(t + 0.3, 0.3, 0.3, 2000, S); break;
       case 'fire': noise(t, 0.6, 1.2, 500, S, 'lowpass'); for (let i = 0; i < 6; i++) noise(t + 0.1 + Math.random() * 0.8, 0.2, 0.04, 3000, S); break;
