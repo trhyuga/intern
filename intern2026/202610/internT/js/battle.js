@@ -1834,13 +1834,13 @@ const Duel = (() => {
     //  武者は小札の鎧・護心鏡・肩当て・背旗（姓の一字）・紅い房の兜で、武器を両手で構える
     function rider(x, y, col, dir, t, flash, g, swing, speed) {
       const horse = HORSE[g.name] || (g.war >= 90 ? '#3a2416' : '#5a3a22');
-      c.save(); c.translate(x, y); c.scale(dir * S * 1.1, S * 1.1); c.translate(0, -6);   // ひづめが画面の下で切れないよう少し上げる
+      c.save(); c.translate(x, y); c.scale(dir * S * 1.05, S * 1.05); c.translate(0, -11);   // ひづめが画面の下で切れないよう少し上げる
       const gal = t * (8 + speed * 10), bob = Math.sin(gal * 2) * 1.8, pitch = Math.sin(gal * 2 + 0.6) * 0.025;
       const hc = flash ? '#ff7060' : horse, base = hc.startsWith('#') ? hc : '#5a3a22';
       const hl = shade(base, 1.45), hm = shade(base, 1.05), hd = shade(base, 0.6), hx = shade(base, 0.38);
       const gold = '#e2b64a', goldD = '#8a6a1a';
       // 影と、駆けるときの土煙
-      c.fillStyle = 'rgba(0,0,0,0.38)'; c.beginPath(); c.ellipse(2, 23, 38, 5.5, 0, 0, 7); c.fill();
+      c.fillStyle = 'rgba(0,0,0,0.38)'; c.beginPath(); c.ellipse(2, 23, 34, 5, 0, 0, 7); c.fill();
       if (speed > 0.05) for (let k = 0; k < 5; k++) { const ph = (gal * 0.35 + k * 0.2) % 1; c.fillStyle = `rgba(200,170,130,${0.22 * (1 - ph) * speed})`; c.beginPath(); c.arc(-30 - ph * 34 - k * 3, 18 - ph * 10, 4 + ph * 9, 0, 7); c.fill(); }
       c.translate(0, bob); c.rotate(pitch);
       // 脚（肩・ひざ・管・球節・ひづめ）。襲歩らしく前後で拍子をずらす
@@ -1850,13 +1850,13 @@ const Duel = (() => {
         c.save(); c.translate(bx, by); c.rotate(a1);
         const lg = c.createLinearGradient(-4, 0, 4, 0); lg.addColorStop(0, near ? hm : hx); lg.addColorStop(1, near ? hd : hx);
         c.fillStyle = lg;
-        c.beginPath(); c.moveTo(-4.5, -2); c.quadraticCurveTo(-5, 6, -2.6, 11); c.lineTo(2.6, 11); c.quadraticCurveTo(5, 5, 4.5, -2); c.closePath(); c.fill();   // 上腕・もも
-        c.translate(0, 11); c.rotate(a2);
-        c.fillRect(-1.8, 0, 3.6, 9);                                     // 管
-        c.beginPath(); c.arc(0, 9.5, 2.3, 0, 7); c.fill();               // 球節
-        c.translate(0, 10); c.rotate(-a2 * 0.5);
-        c.fillStyle = near ? '#f2ead8' : '#b8ae98'; c.fillRect(-2.2, -1, 4.4, 2.4);   // 白い毛
-        c.fillStyle = '#16100c'; c.beginPath(); c.moveTo(-2.6, 1.2); c.lineTo(3.4, 1.2); c.lineTo(2.8, 4.2); c.lineTo(-2.8, 4.2); c.closePath(); c.fill();   // ひづめ
+        c.beginPath(); c.moveTo(-3.6, -2); c.quadraticCurveTo(-3.8, 6, -2, 12); c.lineTo(2, 12); c.quadraticCurveTo(3.8, 5, 3.6, -2); c.closePath(); c.fill();   // 上腕・もも
+        c.translate(0, 12); c.rotate(a2);
+        c.fillRect(-1.4, 0, 2.8, 11);                                    // 管（細く長く）
+        c.beginPath(); c.arc(0, 11.5, 1.9, 0, 7); c.fill();              // 球節
+        c.translate(0, 12); c.rotate(-a2 * 0.5);
+        c.fillStyle = near ? '#f2ead8' : '#b8ae98'; c.fillRect(-1.8, -1, 3.6, 2.2);   // 白い毛
+        c.fillStyle = '#16100c'; c.beginPath(); c.moveTo(-2.2, 1.2); c.lineTo(3, 1.2); c.lineTo(2.5, 4); c.lineTo(-2.4, 4); c.closePath(); c.fill();   // ひづめ
         c.restore();
       };
       leg(-20, 4, 0.5, false, false); leg(16, 3, 2.6, false, true);
@@ -1869,13 +1869,13 @@ const Duel = (() => {
         c.stroke();
       }
       // 胴：胸の張り・腹・尻の丸み
-      const body = new Path2D('M -30 -4 C -33 -16 -22 -17 -12 -15 L 12 -15 C 20 -16 27 -14 30 -6 C 33 2 28 11 18 12 L 6 13 C -2 15 -12 14 -18 12 C -28 10 -30 4 -30 -4 Z');
+      const body = new Path2D('M -30 -5 C -32 -14 -24 -15 -14 -14 L 12 -14 C 20 -15 27 -13 29.5 -6 C 31 0 27 5 20 6 C 13 7 7 5 -1 6 C -9 7 -15 7 -21 5.5 C -28 4 -30 0 -30 -5 Z');   // 腹を引き締めた細身の胴
       const bg = c.createLinearGradient(0, -16, 0, 14); bg.addColorStop(0, hl); bg.addColorStop(0.45, hm); bg.addColorStop(1, hd);
       c.fillStyle = bg; c.fill(body);
       // 筋肉の照り（肩と尻）
-      [[-18, -6, 11], [20, -4, 10]].forEach(([mx, my, mr]) => { const rg = c.createRadialGradient(mx - 2, my - 3, 1, mx, my, mr); rg.addColorStop(0, 'rgba(255,240,220,0.32)'); rg.addColorStop(1, 'rgba(255,240,220,0)'); c.fillStyle = rg; c.beginPath(); c.arc(mx, my, mr, 0, 7); c.fill(); });
+      [[-19, -6, 9], [20, -5, 8]].forEach(([mx, my, mr]) => { const rg = c.createRadialGradient(mx - 2, my - 3, 1, mx, my, mr); rg.addColorStop(0, 'rgba(255,240,220,0.32)'); rg.addColorStop(1, 'rgba(255,240,220,0)'); c.fillStyle = rg; c.beginPath(); c.arc(mx, my, mr, 0, 7); c.fill(); });
       // 首と頭（あご・鼻づら・鼻の穴・目）
-      const head = new Path2D('M 18 -10 C 22 -24 28 -32 34 -36 C 37 -38 41 -37 43 -34 L 51 -25 C 53 -22 52 -19 49 -18 L 44 -17 C 41 -17 38 -19 37 -21 C 34 -16 30 -8 27 2 Z');
+      const head = new Path2D('M 18 -10 C 22 -24 28 -32 34 -36 C 37 -38 41 -37 43 -34 L 51 -25 C 53 -22 52 -19 49 -18 L 44 -17 C 41 -17 38 -19 37 -21 C 34 -16 30 -9 26.5 -2 Z');
       const ng = c.createLinearGradient(20, -36, 40, 0); ng.addColorStop(0, hl); ng.addColorStop(1, hd);
       c.fillStyle = ng; c.fill(head);
       c.fillStyle = hx; c.beginPath(); c.ellipse(49.5, -21.5, 1.3, 0.9, 0.5, 0, 7); c.fill();        // 鼻の穴
