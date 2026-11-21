@@ -217,6 +217,28 @@ const Sound = (() => {
       A: { inst: 'flute', mel: '4 - - - 3 - - - 2 - - - 1 - 2 - | 3 - - - - - . . . . . . . . . .', ch: [0, 0], arp: '0.......2.......', drum: 'b...............', pad: true },
       B: { inst: 'koto', mel: '5 . . 4 3 . . . 2 . 1 . 0 - - - | 1 . . 2 3 . 2 . 1 - - - - - . .', ch: [-2, 0], arp: '0...1...2...1...', drum: '........b.......', pad: true },
     },
+    // ---- 中盤（群雄と覇を競う頃）：低音と打楽器で、前へ進む力強さ ----
+    mid0: { bpm: 100, root: 65, sc: 'ryo', order: ['A', 'B', 'A', 'C'],   // 春・夏
+      A: { inst: 'pipa', mel: '0 . 2 . 3 2 0 . 4 . 3 . 2 - . . | 3 . 4 . 5 4 3 . 2 . 0 . 1 - . . | 0 . 2 . 3 2 0 . 4 . 5 . 6 - . . | 5 4 3 . 2 . 3 . 0 - - - . . . .', ch: [0, 1, 0, -1], arp: '0.2.1.2.0.2.1.2.', bass: 'x...x...x...x.o.', drum: 'K.......k...r...' },
+      B: { inst: 'flute', mel: '5 - - - 6 - 5 - 4 - 3 - 4 - - - | 3 - 2 - 3 - 4 - 5 - - - . . . . | 6 - - - 7 - 6 - 5 - 4 - 5 - - - | 4 - 3 - 2 - 1 - 0 - - - . . . .', ch: [2, 0, 3, 0], arp: '0.1.2.1.0.1.2.1.', bass: 'x.......x.......', drum: 'K...r...k...r...' },
+      C: { inst: 'koto', mel: '7 . 6 . 5 . 6 . 7 . 9 . 7 - . . | 6 . 5 . 4 . 5 . 3 - - - . . . . | 5 . 4 . 3 . 4 . 5 . 7 . 5 - . . | 4 . 3 . 2 . 1 . 0 - - - - - . .', ch: [3, 1, 2, 0], arp: '0.1.2.3.2.1.0.1.', bass: 'x.x.x...x.x.x...', drum: 'K.k.r...K.k.r.b.' },
+    },
+    mid1: { bpm: 84, root: 62, sc: 'min', order: ['A', 'B', 'A', 'C'],    // 秋・冬
+      A: { inst: 'erhu', mel: '0 - - - 2 - 3 - 4 - - - 3 - 2 - | 3 - - - 2 - 0 - -1 - - - . . . . | 0 - - - 2 - 3 - 4 - 5 - 7 - - - | 6 - 5 - 4 - 3 - 4 - - - . . . .', ch: [0, -2, 0, 2], arp: '0..1..2.0..1..2.', bass: 'x.......x...o...', drum: 'K.......r.......', pad: true },
+      B: { inst: 'koto', mel: '4 . 5 . 7 . 5 . 4 . 3 . 2 - . . | 3 . 4 . 3 . 2 . 0 - - - . . . . | 2 . 3 . 4 . 3 . 2 . 0 . -1 - . . | 0 . 2 . 3 . 2 . 0 - - - - - . .', ch: [1, 0, -1, 0], arp: '0.1.2.1.0.1.2.1.', bass: 'x...x...x...x...', drum: 'K...r...k...r...' },
+      C: { inst: 'flute', mel: '7 - - - 6 - 5 - 4 - - - 5 - - - | 3 - - - 2 - 3 - 4 - - - - - . . | 5 - - - 4 - 3 - 2 - - - 3 - - - | 1 - - - 0 - - - - - - - . . . .', ch: [2, 0, -2, 0], arp: '0...2...3...2...', drum: 'K.......K...r...', pad: true },
+    },
+    // ---- 終盤（天下が見えてきた頃）：堂々とした大きな曲と、決戦を前にした張りつめた曲 ----
+    late0: { bpm: 92, root: 64, sc: 'yo', order: ['A', 'B', 'C', 'B'],    // 春・夏
+      A: { inst: 'erhu', mel: '0 - 2 - 4 - 5 - 7 - - - 6 - 5 - | 4 - 5 - 7 - 9 - 7 - - - - - . . | 7 - 6 - 5 - 4 - 5 - - - 4 - 2 - | 1 - 2 - 4 - 2 - 0 - - - - - . .', ch: [0, 3, 2, 0], arp: '0.1.2.3.2.1.0.1.', bass: 'x...x...x...x.o.', drum: 'K.....k.K...r...', pad: true },
+      B: { inst: 'flute', mel: '7 - - - 6 - 7 - 9 - - - 7 - 6 - | 5 - 6 - 7 - 6 - 5 - - - . . . . | 7 - - - 6 - 5 - 4 - 5 - 7 - - - | 6 - 5 - 4 - 2 - 0 - - - . . . .', ch: [3, 2, 1, 0], arp: '0.2.3.2.0.2.3.2.', bass: 'x.x.x...x.x.x...', drum: 'K.k.K.k.K.k.r.kc', pad: true },
+      C: { inst: 'pipa', mel: '5 5 7 . 9 . 7 5 4 . 5 . 7 - . . | 5 5 4 . 2 . 4 5 2 . 1 . 0 - . . | 5 5 7 . 9 . 10 9 7 . 9 . 10 - . . | 9 7 5 . 4 . 2 . 0 - 0 - 0 - . .', ch: [0, 2, 3, 0], arp: '0123012301230123', bass: 'xxx.xxx.xxx.x.o.', drum: 'KkK.KkK.KkK.KkKc' },
+    },
+    late1: { bpm: 112, root: 57, sc: 'min', order: ['A', 'A', 'B', 'C'],  // 秋・冬
+      A: { inst: 'pipa', mel: '0 . 0 . 3 . 2 . 0 . 4 . 3 - . . | 2 . 2 . 4 . 3 . 2 . 0 . -1 - . . | 0 . 0 . 3 . 2 . 0 . 4 . 5 - . . | 7 . 5 . 4 . 3 . 2 - 0 - 0 - . .', ch: [0, -1, 0, 2], bass: 'x.x.x.x.x.x.x.x.', drum: 'K...k...K.k.k...' },
+      B: { inst: 'erhu', mel: '5 - - - 7 - 5 - 4 - 3 - 2 - - - | 3 - 4 - 5 - 4 - 3 - - - . . . . | 5 - - - 7 - 8 - 7 - 5 - 4 - - - | 3 - 2 - 0 - 2 - 0 - - - . . . .', ch: [2, 1, 3, 0], bass: 'x...x...x...x...', drum: 'K.k.K.k.K.k.K.kc', pad: true },
+      C: { inst: 'flute', mel: '7 - 8 - 7 - 5 - 4 - 5 - 7 - - - | 8 - 7 - 5 - 4 - 3 - - - . . . . | 5 - 7 - 8 - 9 - 8 - 7 - 5 - - - | 5 - 4 - 3 - 2 - 0 - - - - - . .', ch: [3, 2, 0, -1], arp: '0.1.2.3.0.1.2.3.', bass: 'xx.xxx.xxx.xxx.x', drum: 'KkK.KkK.KkK.KkKc' },
+    },
     battle: { bpm: 138, root: 57, sc: 'min', order: ['A', 'A', 'B', 'C'],
       A: { inst: 'pipa', mel: '0 . 0 2 3 . 2 0 4 . 3 2 3 - - - | 5 . 4 3 2 . 3 4 2 1 0 -1 0 - - -', ch: [0, -1], bass: 'x.x.x.o.x.x.x.o.', drum: 'K.k.K.k.K.k.Kkk.' },
       B: { inst: 'erhu', mel: '5 - - - 6 - 5 4 3 - - - 2 - 3 - | 4 - - - 3 - 2 1 0 - - - - - . .', ch: [2, 0], bass: 'x.x.x.x.x.x.x.x.', drum: 'K.k.K.kkK.k.K.kc' },
@@ -384,6 +406,19 @@ const Sound = (() => {
     }
   }
 
+  // ゲームの進み具合（0 序盤・1 中盤・2 終盤）。一度進んだら戻らない
+  function mapStage() {
+    try {
+      if (typeof G === 'undefined' || !G || !G.cities) return 0;
+      const mine = G.cities.filter(c => c.owner === G.player).length, tot = G.cities.length;
+      const alive = G.factions.filter(f => f.alive).length;
+      const sc = typeof SCENARIOS !== 'undefined' ? SCENARIOS.find(x => x.id === G.scen) : null;
+      const yrs = sc && !sc.dream ? G.year - sc.year : 0;
+      let st = mine >= tot * 0.45 || alive <= 3 ? 2 : mine >= tot * 0.18 || alive <= 6 || yrs >= 12 ? 1 : 0;
+      st = Math.max(st, G.bgmStage || 0); G.bgmStage = st;
+      return st;
+    } catch (e) { return 0; }
+  }
   const api = {
     init,
     get muted() { return muted; },
@@ -396,7 +431,12 @@ const Sound = (() => {
     // mood：title / map（季節で曲が変わる）/ battle / defend / crisis / duel / ending / sad
     bgm(mood) {
       let key = mood;
-      if (mood === 'map') key = 'map' + ((typeof G !== 'undefined' && G && G.season >= 0) ? G.season : 0);
+      if (mood === 'map') {
+        // 地図の曲：序盤は季節の曲、中盤・終盤はそれぞれの曲（春夏と秋冬で2曲ずつ）
+        const ss = (typeof G !== 'undefined' && G && G.season >= 0) ? G.season : 0;
+        const st = mapStage();
+        key = st === 2 ? (ss < 2 ? 'late0' : 'late1') : st === 1 ? (ss < 2 ? 'mid0' : 'mid1') : 'map' + ss;
+      }
       if (!ctx) { curMood = mood; return; }
       if (curMood === key) return;
       curMood = key; curSong = SONGS[key] || null;
@@ -407,6 +447,7 @@ const Sound = (() => {
       if (key !== 'battle' && key !== 'defend' && key !== 'crisis' && key !== 'duel') setAmb(null);
     },
     get mood() { return curMood; },
+    mapStage,
     stop() { curMood = null; curSong = null; if (timer) clearInterval(timer); timer = null; setAmb(null); },
     amb: setAmb,
     se,
