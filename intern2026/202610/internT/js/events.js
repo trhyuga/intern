@@ -593,6 +593,64 @@ const Events = (() => {
   ];
   HIST.push(...SIDE_EVENTS);
 
+  // ---------------- 最弱の4人にゆかりのイベント（アクセント） ----------------
+  // 楊松・劉禅・曹豹・邢道栄。悪い出来事が中心で、良い出来事も少し。repeat のものは何度でも起きる（確率は低め）
+  const sv = n => { const g = serving(n); return g && g.state === 'serve' ? g : null; };
+  const enemyAdj = c => c.adj.map(a => G.cities[a]).filter(o => o.owner !== null && o.owner !== c.owner && !Game.isAlly(c.owner, o.owner));
+  const strongest = (fi, not) => Game.gensOf(fi).filter(g => !g.isLord && g.name !== not).sort((a, b) => (b.war + b.lead) - (a.war + a.lead))[0];
+  const ev4 = (id, name, title, chance, repeat, cond, run) => ({ id, title, chance, repeat, cond: () => { const g = sv(name); return !!g && (!cond || cond(g)); }, run: () => { const g = sv(name); const t = run(g); if (!t) return null; return { title, gen: t.gen || name, expr: t.expr || 'shock', fac: g.faction, big: !!t.big, text: t.text }; } });
+  const WEAK_EVENTS = [
+    // ---- 楊松：欲深い張魯の家臣 ----
+    ev4('w_ys_bribe', '楊松', '楊松、賄賂を受け取る', 0.08, true, null, g => { const c = G.cities[g.city]; const v = Math.round(c.gold * 0.12); c.gold -= v; c.loyal = Math.max(0, c.loyal - 5);
+      return { text: `楊松の屋敷に、夜な夜な怪しげな客が出入りしている。気づけば${c.name}の蔵から金が消えていた。\n楊松「はて、何のことやら。わしは知りませぬなあ」\n${c.name}の金 −${v}、民忠 −5` }; }),
+    ev4('w_ys_slander', '楊松', '楊松の讒言', 0.07, true, g => !!strongest(g.faction, '楊松'), g => { const t = (['馬超', '龐徳'].map(sv).find(x => x && x.faction === g.faction && !x.isLord)) || strongest(g.faction, '楊松'); t.loyalty = Math.max(0, t.loyalty - 15);
+      return { gen: t.name, expr: 'angry', text: `楊松「殿、${t.name}は近ごろ、よからぬ者と通じているようでございますぞ」\nありもしない噂を流された${t.name}は、主君に疑われていると感じている。\n${t.name}の忠誠 −15` }; }),
+    ev4('w_ys_betray', '楊松', '楊松、敵に通じる', 0.12, false, g => g.loyalty < 60 && enemyAdj(G.cities[g.city]).length > 0, g => { const c = G.cities[g.city]; c.def = Math.round(c.def * 0.7); c.troops = Math.round(c.troops * 0.9);
+      return { big: true, text: `賄賂に目のくらんだ楊松が、${c.name}の守りの手薄な所を敵に漏らしていた！\n${c.name}の城壁 −30%、兵 −10%` }; }),
+    ev4('w_ys_hoard', '楊松', '楊松の隠し蔵', 0.06, false, null, g => { const c = G.cities[G.factions[g.faction].capital]; c.gold += 1200; g.loyalty = Math.max(0, g.loyalty - 20);
+      return { expr: 'sad', text: `楊松の屋敷の床下から、ため込んだ金銀がざくざくと出てきた。すべて国の蔵に納めさせた。\n楊松「あ、あれはいざという時のために……」\n本拠の金 +1200、楊松の忠誠 −20` }; }),
+    ev4('w_ys_bribe_foe', '楊松', '金で動かす', 0.06, true, g => enemyAdj(G.cities[g.city]).length > 0, g => { const o = pick(enemyAdj(G.cities[g.city])); const t = Game.gensIn(o.i, o.owner).filter(x => !x.isLord && !Game.has(x, '忠義'))[0]; if (!t) return null; t.loyalty = Math.max(0, t.loyalty - 15);
+      return { expr: 'happy', text: `楊松「金で動かぬ者などおりませぬ。ふっふっふ」\n楊松が袖の下を使って、${o.name}の${t.name}に揺さぶりをかけた。\n${t.name}の忠誠 −15` }; }),
+    // ---- 劉禅：劉備の子。おっとりとした若君 ----
+    ev4('w_ls_feast', '劉禅', '宴に興じる', 0.08, true, null, g => { const c = G.cities[g.city]; c.gold = Math.max(0, c.gold - 400); pct(c, 'comm', 'commMax', -0.04);
+      return { expr: 'happy', text: `劉禅は今日も宴を開き、歌と踊りに興じている。\n劉禅「みな、楽しんでおるか？ 堅いことは明日考えればよい」\n${c.name}の金 −400、商業 −4%` }; }),
+    ev4('w_ls_nap', '劉禅', '若君の昼寝', 0.07, true, null, g => { const c = G.cities[g.city]; c.train = Math.max(0, c.train - 6);
+      return { expr: 'normal', text: `調練の視察に来たはずの劉禅が、木陰ですやすやと眠っている。兵たちもつられて気が抜けてしまった。\n${c.name}の訓練 −6` }; }),
+    ev4('w_ls_toss', '劉禅', '阿斗を地に投げる', 0.3, false, g => sameF2('劉禅', '劉備') && sameF2('劉禅', '趙雲'), g => { const z = sv('趙雲'); z.loyalty = 100; up(z, 'cha', 1); up(sv('劉備'), 'cha', 1);
+      return { gen: '劉備', expr: 'angry', text: '幼い阿斗（劉禅）を抱いて敵中を駆け抜けた趙雲。劉備は受け取った我が子を地に投げ出した。\n劉備「この子のために、危うく大事な将を失うところであった！」\n趙雲は涙を流して忠誠を誓った。\n趙雲の忠誠 100・魅力 +1、劉備の魅力 +1' }; }),
+    ev4('w_ls_trust', '劉禅', '相父に任せる', 0.3, false, g => g.isLord && facOf('諸葛亮') === g.faction, g => { const z = sv('諸葛亮'); z.loyalty = 100; Game.citiesOf(g.faction).forEach(c => { pct(c, 'farm', 'farmMax', 0.03); pct(c, 'comm', 'commMax', 0.03); });
+      return { expr: 'happy', text: '劉禅「政のことは、すべて相父（諸葛亮）にお任せしよう。わしは祭りごとだけをしておればよい」\n諸葛亮は、若き主君の信頼に命をかけて応えることを誓った。\n諸葛亮の忠誠 100、全都市の農業・商業 +3%' }; }),
+    ev4('w_ls_happy', '劉禅', '此間楽し', 0.3, false, g => { const l = Game.lordOf(g.faction); return !g.isLord && l && !['劉備', '劉禅'].includes(l.name); }, g => { g.loyalty = 100;
+      return { expr: 'happy', text: '故郷を懐かしくないかと問われた劉禅は、にこにこと答えた。\n劉禅「ここは楽しゅうございます。故郷のことなど思い出しませぬ」\n劉禅の忠誠 100' }; }),
+    ev4('w_ls_kind', '劉禅', '気のいい若君', 0.06, true, null, g => { const c = G.cities[g.city]; c.loyal = Math.min(100, c.loyal + 5);
+      return { expr: 'happy', text: `町に出た劉禅が、子どもたちと一緒に凧揚げをしていた。おっとりとした若君は、民にはなぜか好かれている。\n${c.name}の民忠 +5` }; }),
+    // ---- 曹豹：陶謙の家臣 ----
+    ev4('w_cb_drink', '曹豹', '酒席の諍い', 0.3, false, g => sameF2('曹豹', '張飛'), g => { const z = sv('張飛'); g.loyalty = Math.max(0, g.loyalty - 25); z.loyalty = Math.max(0, z.loyalty - 5);
+      return { gen: '張飛', expr: 'angry', big: true, text: '張飛「おい曹豹、俺の酒が飲めんというのか！」\n禁酒の誓いを破った張飛は、酒を断った曹豹を鞭で打ちすえた。曹豹の目に、暗い恨みの色が浮かんだ――\n曹豹の忠誠 −25、張飛の忠誠 −5' }; }),
+    ev4('w_cb_gate', '曹豹', '城門を開く', 0.25, false, g => g.loyalty < 45 && G.cities[g.city].i !== G.factions[g.faction].capital && enemyAdj(G.cities[g.city]).length > 0, g => {
+      const c = G.cities[g.city], old = c.owner; const foes = enemyAdj(c); const lb = foes.find(o => Game.lordOf(o.owner) && Game.lordOf(o.owner).name === '呂布') || pick(foes);
+      if (Math.random() < 0.5) { c.def = Math.round(c.def * 0.6); c.troops = Math.round(c.troops * 0.85); return { big: true, text: `曹豹が夜中にこっそり${c.name}の城門を開けようとしたところを、見張りが取り押さえた。だが城内は大混乱に陥った。\n${c.name}の城壁 −40%、兵 −15%` }; }
+      const nf = lb.owner; c.owner = nf; Game.gensIn(c.i, old).forEach(x => { if (x !== g) x.city = G.factions[old].capital; }); g.faction = nf; g.loyalty = irnd(50, 70);
+      return { big: true, text: `曹豹が夜中に${c.name}の城門を開け、${G.factions[nf].name}軍を引き入れた！\n${c.name}は${G.factions[nf].name}軍のものとなった。曹豹も${G.factions[nf].name}軍に降った` }; }),
+    ev4('w_cb_danyang', '曹豹', '丹陽の兵', 0.08, false, null, g => { const c = G.cities[g.city]; c.troops += 2000; c.train = Math.min(100, c.train + 5);
+      return { expr: 'happy', text: `勇猛で知られる丹陽の兵を、曹豹が呼び寄せた。\n曹豹「丹陽の兵は強いですぞ。……率いるわしは、まあ、ほどほどですがな」\n${c.name}の兵 +2000・訓練 +5` }; }),
+    ev4('w_cb_inlaw', '曹豹', '娘婿は呂布', 0.25, false, g => { const f = facByLord('呂布'); return f >= 0 && f !== g.faction; }, g => { g.loyalty = Math.max(0, g.loyalty - 15);
+      return { expr: 'normal', text: '曹豹の娘は、あの呂布に嫁いでいる。敵方の娘婿から、たびたび手紙が届いているらしい。\n曹豹の忠誠 −15' }; }),
+    // ---- 邢道栄：零陵の自称「上将」 ----
+    ev4('w_xd_boast', '邢道栄', '万夫不当の大言', 0.08, true, null, g => { const c = G.cities[g.city]; c.train = Math.min(100, c.train + 4); g.loyalty = Math.min(100, g.loyalty + 3);
+      return { expr: 'angry', text: `邢道栄「この零陵の上将・邢道栄、万の敵をもってしても止められぬわ！ わはははは！」\n大斧を振り回す邢道栄の大声に、兵たちは苦笑いしつつも元気づけられた。\n${c.name}の訓練 +4` }; }),
+    ev4('w_xd_feast', '邢道栄', '前祝いの大宴会', 0.07, true, null, g => { const c = G.cities[g.city]; c.gold = Math.max(0, c.gold - 250); c.food = Math.max(0, c.food - 1500);
+      return { expr: 'happy', text: `邢道栄「勝ったも同然！ 前祝いじゃ、飲め飲め！」\nまだ戦も始まっていないのに、邢道栄が兵たちと大宴会を開いた。\n${c.name}の金 −250・兵糧 −1500` }; }),
+    ev4('w_xd_fear', '邢道栄', '張飛と趙雲が怖い', 0.15, false, g => ['張飛', '趙雲'].some(n => { const x = sv(n); return x && x.faction !== g.faction && G.cities[x.city].adj.includes(g.city); }), g => { const who = ['張飛', '趙雲'].map(sv).find(x => x && x.faction !== g.faction && G.cities[x.city].adj.includes(g.city)); g.loyalty = Math.max(0, g.loyalty - 10); up(g, 'war', -1);
+      return { expr: 'shock', text: `隣の城に${who.name}がいると聞いた邢道栄は、急に腹が痛いと言い出した。\n邢道栄「い、いや、怖いわけではないぞ。たまたま腹が……」\n邢道栄の武力 −1、忠誠 −10` }; }),
+    ev4('w_xd_fake', '邢道栄', '偽りの降伏', 0.15, false, g => g.loyalty < 50 && enemyAdj(G.cities[g.city]).length > 0, g => { const c = G.cities[g.city]; c.def = Math.round(c.def * 0.85);
+      return { big: true, text: `邢道栄が「降伏したふりをして敵を誘い込む」と言い出し、勝手に敵陣へ出かけた。案の定、こちらの陣の様子をべらべらとしゃべってきたらしい。\n${c.name}の城壁 −15%` }; }),
+    ev4('w_xd_axe', '邢道栄', '大斧の稽古', 0.06, true, g => g.war < 85, g => { up(g, 'war', 1);
+      return { expr: 'angry', text: '邢道栄は毎朝、六十斤の大斧を振って稽古に励んでいる。……腕は、少しずつ上がっているようだ。\n邢道栄の武力 +1' }; }),
+  ];
+  function sameF2(a, b) { const x = sv(a), y = sv(b); return !!(x && y && x.faction === y.faction); }
+  HIST.push(...WEAK_EVENTS);
+
   // ---------------- 君主ごとのイベントの別の展開 ----------------
   // 本来のイベントが、ゲーム開始から3年たっても起きていない（条件がそろわない）とき、代わりにこちらが起きる。
   // どちらか一方だけ。どの君主でも、1回のゲームで必ずどちらかが起きる（その君主が生きて君主である限り）
