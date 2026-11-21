@@ -102,8 +102,84 @@ const Battle = (() => {
       Sound.se('warcry');
       Sound.amb(B.weather === 'rain' ? 'rain' : null);
       draw();
-      startDay(true);
+      (async () => { try { await deployField(); } catch (e) { console.error('deploy', e); } draw(); startDay(true); })();
     });
+  }
+
+  // ---------- 守り手の城外の布陣 ----------
+  // 守り手の部隊（総大将・君主以外）を、森（伏兵）・山（陣取る）・川辺（渡河を狙う）に置ける。
+  // 部隊の多い同士の戦いほど、城外に出る部隊が増える
+  const POST_NAME = { forest: '森に伏兵', mount: '山に陣取る', river: '川辺で待ち構える' };
+  function postSpots(kind) {
+    const out = [];
+    for (let r = 3; r < ROWS - 2; r++) for (let c = 0; c < COLS; c++) {
+      if (unitAt(r, c)) continue;
+      const t = B.tiles[r][c].t;
+      if (kind === 'forest' && t === 'forest') out.push([r, c]);
+      if (kind === 'mount' && t === 'mount') out.push([r, c]);
+      if (kind === 'river' && !['water', 'ford'].includes(t) && inb(r + 1, c) && ['water', 'ford'].includes(B.tiles[r + 1][c].t)) out.push([r, c]);
+    }
+    // 城に近く、道（真ん中）に近い所から。川辺は浅瀬の前を優先
+    return out.sort((a, b) => (a[0] + Math.abs(a[1] - 4) * 0.7 - (kind === 'river' && B.tiles[a[0] + 1][a[1]].t === 'ford' ? 3 : 0)) - (b[0] + Math.abs(b[1] - 4) * 0.7 - (kind === 'river' && B.tiles[b[0] + 1][b[1]].t === 'ford' ? 3 : 0)));
+  }
+  function placePost(u, kind) {
+    const sp = postSpots(kind)[0];
+    if (!sp) return false;
+    u.r = sp[0]; u.c = sp[1]; u.x = u.c; u.y = u.r; u.post = kind; u.holdPost = true;
+    if (kind === 'forest') u.ambush = true;
+    return true;
+  }
+  // 将に向いた布陣：知力が高ければ森の伏兵、統率が高ければ山、武力が高ければ川辺
+  function bestPost(u) {
+    const g = u.g, opts = [];
+    if (postSpots('forest').length) opts.push(['forest', g.int * 1.2 + (Game.has(g, '智謀') || Game.has(g, '神算') ? 15 : 0)]);
+    if (postSpots('mount').length) opts.push(['mount', g.lead * 1.1 + (Game.has(g, '慎重') ? 10 : 0)]);
+    if (postSpots('river').length) opts.push(['river', g.war * 1.1 + (Game.has(g, '弓術') ? 15 : 0) + (Game.has(g, '水軍') ? 10 : 0)]);
+    opts.sort((a, b) => b[1] - a[1]);
+    return opts[0] ? opts[0][0] : null;
+  }
+  async function deployField() {
+    const defs = B.units.filter(u => u.side === 'def' && !u.commander && u.gi >= 0 && !u.g.isLord);
+    const nDef = B.units.filter(u => u.side === 'def').length, nAtk = B.units.filter(u => u.side === 'atk').length;
+    if (!defs.length || nDef < 3) return;
+    const manual = B.playerSide === 'def' && !auto && !B.watch;
+    if (manual) {
+      for (const u of defs) {
+        const opts = [{ label: '城内に構える', sub: '城壁に拠って戦う', value: 'castle' }];
+        [['forest', `敵が隣に来た瞬間に奇襲（知力 ${u.g.int}：高いほど大打撃）`], ['mount', '山の上で守りが固くなる'], ['river', '川を渡る敵を大きく叩く']].forEach(([k, sub]) => opts.push({ label: POST_NAME[k], sub, value: k, disabled: !postSpots(k).length }));
+        const v = await UI.choose(`${u.g.name}隊（兵 ${u.troops}）の布陣`, opts, false);
+        if (v && v !== 'castle') placePost(u, v);
+        draw();
+      }
+    } else {
+      // コンピュータ（と委任・観戦）：部隊の多い同士ほど城外に出す
+      let n = Math.floor(nDef / 2) + (nAtk >= 4 ? 1 : 0);
+      if (nAtk < 3 && Math.random() < 0.5) n--;
+      n = Math.min(n, defs.length);
+      const order = defs.slice().sort((a, b) => Math.max(b.g.int, b.g.lead, b.g.war) - Math.max(a.g.int, a.g.lead, a.g.war));
+      for (const u of order.slice(0, Math.max(0, n))) { const k = bestPost(u); if (k) placePost(u, k); }
+    }
+    const out = B.units.filter(u => u.post);
+    if (out.length) addLog(`守り手は城外に布陣した：${out.map(u => `${u.g.name}（${POST_NAME[u.post]}）`).join('、')}`);
+  }
+  // 森の伏兵：敵が隣に来た瞬間、知力に応じた大打撃を与える
+  async function checkAmbush(mover) {
+    if (!mover.alive) return;
+    const amb = B.units.filter(o => o.alive && o.ambush && o.side !== mover.side && dist(o, mover) === 1);
+    for (const o of amb) {
+      o.ambush = false;
+      const rate = 0.05 + o.g.int * 0.0022 + (Game.has(o.g, '智謀') || Game.has(o.g, '神算') ? 0.04 : 0);
+      const dmg = Math.round(Math.min(mover.troops * rate, o.troops * 0.6) + 100);
+      mover.troops = Math.max(0, mover.troops - dmg); mover.morale = Math.max(0, mover.morale - 15); mover.acted = true;
+      if (o.g.int >= 80 && Math.random() < (o.g.int - 60) / 80) { mover.confused = 2; addFloater(mover.r, mover.c, '混乱', '#ffd23a'); }
+      Sound.se('warcry'); slash(mover.r, mover.c);
+      addFloater(mover.r, mover.c, `伏兵！-${dmg}`, '#ff6a5a');
+      addLog(`森に伏せていた${o.g.name}隊が、${mover.g.name}隊に襲いかかった！`);
+      bubble(o, pick(['かかったな！ 森の中こそ我らの城よ', '今だ、伏兵、かかれーっ！', '待っておったぞ。討ち取れ！']));
+      await sleep(600);
+      await checkRout(mover, o);
+      if (!mover.alive) return;
+    }
   }
 
   function pickWeather() { const r = Math.random(); return r < 0.6 ? 'sun' : r < 0.85 ? 'cloud' : 'rain'; }
@@ -206,7 +282,7 @@ const Battle = (() => {
     if (B.reach) { B.reach.forEach(k => { const [r, q] = k.split(',').map(Number); ctx.fillStyle = 'rgba(80,160,255,0.35)'; ctx.fillRect(q * s + 1, r * s + 1, s - 2, s - 2); }); }
     if (B.targets) { B.targets.forEach(([r, q]) => { ctx.strokeStyle = '#ff3b2f'; ctx.lineWidth = 3; ctx.strokeRect(q * s + 2, r * s + 2, s - 4, s - 4); ctx.fillStyle = 'rgba(255,60,40,0.2)'; ctx.fillRect(q * s + 2, r * s + 2, s - 4, s - 4); }); }
     // 部隊
-    B.units.filter(u => u.alive).sort((a, b) => a.y - b.y).forEach(u => drawUnit(u));
+    B.units.filter(u => u.alive && !(u.ambush && (u.side !== B.playerSide || B.watch))).sort((a, b) => a.y - b.y).forEach(u => { if (u.ambush) { ctx.globalAlpha = 0.5; drawUnit(u); ctx.globalAlpha = 1; } else drawUnit(u); });
     // 粒子
     particles = particles.filter(p => p.life > 0);
     particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; ctx.globalAlpha = p.life / p.max; ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0, p.size * p.life / p.max), 0, 7); ctx.fill(); });
@@ -345,7 +421,7 @@ const Battle = (() => {
     let range = Game.has(u.g, '弓術') ? 2 : 1;
     // 城壁の上からは、城外の敵にも矢が届く
     if (u.side === 'def' && r <= 2 && B.tiles[2][4].t === 'gate' && ['inner', 'gate'].includes(B.tiles[r][c].t)) range = 2;
-    const res = B.units.filter(o => o.alive && o.side !== u.side && Math.abs(o.r - r) + Math.abs(o.c - c) <= range);
+    const res = B.units.filter(o => o.alive && o.side !== u.side && !o.ambush && Math.abs(o.r - r) + Math.abs(o.c - c) <= range);
     const out = res.map(o => [o.r, o.c]);
     if (u.side === 'atk' && B.tiles[2][4].t === 'gate' && !unitAt(2, 4) && Math.abs(2 - r) + Math.abs(4 - c) <= 1) out.push([2, 4]);   // 門の上に誰かいれば、その部隊が相手
     return out;
@@ -384,6 +460,10 @@ const Battle = (() => {
       if (B.night) bonus *= 1.3;
       k *= 1 + bonus;
     }
+    // 山に陣取った守り手は、さらに守りが固い
+    if (d.post === 'mount' && t === 'mount') k /= 1.3;
+    // 渡河中（川・浅瀬にいる）の部隊を、岸から叩くと大打撃。川辺で待ち構えた部隊ならなおさら
+    if (['water', 'ford'].includes(t) && !['water', 'ford'].includes(at)) k *= a.post === 'river' ? 1.7 : 1.35;
     // 囲まれた部隊は、反撃の手も鈍る
     const asur = surrounders(a).length;
     if (asur >= 3 && isField(a)) k *= 0.85;
@@ -424,6 +504,7 @@ const Battle = (() => {
     u.r = r; u.c = c;
     if (!auto && (r !== fr || c !== fc)) Sound.se('horse');
     await new Promise(res => { const step = () => { const k = Math.min(1, (performance.now() - t0) / dur * (G.opts.aiSpeed || 1)); const e = k * (2 - k); u.y = fr + (r - fr) * e; u.x = fc + (c - fc) * e; if (k < 1) requestAnimationFrame(step); else res(); }; step(); });
+    if (r !== fr || c !== fc) await checkAmbush(u);
   }
 
   async function doAttack(a, r, c) {
@@ -1144,6 +1225,7 @@ const Battle = (() => {
       const s = B.sel; B.mode = 'busy'; B.reach = null; setActions([]);
       s.prev = [s.r, s.c];
       await animateMove(s, r, c);
+      if (s.acted || !s.alive) { await afterAct(); return; }   // 伏兵に襲われた
       actMenu(s);
       return;
     }
@@ -1301,7 +1383,7 @@ const Battle = (() => {
   }
 
   async function aiUnit(u, rogue) {
-    const foes = B.units.filter(o => o.alive && o.side !== u.side);
+    const foes = B.units.filter(o => o.alive && o.side !== u.side && !o.ambush);   // 森に伏せた敵は見えない
     if (!foes.length) { u.acted = true; return; }
     showInfo(u);
     const wmine = B.watch && u.side === B.playerSide;
@@ -1313,10 +1395,19 @@ const Battle = (() => {
     if (!rogue && await tryPlot(u, wmine, foes)) return;
     // 守り手（総大将）や城内の部隊は、敵が近づくまで動かない
     const nearest = foes.slice().sort((a, b) => dist(a, u) - dist(b, u))[0];
+    // 城外に布陣した守り手：森の伏兵は敵が隣に来るまで動かない。山・川辺は陣を動かず、届く敵を討つ（門が破れるか、守り手が優勢になれば打って出る）
+    if (u.holdPost && (!gateUp() || outlook('def') > 0.35)) u.holdPost = false;
+    if (u.holdPost && !rogue) {
+      const t = attackTargets(u).filter(([r, c]) => unitAt(r, c));
+      if (t.length && !u.ambush) { const [r, c] = bestTarget(u, t); await doAttack(u, r, c); return; }
+      u.acted = true; return;
+    }
     if (u.side === 'def' && !rogue && (u.src == null || u.militia)) {
       const keepGuard = u.commander && B.tiles[u.r][u.c].t === 'keep';
       // 門が無事なうちは、城内の部隊は城壁に拠って戦う（よほど優勢なら打って出る）
-      const holdWall = u.r <= 2 && gateUp() && outlook('def') < 0.3;
+      // 部隊の多い同士の戦いでは、少し優勢なだけでも城を出て野戦を挑む
+      const many = B.units.filter(o => o.alive && o.side === 'def').length >= 4 && B.units.filter(o => o.alive && o.side === 'atk').length >= 4;
+      const holdWall = u.r <= 2 && gateUp() && outlook('def') < (many ? 0.15 : 0.3);
       if (keepGuard || holdWall || (dist(nearest, u) > 4 && gateUp())) {
         const weakest = t => t.sort((a, b) => unitAt(a[0], a[1]).troops - unitAt(b[0], b[1]).troops)[0];
         let t = attackTargets(u).filter(([r, c]) => unitAt(r, c));
@@ -1381,6 +1472,7 @@ const Battle = (() => {
       if (score > bestScore) { bestScore = score; best = [r, c]; }
     });
     if (best && (best[0] !== u.r || best[1] !== u.c)) await animateMove(u, best[0], best[1]);
+    if (u.acted || !u.alive) return;   // 伏兵に襲われた
     // 着いた先で、必殺技・一騎打ち・計略の好機があれば狙う
     if (!rogue && await aiSkill(u)) return;
     if (await tryDuel(u, wmine)) return;
