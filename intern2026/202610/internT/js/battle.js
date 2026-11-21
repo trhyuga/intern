@@ -173,13 +173,13 @@ const Battle = (() => {
     const amb = B.units.filter(o => o.alive && o.ambush && o.side !== mover.side && dist(o, mover) === 1);
     for (const o of amb) {
       o.ambush = false;
-      const rate = 0.05 + o.g.int * 0.0022 + (Game.has(o.g, '智謀') || Game.has(o.g, '神算') ? 0.04 : 0);
+      const rate = (0.05 + o.g.int * 0.0022 + (Game.has(o.g, '智謀') || Game.has(o.g, '神算') ? 0.04 : 0)) * (isRain() ? 1.5 : 1);   // 雨の森は気配が消え、深く斬り込める
       const dmg = Math.round(Math.min(mover.troops * rate, o.troops * 0.6) + 100);
       mover.troops = Math.max(0, mover.troops - dmg); mover.morale = Math.max(0, mover.morale - 15); mover.acted = true;
-      if (o.g.int >= 80 && Math.random() < (o.g.int - 60) / 80) { mover.confused = 2; addFloater(mover.r, mover.c, '混乱', '#ffd23a'); }
+      if ((o.g.int >= 80 || isRain()) && Math.random() < (o.g.int - 60) / 80 + (isRain() ? 0.25 : 0)) { mover.confused = 2; addFloater(mover.r, mover.c, '混乱', '#ffd23a'); }
       Sound.se('warcry'); slash(mover.r, mover.c);
       addFloater(mover.r, mover.c, `伏兵！-${dmg}`, '#ff6a5a');
-      addLog(`森に伏せていた${o.g.name}隊が、${mover.g.name}隊に襲いかかった！`);
+      addLog(isRain() ? `雨音に紛れて森に伏せていた${o.g.name}隊が、${mover.g.name}隊に襲いかかった！` : `森に伏せていた${o.g.name}隊が、${mover.g.name}隊に襲いかかった！`);
       bubble(o, pick(['かかったな！ 森の中こそ我らの城よ', '今だ、伏兵、かかれーっ！', '待っておったぞ。討ち取れ！']));
       await sleep(600);
       await checkRout(mover, o);
@@ -390,6 +390,8 @@ const Battle = (() => {
   // 鉄壁の采配を持つ守りの名手（史書・演義で城や陣を守り抜いたことで知られる将）
   //  曹仁（樊城）・郝昭（陳倉）・満寵（合肥）・陸遜（夷陵・石亭）・司馬懿（五丈原で蜀の北伐を防ぐ）
   const GUARDIANS = ['曹仁', '郝昭', '満寵', '陸遜', '司馬懿'];
+  // 雨：夜襲・伏兵が決まりやすく強い、兵糧が傷む、増水した川を渡る部隊は大きな痛手を負う
+  const isRain = () => B && B.weather === 'rain';
   // 知略の将（知力75以上か、智謀・神算）
   const isWise = u => u && u.gi >= 0 && (u.g.int >= 75 || Game.has(u.g, '智謀') || Game.has(u.g, '神算'));
   const isFierce = u => u && u.gi >= 0 && u.g.war >= 85;   // 猛将
@@ -479,7 +481,7 @@ const Battle = (() => {
     // 山に陣取った守り手は、さらに守りが固い
     if (d.post === 'mount' && t === 'mount') k /= 1.3;
     // 渡河中（川・浅瀬にいる）の部隊を、岸から叩くと大打撃。川辺で待ち構えた部隊ならなおさら
-    if (['water', 'ford'].includes(t) && !['water', 'ford'].includes(at)) k *= a.post === 'river' ? 1.7 : 1.35;
+    if (['water', 'ford'].includes(t) && !['water', 'ford'].includes(at)) k *= (a.post === 'river' ? 1.7 : 1.35) * (isRain() ? 1.35 : 1);   // 雨で増水した川では、足を取られてなお脆い
     // 囲まれた部隊は、反撃の手も鈍る
     const asur = surrounders(a).length;
     if (asur >= 3 && isField(a)) k *= 0.85;
@@ -910,12 +912,12 @@ const Battle = (() => {
     if (!cands.length) return;
     const bait = o => (Game.has(o.g, '猪突') ? 3 : 0) + (Game.has(o.g, '剛勇') ? 2 : 0) + (isFierce(o) ? 1.5 : 0) - (o.commander ? 1 : 0) - (Game.has(o.g, '慎重') ? 2 : 0) - o.g.int / 40;
     const t = cands.sort((a, b) => bait(b) - bait(a))[0];
-    const p = clamp(0.3 + (schemer.g.int - 75) / 80 + (Game.has(schemer.g, '智謀') || Game.has(schemer.g, '神算') ? 0.1 : 0) + bait(t) * 0.05, 0.1, 0.7);
+    const p = clamp(0.3 + (schemer.g.int - 75) / 80 + (Game.has(schemer.g, '智謀') || Game.has(schemer.g, '神算') ? 0.1 : 0) + bait(t) * 0.05 + (isRain() ? 0.12 : 0), 0.1, isRain() ? 0.8 : 0.7);
     if (Math.random() > p) return;
     B.lures++; B.lureDay = B.day;
     const col = fi => fi === null ? '#777' : G.factions[fi].color;
     // 見破られることもある（相手の知力が高い・慎重・神算）
-    let seeP = clamp((t.g.int - schemer.g.int + 20) / 100 + (Game.has(t.g, '慎重') ? 0.2 : 0) + (Game.has(t.g, '神算') ? 0.4 : 0), 0, 0.85);
+    let seeP = clamp((t.g.int - schemer.g.int + 20) / 100 + (Game.has(t.g, '慎重') ? 0.2 : 0) + (Game.has(t.g, '神算') ? 0.4 : 0), 0, 0.85) * (isRain() ? 0.75 : 1);   // 雨の闇では退く兵の動きが見えにくい
     // 守り手に知恵者（知力80以上か智謀・神算）がいれば、罠だと止める。守り手に余裕がある（優勢）なら、なおさら城を出ない
     const adv = B.units.filter(u => u.alive && u.side === 'def' && u !== t && u.gi >= 0 && (u.g.int >= 80 || Game.has(u.g, '智謀') || Game.has(u.g, '神算'))).sort((a, b) => b.g.int - a.g.int)[0];
     if (adv) seeP = Math.max(seeP, clamp(0.35 + (adv.g.int - schemer.g.int + 10) / 60, 0.3, 0.9));
@@ -954,10 +956,10 @@ const Battle = (() => {
     Sound.se('warcry');
     // 伏兵の奇襲：囲んだ部隊の数だけ、闇の中から一斉に斬りかかる（1部隊につき兵の7%、知略の将の隊は10%）
     const n = Math.min(slots.length, amb.length), wiseN = amb.slice(0, n).filter(isWise).length;
-    const hit = Math.round(t.troops * (0.07 * n + 0.03 * wiseN));
+    const hit = Math.round(t.troops * (0.07 * n + 0.03 * wiseN) * (isRain() ? 1.4 : 1));
     t.troops = Math.max(0, t.troops - hit); t.morale = Math.max(0, t.morale - 5 * n);
     addFloater(t.r, t.c, '伏兵！ -' + hit, '#ff6a5a');
-    addLog(`伏兵だ！ ${t.g.name}隊は闇の中で囲まれた`);
+    addLog(isRain() ? `伏兵だ！ ${t.g.name}隊は雨の闇の中で囲まれた` : `伏兵だ！ ${t.g.name}隊は闇の中で囲まれた`);
     if (!auto && !B.watch) await UI.talk(t.g, 'shock', `${t.g.name}「な、伏兵だと……！？ しまった、謀られたか！」`, col(t.fi), { tag: '夜戦' });
     else bubble(t, 'しまった、伏兵か！');
     await sleep(500);
@@ -975,7 +977,8 @@ const Battle = (() => {
     let p = 0.12 + (schemer.g.int - 75) / 100 + (Game.has(schemer.g, '智謀') || Game.has(schemer.g, '神算') ? 0.08 : 0);
     if (outlook('atk') > 0.2) p += 0.1;
     if (outlook('def') < 0) p += 0.1;
-    if (Math.random() > clamp(p, 0.05, 0.45)) return;
+    if (isRain()) p += 0.12;   // 雨の夜は物音も松明も消え、夜襲にうってつけ
+    if (Math.random() > clamp(p, 0.05, isRain() ? 0.6 : 0.45)) return;
     // 夜襲に出る部隊：総大将以外の、兵の多い順に2〜3部隊（知略の将の隊は必ず。総大将が知略の将なら、策だけ授ける）
     const raiders = defs.filter(u => !u.commander).sort((a, b) => (b === schemer ? 1e9 : 0) + b.troops - (a === schemer ? 1e9 : 0) - a.troops).slice(0, 3);
     if (!raiders.length) return;
@@ -990,10 +993,10 @@ const Battle = (() => {
     else bubble(schemer, '今宵、敵陣を襲う。松明を消せ');
     B.night = true;
     Sound.se('horn');
-    await banner('夜襲！', 1200);
+    await banner(isRain() ? '雨の夜襲！' : '夜襲！', 1200);
     // 見破られると、待ち構えられて逆に痛手を負う（攻め手の知力が高い・慎重・神算）
     const watcher = atks.filter(o => o.gi >= 0).sort((a, b) => b.g.int - a.g.int)[0];
-    const seeP = watcher ? clamp((watcher.g.int - schemer.g.int + 15) / 100 + (Game.has(target.g, '慎重') ? 0.15 : 0) + (Game.has(watcher.g, '神算') ? 0.3 : 0), 0, 0.8) : 0;
+    const seeP = watcher ? clamp((watcher.g.int - schemer.g.int + 15) / 100 + (Game.has(target.g, '慎重') ? 0.15 : 0) + (Game.has(watcher.g, '神算') ? 0.3 : 0), 0, 0.8) * (isRain() ? 0.6 : 1) : 0;
     if (Math.random() < seeP) {
       addLog(`${schemer.g.name}の夜襲は、${watcher.g.name}に見破られていた！`);
       bubble(watcher, pick(['夜襲は読めておったわ。射よ！', '来ると思うておった。返り討ちにせよ！']));
@@ -1002,7 +1005,7 @@ const Battle = (() => {
       for (const u of raiders) await checkRout(u, watcher);
       return;
     }
-    addLog(`${schemer.g.name}の夜襲！ 守り手が闇に紛れて${target.g.name}の陣を襲った`);
+    addLog(isRain() ? `${schemer.g.name}の夜襲！ 守り手が雨音に紛れて${target.g.name}の陣を襲った` : `${schemer.g.name}の夜襲！ 守り手が闇に紛れて${target.g.name}の陣を襲った`);
     // 城を出て、狙った陣の四方に忍び寄る
     const home = raiders.map(u => [u.r, u.c]);
     const slots = DIRS.map(([dr, dc]) => [target.r + dr, target.c + dc]).filter(([r, c]) => free(r, c));
@@ -1012,14 +1015,14 @@ const Battle = (() => {
     // 不意打ち：寝込みを襲われた陣は反撃できず、士気が大きく落ち、周りの陣も浮き足立つ
     Sound.se('warcry');
     addFloater(target.r, target.c, '夜襲！', '#ff6a5a');
-    target.morale = Math.max(0, target.morale - 15);
-    atks.filter(o => o !== target && dist(o, target) <= 2).forEach(o => { o.morale = Math.max(0, o.morale - 6); });
+    target.morale = Math.max(0, target.morale - (isRain() ? 22 : 15));
+    atks.filter(o => o !== target && dist(o, target) <= 2).forEach(o => { o.morale = Math.max(0, o.morale - (isRain() ? 9 : 6)); });
     if (target.gi >= 0 && Math.random() < 0.35 + (schemer.g.int - 80) / 100) { target.confused = 2; addFloater(target.r, target.c, '混乱', '#ffd23a'); }
     B.raiding = true;
     try {
       for (const u of go) {
         if (!target.alive || !u.alive || B.over) break;
-        const extra = Math.round(target.troops * (isWise(u) ? 0.04 : 0.02));   // 闇の中の不意打ちの上乗せ
+        const extra = Math.round(target.troops * (isWise(u) ? 0.04 : 0.02) * (isRain() ? 1.6 : 1));   // 闇の中の不意打ちの上乗せ（雨ならなお大きい）
         target.troops = Math.max(0, target.troops - extra);
         await doAttack(u, target.r, target.c);
       }
@@ -1266,6 +1269,12 @@ const Battle = (() => {
           if (u) { const dmg = Math.round(u.troops * 0.1 + 100); u.troops = Math.max(0, u.troops - dmg); addFloater(r, c, '火-' + dmg, '#ffb02a'); await checkRout(u, null); }
           tl.fire--; if (B.weather === 'rain') tl.fire = 0;
         }
+      }
+      // 雨に打たれて兵糧が傷む（野営する攻め手は大きく、城の蔵にある守り手は少し）
+      if (B.weather === 'rain') {
+        const la = Math.round(Math.max(0, B.food) * 0.04), ld = Math.round(Math.max(0, B.defFood) * 0.01);
+        B.food -= la; B.defFood -= ld;
+        if (la > 0 && !B.rotSaid) { B.rotSaid = true; addLog('雨で兵糧が傷んだ（攻め手は野営のため痛手が大きい）'); }
       }
       B.weather = Math.random() < 0.7 ? B.weather : pickWeather();
       // 兵糧
