@@ -265,7 +265,10 @@ const Auto = (() => {
     // 武将が1〜2人の都市は、隣の都市の在野まで探しに行けるので、人材探しを重く見る
     const few = Game.gensIn(c.i, G.player).length;
     const hidden = Game.roninIn(c.i).filter(r => !r.known).concat(few <= 2 ? G.gens.filter(r => r.state === 'ronin' && c.adj.includes(r.city) && r.name !== '諸葛亮') : []);
-    n.search = hidden.length ? 1.0 + Math.min(1, Math.max(...hidden.map(r => r.lead + r.war + r.int + r.pol + r.cha)) / 400) + (few <= 1 ? 0.5 : few === 2 ? 0.25 : 0) : (few <= 1 ? 0.3 : 0.1);
+    n.search = hidden.length ? 1.0 + Math.min(1, Math.max(...hidden.map(r => r.lead + r.war + r.int + r.pol + r.cha)) / 400) + (few <= 1 ? 0.5 : few === 2 ? 0.25 : 0) : 0;   // 探す相手がいなければ探さない
+    // 探して見つからなかった都市は、新しい人物が来るか、3季節たつまで探さない（ほかの役に立つ命令に回す）
+    const memo = G.searchMemo && G.searchMemo[c.i];
+    if (memo && G.turn - memo.turn < 3 && hidden.every(r => memo.seen.includes(r.i))) n.search = 0;
     if (c.gold < CONFIG.CMD_COST) n.farm = n.comm = n.wall = 0;
     return { n, must };
   }
@@ -1423,6 +1426,11 @@ const Auto = (() => {
         if (first || Math.random() < 0.35) { await say('dom', { city: c.name, need: NEED_NAME[cmd], gen: gen.name }); first = false; }
         const r = Game.doCommand(cmd, gen, c);
         gen.acted = true;
+        if (cmd === 'search') {   // 見つからなかったら、その時の顔ぶれを覚えておく
+          G.searchMemo = G.searchMemo || {};
+          if (r.found) delete G.searchMemo[c.i];
+          else G.searchMemo[c.i] = { turn: G.turn, seen: G.gens.filter(x => x.state === 'ronin' && (x.city === c.i || c.adj.includes(x.city))).map(x => x.i) };
+        }
         if (r.found) {
           r.found.known = true;
           await UI.talk(gen, 'happy', `${gen.name}「在野に${r.found.name}という人物がおりました」`);

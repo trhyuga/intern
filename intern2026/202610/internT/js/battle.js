@@ -5,6 +5,7 @@
 //  ・守り手の勝ち: 30日守り切る / 攻め手全滅 / 攻めの総大将を倒す / 攻め手の兵糧切れ
 // ============================================================
 const Battle = (() => {
+  const fcol = fi => (fi != null && G.factions[fi]) ? G.factions[fi].color : '#777';   // 勢力の色（勢力がなければ灰色）
   const COLS = 9, ROWS = 11;
   const COST = { plain: 1, forest: 2, mount: 3, ford: 2, water: 99, inner: 1, keep: 1, gate: 1, wall: 99, road: 1 };
   const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.35, keep: 1.6, gate: 1.4, wall: 2, road: 1 };
@@ -308,7 +309,7 @@ const Battle = (() => {
 
   function drawUnit(u) {
     const s = cell, x = u.x * s, y = u.y * s;
-    const col = u.fi === null ? '#777' : G.factions[u.fi].color;
+    const col = (G.factions[u.fi] ? fcol(u.fi) : '#777');
     const shake = u.shake ? Math.sin(performance.now() / 20) * 3 : 0;
     const cx = x + s / 2 + shake, cy = y + s / 2;
     // 影
@@ -355,7 +356,7 @@ const Battle = (() => {
     const g = u.g;
     const t = B.tiles[u.r][u.c].t;
     info.innerHTML = `<div class="b-unit">
-      <img src="${Portrait.get(g, u.troops < u.maxTroops * 0.3 ? 'sad' : 'normal', u.fi === null ? '#777' : G.factions[u.fi].color)}" />
+      <img src="${Portrait.get(g, u.troops < u.maxTroops * 0.3 ? 'sad' : 'normal', (G.factions[u.fi] ? fcol(u.fi) : '#777'))}" />
       <div class="b-unit-body">
         <div class="b-unit-name">${g.name}${u.commander ? ' <span class="star">★総大将</span>' : ''} <small>${u.side === 'atk' ? '攻' : '守'}</small></div>
         <div class="b-unit-stat">兵 <b>${u.troops}</b> / 士気 ${Math.round(u.morale)} / ${TNAME[t]}</div>
@@ -546,8 +547,8 @@ const Battle = (() => {
     if (a.g.name === '関羽' && d.g.name === '曹操' && d.troops < d.maxTroops * 0.35 && !(G.events && G.events.huarong)) {
       G.events.huarong = true;
       if (!auto) {
-        await UI.talk(d.g, 'sad', '曹操「雲長、かつての情けを覚えておるか……」', G.factions[d.fi].color, { tag: '華容道' });
-        await UI.talk(a.g, 'sad', '関羽「……行け。これで恩は返した」', G.factions[a.fi].color, { tag: '華容道' });
+        await UI.talk(d.g, 'sad', '曹操「雲長、かつての情けを覚えておるか……」', fcol(d.fi), { tag: '華容道' });
+        await UI.talk(a.g, 'sad', '関羽「……行け。これで恩は返した」', fcol(a.fi), { tag: '華容道' });
       }
       d.alive = false; d.status = 'retreat'; a.acted = true;
       addLog('華容道：関羽は曹操を見逃した');
@@ -601,7 +602,7 @@ const Battle = (() => {
   function addLog(t) { B.log.unshift(t); const el = root && root.querySelector('.b-tip'); if (el) el.textContent = t; }
   async function say(u, expr, text) {
     if (auto) return;
-    await UI.talk(u.g, expr, text, u.fi === null ? '#777' : G.factions[u.fi].color, { quick: true });
+    await UI.talk(u.g, expr, text, (G.factions[u.fi] ? fcol(u.fi) : '#777'), { quick: true });
   }
 
   // ---------- 計略 ----------
@@ -640,7 +641,7 @@ const Battle = (() => {
   function cutin(u, sk) {
     if (auto) return Promise.resolve();
     const el = document.getElementById('cutin');
-    const col = u.fi === null ? '#777' : G.factions[u.fi].color;
+    const col = (G.factions[u.fi] ? fcol(u.fi) : '#777');
     el.innerHTML = `<div class="ci-band" style="--c:${col}"><img src="${Portrait.get(u.g, 'angry', col)}"><div class="ci-txt"><div class="ci-who">${u.g.name}</div><div class="ci-name">${sk.name}</div><div class="ci-line">「${sk.line}」</div></div></div>`;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     Sound.se('skill');
@@ -764,7 +765,7 @@ const Battle = (() => {
     for (const l of p.lines) {
       const nm = l.split('「')[0];
       const u = B.units.find(x => x.g.name === nm);
-      await UI.talk(u ? u.g : null, 'angry', l, u && u.fi !== null ? G.factions[u.fi].color : undefined, { tag: p.title });
+      await UI.talk(u ? u.g : null, 'angry', l, u && u.fi !== null ? fcol(u.fi) : undefined, { tag: p.title });
     }
   }
 
@@ -826,7 +827,7 @@ const Battle = (() => {
   async function doDuel(a, d) {
     a.acted = true;
     // 典韋の護衛：主君（曹操）への一騎討ちを引き受ける
-    if (d.g.name === '曹操') { const dw = B.units.find(x => x.alive && x.side === d.side && x.g.name === '典韋' && dist(x, a) <= 2); if (dw) { if (!auto) await UI.talk(dw.g, 'angry', '典韋「殿には指一本触れさせん！ 相手はこの俺だ！」', G.factions[dw.fi].color, { tag: '護衛' }); d = dw; } }
+    if (d.g.name === '曹操') { const dw = B.units.find(x => x.alive && x.side === d.side && x.g.name === '典韋' && dist(x, a) <= 2); if (dw) { if (!auto) await UI.talk(dw.g, 'angry', '典韋「殿には指一本触れさせん！ 相手はこの俺だ！」', fcol(dw.fi), { tag: '護衛' }); d = dw; } }
     // 三英戦呂布：劉備・関羽・張飛のうち2人以上がいると、三人がかりで呂布を退ける
     const lu = a.g.name === '呂布' ? a : d.g.name === '呂布' ? d : null;
     if (lu) {
@@ -835,8 +836,8 @@ const Battle = (() => {
       if (trio.length >= 2 && trio.includes(other) && !B.trioDone) {
         B.trioDone = true;
         if (!auto) {
-          await UI.talk(other.g, 'angry', `${trio.map(x => x.g.name).join('・')}「三人でかかれ！ 呂布を討て！」`, G.factions[other.fi].color, { tag: '三英戦呂布' });
-          await UI.talk(lu.g, 'shock', '呂布「三人がかりとは……！ ちっ、ここは退く！」', G.factions[lu.fi] ? G.factions[lu.fi].color : '#777', { tag: '三英戦呂布' });
+          await UI.talk(other.g, 'angry', `${trio.map(x => x.g.name).join('・')}「三人でかかれ！ 呂布を討て！」`, fcol(other.fi), { tag: '三英戦呂布' });
+          await UI.talk(lu.g, 'shock', '呂布「三人がかりとは……！ ちっ、ここは退く！」', G.factions[lu.fi] ? fcol(lu.fi) : '#777', { tag: '三英戦呂布' });
         }
         lu.alive = false; lu.status = 'fled'; lu.troops = Math.round(lu.troops * 0.7);
         trio.forEach(x => { x.morale = Math.min(100, x.morale + 25); if (x.gi >= 0 && x.fi === G.player) G.gens[x.gi].duels++; });
@@ -854,16 +855,16 @@ const Battle = (() => {
       return;
     }
     if (pair && pair.kind === 'normal') await pairTalk(pair, a);
-    if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? G.factions[a.fi].color : '#777', { tag: '一騎討ち' });
+    if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? fcol(a.fi) : '#777', { tag: '一騎討ち' });
     const accept = willAcceptDuel(d, a);
     if (!accept) {
-      if (!auto) await UI.talk(d.g, 'normal', d._lordHeld ? `${d.g.name}「${pick(['一国の主が、匹夫の勇を競うわけにはいかぬ', '我が身はもはや我一人のものではない。相手にするな', '挑発には乗らん。将兵よ、わしを守れ'])}」` : d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : d._winning ? `${d.g.name}「${pick(['勝ち戦で、貴様の遊びに付き合う義理はない', 'ふん、焦っておるな。その手には乗らん', 'このまま押し潰せば済むこと。相手にするまでもない'])}」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
+      if (!auto) await UI.talk(d.g, 'normal', d._lordHeld ? `${d.g.name}「${pick(['一国の主が、匹夫の勇を競うわけにはいかぬ', '我が身はもはや我一人のものではない。相手にするな', '挑発には乗らん。将兵よ、わしを守れ'])}」` : d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : d._winning ? `${d.g.name}「${pick(['勝ち戦で、貴様の遊びに付き合う義理はない', 'ふん、焦っておるな。その手には乗らん', 'このまま押し潰せば済むこと。相手にするまでもない'])}」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? fcol(d.fi) : '#777');
       d._held = false; d._winning = false; d._lordHeld = false;
       d.morale = Math.max(0, d.morale - 8); a.morale = Math.min(100, a.morale + 5);
       addLog(`${d.g.name}は一騎打ちを避けた（士気が下がった）`);
       return;
     }
-    if (d._desperate) { d._desperate = false; if (!auto) await UI.talk(d.g, 'angry', `${d.g.name}「${pick(['このままではジリ貧……ならば、この一戦に賭ける！', '退いても先はない。よかろう、受けて立つ！', '大将自ら出るしかあるまい……！'])}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777', { tag: '総大将出陣' }); addLog(`総大将 ${d.g.name}が、劣勢を覆すべく一騎打ちに応じた`); }
+    if (d._desperate) { d._desperate = false; if (!auto) await UI.talk(d.g, 'angry', `${d.g.name}「${pick(['このままではジリ貧……ならば、この一戦に賭ける！', '退いても先はない。よかろう、受けて立つ！', '大将自ら出るしかあるまい……！'])}」`, G.factions[d.fi] ? fcol(d.fi) : '#777', { tag: '総大将出陣' }); addLog(`総大将 ${d.g.name}が、劣勢を覆すべく一騎打ちに応じた`); }
     const res = auto ? Duel.quick(a.g, d.g) : await Duel.run(a, d, B.watch ? null : a.side === B.playerSide ? 'a' : d.side === B.playerSide ? 'd' : null, B.watch);
     baseBgm();
     if (pair && pair.kind === 'spare') { const wn = (res.winner === 'a' ? a : d).g.name; await pairTalk(pair.winLines ? Object.assign({}, pair, { lines: pair.winLines[wn] || [] }) : pair, a); res.outcome = 'fled'; const loser = res.winner === 'a' ? d : a; if (loser.gi >= 0) { const lg = G.gens[loser.gi]; lg.loyalty = Math.max(0, lg.loyalty - 15); lg.respect = (res.winner === 'a' ? a : d).g.name; } }
@@ -1038,7 +1039,7 @@ const Battle = (() => {
         Sound.se('warcry');
         await banner(`${fname(sd)}、背水の陣！`, 1300);
         addLog(`${fname(sd)}は追い詰められて奮い立った！（3日間、攻撃力が上がる）`);
-        if (cmd.gi >= 0 && !auto) await UI.talk(cmd.g, 'angry', `${cmd.g.name}「退路はない！ ここで死力を尽くせ！」`, cmd.fi === null ? '#777' : G.factions[cmd.fi].color, { tag: '背水の陣' });
+        if (cmd.gi >= 0 && !auto) await UI.talk(cmd.g, 'angry', `${cmd.g.name}「退路はない！ ここで死力を尽くせ！」`, (G.factions[cmd.fi] ? fcol(cmd.fi) : '#777'), { tag: '背水の陣' });
       }
     }
     // 援軍：開戦時に決めた到着日に駆けつける。守り手が危ないと急報を受けて急ぐ
@@ -1123,10 +1124,10 @@ const Battle = (() => {
     const bad = outlook(rf.side) < -0.15;
     if (bad) B.units.filter(o => o.alive && o.side === rf.side).forEach(o => o.morale = Math.min(100, o.morale + 15));
     if (!auto) {
-      const col = G.factions[rf.fi].color;
+      const col = fcol(rf.fi);
       if (rf.g) await UI.talk(rf.g, 'angry', `${rf.g.name}「${rf.ally ? `${fname}軍の${rf.g.name}、盟約により助太刀いたす！` : rf.rushed ? '急報を受けて駆けつけた！ 持ちこたえよ！' : line(rf.g, 'reinforce')}」`, col, { tag: '援軍' });
       const cmd = B.units.find(o => o.side === rf.side && o.commander && o.alive && o.gi >= 0);
-      if (bad && cmd && rf.side === B.playerSide) await UI.talk(cmd.g, 'happy', `${cmd.g.name}「${line(cmd.g, 'saved')}」`, G.factions[cmd.fi].color, { tag: '援軍' });
+      if (bad && cmd && rf.side === B.playerSide) await UI.talk(cmd.g, 'happy', `${cmd.g.name}「${line(cmd.g, 'saved')}」`, fcol(cmd.fi), { tag: '援軍' });
     }
   }
   // 寝返り：忠誠40未満の武将（総大将・君主・忠義は除く）が、自軍が苦しいほど敵に寝返りやすい
@@ -1292,7 +1293,7 @@ const Battle = (() => {
       let p = Game.has(g, '猪突') ? 0.15 : 0;
       if (g.loyalty < 50) p += (50 - g.loyalty) / 120;
       if (Math.random() < p && B.units.some(o => o.alive && o.side !== u.side && dist(o, u) <= 6)) {
-        await UI.talk(g, 'angry', `${g.name}「${line(g, 'ignore')}」`, G.factions[u.fi].color, { tag: '命令無視' });
+        await UI.talk(g, 'angry', `${g.name}「${line(g, 'ignore')}」`, fcol(u.fi), { tag: '命令無視' });
         await aiUnit(u, true);
         if (await checkEnd()) return;
       }
@@ -1490,6 +1491,8 @@ const Battle = (() => {
     return true;
   }
 
+  // 調べ用：window.__trace が真なら、部隊ごとの判断を B.trace に残す
+  const T = (u, why) => { if (typeof window !== 'undefined' && window.__trace) (B.trace = B.trace || []).push(`${B.day}:${u.g.name}${u.side === 'atk' ? '攻' : '守'}(${u.r},${u.c}):${why}`); };
   async function aiUnit(u, rogue) {
     const foes = B.units.filter(o => o.alive && o.side !== u.side && !o.ambush);   // 森に伏せた敵は見えない
     if (!foes.length) { u.acted = true; return; }
@@ -1532,15 +1535,19 @@ const Battle = (() => {
         u.acted = true; return;
       }
     }
+    // 攻め手は、残りの日が少なくなったら下がらずに総攻撃
+    if (u.side === 'atk' && !u.commander && CONFIG.BATTLE_DAYS - B.day < 6) u.charge = true;
     if (!rogue) {
       const af = await afterFallback(u, foes);
-      if (af === 'wait') { if (await woundedFallback(u, foes, true)) return; }
+      if (af === 'wait') { if (await woundedFallback(u, foes, true)) { T(u, '離れて待つ'); return; } }
     }
-    if (!rogue && !u.charge && await woundedFallback(u, foes)) return;
+    if (!rogue && !u.charge && await woundedFallback(u, foes)) { T(u, '深手で下がる'); return; }
     // 攻めの総大将：味方が残っているうちは最後尾につき、負けそうなら下がる。最後の1部隊になったら自ら攻める
-    if (u.commander && u.side === 'atk' && !rogue) {
+    // 残りの日が少ない（6日を切った）なら、総大将も前に出て攻める
+    const lateAtk = u.side === 'atk' && CONFIG.BATTLE_DAYS - B.day < 6;
+    if (u.commander && u.side === 'atk' && !rogue && !lateAtk) {
       const allies = B.units.filter(o => o.alive && o.side === u.side && o !== u);
-      if (allies.length) { await commanderRear(u, allies, foes); return; }
+      if (allies.length) { await commanderRear(u, allies, foes); T(u, '総大将は後ろ'); return; }
     }
     // 移動先を評価
     const reach = moveRange(u);
@@ -1586,8 +1593,8 @@ const Battle = (() => {
     if (await tryDuel(u, wmine)) return;
     if (!rogue && attackTargets(u).filter(([r, c]) => unitAt(r, c)).length === 0 && await tryPlot(u, wmine, foes, true)) return;
     const tg = attackTargets(u);
-    if (tg.length) { const [r, c] = bestTarget(u, tg); await doAttack(u, r, c); }
-    else { u.acted = true; await sleep(150); }
+    if (tg.length) { const [r, c] = bestTarget(u, tg); await doAttack(u, r, c); T(u, '攻撃'); }
+    else { u.acted = true; T(u, '移動のみ'); await sleep(150); }
   }
   // 攻撃の相手選び：討ち取れる相手（とくに総大将）を最優先。次に弱った相手。反撃で大きな損害を受ける相手は避ける
   function bestTarget(u, tg) {
@@ -1915,7 +1922,7 @@ const Duel = (() => {
     return new Promise(resolve => {
       Sound.bgm('duel'); Sound.se('gong');
       const a = ua.g, d = ud.g;
-      const ca = G.factions[ua.fi] ? G.factions[ua.fi].color : '#777', cd = ud.fi !== null && G.factions[ud.fi] ? G.factions[ud.fi].color : '#777';
+      const ca = G.factions[ua.fi] ? fcol(ua.fi) : '#777', cd = ud.fi !== null && G.factions[ud.fi] ? fcol(ud.fi) : '#777';
       const el = document.getElementById('duel');
       el.innerHTML = `
         <div class="d-head">
