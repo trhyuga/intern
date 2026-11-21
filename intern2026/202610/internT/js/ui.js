@@ -986,7 +986,7 @@ const App = {
       { label: '遊び方', value: 'howto' },
       { label: 'タイトルへ戻る', sub: busy ? bsub : '', value: 'title', cls: 'danger', disabled: busy },
     ]);
-    if ((v === 'save' || v === 'load' || v === 'title') && (App.busy || Auto.running)) return UI.toast('季節の処理が終わってから使ってください');
+    if ((v === 'save' || v === 'load' || v === 'title') && (App.busy || Auto.running)) return UI.toast(Auto.running ? '軍師のオートを止めてから使ってください' : '合戦などが終わってから使ってください');
     if (v === 'save') return App.saveMenu();
     if (v === 'load') return App.loadMenu(true);
     if (v === 'mute') { Sound.toggleMute(); UI.toast(Sound.muted ? '音を消しました' : '音を出します'); }

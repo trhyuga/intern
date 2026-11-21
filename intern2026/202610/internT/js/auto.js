@@ -577,7 +577,7 @@ const Auto = (() => {
         if (best.ratio < want && !maxed) {
           G.buildUp = G.buildUp || {}; G.buildUp[c.i] = G.turn;
           const todo = [ronin ? '人材登用' : '', c.train < 80 ? '訓練' : '', !dev ? '内政' : ''].filter(Boolean).join('・') || '備え';
-          UI.toast(`${c.name}：${best.o.name}への勝ち目 ${best.ratio.toFixed(2)}（基準${want}）に届かないので、この季節は${todo}で力をつけます`, 2600);
+          UI.toast(`${c.name}：いま${best.o.name}を攻めても${best.ratio < want * 0.7 ? '勝ち目はほとんどありません' : 'まだ勝ち目が薄い'}ので、この季節は${todo}で力をつけます`, 2600);
           moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1));
           return;
         }
@@ -1222,9 +1222,9 @@ const Auto = (() => {
     const cap = army.reduce((s2, g) => s2 + Game.troopCap(g), 0);
     const keepNote = best.keep > c.troops * 0.4 ? `隣の大軍に備えて${fmt(best.keep)}を守りに残すと、出せるのは${fmt(best.send)}。`
       : cap < c.troops - best.keep ? `${c.name}の将は${army.length}人で、率いられるのは${fmt(cap)}まで（兵${n}を活かすには将が足りません）。` : '';
-    const f2 = x => (Math.floor(x * 100) / 100).toFixed(2);   // 届かないのに同じ数字に見えないよう、切り捨てで表示
-    return L ? `${keepNote}${best.t.name}を攻めても勝ち目は${f2(best.ratio)}倍ほど。${wantNow(br).toFixed(2)}倍には足りぬ。兵を鍛えて機を待て。`
-             : `${keepNote}いちばん取りやすい${best.t.name}でも、勝ち目は${f2(best.ratio)}倍ほど。${wantNow(br).toFixed(2)}倍には届きません。兵を鍛えて機を待ちます。`;
+    const slim = best.ratio < wantNow(br) * 0.7;   // 勝ち目の大きさは数字ではなく言葉で伝える
+    return L ? `${keepNote}${best.t.name}を攻めても、${slim ? '勝ち目はほとんどない' : 'まだ勝ち目が薄い'}。兵を鍛えて機を待て。`
+             : `${keepNote}いちばん取りやすい${best.t.name}でも、${slim ? '勝ち目はほとんどありません' : 'まだ勝ち目が薄うございます'}。兵を鍛えて機を待ちます。`;
   }
   async function sayText(text) {
     const g = strategist(); if (!g) return;
