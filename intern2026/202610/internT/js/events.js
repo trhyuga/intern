@@ -517,6 +517,82 @@ const Events = (() => {
   ];
   HIST.push(...LORD_EVENTS);
 
+  // ---------------- 重要な脇役30人のイベント ----------------
+  // その人物が仕えていて条件がそろうと、季節ごとに25%で1回だけ起きる。自軍の人物なら会話で知らせる
+  const S = n => { const g = serving(n); return g && !g.isLord ? g : null; };
+  const sameF = (a, b) => { const x = S(a), y = S(b); return !!(x && y && x.faction === y.faction); };
+  const cityOf = g => G.cities[g.city];
+  const loyFac = (fi, v) => Game.gensOf(fi).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + v); });
+  const gatherFac = (fi, n, pred) => { const cap = G.cities[G.factions[fi].capital]; const rs = shuffle(G.gens.filter(g => g.state === 'ronin' && g.name !== '諸葛亮' && (!pred || pred(g)))).slice(0, n); rs.forEach(g => { g.city = cap.i; g.known = true; }); return rs; };
+  const ev1 = (id, name, title, cond, run) => ({ id, title, chance: 0.25, cond: () => { const g = S(name); return !!g && (!cond || cond(g)); }, run: () => { const g = S(name); const t = run(g); return { title, gen: name, expr: t.expr || 'happy', fac: g.faction, big: !!t.big, text: t.text }; } });
+  const SIDE_EVENTS = [
+    ev1('c_guanyu', '関羽', '単刀赴会', g => { const r = S('魯粛'); return r && r.faction !== g.faction; }, g => { up(g, 'cha', 2); up(g, 'war', 1);
+      return { text: '関羽は刀一振りだけを携え、わずかな供を連れて魯粛との会見の場に臨んだ。その堂々たる態度に、居並ぶ者は誰も手を出せなかった。\n関羽の魅力 +2・武力 +1' }; }),
+    ev1('c_zhangfei', '張飛', '長坂橋の仁王立ち', null, g => { up(g, 'war', 1); up(g, 'cha', 1); const c = cityOf(g); c.def = Math.min(c.defMax, c.def + 60);
+      return { expr: 'angry', text: `張飛「我こそは燕人張益徳！ 死にたい奴からかかってこい！」\n橋の上でただ一騎、矛を構えて吼える張飛に、追っ手の大軍は誰ひとり近づけなかった。\n張飛の武力 +1・魅力 +1、${c.name}の城壁 +60` }; }),
+    ev1('c_zhaoyun', '趙雲', '一身これ胆なり', null, g => { up(g, 'lead', 1); up(g, 'cha', 2); g.loyalty = Math.min(100, g.loyalty + 10);
+      return { text: '寡兵で陣を守り、門を開け放って敵の大軍を退けた趙雲。主君は感嘆して言った。\n「子龍は、一身これすべて胆なり」\n趙雲の統率 +1・魅力 +2、忠誠 +10' }; }),
+    ev1('c_zhuge', '諸葛亮', '天下三分の計', g => Game.citiesOf(g.faction).length <= 4, g => { const l = Game.lordOf(g.faction); up(l, 'cha', 2); loyFac(g.faction, 5); up(g, 'pol', 1);
+      return { text: '諸葛亮は地図を広げ、主君に天下の形を説いた。\n諸葛亮「北は曹操に、東は孫権に譲り、まず荊州と益州を取って足場とする。天下はそこから見えてまいります」\n君主の魅力 +2、家臣の忠誠 +5、諸葛亮の政治 +1' }; }),
+    ev1('c_pangtong', '龐統', '百日の政務を半日で', null, g => { up(g, 'pol', 3); G.cities[G.factions[g.faction].capital].gold += 500;
+      return { text: '小さな県を任された龐統は、酒ばかり飲んで政務を放っておいた。叱責の使者が来ると、たまった百日分の訴えを半日で片づけてみせた。\n龐統「小さな県を治めるのに、大した手間はいりませぬ」\n龐統の政治 +3、本拠の金 +500' }; }),
+    ev1('c_weiyan', '魏延', '子午谷の奇策', null, g => { up(g, 'lead', 2); up(g, 'int', 1);
+      return { text: '魏延「精兵五千で子午谷を抜け、長安を一気に突けば、十日で関中は我らのものとなりましょう！」\n大胆すぎる策は採られなかったが、魏延の気概に将兵は奮い立った。\n魏延の統率 +2・知力 +1' }; }),
+    ev1('c_jiangwei', '姜維', '涼州の麒麟児', null, g => { const zg = sameF('姜維', '諸葛亮'); up(g, 'int', zg ? 2 : 1); up(g, 'lead', 1);
+      return { text: zg ? '諸葛亮「伯約（姜維）は忠勤で思慮深く、涼州の上士に勝る者である」\n師のもとで、姜維は兵法を一心に学んだ。\n姜維の知力 +2・統率 +1' : '涼州に生まれた若き姜維は、兵法を学び、武芸を磨き続けた。\n姜維の知力 +1・統率 +1' }; }),
+    ev1('c_fazheng', '法正', '漢中を取るべし', null, g => { up(g, 'int', 1); Game.citiesOf(g.faction).forEach(c => c.train = Math.min(100, c.train + 5));
+      return { text: '法正「漢中を取れば、北は敵を防ぎ、内は民を富ませる。今こそ天が与えた好機です」\n法正の鋭い献策に、軍は活気づいた。\n法正の知力 +1、全都市の訓練 +5' }; }),
+    ev1('c_maliang', '馬良', '白眉', null, g => { up(g, 'pol', 2); up(g, 'int', 1); Game.citiesOf(g.faction).forEach(c => c.loyal = Math.min(100, c.loyal + 4));
+      return { text: '才に秀でた五人兄弟の中でも、眉に白い毛のある馬良がいちばん優れていた。人々は「馬氏の五常、白眉最も良し」と讃えた。\n馬良の政治 +2・知力 +1、全都市の民忠 +4' }; }),
+    ev1('c_xushu', '徐庶', '徐庶の推挙', null, g => { const z = G_('諸葛亮'), l = Game.lordOf(g.faction);
+      if (z && z.state === 'ronin') { z.city = l.city; z.known = true;
+        return { text: `徐庶「隆中に臥龍と呼ばれる男がおります。諸葛孔明――私など足元にも及びませぬ。ただし、呼びつけても来る男ではございません。殿が自ら訪ねられませ」\n在野の諸葛亮の居場所がわかった（${G.cities[l.city].name}）。君主が自ら三度訪ねれば、登用できる` }; }
+      const rs = gatherFac(g.faction, 1, x => x.int >= 70); up(g, 'int', 1);
+      return { text: '徐庶「私の知る中に、殿のお役に立てる者がおります。会ってみられませ」\n' + (rs.length ? `在野の${rs[0].name}が本拠を訪ねてきた（登用できる）。` : '') + '徐庶の知力 +1' }; }),
+    ev1('c_dianwei', '典韋', '古の悪来', null, g => { up(g, 'war', 1); g.loyalty = 100;
+      return { text: '両手に大きな鉄の戟を持ち、主君の陣を守り抜く典韋。その怪力ぶりに、人々は古の豪傑の名を取って「悪来」と呼んだ。\n典韋の武力 +1、忠誠 100' }; }),
+    ev1('c_xuchu', '許褚', '虎痴', null, g => { up(g, 'war', 1); g.loyalty = 100; up(g, 'cha', 1);
+      return { text: '虎のような怪力でありながら、どこか間の抜けた許褚は「虎痴」と呼ばれた。だが主君を守る時の眼光は、まさに虎そのものである。\n許褚の武力 +1・魅力 +1、忠誠 100' }; }),
+    ev1('c_guojia', '郭嘉', '十勝十敗', null, g => { up(g, 'int', 1); loyFac(g.faction, 6);
+      return { text: '郭嘉「敵には十の負ける理由があり、殿には十の勝つ理由がございます。恐れることはありませぬ」\n郭嘉の明快な弁に、諸将の迷いは晴れた。\n郭嘉の知力 +1、家臣の忠誠 +6' }; }),
+    ev1('c_xunyu', '荀彧', '王佐の才', null, g => { up(g, 'pol', 2); const rs = gatherFac(g.faction, 2, x => x.int >= 65 || x.pol >= 65);
+      return { text: '「王佐の才」と称された荀彧は、天下の賢者を次々と主君に推挙した。\n' + (rs.length ? `在野の${rs.map(x => x.name).join('・')}が本拠を訪ねてきた（登用できる）。` : '') + '荀彧の政治 +2' }; }),
+    ev1('c_jiaxu', '賈詡', '離間の計', g => { const a = S('馬超'), b = S('韓遂'); return a && b && a.faction === b.faction && a.faction !== g.faction; }, g => { const a = S('馬超'), b = S('韓遂'); [a, b].forEach(x => x.loyalty = Math.max(0, x.loyalty - 25)); up(g, 'int', 1);
+      return { expr: 'normal', big: true, text: '賈詡は、わざと書き直した跡のある手紙を韓遂に送らせた。それを見た馬超は、韓遂が何かを隠していると疑い始めた。\n馬超と韓遂の忠誠 −25、賈詡の知力 +1' }; }),
+    ev1('c_simayi', '司馬懿', '雌伏の時', null, g => { up(g, 'int', 2); up(g, 'lead', 1); if (!Game.has(g, '忠義')) g.loyalty = Math.max(0, g.loyalty - 8);
+      return { expr: 'normal', text: '司馬懿は表立って功を誇らず、じっと時を待った。その目の奥に何があるのか、誰にもわからない。\n司馬懿の知力 +2・統率 +1、忠誠 −8' }; }),
+    ev1('c_xuhuang', '徐晃', '周亜夫の風あり', null, g => { up(g, 'lead', 2); Game.citiesOf(g.faction).forEach(c => c.train = Math.min(100, c.train + 5));
+      return { text: '陣を乱さず、敵の包囲を真正面から破った徐晃。主君は、名将・周亜夫の風格があると讃えた。\n徐晃の統率 +2、全都市の訓練 +5' }; }),
+    ev1('c_zhanghe', '張郃', '巧みなる変化', null, g => { up(g, 'lead', 1); up(g, 'int', 2);
+      return { text: '地形を読み、陣を自在に変える張郃の戦いぶりに、敵の名将たちも一目置いた。\n張郃の統率 +1・知力 +2' }; }),
+    ev1('c_caoren', '曹仁', '死守', null, g => { const c = cityOf(g); c.def = Math.min(c.defMax, c.def + 150); up(g, 'lead', 1);
+      return { expr: 'angry', text: `曹仁「この城は、わしが死んでも渡さぬ！」\n曹仁は${c.name}の守りを自ら指揮して固めた。\n${c.name}の城壁 +150、曹仁の統率 +1` }; }),
+    ev1('c_zhouyu', '周瑜', '曲に誤りあれば', null, g => { up(g, 'cha', 3); loyFac(g.faction, 4);
+      return { text: '音楽にも通じた周瑜は、宴の最中でも演奏の誤りに気づくと、思わずそちらを振り返った。人々は「曲に誤りあれば周郎顧みる」と歌った。\n周瑜の魅力 +3、家臣の忠誠 +4' }; }),
+    ev1('c_lusu', '魯粛', '榻上の策', null, g => { const l = Game.lordOf(g.faction); up(g, 'int', 1); up(l, 'pol', 1); G.cities[G.factions[g.faction].capital].gold += 600;
+      return { text: '寝台に腰かけて、魯粛は主君と二人きりで天下の行く末を語り合った。\n魯粛「まず足元を固め、天下の変を待つのです」\n魯粛の知力 +1、君主の政治 +1、本拠の金 +600' }; }),
+    ev1('c_luxun', '陸遜', '書生の大将', null, g => { up(g, 'lead', 2); up(g, 'int', 1);
+      return { text: '若い陸遜が大将に任じられると、古参の将たちは「書生に何ができる」と侮った。だが陸遜は、じっと敵の疲れを待ち続けた――\n陸遜の統率 +2・知力 +1' }; }),
+    ev1('c_ganning', '甘寧', '百騎の夜襲', null, g => { up(g, 'war', 1); up(g, 'cha', 2); Game.citiesOf(g.faction).forEach(c => c.train = Math.min(100, c.train + 6));
+      return { expr: 'angry', text: '甘寧はわずか百騎を率いて夜の敵陣に斬り込み、一人も失わずに帰ってきた。\n甘寧「敵の大軍も、夜には眠る。恐れることはない」\n甘寧の武力 +1・魅力 +2、全都市の訓練 +6' }; }),
+    ev1('c_taishici', '太史慈', '信義の士', null, g => { up(g, 'war', 1); g.loyalty = 100;
+      return { text: '受けた恩は必ず返す。かつて母が世話になった恩に報いるため、包囲された城へ単騎で駆けつけたこともある太史慈。その信義は主君にも向けられている。\n太史慈の武力 +1、忠誠 100' }; }),
+    ev1('c_chengpu', '程普', '醇酒を飲むが如し', g => sameF('程普', '周瑜'), g => { const z = S('周瑜'); [g, z].forEach(x => x.loyalty = Math.min(100, x.loyalty + 10)); up(g, 'lead', 1);
+      return { text: '若い周瑜を快く思っていなかった古参の程普は、やがてその器量に心服した。\n程普「周公瑾との付き合いは、上等な酒を飲むようなもの。知らぬ間に酔ってしまう」\n程普と周瑜の忠誠 +10、程普の統率 +1' }; }),
+    ev1('c_chengong', '陳宮', '陳宮の策', null, g => { up(g, 'int', 2); const c = G.cities[G.factions[g.faction].capital]; c.def = Math.min(c.defMax, c.def + 60);
+      return { expr: 'normal', text: '陳宮「敵が来れば城外に兵を伏せて挟み撃ちにし、城を守り抜くのです」\n陳宮の策で、守りの備えが整った。\n陳宮の知力 +2、本拠の城壁 +60' }; }),
+    ev1('c_gaoshun', '高順', '陥陣営', null, g => { const c = cityOf(g); c.troops += 2000; c.train = Math.min(100, c.train + 10); up(g, 'lead', 1);
+      return { expr: 'angry', text: `高順の鍛えた七百の兵は、攻めれば必ず敵陣を破ることから「陥陣営」と呼ばれた。\n${c.name}の兵 +2000・訓練 +10、高順の統率 +1` }; }),
+    ev1('c_zhangzhao', '張昭', '内のことは張昭に問え', null, g => { up(g, 'pol', 2); Game.citiesOf(g.faction).forEach(c => pct(c, 'comm', 'commMax', 0.04));
+      return { text: '「外のことで迷えば周瑜に、内のことで迷えば張昭に問え」――重臣・張昭は、国の内の政をしっかりと支えた。\n張昭の政治 +2、全都市の商業 +4%' }; }),
+    ev1('c_huanggai', '黄蓋', '苦肉の計', g => sameF('黄蓋', '周瑜'), g => { g.loyalty = 100; up(g, 'cha', 2); const fi = g.faction;
+      Game.citiesOf(fi).forEach(c => c.adj.forEach(a => { const o = G.cities[a]; if (o.owner !== null && o.owner !== fi && !Game.isAlly(fi, o.owner)) o.train = Math.max(0, o.train - 8); }));
+      return { expr: 'angry', big: true, text: '黄蓋は軍議で周瑜に逆らい、満座の中で打ちすえられた。傷だらけの黄蓋から「降伏したい」という手紙を受け取った敵は、すっかり油断した――\n黄蓋の忠誠 100・魅力 +2、隣の敵都市の訓練 −8' }; }),
+    ev1('c_pangde', '龐徳', '棺を担いで', null, g => { up(g, 'war', 2); g.loyalty = 100;
+      return { expr: 'angry', text: '龐徳は自らの棺を担がせて出陣した。\n龐徳「今日、敵将を討つか、この棺に入るか。二つに一つだ！」\n龐徳の武力 +2、忠誠 100' }; }),
+  ];
+  HIST.push(...SIDE_EVENTS);
+
   // ---------------- 君主ごとのイベントの別の展開 ----------------
   // 本来のイベントが、ゲーム開始から3年たっても起きていない（条件がそろわない）とき、代わりにこちらが起きる。
   // どちらか一方だけ。どの君主でも、1回のゲームで必ずどちらかが起きる（その君主が生きて君主である限り）
