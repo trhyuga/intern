@@ -473,7 +473,12 @@ const Game = {
   killGeneral(g, reason) {
     const wasLord = g.isLord, fi = g.faction;
     g.state = 'dead'; g.isLord = false; g.deathReason = reason;
-    if (wasLord && fi >= 0) return Game.succession(fi, g);
+    if (wasLord && fi >= 0) {
+      const heir = Game.succession(fi, g);
+      // プレイヤーの君主が亡くなったら、オート中でも止めて知らせる（画面側で表示）
+      if (fi === G.player) (G._lordDied = G._lordDied || []).push({ gi: g.i, heir: heir ? heir.i : null, reason, year: G.year, season: G.season });
+      return heir;
+    }
     return null;
   },
 

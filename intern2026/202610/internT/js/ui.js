@@ -704,7 +704,31 @@ const App = {
 
   // 節目の言葉：天下統一まで敵の都市が残り1つ（労い）／5都市以上に広げたあと残り1都市に追い込まれた（励まし）
   // 軍師と、功績（戦功＋一騎討ちの勝ち）がいちばん多い武将が声をかける。それぞれ1回まで（立て直して3都市に戻れば、また励ます）
+  // 君主の死：オート中でも、いったん止めて知らせる。8秒たってもタップがなければ、そのまま自動で続ける。画面をタップすると待ち続ける
+  async lordDeathNotice() {
+    const list = (G && G._lordDied) || [];
+    if (!list.length) return;
+    G._lordDied = [];
+    const RS = { '病': '病でこの世を去った', '戦死': '戦場で討ち死にした', '処断': '敵に捕らえられ、処断された' };
+    for (const d of list) {
+      const g = G.gens[d.gi], h = d.heir != null ? G.gens[d.heir] : null, f = G.factions[G.player];
+      Sound.se('death');
+      const body = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><img src="${Portrait.get(g, 'sad', f.color)}" style="width:72px;height:72px;border-radius:6px;filter:grayscale(.6)"><div><b style="font-size:18px">君主　${g.name}</b><br>${d.year}年${SEASONS[d.season]}、${RS[d.reason] || 'この世を去った'}。</div></div>`
+        + (h ? `<div style="display:flex;gap:10px;align-items:center"><img src="${Portrait.get(h, 'normal', f.color)}" style="width:72px;height:72px;border-radius:6px"><div>跡を継いだのは<br><b style="font-size:18px">${h.name}</b>（統${h.lead} 武${h.war} 知${h.int} 政${h.pol} 魅${h.cha}）<br><small>${Game.succNote(h) || ''}</small></div></div>` : '<p>跡を継ぐ者はいなかった……</p>')
+        + `<p id="ldCount" style="margin-top:10px;font-size:13px;color:var(--muted)"></p>`;
+      const p = UI.modal({ title: '君主、逝く', body, buttons: [{ label: '確認した', cls: 'primary', value: 1 }] });
+      if (Auto.running) {
+        let left = 8, timer = null, stopped = false;
+        const el = $('#ldCount');
+        const tick = () => { if (stopped) return; if (left <= 0) { UI.closeModal(1); return; } if (el) el.textContent = `${left}秒後に自動で続けます（画面をタップすると止まります）`; left--; timer = setTimeout(tick, 1000); };
+        tick();
+        const bd = $('#modal .modal-bd'); if (bd) bd.onclick = () => { if (stopped) return; stopped = true; clearTimeout(timer); if (el) el.textContent = '止めました。確かめたら「確認した」を押してください'; };
+      }
+      await p;
+    }
+  },
   async milestones() {
+    await App.lordDeathNotice();
     if (!G || G.gameOver || !G.factions[G.player].alive) return;
     const ms = G.events.ms = G.events.ms || {};
     const mine = Game.citiesOf(G.player).length;
