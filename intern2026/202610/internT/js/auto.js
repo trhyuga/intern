@@ -260,8 +260,13 @@ const Auto = (() => {
     if (canDraft && front && c.troops < threat * 0.9) { n.draft = 2 + Math.min(1, (threat * 0.9 - c.troops) / 10000); must.draft = true; }
     else if (canDraft && G.stage && G.stage.c === c.i && c.troops < G.stage.troops) n.draft = 1.5;   // 攻撃の拠点では兵を集める
     else n.draft = canDraft ? (front ? (c.troops < threat * 1.2 ? 0.8 : 0.3) : (c.troops < 12000 ? 0.45 : 0.1)) : 0;
-    // 内地は兵を鍛える場所（鍛えた兵を前線へ送る）
-    n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? 1.0 : 1.4) : 0;
+    // 内地は兵を鍛える場所（鍛えた兵を前線へ送る）。前線も、徴兵で下がった訓練（50未満）は取り戻す
+    n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? (c.train < 50 ? 1.5 : 1.0) : 1.4) : 0;
+    // 兵が、この都市の将の率いられる上限を超えている：これ以上の徴兵は出陣に使えないので、訓練を優先する
+    { const capC = Game.gensIn(c.i, G.player).filter(g => !g.isLord).sort((a, b) => Game.troopCap(b) - Game.troopCap(a)).slice(0, 5).reduce((s2, g) => s2 + Game.troopCap(g), 0);
+      if (c.troops - Math.max(5000, c.troops * 0.25) > capC && capC > 0) { if (n.train) n.train = n.train * 2 + 0.5; if (!must.draft) n.draft *= 0.2; } }
+    // 出陣を1季節見送って鍛えている都市は、訓練を最優先
+    if (G.trainWait && G.trainWait[c.i] === G.turn && c.train < 95 && c.troops >= 2000) { n.train = 3 + (95 - c.train) / 50; must.train = true; }
     // 武将が1〜2人の都市は、隣の都市の在野まで探しに行けるので、人材探しを重く見る
     const few = Game.gensIn(c.i, G.player).length;
     const hidden = Game.roninIn(c.i).filter(r => !r.known).concat(few <= 2 ? G.gens.filter(r => r.state === 'ronin' && c.adj.includes(r.city) && r.name !== '諸葛亮') : []);
@@ -561,6 +566,14 @@ const Auto = (() => {
       orderArmy(army, br);
       usedT.add(best.o.i);
       pulled.set(c.i, (pulled.get(c.i) || 0) + army.filter(g => g.city === c.i).length);
+      // ただし訓練が低い（40未満）時は、敵が迫っていなければ1季節だけ鍛えてから出る（2季節続けては待たない）
+      G.trainWait = G.trainWait || {};
+      if (c.train < 40 && G.trainWait[c.i] !== G.turn - 1 && AI.threat(c, G.player) < c.troops * 0.8) {
+        G.trainWait[c.i] = G.turn;
+        UI.toast(`${c.name}：兵の訓練が${Math.round(c.train)}と低いので、この季節は鍛えてから出陣します`, 2600);
+        moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1));
+        return;
+      }
       out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, full, moved });
     });
     return out;
