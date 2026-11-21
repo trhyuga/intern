@@ -289,6 +289,51 @@ const Game = {
     }
     return { ok: false };
   },
+  // ---------------- 武将の配置：戦略上の重み ----------------
+  // 都市の重み：前線（隣の敵の兵が多いほど）＞交通の要（つながる都市の数）＞大都市（人口）＞本拠。兵の多い都市も将が要る
+  cityWeight(c, fi) {
+    const adj = c.adj.map(a => G.cities[a]);
+    const foes = adj.filter(o => o.owner !== null && o.owner !== fi && !Game.isAlly(fi, o.owner));
+    const foeTroops = foes.reduce((s2, o) => s2 + o.troops, 0);
+    let w = 1;
+    if (foes.length) w += 3 + Math.min(3, foeTroops / 20000) + foes.length * 0.5;   // 接敵：敵の兵が多いほど重い
+    w += Math.max(0, c.adj.length - 2) * 0.6;                                         // 交通の要（ハブ）
+    w += Math.min(2.5, c.pop / 250000);                                               // 大都市
+    if (G.factions[fi] && G.factions[fi].capital === c.i) w += 1.5;                    // 本拠
+    w += Math.min(2, c.troops / 30000);                                               // 大軍がいる
+    return w;
+  },
+  // 将の配置換えの案：将の多すぎる都市から、重みのわりに将の少ない都市へ（季節に max 人まで）。都市には必ず1人は残す。地続きの都市の間だけ
+  spreadPlan(fi, max = 4, fixed) {
+    const cities = Game.citiesOf(fi);
+    if (cities.length < 2) return [];
+    const gensIn = c => Game.gensIn(c.i, fi).filter(g => !g.isLord && !(fixed && fixed.has(g.i)));
+    const total = Game.gensOf(fi).filter(g => !g.isLord).length;
+    const w = new Map(cities.map(c => [c.i, Game.cityWeight(c, fi)]));
+    const sumW = [...w.values()].reduce((a, b) => a + b, 0);
+    const target = new Map(cities.map(c => [c.i, Math.max(1, Math.round(total * w.get(c.i) / sumW))]));
+    const count = new Map(cities.map(c => [c.i, Game.gensIn(c.i, fi).length]));
+    // 地続き（自分の都市だけを通って行ける）の組
+    const comp = new Map(); let k = 0;
+    cities.forEach(c => { if (comp.has(c.i)) return; const q = [c.i]; comp.set(c.i, k); while (q.length) { const x = q.shift(); G.cities[x].adj.forEach(a => { if (G.cities[a].owner === fi && !comp.has(a)) { comp.set(a, k); q.push(a); } }); } k++; });
+    const moves = [];
+    for (let n = 0; n < max; n++) {
+      const need = cities.filter(c => count.get(c.i) < target.get(c.i)).sort((a, b) => (target.get(b.i) - count.get(b.i)) * w.get(b.i) - (target.get(a.i) - count.get(a.i)) * w.get(a.i))[0];
+      if (!need) break;
+      const donor = cities.filter(d => d !== need && comp.get(d.i) === comp.get(need.i) && count.get(d.i) - target.get(d.i) >= 1 && count.get(d.i) >= 2 && gensIn(d).filter(g => !moves.some(m => m.g === g)).length)
+        .sort((a, b) => (count.get(b.i) - target.get(b.i)) - (count.get(a.i) - target.get(a.i)) || w.get(a.i) - w.get(b.i))[0];
+      if (!donor) { target.set(need.i, count.get(need.i)); continue; }
+      // 前線には戦の将（統率・武力）、内地の大都市には政の将（政治）を
+      const front = c => c.adj.some(a => { const o = G.cities[a].owner; return o !== null && o !== fi && !Game.isAlly(fi, o); });
+      const score = g => front(need) ? g.lead + g.war : g.pol + g.int * 0.5;
+      const g = gensIn(donor).filter(x => !moves.some(m => m.g === x)).sort((a, b) => score(b) - score(a))[front(donor) && !front(need) ? gensIn(donor).length - 1 : 0];
+      if (!g) break;
+      moves.push({ g, from: donor, to: need });
+      count.set(donor.i, count.get(donor.i) - 1); count.set(need.i, count.get(need.i) + 1);
+    }
+    return moves;
+  },
+
   // 負け戦で将を失う確率の倍率（プレイヤーだけ。武将が少ないほど小さい）
   //  3人まで0.25 / 6人まで0.4 / 10人まで0.65 / 14人まで0.85 / それより多いと1（今まで通り）
   lossK(fi) {
@@ -770,6 +815,8 @@ const AI = {
     if (!f.alive) return [];
     const battles = [];
     const myCities = Game.citiesOf(fi);
+    // 将の多すぎる都市から、前線・交通の要・大都市へ回す（季節に3人まで）
+    Game.spreadPlan(fi, 3).forEach(m => { m.g.city = m.to.i; });
     myCities.forEach(c => AI.develop(c, fi));
     // 褒美で忠誠維持
     Game.gensOf(fi).forEach(g => {

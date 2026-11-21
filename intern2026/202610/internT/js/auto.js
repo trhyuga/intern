@@ -968,6 +968,16 @@ const Auto = (() => {
     }
     App.refresh();
   }
+  // 将の多すぎる都市から、戦略上の重みのわりに将の少ない都市（前線・交通の要・大都市・本拠・大軍のいる都市）へ回す（季節に4人まで）
+  async function spreadGenerals() {
+    const moves = Game.spreadPlan(G.player, 4);
+    for (const m of moves) {
+      m.g.city = m.to.i;
+      const why = Game.isFront(m.to) ? '前線を固めるため' : m.to.adj.length >= 5 ? '交通の要を押さえるため' : m.to.pop >= 400000 ? '大きな町を治めるため' : '手薄な城を補うため';
+      UI.toast(`${m.g.name}が ${m.from.name} → ${m.to.name} へ（${why}）`, 2200);
+    }
+    if (moves.length) App.refresh();
+  }
   // 兵の多い前線の都市に、率いる将が足りなければ、将に余裕のある都市（兵に比べて将が多い所）から回す（季節に3人まで）
   async function balanceCommanders(br) {
     if (br.tier === 'dumb') return;
@@ -1432,6 +1442,7 @@ const Auto = (() => {
     await doLogistics(br); if (stopReq) return false;
     await forwardBig(br); if (stopReq) return false;
     await ensureGovernors();
+    await spreadGenerals();
     UI.closeSheet();
     return true;
   }
