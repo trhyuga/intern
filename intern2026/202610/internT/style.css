@@ -77,11 +77,12 @@ button { font-family: inherit; }
 .roll .cr small { color: #c8b48a; font-size: 11px; line-height: 1.5; display: block; }
 .roll .fallen { color: #cfc3a8; }
 .roll .fallen .sg { margin: 0 .6em; }
-.roll .stats { margin: 0 34px; padding: 6px 14px; background: rgba(10,6,4,.55); border-top: 1px solid #d4af3766; border-bottom: 1px solid #d4af3766; }
-.roll .stats div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; font-size: 14px; border-bottom: 1px dashed #d4af3730; }
-.roll .stats div:last-child { border-bottom: 0; }
-.roll .stats span { color: #c8b48a; }
-.roll .stats b { color: #f6e8c6; font-weight: 600; }
+.roll .rstats { display: block; margin: 0 30px; padding: 6px 14px; background: rgba(10,6,4,.55); border-top: 1px solid #d4af3766; border-bottom: 1px solid #d4af3766; }   /* 都市画面の .stats（3列）とぶつからない名前に */
+.roll .rstats div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 7px 0; font-size: 14px; border-bottom: 1px dashed #d4af3730; }
+.roll .rstats div:last-child { border-bottom: 0; }
+.roll .rstats span { color: #c8b48a; white-space: nowrap; flex: none; }   /* 項目名は途中で折り返さない */
+.roll .rstats b { color: #f6e8c6; font-weight: 600; text-align: right; }
+.roll .rstats b .sg { display: inline-block; }
 .roll .staff { font-size: 13px; color: #d8c8a0; margin: 6px 22px; }
 .roll .fin { margin: 140px 0 320px; }
 .roll .fin span { display: inline-flex; align-items: center; justify-content: center; width: 104px; height: 104px; font-family: var(--brush); font-size: 64px; color: #fff3e6; background: #b8241a; border: 3px double #ffe9d0; border-radius: 6px; transform: rotate(-6deg); box-shadow: 0 0 30px rgba(0,0,0,.7), 0 0 40px rgba(212,60,40,.35); }

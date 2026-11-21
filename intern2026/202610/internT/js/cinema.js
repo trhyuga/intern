@@ -485,8 +485,8 @@ const Cinema = (() => {
         `<div class="climax">${win ? '<span class="sg">――天下、</span><span class="sg">ここに定まる。</span>' : '<span class="sg">天下を手にするのは、</span><br><span class="sg">果たして誰か――。</span>'}</div>` +
         (myGens.length ? `<h3><span>${win ? '功 臣' : '最後まで従った者たち'}</span></h3><div class="crs">` + myGens.slice(0, 16).map((g, i) => `<div class="cr${i === 0 ? ' first' : ''}"><img src="${Portrait.get(g, win ? 'happy' : 'sad', f.color)}"><div><b>${g.name}</b><small>統${g.lead} 武${g.war} 知${g.int}<br>政${g.pol} 魅${g.cha}<br><span class="sg">戦功 ${g.wins}</span>　<span class="sg">一騎討ち ${g.duels}勝</span></small></div></div>`).join('') + '</div>' : '') +
         (fallen.length ? `<h3><span>散っていった者たち</span></h3><p class="fallen">${fallen.map(g => `<span class="sg">${g.name}</span>`).join('')}</p>` : '') +
-        `<h3><span>戦 績</span></h3><div class="stats">` +
-        [['シナリオ', sc.title], ['年月', `${sc.dream ? '' : sc.year + '年 〜 '}${G.year}年`], ['戦い', `${G.stats.battles}回（勝利 ${G.stats.wins}回）`], ['捕らえた武将', `${G.stats.captured}人`], ['登用した武将', `${G.stats.recruited}人`], ['一騎討ちの勝利', `${G.stats.duelsWon}回`]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('') + '</div>' +
+        `<h3><span>戦 績</span></h3><div class="rstats">` +
+        [['シナリオ', sc.title], ['年月', `<span class="sg">${sc.dream ? '' : `${sc.year}年〜`}${G.year}年</span>`], ['戦い', `<span class="sg">${G.stats.battles}回</span><span class="sg">（勝利 ${G.stats.wins}回）</span>`], ['捕らえた武将', `${G.stats.captured}人`], ['登用した武将', `${G.stats.recruited}人`], ['一騎討ちの勝利', `${G.stats.duelsWon}回`]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('') + '</div>' +
         `<h3><span>制 作</span></h3><p class="staff">群雄天下 ― 三国英傑伝 ―<br>intern2026 / internT</p><p class="staff">絵・音・物語　すべてプログラムで生成</p><p class="staff">Powered by GitHub + Vercel + Claude</p>` +
         `<div class="fin"><span>完</span></div>`;
       rollEl.innerHTML = ''; rollEl.appendChild(roll);
