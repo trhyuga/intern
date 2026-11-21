@@ -578,8 +578,6 @@ const Auto = (() => {
         const maxed = !ronin && dev && c.train >= 80;
         if (best.ratio < want && !maxed) {
           G.buildUp = G.buildUp || {}; G.buildUp[c.i] = G.turn;
-          const todo = [ronin ? '人材登用' : '', c.train < 80 ? '訓練' : '', !dev ? '内政' : ''].filter(Boolean).join('・') || '備え';
-          UI.toast(`${c.name}：いま${best.o.name}を攻めても${best.ratio < want * 0.7 ? '勝ち目はほとんどありません' : 'まだ勝ち目が薄い'}ので、この季節は${todo}で力をつけます`, 2600);
           moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1));
           return;
         }
@@ -588,7 +586,6 @@ const Auto = (() => {
       G.trainWait = G.trainWait || {};
       if (c.train < 40 && G.trainWait[c.i] !== G.turn - 1 && AI.threat(c, G.player) < c.troops * 0.8) {
         G.trainWait[c.i] = G.turn;
-        UI.toast(`${c.name}：兵の訓練が${Math.round(c.train)}と低いので、この季節は鍛えてから出陣します`, 2600);
         moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1));
         return;
       }
@@ -1431,7 +1428,7 @@ const Auto = (() => {
     UI.closeSheet();
     G.autoIdle = sorties ? 0 : (G.autoIdle || 0) + 1;
     // 兵2万以上いて出陣しなかった都市があれば、その理由を言う（いちばん兵の多い都市）
-    { const why = holdReason(br, new Set([...sortiedC, ...triedC])); if (why) await sayText(why); }
+    // 出陣しなかった理由の説明（勝ち目が足りない等）は出さない
     // 出陣が済んだら、出陣した将は行動済み。取りやめになった出陣の将は、このあとの外交・内政などで働ける
     reserved.clear();
     const armies0 = [];
