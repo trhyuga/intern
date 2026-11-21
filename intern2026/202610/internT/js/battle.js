@@ -448,6 +448,8 @@ const Battle = (() => {
     // 能力の上位者：豪傑は攻撃↑、名将は攻撃↑・被害↓
     if (a.gi >= 0) { k *= Game.topK(ag, 'war', 1.12, 1.22); k *= Game.topK(ag, 'lead', 1.08, 1.15); }
     if (d.gi >= 0) k /= Game.topK(dg, 'lead', 1.12, 1.2);
+    // 統率：統率が高いほど陣が崩れにくい（統率60を基準に、野戦では90で被害÷1.075・40で÷0.95。城内は城壁が守るので半分）
+    if (d.gi >= 0) k /= 1 + ((dg.lead || 40) - 60) / (isField(d) ? 400 : 800);
     // 城壁：城内・城門・本丸の守り手は、城壁の値に応じて被害が減る。門が破れると守りは半減
     // 包囲：2部隊以上に囲まれた部隊は大きく崩れる。門の外の野戦ではさらに強く、知略の将が囲みに加わると一層強い
     //  （猛将相手・兵が少ない側ほど、知略の囲みが効く。夜戦ではさらに1.3倍）
@@ -578,7 +580,8 @@ const Battle = (() => {
       return;
     }
     // 臆病・士気崩壊による退却
-    if ((Game.has(u.g, '臆病') && u.troops < u.maxTroops * 0.3) || u.morale < 12) {
+    // 統率85以上の将の部隊は、士気が落ちても崩れにくい
+    if ((Game.has(u.g, '臆病') && u.troops < u.maxTroops * 0.3) || u.morale < (u.gi >= 0 && u.g.lead >= 85 ? 9 : 12)) {
       u.alive = false; u.status = 'retreat';
       addLog(`${u.g.name}隊が退却した`);
       if (u.gi >= 0) await say(u, 'shock', `${u.g.name}「${line(u.g, 'flee')}」`);
@@ -1203,6 +1206,23 @@ const Battle = (() => {
     }
     if (!first && B.night) { B.night = false; addLog('夜が明けた'); }
     B.units.forEach(u => { if (u.alive) { u.acted = false; if (u.confused > 0) { u.confused--; if (u.confused > 0) u.acted = true; } } });
+    // 名将の采配：統率85以上の将は、毎朝、自分と隣の味方の士気を立て直す（統率が高いほど大きい）
+    if (!first) B.units.filter(u => u.alive && u.gi >= 0 && u.g.lead >= 85 && !u.confused).forEach(u => {
+      const v = Math.round((u.g.lead - 80) / 3);
+      B.units.filter(o => o.alive && o.side === u.side && dist(o, u) <= 1).forEach(o => { o.morale = Math.min(100, o.morale + v); });
+      B.cmdSaid = B.cmdSaid || {};
+      if (!B.cmdSaid[u.gi] && B.units.some(o => o.alive && o !== u && o.side === u.side && dist(o, u) <= 1)) { B.cmdSaid[u.gi] = true; addLog(`${u.g.name}の采配で、隣の味方の陣が引き締まった（毎朝 士気+${v}）`); addFloater(u.r, u.c, '采配', '#9ad0ff'); }
+    });
+    // 統率の上位者（名将、上位5人）は、毎朝、傷ついた兵を戦列に戻す。回復量は統率しだい、本拠の城を守る時は2倍
+    if (!first) B.units.filter(u => u.alive && u.gi >= 0 && Game.top(u.g, 'lead') && u.troops < u.maxTroops).forEach(u => {
+      const home = u.side === 'def' && B.defFi != null && G.factions[B.defFi] && G.factions[B.defFi].capital === B.to.i;
+      const rate = Math.max(0.004, (u.g.lead - 70) / 1400) * (Game.top(u.g, 'lead') === 1 ? 1.3 : 1) * (home ? 2 : 1);
+      const v = Math.min(u.maxTroops - u.troops, Math.round(u.maxTroops * rate));
+      if (v <= 0) return;
+      u.troops += v; addFloater(u.r, u.c, '+' + v, '#7dff9a');
+      if (!B.healSaid) { B.healSaid = {}; }
+      if (!B.healSaid[u.gi]) { B.healSaid[u.gi] = true; addLog(`${u.g.name}の統率で、傷ついた兵が戦列に戻った${home ? '（本拠の城）' : ''}`); }
+    });
     // 包囲された部隊は士気が落ちる（野戦・知略の将の囲みで大きく）
     if (!first) B.units.filter(u => u.alive).forEach(u => {
       const sur = surrounders(u); if (sur.length < 2 || !isField(u)) return;
