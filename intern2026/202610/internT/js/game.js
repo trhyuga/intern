@@ -615,10 +615,38 @@ const Game = {
   },
 
   // ---------------- 保存 ----------------
-  save() { try { localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(G)); return true; } catch (e) { return false; } },
+  save() { try { localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(G)); try { localStorage.setItem(CONFIG.SAVE_KEY + '_info', JSON.stringify(Game.saveInfo())); } catch (e2) {} return true; } catch (e) { return false; } },
   load() { try { const s = localStorage.getItem(CONFIG.SAVE_KEY); if (!s) return false; G = JSON.parse(s); return true; } catch (e) { return false; } },
   hasSave() { try { return !!localStorage.getItem(CONFIG.SAVE_KEY); } catch (e) { return false; } },
-  clearSave() { try { localStorage.removeItem(CONFIG.SAVE_KEY); } catch (e) {} },
+  clearSave() { try { localStorage.removeItem(CONFIG.SAVE_KEY); localStorage.removeItem(CONFIG.SAVE_KEY + '_info'); } catch (e) {} },
+  // 任意セーブの枠（自動セーブとは別。自分で選んで保存した時だけ書き換わる）
+  SLOTS: 5,
+  slotKey(n) { return `${CONFIG.SAVE_KEY}_slot${n}`; },
+  saveInfo() {
+    const lord = Game.lordOf(G.player), f = G.factions[G.player];
+    const d = new Date(), z = x => String(x).padStart(2, '0');
+    return { lord: lord ? lord.name : '', fac: f ? f.name : '', color: f ? f.color : '#777', year: G.year, season: G.season,
+      cities: Game.citiesOf(G.player).length, at: `${d.getFullYear()}/${z(d.getMonth() + 1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}` };
+  },
+  saveSlot(n) {
+    try { localStorage.setItem(Game.slotKey(n), JSON.stringify(G)); localStorage.setItem(Game.slotKey(n) + '_info', JSON.stringify(Game.saveInfo())); return true; } catch (e) { return false; }
+  },
+  loadSlot(n) {
+    try { const s = localStorage.getItem(n === 'auto' ? CONFIG.SAVE_KEY : Game.slotKey(n)); if (!s) return false; G = JSON.parse(s); return true; } catch (e) { return false; }
+  },
+  slotInfo(n) {
+    try {
+      const key = n === 'auto' ? CONFIG.SAVE_KEY : Game.slotKey(n);
+      if (!localStorage.getItem(key)) return null;
+      const inf = localStorage.getItem(key + '_info');
+      if (inf) return JSON.parse(inf);
+      // 以前の形式（見出しなし）のデータは、中身から見出しを作る
+      const g = JSON.parse(localStorage.getItem(key)), f = g.factions[g.player], lord = g.gens.find(x => x.isLord && x.faction === g.player && x.state === 'serve');
+      return { lord: lord ? lord.name : '', fac: f ? f.name : '', color: f ? f.color : '#777', year: g.year, season: g.season, cities: g.cities.filter(c => c.owner === g.player).length, at: '―' };
+    } catch (e) { return null; }
+  },
+  deleteSlot(n) { try { localStorage.removeItem(Game.slotKey(n)); localStorage.removeItem(Game.slotKey(n) + '_info'); } catch (e) {} },
+  anySave() { if (Game.hasSave()) return true; for (let n = 1; n <= Game.SLOTS; n++) if (Game.slotInfo(n)) return true; return false; },
 };
 
 // ============================================================

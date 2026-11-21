@@ -155,8 +155,8 @@ const App = {
   async titleAction(a) {
     if (a === 'new') return App.scenList();
     if (a === 'load') {
-      if (!Game.hasSave() || !Game.load()) return UI.alert('セーブデータがありません');
-      return App.enterMain();
+      if (!Game.anySave()) return UI.alert('セーブデータがありません');
+      return App.loadMenu();
     }
     if (a === 'howto') return App.howto();
     if (a === 'opening') return App.opening();
@@ -914,19 +914,47 @@ const App = {
 
   async menu() {
     const v = await UI.choose('メニュー', [
-      { label: 'セーブ', sub: '季節の終わりにも自動で保存されます', value: 'save' },
-      { label: 'ロード', value: 'load' },
+      { label: 'セーブ', sub: `記録の枠（${Game.SLOTS}つ）を選んで保存。自動セーブとは別です`, value: 'save' },
+      { label: 'ロード', sub: '自動セーブか、記録の枠から選んで読み込む', value: 'load' },
       { label: Sound.muted ? '音を出す' : '音を消す', value: 'mute' },
       { label: `戦闘の速さ：${G.opts.aiSpeed >= 2 ? '速い' : '普通'}`, value: 'speed' },
       { label: '遊び方', value: 'howto' },
       { label: 'タイトルへ戻る', value: 'title', cls: 'danger' },
     ]);
-    if (v === 'save') { Game.save() ? UI.toast('保存しました') : UI.toast('保存できませんでした'); }
-    if (v === 'load') { if (Game.load()) { App.enterMain(); UI.toast('読み込みました'); } else UI.toast('セーブデータがありません'); }
+    if (v === 'save') return App.saveMenu();
+    if (v === 'load') return App.loadMenu(true);
     if (v === 'mute') { Sound.toggleMute(); UI.toast(Sound.muted ? '音を消しました' : '音を出します'); }
     if (v === 'speed') { G.opts.aiSpeed = G.opts.aiSpeed >= 2 ? 1 : 2; UI.toast('戦闘の速さを変えました'); }
     if (v === 'howto') App.howto();
     if (v === 'title') { if (await UI.confirm('タイトルへ戻りますか？（保存していない進行は失われます）')) App.title(); }
+  },
+
+  // セーブ・ロードの枠の見出し
+  slotText(n) {
+    const inf = Game.slotInfo(n);
+    const name = n === 'auto' ? '自動セーブ' : `記録${n}`;
+    if (!inf) return { label: `${name}　―― 空き ――`, sub: '', empty: true };
+    if (!inf.year) return { label: name, sub: '（以前の形式のデータ）', empty: false };
+    return { label: `${name}　<span style="color:${inf.color}">■</span> ${inf.fac}軍（${inf.lord}）`, sub: `${inf.year}年${SEASONS[inf.season]}　都市${inf.cities}　保存 ${inf.at}`, empty: false };
+  },
+  async saveMenu() {
+    const opts = [];
+    for (let n = 1; n <= Game.SLOTS; n++) { const t = App.slotText(n); opts.push({ label: t.label, sub: t.sub || 'ここに保存する', value: n }); }
+    const n = await UI.choose('どの枠に保存しますか', opts);
+    if (n == null) return;
+    if (Game.slotInfo(n) && !await UI.confirm(`記録${n}に上書きしますか？<br><small>${App.slotText(n).sub}</small>`)) return App.saveMenu();
+    if (Game.saveSlot(n)) UI.toast(`記録${n}に保存しました`);
+    else UI.alert('保存できませんでした（端末の保存容量が足りないか、プライベートブラウズでは保存できないことがあります）');
+  },
+  async loadMenu(inGame) {
+    const opts = ['auto'];
+    for (let n = 1; n <= Game.SLOTS; n++) opts.push(n);
+    const n = await UI.choose('どの記録を読み込みますか', opts.map(k => { const t = App.slotText(k); return { label: t.label, sub: t.sub, value: k, disabled: t.empty }; }));
+    if (n == null) return;
+    if (inGame && !await UI.confirm('今の進行は失われます（保存していない分）。読み込みますか？')) return;
+    if (!Game.loadSlot(n)) return UI.alert('読み込めませんでした');
+    if (Auto.running) Auto.stop(true);
+    App.enterMain(); UI.toast(n === 'auto' ? '自動セーブを読み込みました' : `記録${n}を読み込みました`);
   },
 
   async finish(kind) {
