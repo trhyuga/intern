@@ -490,9 +490,162 @@ const Events = (() => {
     return ev;
   }
 
+
+  // ================================================================
+  //  進捗イベント（天下の歩み）
+  //  ・誰でも起きる：都市の数の節目／要地（洛陽・長安など）を得た時
+  //  ・天下の形：残りの勢力が5つ（五覇）・3つ（三国鼎立）・2つ（天下二分。司馬氏がいれば政変で国が割れる）
+  //  ・一時は大国だった勢力（最大8都市以上）が滅んだ時
+  //  ・君主ごとに台詞が変わる（史実そのものではなく、その人物らしい「もしも」の言葉）
+  //  ・ボーナス：能力の上昇・忠誠・民忠・金や兵糧・人材が集まる など
+  // ================================================================
+  const up99 = (g, k, v) => { if (g) g[k] = Math.min(99, Math.max(1, g[k] + v)); };
+  const VOICE = {
+    曹操: { win: ['よし。だが、天下はまだ遠いぞ', '才ある者は身分を問わず用いよ。この勢い、止めてはならん'], big: '天下の英雄は、残るところわずか。ふふ……面白くなってきたわ' },
+    劉備: { win: ['民が安らかに暮らせる地が、また一つ増えた', 'みなの力あってこそだ。驕らず進もう'], big: '漢室の再興まで、あと少しだ。皆、もうひと踏ん張りしてくれ' },
+    孫権: { win: ['父上と兄上が遺した地を、さらに広げることができた', '江東の守りを固めつつ、次を狙う'], big: '江東の孫権が、天下を語る日が来ようとはな' },
+    孫策: { win: ['はっはっは！ この勢いのまま突き進むぞ！'], big: '小覇王の名、天下に轟かせてやる！' },
+    孫堅: { win: ['江東の虎の牙、まだ鈍ってはおらん'], big: '孫家の旗を、天下に立てる時が来た' },
+    袁紹: { win: ['四世三公の名門に、ふさわしい勢いよ'], big: '天下は名門袁家のもとに一つになるのだ' },
+    袁術: { win: ['見よ、天命はやはりこの袁術にある！'], big: '玉璽を持つ者こそ天下の主よ！' },
+    呂布: { win: ['ふん、弱い者ばかりだ'], big: '天下最強はこの呂布。それを皆に教えてやる' },
+    董卓: { win: ['逆らう者は根絶やしにせよ'], big: '天下はわしのものだ。誰にも渡さん' },
+    馬騰: { win: ['西涼の騎馬の力、思い知ったか'], big: '西涼の旗を、都に翻してみせよう' },
+    公孫瓚: { win: ['白馬義従の駆けるところ、敵はなし'], big: '北の雄が天下を取る日も近い' },
+    劉表: { win: ['荊州の安らぎを、さらに広げよう'], big: '荊州を守るだけのつもりが……天下が見えてきたか' },
+    劉璋: { win: ['益州の民のためにも、負けられぬ'], big: '天府の国から、天下を目指す時が来た' },
+  };
+  const VOICE_TRAIT = [['仁徳', '民の暮らしを第一に、着実に進もう'], ['野心', 'まだだ。天下を取るまで、止まりはせぬ'], ['猪突', 'がはは！ この調子で次も攻め取るぞ！'], ['治世', '得た地を治めてこそ、真の勝利だ'], ['_', '皆、よくやってくれた。次の一歩も頼むぞ']];
+  const voice = (lord, kind) => { const v = VOICE[lord.name]; if (v && v[kind]) return Array.isArray(v[kind]) ? pick(v[kind]) : v[kind]; return (VOICE_TRAIT.find(([k]) => k === '_' || Game.has(lord, k)) || VOICE_TRAIT[4])[1]; };
+  const myCap = () => G.cities[G.factions[G.player].capital];
+  // 人材が集まる：在野の人物を n 人、本拠へ招く（諸葛亮は三顧の礼のため除く）
+  function gather(n) { const cap = myCap(); const rs = shuffle(G.gens.filter(g => g.state === 'ronin' && g.name !== '諸葛亮')).slice(0, n); rs.forEach(g => { g.city = cap.i; g.known = true; }); return rs; }
+  const loyAll = v => Game.gensOf(G.player).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + v); });
+  const cityAll = (k, v, max = 100) => Game.citiesOf(G.player).forEach(c => c[k] = Math.min(max, c[k] + v));
+
+  // 都市の数の節目
+  const CITY_MS = [
+    { n: 3, title: '旗揚げの地固め', text: '三つの城を治め、一勢力として名が知られ始めた。', bonus: () => { myCap().gold += 300; return '本拠の金 +300'; } },
+    { n: 5, title: '群雄の一角', text: '五つの城を数え、群雄の一角に数えられるようになった。各地から仕官を望む者が訪ねてくる。', bonus: () => { const rs = gather(2); loyAll(3); return (rs.length ? `在野の${rs.map(g => g.name).join('・')}が本拠を訪ねてきた（登用できる）。` : '') + '家臣の忠誠 +3'; } },
+    { n: 8, title: '一州の主', text: '八つの城を従え、一州に号令する力を得た。', bonus: () => { const l = Game.lordOf(G.player); up99(l, 'lead', 1); up99(l, 'cha', 1); cityAll('loyal', 3); return `${l.name}の統率 +1・魅力 +1、全都市の民忠 +3`; } },
+    { n: 12, title: '天下に覇を唱える', text: '十二の城を擁し、天下の諸侯がその動きを注視している。', bonus: () => { const l = Game.lordOf(G.player); up99(l, 'cha', 2); loyAll(5); myCap().gold += 800; return `${l.name}の魅力 +2、家臣の忠誠 +5、本拠の金 +800`; } },
+    { n: 16, title: '天下の半ばへ', text: '十六の城。天下の地図の多くが、我が旗の色に染まり始めた。', bonus: () => { const l = Game.lordOf(G.player); ['lead', 'war', 'int', 'pol', 'cha'].sort((a, b) => l[b] - l[a]).slice(0, 2).forEach(k => up99(l, k, 1)); cityAll('train', 5); const rs = gather(2); return `${l.name}の得意な能力 +1（2つ）、全都市の訓練 +5` + (rs.length ? `。在野の${rs.map(g => g.name).join('・')}が本拠を訪ねてきた` : ''); } },
+    { n: 22, title: '天下の大勢、決す', text: '二十を超える城を治め、天下の大勢は我が方に傾きつつある。', bonus: () => { loyAll(8); cityAll('loyal', 5); Game.citiesOf(G.player).forEach(c => c.food += 3000); return '家臣の忠誠 +8、全都市の民忠 +5・兵糧 +3000'; } },
+    { n: 30, title: '天下統一の目前', text: '三十の城。残る敵は、もはや天下の片隅に追いやられている。', bonus: () => { const l = Game.lordOf(G.player); up99(l, 'cha', 3); loyAll(10); return `${l.name}の魅力 +3、家臣の忠誠 +10`; } },
+  ];
+  // 要地を得た時
+  const REGION = {
+    luoyang: { title: '洛陽入城', text: '漢の都・洛陽を手中に収めた。荒れ果てた宮殿にも、天下の中心としての重みがある。', bonus: c => { const l = Game.lordOf(G.player); up99(l, 'cha', 2); c.loyal = Math.min(100, c.loyal + 10); return `${l.name}の魅力 +2、洛陽の民忠 +10`; } },
+    changan: { title: '旧都・長安', text: '前漢の都・長安を得た。関中の守りと豊かな地が、我が国の背を支える。', bonus: c => { c.def = Math.min(c.defMax, c.def + 100); c.food += 5000; return '長安の城壁 +100・兵糧 +5000'; } },
+    xuchang: { title: '許都を押さえる', text: '許昌を手に入れた。中原の要として、多くの人と物が集まる地である。', bonus: c => { const rs = gather(1); c.gold += 600; return '許昌の金 +600' + (rs.length ? `。在野の${rs[0].name}が本拠を訪ねてきた` : ''); } },
+    ye: { title: '河北の要・鄴', text: '鄴を得た。河北の富と兵が、我が軍の力となる。', bonus: c => { cityAll('train', 4); c.troops += 3000; return '全都市の訓練 +4、鄴の兵 +3000'; } },
+    chengdu: { title: '天府の国', text: '成都を手に入れた。肥沃な益州の地は「天府の国」と呼ばれる。', bonus: c => { Game.citiesOf(G.player).forEach(x => x.food += 2500); c.loyal = Math.min(100, c.loyal + 8); return '全都市の兵糧 +2500、成都の民忠 +8'; } },
+    jianye: { title: '江東の要・建業', text: '建業を押さえた。長江の流れが、天然の守りとなる。', bonus: c => { c.def = Math.min(c.defMax, c.def + 120); const l = Game.lordOf(G.player); up99(l, 'lead', 1); return `建業の城壁 +120、${l.name}の統率 +1`; } },
+    xiangyang: { title: '荊州の要・襄陽', text: '襄陽を得た。四方に通じる荊州の要には、名士も多く集まる。', bonus: c => { const rs = gather(2); return rs.length ? `在野の${rs.map(g => g.name).join('・')}が本拠を訪ねてきた（登用できる）` : '荊州の名士たちが、我が軍に好意を寄せている'; } },
+    hanzhong: { title: '漢中を制す', text: '漢中を得た。益州と関中をつなぐ要の地である。', bonus: c => { c.def = Math.min(c.defMax, c.def + 80); loyAll(3); return '漢中の城壁 +80、家臣の忠誠 +3'; } },
+  };
+  // 司馬氏の政変：残り2勢力になった時、コンピュータの国に仕える司馬氏が国を二つに割る
+  const SIMA = ['司馬懿', '司馬師', '司馬昭'];
+  function simaCoup(fi) {
+    const sima = SIMA.map(serving).filter(g => g && g.faction === fi && !g.isLord);
+    if (!sima.length) return null;
+    const head = sima[0], f = G.factions[fi];
+    const mine = Game.citiesOf(fi);
+    if (mine.length < 2) return null;
+    // 司馬氏のいる都市から、地続きに半分の都市が離反する（本拠は除く）
+    let start = G.cities[head.city].owner === fi && head.city !== f.capital ? G.cities[head.city] : mine.find(c => c.i !== f.capital);
+    if (!start) return null;
+    const take = new Set([start.i]), q = [start];
+    const half = Math.floor(mine.length / 2);
+    while (q.length && take.size < half) { const c = q.shift(); c.adj.forEach(a => { const o = G.cities[a]; if (take.size < half && o.owner === fi && o.i !== f.capital && !take.has(o.i)) { take.add(o.i); q.push(o); } }); }
+    const nf = { i: G.factions.length, name: head.name, color: '#5a5a8c', lord: head.i, alive: true, capital: start.i, allies: {}, isPlayer: false, hostility: {} };
+    G.factions.push(nf);
+    head.faction = nf.i; head.isLord = true; head.loyalty = 100; head.city = start.i;
+    sima.slice(1).forEach(g => { g.faction = nf.i; g.city = start.i; g.loyalty = 95; });
+    take.forEach(ci => { const c = G.cities[ci]; c.owner = nf.i; Game.gensIn(ci, fi).forEach(g => { if (g.isLord) return; if (!Game.has(g, '忠義') && (g.loyalty < 75 || Game.has(g, '野心'))) { g.faction = nf.i; g.loyalty = irnd(70, 90); } else g.city = f.capital; }); });
+    return { head, f, n: take.size };
+  }
+  // 初めて：ゲーム開始時点ですでに満たしている節目は、起きたことにしておく（「得た時」だけ起こす）
+  function initProg() {
+    const P0 = G.events.prog = { cities: {}, region: {}, fac: {}, fell: {} };
+    const n0 = Game.citiesOf(G.player).length, a0 = G.factions.filter(f => f.alive).length;
+    CITY_MS.forEach(m => { if (n0 >= m.n) P0.cities[m.n] = true; });
+    Object.keys(REGION).forEach(id => { const c = G.cities.find(x => x.id === id); if (c && c.owner === G.player) P0.region[id] = true; });
+    [5, 3, 2].forEach(k => { if (a0 <= k) P0.fac[k] = true; });
+    G.factions.forEach(f => { if (!f.alive) P0.fell[f.i] = true; else f.maxCities = Game.citiesOf(f.i).length; });
+  }
+  function progEvents() {
+    if (!G.factions[G.player] || !G.factions[G.player].alive) return [];
+    if (!G.events.prog) initProg();
+    const P = G.events.prog;
+    const ev = [], lord = Game.lordOf(G.player), col = G.factions[G.player].color;
+    const push = (title, msg, gen, tag, extra) => ev.push(Object.assign({ type: 'hist', title, msg, gen: gen ? gen.i : null, expr: 'happy', tag, talk: true, hist: true, se: 'bell' }, extra || {}));
+    // 都市の数の節目（季節に1つまで）
+    const n = Game.citiesOf(G.player).length;
+    const ms = CITY_MS.filter(m => n >= m.n && !P.cities[m.n]);
+    if (ms.length) {
+      ms.forEach(m => P.cities[m.n] = true);
+      const m = ms[ms.length - 1];
+      const b = m.bonus();
+      Game.log(`【${m.title}】${m.text}`);
+      push(m.title, `${m.text}\n${lord.name}「${voice(lord, 'win')}」\n<small>${b}</small>`, lord, '天下の歩み');
+    }
+    // 要地を得た時（季節に2つまで）
+    let rg = 0;
+    Object.keys(REGION).forEach(id => {
+      const c = G.cities.find(x => x.id === id);
+      if (!c || c.owner !== G.player || P.region[id] || rg >= 2) return;
+      P.region[id] = true; rg++;
+      const r = REGION[id], b = r.bonus(c);
+      Game.log(`【${r.title}】${r.text}`);
+      const sp = Game.gensIn(c.i, G.player).filter(g => !g.isLord).sort((a, b2) => b2.int - a.int)[0] || lord;
+      push(r.title, `${r.text}\n<small>${b}</small>`, sp, '天下の歩み');
+    });
+    // 一時は大国だった勢力が滅んだ
+    G.factions.forEach(f => {
+      if (f.alive) { f.maxCities = Math.max(f.maxCities || 0, Game.citiesOf(f.i).length); return; }
+      if (P.fell[f.i] || (f.maxCities || 0) < 8 || f.i === G.player) { P.fell[f.i] = true; return; }
+      P.fell[f.i] = true;
+      const cap = G.cities[f.capital], by = cap ? cap.owner : null;
+      const old = G.gens[f.lord];
+      if (by === G.player) {
+        loyAll(8); up99(lord, 'cha', 2); Game.citiesOf(G.player).forEach(c => c.loyal = Math.min(100, c.loyal + 4));
+        push('巨星墜つ', `かつて${f.maxCities}の城を誇った${f.name}軍が、我が軍の前に滅んだ。\n${lord.name}「${voice(lord, 'big')}」\n<small>家臣の忠誠 +8、${lord.name}の魅力 +2、全都市の民忠 +4</small>`, lord, '天下の歩み', { se: 'coronation' });
+      } else {
+        push('巨星墜つ', `かつて${f.maxCities}の城を誇った${f.name}軍が滅んだ。${by != null && G.factions[by] ? G.factions[by].name + '軍の勢いは侮れない。' : ''}\n栄華を極めた国も、滅びる時は一瞬である。`, old, '天下の動き', { expr: 'sad', se: 'event' });
+      }
+    });
+    // 天下の形：残りの勢力の数
+    const alive = G.factions.filter(f => f.alive && Game.citiesOf(f.i).length > 0);
+    const names = alive.map(f => `${f.name}（${Game.citiesOf(f.i).length}城）`).join('・');
+    const stage = alive.length <= 2 ? 2 : alive.length <= 3 ? 3 : alive.length <= 5 ? 5 : 0;
+    if (stage && !P.fac[stage]) {
+      [5, 3, 2].forEach(k => { if (k >= stage) P.fac[k] = true; });
+      if (stage === 5) {
+        loyAll(5); cityAll('train', 5);
+        push('五雄並び立つ', `天下に残る勢力は五つとなった。\n${names}\n群雄割拠の時代は終わり、覇を競う五雄の時代が始まる。\n${lord.name}「${voice(lord, 'big')}」\n<small>家臣の忠誠 +5、全都市の訓練 +5</small>`, lord, '天下の形');
+      } else if (stage === 3) {
+        up99(lord, 'cha', 2); loyAll(5); cityAll('loyal', 5);
+        push('三国鼎立', `天下は三つに分かれた。\n${names}\n鼎の三本の足のように、三つの国が並び立つ。\n${lord.name}「${voice(lord, 'big')}」\n<small>${lord.name}の魅力 +2、家臣の忠誠 +5、全都市の民忠 +5</small>`, lord, '天下の形', { se: 'coronation' });
+      } else {
+        const foe = alive.find(f => f.i !== G.player);
+        const coup = foe ? simaCoup(foe.i) : null;
+        const mySima = SIMA.map(serving).find(g => g && g.faction === G.player && !g.isLord);
+        if (coup) {
+          push('天下二分、そして政変', `天下は二つの国に分かれた——と思われた矢先、${coup.f.name}軍で政変が起きた。\n${coup.head.name}が兵を挙げ、${coup.n}つの城とともに${coup.f.name}軍から離れた！\n天下は再び三つに割れた。`, coup.head, '天下の形', { expr: 'angry', se: 'gong' });
+        } else {
+          loyAll(10); const l2 = lord; ['lead', 'war', 'int', 'pol', 'cha'].sort((a, b) => l2[b] - l2[a]).slice(0, 1).forEach(k => up99(l2, k, 2));
+          push('天下二分', `天下は二つに分かれた。\n${names}\n残るは、雌雄を決する最後の戦いのみ。\n${lord.name}「${voice(lord, 'big')}」\n<small>家臣の忠誠 +10、${lord.name}の得意な能力 +2</small>` + (mySima ? `\n<small>${mySima.name}が、何やら静かに天下の形を見つめている……（忠誠 −10）</small>` : ''), lord, '天下の形', { se: 'coronation' });
+          if (mySima && !Game.has(mySima, '忠義')) mySima.loyalty = Math.max(0, mySima.loyalty - 10);
+        }
+      }
+    }
+    return ev;
+  }
+
   return {
-    run() { return [...crownEvents(), ...histEvents(), ...topEvents(), ...randomEvents(), ...bigEvents()]; },
-    bigK,
+    run() { return [...crownEvents(), ...histEvents(), ...progEvents(), ...topEvents(), ...randomEvents(), ...bigEvents()]; },
+    bigK, initProg,
     rankName,
     counts: () => ({ city: CITY.length, gen: GEN.length, hist: HIST.length }),
     MEET, FACE,

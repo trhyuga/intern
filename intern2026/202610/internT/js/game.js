@@ -94,6 +94,7 @@ const Game = {
       log: [], stats: { battles: 0, wins: 0, captured: 0, recruited: 0, duelsWon: 0 }, events: {}, gameOver: false };
     gens.forEach(g => { if (g.state === 'serve') g.joined = year; });
     Game.log(`${year}年 春、${factions[pf].name}軍、天下に名乗りを上げる。`);
+    if (typeof Events !== 'undefined' && Events.initProg) Events.initProg();
     return G;
   },
 
