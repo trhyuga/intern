@@ -244,6 +244,12 @@ const Sound = (() => {
       B: { inst: 'erhu', mel: '5 - - - 6 - 5 4 3 - - - 2 - 3 - | 4 - - - 3 - 2 1 0 - - - - - . .', ch: [2, 0], bass: 'x.x.x.x.x.x.x.x.', drum: 'K.k.K.kkK.k.K.kc' },
       C: { inst: 'pipa', mel: '7 6 5 . 7 6 5 . 4 3 2 . 3 - - - | 2 3 4 . 3 2 1 . 0 - 0 - 0 - . .', ch: [1, 0], bass: 'xxx.xxx.xxx.x.o.', drum: 'KkKkK.k.KkKkKkkc' },
     },
+    // 敵の君主との決戦：大太鼓を打ち鳴らし、二胡と笛が高らかに歌う
+    lordwar: { bpm: 126, root: 59, sc: 'min', order: ['A', 'B', 'A', 'C'],
+      A: { inst: 'pipa', mel: '0 . 0 3 2 . 0 . 4 . 3 . 5 - . . | 4 . 4 3 2 . 3 . 2 . 0 . -1 - . . | 0 . 0 3 2 . 0 . 4 . 5 . 7 - . . | 8 . 7 5 4 . 3 . 2 - 0 - 0 - . .', ch: [0, -1, 0, 2], bass: 'x.x.x.o.x.x.x.o.', drum: 'K...K.k.K...K.kc' },
+      B: { inst: 'erhu', mel: '7 - - - 8 - 7 - 5 - - - 4 - 5 - | 7 - - - 5 - 4 - 3 - - - . . . . | 5 - - - 7 - 8 - 10 - - - 9 - 8 - | 7 - 5 - 4 - 3 - 4 - - - . . . .', ch: [2, 0, 3, 1], bass: 'x...x...x...x...', drum: 'K.k.K.k.K.k.K.kc', pad: true },
+      C: { inst: 'flute', mel: '10 - 9 - 8 - 7 - 8 - - - 7 - 5 - | 4 - 5 - 7 - 5 - 4 - - - . . . . | 7 - 8 - 10 - 9 - 8 - 7 - 5 - - - | 4 - 3 - 2 - 0 - 0 - - - - - . .', ch: [3, 2, 0, -1], arp: '0.1.2.3.0.1.2.3.', bass: 'xx.xxx.xxx.xxx.x', drum: 'KkKkK.k.KkKkKkKc' },
+    },
     defend: { bpm: 118, root: 54, sc: 'in', order: ['A', 'B'],
       A: { inst: 'koto', mel: '0 . 1 . 0 . . . 3 . 2 . 1 - - - | 0 . 1 . 2 . 3 . 4 - 3 - 2 - - -', ch: [0, 0], bass: 'x..x..x.x..x..x.', drum: 'K..k..K.K..k..kr' },
       B: { inst: 'erhu', mel: '4 - - - 5 - 4 - 3 - - - 1 - - - | 2 - 3 - 2 - 1 - 0 - - - . . . .', ch: [-2, 0], bass: 'x..x..x.x..x..x.', drum: 'K..k..K.K.kk.kkc' },
@@ -444,7 +450,7 @@ const Sound = (() => {
       if (timer) clearInterval(timer);
       timer = null;
       if (curSong) { timer = setInterval(tick, 60); if (key === 'title' || key === 'ending') gong(ctx.currentTime + 0.1, 0.3); }
-      if (key !== 'battle' && key !== 'defend' && key !== 'crisis' && key !== 'duel') setAmb(null);
+      if (key !== 'battle' && key !== 'lordwar' && key !== 'defend' && key !== 'crisis' && key !== 'duel') setAmb(null);
     },
     get mood() { return curMood; },
     mapStage,

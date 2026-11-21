@@ -777,7 +777,9 @@ const Battle = (() => {
 
   // ---------- 一騎打ち ----------
   // 戦況に応じた合戦の曲（攻め／守り／劣勢）
-  function baseBgm() { Sound.bgm(B.playerSide && outlook(B.playerSide) < -0.45 ? 'crisis' : B.playerSide === 'def' ? 'defend' : 'battle'); }
+  // 自分が攻め手で、守りに敵の君主がいる時は、決戦の曲にする
+  const lordBattle = () => B.playerSide === 'atk' && B.units.some(u => u.side === 'def' && u.gi >= 0 && u.g.isLord && u.alive);
+  function baseBgm() { Sound.bgm(B.playerSide && outlook(B.playerSide) < -0.45 ? 'crisis' : B.playerSide === 'def' ? 'defend' : lordBattle() ? 'lordwar' : 'battle'); }
   // 戦況の見通し（-1：ジリ貧で負けそう 〜 +1：このまま押し切れそう）
   // 兵糧：あと何日もつか（これ以上は表示しない）
   function troopsOf(side) { return B.units.filter(u => u.alive && u.side === side).reduce((s, u) => s + u.troops, 0); }
