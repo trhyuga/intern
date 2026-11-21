@@ -133,6 +133,9 @@ const App = {
   busy: false,
   init() {
     $('#tap').onclick = () => { Sound.init(); App.opening(); };
+    // iPhone はほかのアプリから戻ると音が止まったままになるので、画面に戻った時・画面に触れた時に音を起こし直す
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') try { Sound.init(); } catch (e) {} });
+    document.addEventListener('touchend', () => { try { Sound.init(); } catch (e) {} }, { passive: true });
     $$('#title [data-act]').forEach(b => b.onclick = () => { Sound.se('tap'); App.titleAction(b.dataset.act); });
     $$('.back').forEach(b => b.onclick = () => { Sound.se('tap'); UI.show(b.closest('#lord') ? 'scen' : 'title'); if (b.closest('#scen')) App.title(); });
     $$('.bottombar [data-nav]').forEach(b => b.onclick = () => { Sound.se('tap'); App.nav(b.dataset.nav); });
@@ -587,7 +590,9 @@ const App = {
     await UI.talk(cmdr, 'angry', `${cmdr.name}「${line(cmdr, 'sortie')}」`, facColor(cmdr), { tag: '出陣' });
     sel.forEach(gi => G.gens[gi].acted = true);
     const plan = { atkFi: G.player, from: c.i, to: t.i, gens: sel, troops, food };
-    await App.executeBattle(plan, how === 'manual' ? true : how === 'watch' ? 'watch' : false);
+    // 合戦の間は、季節を進める・メニューなどを受け付けない
+    const wasBusy = App.busy; App.busy = true;
+    try { await App.executeBattle(plan, how === 'manual' ? true : how === 'watch' ? 'watch' : false); } finally { App.busy = wasBusy; }
   },
 
   // 戦いを実行して結果を反映
@@ -733,6 +738,7 @@ const App = {
         const tick = () => { if (stopped) return; if (left <= 0) { UI.closeModal(1); return; } if (el) el.textContent = `${left}秒後に自動で続けます（画面をタップすると止まります）`; left--; timer = setTimeout(tick, 1000); };
         tick();
         const bd = $('#modal .modal-bd'); if (bd) bd.onclick = () => { if (stopped) return; stopped = true; clearTimeout(timer); if (el) el.textContent = '止めました。確かめたら「確認した」を押してください'; };
+        p.then(() => { stopped = true; clearTimeout(timer); });   // 先に「確認した」を押したら、数えるのをやめる（あとの画面を勝手に閉じないように）
       }
       await p;
     }
@@ -899,7 +905,10 @@ const App = {
   },
 
   // ---------------- 各種一覧 ----------------
+  // 地図で都市を選んでいる途中なら、取り消す
+  cancelPick() { if (App._pickRes) { const r = App._pickRes; App._pickRes = null; App.endPick(); r(null); } },
   nav(k) {
+    App.cancelPick();
     if (App.busy) return;
     if (k === 'end') return App.endTurn();
     if (k === 'auto') return Auto.openMenu();
@@ -964,14 +973,19 @@ const App = {
   },
 
   async menu() {
+    App.cancelPick();
+    // 季節の処理中・軍師オートの最中は、セーブ・ロード・タイトルへ戻るを使えない（途中の状態を保存したり、古い処理が読み込んだゲームを動かしたりしないように）
+    const busy = App.busy || Auto.running;
+    const bsub = '季節の処理中・オートの最中は使えません（オートを止めてから）';
     const v = await UI.choose('メニュー', [
-      { label: 'セーブ', sub: `記録の枠（${Game.SLOTS}つ）を選んで保存。自動セーブとは別です`, value: 'save' },
-      { label: 'ロード', sub: '自動セーブか、記録の枠から選んで読み込む', value: 'load' },
+      { label: 'セーブ', sub: busy ? bsub : `記録の枠（${Game.SLOTS}つ）を選んで保存。自動セーブとは別です`, value: 'save', disabled: busy },
+      { label: 'ロード', sub: busy ? bsub : '自動セーブか、記録の枠から選んで読み込む', value: 'load', disabled: busy },
       { label: Sound.muted ? '音を出す' : '音を消す', value: 'mute' },
       { label: `戦闘の速さ：${G.opts.aiSpeed >= 2 ? '速い' : '普通'}`, value: 'speed' },
       { label: '遊び方', value: 'howto' },
-      { label: 'タイトルへ戻る', value: 'title', cls: 'danger' },
+      { label: 'タイトルへ戻る', sub: busy ? bsub : '', value: 'title', cls: 'danger', disabled: busy },
     ]);
+    if ((v === 'save' || v === 'load' || v === 'title') && (App.busy || Auto.running)) return UI.toast('季節の処理が終わってから使ってください');
     if (v === 'save') return App.saveMenu();
     if (v === 'load') return App.loadMenu(true);
     if (v === 'mute') { Sound.toggleMute(); UI.toast(Sound.muted ? '音を消しました' : '音を出します'); }

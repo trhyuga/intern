@@ -566,8 +566,6 @@ const Auto = (() => {
       const best = targets.map(o => ({ o, ratio: troops * f / Math.max(1, defPower(o) * (1 + (Math.random() - 0.5) * br.noise * 0.6)) })).sort((a, b) => b.ratio - a.ratio)[0];
       if (!full && best.ratio < (big ? br.bigWant : wantNow(br))) { moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1)); return; }   // 兵が揃いきっていなければ、勝ち目も見る
       orderArmy(army, br);
-      usedT.add(best.o.i);
-      pulled.set(c.i, (pulled.get(c.i) || 0) + army.filter(g => g.city === c.i).length);
       // 兵が揃っていても、勝ち目（力の比）が基準に届かなければ攻めず、人材登用・訓練・内政で力をつける。
       //  基準は1.0（委任の合戦で勝率およそ50%）、訓練が70以上なら0.9。
       //  ただし、登用できる在野がおらず（ほかの都市の将も呼び尽くし）、内政（農業・商業・城壁）がどれも上限の8割以上、訓練も80以上なら、基準に関係なく必ず攻める
@@ -593,6 +591,8 @@ const Auto = (() => {
         return;
       }
       if (typeof window !== 'undefined' && window.__dbg) window.__dbg.push({ from: c.name, to: best.o.name, ratio: +best.ratio.toFixed(2), full });   // 調べ用
+      usedT.add(best.o.i);   // 攻めると決まってから、攻め先と将を押さえる（見送った都市の分は押さえない）
+      pulled.set(c.i, (pulled.get(c.i) || 0) + army.filter(g => g.city === c.i).length);
       out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, full, moved });
     });
     return out;
@@ -1052,7 +1052,7 @@ const Auto = (() => {
       const want = clamp(Math.round(c.pop / 150000), 1, 3);
       const have = Game.gensIn(c.i, G.player).filter(isCiv).length;
       if (have >= want) continue;
-      // 文官の多すぎる都市（前線は2人を超える分、内地はその都市の必要数を超える分）から呼ぶ
+      // 文官の多すぎる都市（前線は、ほかに将がいれば文官は全員、内地はその都市の必要数を超える分）から呼ぶ
       const donor = cities.filter(d => d !== c).map(d => {
         const civs = Game.gensIn(d.i, G.player).filter(g => isCiv(g) && !g.acted && !reserved.has(g.i));
         const need = Game.isFront(d) ? 0 : clamp(Math.round(d.pop / 150000), 1, 3);
@@ -1385,7 +1385,8 @@ const Auto = (() => {
       // 実際に集まった将が率いられる分までに抑える
       const troops = Math.min(e.troops, Math.floor((p.c.troops - e.keep) / 100) * 100, Math.floor(army.reduce((s2, g) => s2 + Game.troopCap(g), 0) / 100) * 100);
       // 予定の将が他の出陣に回って減ったときは、勝ち目を確かめ直す（足りなければ見送る）
-      if (army.length < e.army.length && !e.big && !e.full) {
+      // 将が減った時だけでなく、合流する兵が見込みより大きく減った時（ほかの出陣と同じ都市をあてにしていた等）も勝ち目を見直す
+      if ((army.length < e.army.length || troops < e.troops * 0.9) && !e.big && !e.full) {
         const ratio = troops * atkFactor(p.c, army) / Math.max(1, defPower(p.t));
         if (ratio < (e.attrition ? br.attrWant : wantNow(br))) { await say('hold'); continue; }
       }
@@ -1490,6 +1491,7 @@ const Auto = (() => {
   async function loop() {
     while (running && !stopReq) {
       const ok = await playSeason();
+      if (!ok && !G.gameOver) await ensureGovernors();   // 途中で止めても、武将のいない都市を残さない
       if (!ok || stopReq || G.gameOver) break;
       setBar(`季節を進めています…`);
       await App.endTurn(true);
@@ -1524,7 +1526,7 @@ const Auto = (() => {
     running = true; stopReq = false; seasonsLeft = n || 0;
     App.busy = true; keepAwake(true);
     document.getElementById('autobar').classList.add('show'); document.getElementById('app').classList.add('auto-on'); place();
-    loop().finally(() => { App.busy = false; });
+    loop().catch(e => console.error('auto', e)).finally(() => { App.busy = false; stop(true); });   // 途中でエラーが出ても、オートが止まったままにならないように
   }
   function stop(done) {
     if (!running) return;

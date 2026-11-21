@@ -432,8 +432,8 @@ const Battle = (() => {
     if (u.side === 'atk' && B.tiles[2][4].t === 'gate' && !unitAt(2, 4) && Math.abs(2 - r) + Math.abs(4 - c) <= 1) out.push([2, 4]);   // 門の上に誰かいれば、その部隊が相手
     return out;
   }
-  function plotTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && dist(u, o) <= 2).map(o => [o.r, o.c]); }
-  function duelTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && u.gi >= 0 && dist(u, o) === 1).map(o => [o.r, o.c]); }
+  function plotTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && !o.ambush && dist(u, o) <= 2).map(o => [o.r, o.c]); }
+  function duelTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && !o.ambush && o.gi >= 0 && u.gi >= 0 && dist(u, o) === 1).map(o => [o.r, o.c]); }
 
   // ---------- 戦闘計算 ----------
   function bondBonus(u) { const list = u.side === 'atk' ? B.bondAtk : B.bondDef; return list.filter(b => b.members.includes(u.g.name) && b.members.filter(m => B.units.some(v => v.alive && v.side === u.side && v.g.name === m)).length >= 2).reduce((s, b) => s + b.bonus, 0); }
@@ -520,6 +520,7 @@ const Battle = (() => {
   }
 
   async function doAttack(a, r, c) {
+    a.ambush = false;   // 攻めかかれば、伏兵は姿を現す
     if (r === 2 && c === 4 && B.tiles[2][4].t === 'gate' && !unitAt(r, c)) {
       // 城門攻撃
       const dmg = Math.round(Math.pow(a.troops, 0.8) * 0.9 * ((a.g.lead || 40) + a.g.war) / 120 * rnd(0.85, 1.15));
@@ -649,7 +650,7 @@ const Battle = (() => {
   }
   // 目標を選ぶ必要がある技なら、その候補マス。不要なら null
   function skillTargets(u, sk) {
-    const foes = B.units.filter(o => o.alive && o.side !== u.side);
+    const foes = B.units.filter(o => o.alive && o.side !== u.side && !o.ambush);
     switch (sk.type) {
       case 'strike': case 'sweep': case 'dash': return sk.type === 'sweep' ? null : foes.filter(o => dist(o, u) === 1).map(o => [o.r, o.c]);
       case 'ranged': return foes.filter(o => dist(o, u) <= sk.range).map(o => [o.r, o.c]);
@@ -937,6 +938,7 @@ const Battle = (() => {
     addLog(`${schemer.g.name}の計：攻め手は偽って退き、${t.g.name}隊を夜戦におびき出した！`);
     bubble(t, pick(['逃がすか！ 追え、追えーっ！', '腰抜けどもめ、一人も帰すな！', '今こそ好機！ 我に続け！']));
     t.r = spot[0]; t.c = spot[1]; t.x = t.c; t.y = t.r;
+    t.ambush = false; t.holdPost = false;
     t.morale = Math.max(0, t.morale - 15); t.acted = true;   // 闇の中で道を見失い、この日は動けない
     // 伏兵：近くの攻め手の部隊が四方から取り囲む（総大将は動かない）
     const amb = atks.filter(u => !u.commander).sort((a, b) => (isWise(b) ? 1 : 0) - (isWise(a) ? 1 : 0) || dist(a, t) - dist(b, t));
@@ -1022,6 +1024,7 @@ const Battle = (() => {
     addLog('夜襲の部隊は、夜明け前に城へ引き上げた');
     draw(); await sleep(400);
   }
+  const DT = w => { if (typeof window !== 'undefined' && window.__trace) (B.trace = B.trace || []).push(`${B.day}:出来事:${w}`); };
   async function dramaEvents() {
     B.rally = B.rally || { atk: 0, def: 0 };
     B.reinf = B.reinf || { atk: 0, def: 0 };
@@ -1048,16 +1051,16 @@ const Battle = (() => {
       if (rf.done) continue;
       if (rf.side === 'def' && defBad && rf.day > B.day && Math.random() < 0.5) { rf.day = B.day; rf.rushed = true; }
       if (rf.day > B.day) continue;
-      await arriveReinf(rf);
+      DT('援軍'); await arriveReinf(rf);
     }
     // 夜戦への吊り出し：攻め手が劣勢で逃げ腰になったとき、知略の将がいれば、偽って退いて守り手の猛将や総大将を夜戦におびき出し、伏兵で囲む
-    await tryNightLure();
+    DT('吊り出し'); await tryNightLure();
     // 夜襲：守り手の知略の将が、闇に紛れて城を出て攻め手の陣を襲い、夜明け前に城へ引き上げる
-    if (!B.night) await tryNightRaid();
+    DT('夜襲'); if (!B.night) await tryNightRaid();
     // 守り手が苦しくなると、民が立ち上がることがある
-    if (outlook('def') < -0.3) await tryMilitia('crisis');
+    DT('市民兵'); if (outlook('def') < -0.3) await tryMilitia('crisis');
     // 忠誠の低い武将が、戦の最中に寝返ることがある（1つの合戦で1回まで）
-    if (B.day >= 3 && !B.turned) await tryTurncoat();
+    DT('寝返り'); if (B.day >= 3 && !B.turned) await tryTurncoat(); DT('出来事おわり');
   }
 
   const gateUp = () => B.tiles[2][4].t === 'gate';
@@ -1320,11 +1323,12 @@ const Battle = (() => {
   }
 
   async function onTap(ev) {
-    if (!B || B.over || B.mode === 'busy') return;
+    if (!B || B.over || B.mode === 'busy' || B.mode === 'menu') return;   // 行動を選んでいる間は地図に触っても何もしない（動いた部隊がもう一度動けてしまうのを防ぐ）
     const rect = cv.getBoundingClientRect();
     const c = Math.floor((ev.clientX - rect.left) / cell), r = Math.floor((ev.clientY - rect.top) / cell);
     if (!inb(r, c)) return;
-    const u = unitAt(r, c);
+    let u = unitAt(r, c);
+    if (u && u.ambush && u.side !== B.playerSide) u = null;   // 森に伏せた敵は見えない
     if (B.mode === 'target') {
       if (B.targets.some(([tr, tc]) => tr === r && tc === c)) { const fn = B.onTarget; B.targets = null; B.mode = 'busy'; setActions([]); await fn(r, c); afterAct(); }
       else { Sound.se('tap'); }
@@ -1496,6 +1500,7 @@ const Battle = (() => {
   async function aiUnit(u, rogue) {
     const foes = B.units.filter(o => o.alive && o.side !== u.side && !o.ambush);   // 森に伏せた敵は見えない
     if (!foes.length) { u.acted = true; return; }
+    T(u, '開始');
     showInfo(u);
     const wmine = B.watch && u.side === B.playerSide;
     // 必殺技（好機なら使う）
@@ -1507,7 +1512,7 @@ const Battle = (() => {
     // 守り手（総大将）や城内の部隊は、敵が近づくまで動かない
     const nearest = foes.slice().sort((a, b) => dist(a, u) - dist(b, u))[0];
     // 城外に布陣した守り手：森の伏兵は敵が隣に来るまで動かない。山・川辺は陣を動かず、届く敵を討つ（門が破れるか、守り手が優勢になれば打って出る）
-    if (u.holdPost && (!gateUp() || outlook('def') > 0.35)) u.holdPost = false;
+    if (u.holdPost && (!gateUp() || outlook('def') > 0.35)) { u.holdPost = false; u.ambush = false; }   // 陣を出たら、もう伏兵ではない
     if (u.holdPost && !rogue) {
       const t = attackTargets(u).filter(([r, c]) => unitAt(r, c));
       if (t.length && !u.ambush) { const [r, c] = bestTarget(u, t); await doAttack(u, r, c); return; }
@@ -1654,6 +1659,7 @@ const Battle = (() => {
       if (sc > bs) { bs = sc; best = [r, c]; }
     });
     if (best && (best[0] !== u.r || best[1] !== u.c)) await animateMove(u, best[0], best[1]);
+    if (u.acted || !u.alive) return;   // 伏兵に襲われた
     // 攻撃は最後の番手として、弱った敵か、隣に迫られたときだけ
     const tg = attackTargets(u).filter(([r, c]) => unitAt(r, c));
     const pickT = tg.sort((a, b) => unitAt(a[0], a[1]).troops - unitAt(b[0], b[1]).troops)[0];
@@ -1713,6 +1719,7 @@ const Battle = (() => {
 //  一騎打ち（演出つき）
 // ============================================================
 const Duel = (() => {
+  const fcol = fi => (fi != null && G.factions[fi]) ? G.factions[fi].color : '#777';   // 勢力の色（勢力がなければ灰色）
   function strike(a, d, mode) {
     // mode: 'atk' 通常 / 'power' 渾身（当たれば大、外れやすい） / 'guard' 守り
     // 戻り値 { dmg, crit（会心）, skill（必殺技） }
@@ -1952,7 +1959,8 @@ const Duel = (() => {
       let exprA = 'angry', exprD = 'angry';
       const setFace = (side, e) => { if (side === 'a') exprA = e; else exprD = e; el.querySelector(side === 'a' ? '#dA img' : '#dD img').src = Portrait.get(side === 'a' ? a : d, e, side === 'a' ? ca : cd); };
       const setHp = () => { hpA.style.width = Math.max(0, ha) + '%'; hpD.style.width = Math.max(0, hd) + '%'; hpAt.textContent = Math.max(0, ha); hpDt.textContent = Math.max(0, hd); };
-      const close = res => { arena.stop(); el.classList.remove('show'); resolve(res); };
+      let closed = false;
+      const close = res => { if (closed) return; closed = true; arena.stop(); el.classList.remove('show'); resolve(res); };
       say('a', line(a, 'duelChallenge', { foe: d.name }));
       setTimeout(() => say('d', line(d, 'duelAccept', { foe: a.name })), 500);
       const finish = (winner) => {
@@ -1967,13 +1975,13 @@ const Duel = (() => {
         Sound.se('win');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
         btns.querySelector('button').onclick = () => close({ winner, outcome });
-        if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2400 / Auto.speed);
+        if (autoEnd || Auto.running) setTimeout(() => { if (closed) return; const b = btns.querySelector('button'); if (b) b.click(); }, 2400 / Auto.speed);
       };
       const finishFlee = winner => {
         Sound.se('ng');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
         btns.querySelector('button').onclick = () => close({ winner, outcome: 'fled' });
-        if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2000 / Auto.speed);
+        if (autoEnd || Auto.running) setTimeout(() => { if (closed) return; const b = btns.querySelector('button'); if (b) b.click(); }, 2000 / Auto.speed);
       };
       const exchange = async (modeP) => {
         if (busy) return; busy = true;

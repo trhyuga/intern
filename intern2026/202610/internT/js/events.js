@@ -236,6 +236,8 @@ const Events = (() => {
       run: () => { const f = facByLord('董卓'), dz = G_('董卓'), lu = G_('呂布');
         Game.killGeneral(dz, '暗殺');
         const fac = G.factions[f];
+        // 跡継ぎは、ふつうの継承ではなく呂布（君主の死の知らせも呂布に直す）
+        if (G._lordDied && G._lordDied.length) { const d = G._lordDied[G._lordDied.length - 1]; if (d.gi === dz.i) d.heir = lu.i; }
         if (fac.alive) { Game.gensOf(f).forEach(g => { g.isLord = false; }); lu.isLord = true; lu.loyalty = 100; fac.lord = lu.i; lu.succFrom = '董卓'; fac.name = '呂布'; Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.max(0, g.loyalty - 20); }); }
         Game.log('呂布が董卓を討った。');
         return { title: '王允の計', gen: '呂布', expr: 'angry', fac: f, big: true, text: '王允の策により、呂布は義父・董卓に刃を向けた。\n董卓、討たれる。董卓軍は呂布軍となったが、配下の心は揺れている（忠誠 -20）' }; } },
@@ -318,13 +320,13 @@ const Events = (() => {
     { id: 'rushu', title: '入蜀', chance: 0.6,
       cond: () => { const f = facByLord('劉備'); return f >= 0 && owns(f, '成都'); },
       run: () => { const f = facByLord('劉備'), cd = cityByName('成都'); const joined = [];
-        ['法正', '黄権', '李厳', '張松', '劉巴'].forEach(n => { const g = G_(n); if (!g || g.state === 'dead' || g.faction === f || g.isLord) return; if (g.state === 'ronin' || Math.random() < 0.6) { Game.joinFaction(g, f, cd.i); joined.push(n); } });
+        ['法正', '黄権', '李厳', '張松', '劉巴'].forEach(n => { const g = G_(n); if (!g || (g.state !== 'ronin' && g.state !== 'serve') || g.faction === f || g.isLord) return; if (g.state === 'ronin' || Math.random() < 0.6) { Game.joinFaction(g, f, cd.i); joined.push(n); } });
         cd.loyal = Math.min(100, cd.loyal + 10);
         return { title: '入蜀', gen: '劉備', expr: 'happy', fac: f, big: true, text: `劉備は成都に入り、益州の人々を迎え入れた。\n${joined.length ? joined.join('・') + 'が劉備軍に加わった。' : ''}成都の民忠 +10` }; } },
     { id: 'machao', title: '馬超の帰順', chance: 0.4,
       cond: () => { const f = facByLord('劉備'); const g = G_('馬超'); return f >= 0 && G.year >= 213 && g && g.state !== 'dead' && !g.isLord && g.faction !== f && (g.state === 'ronin' || g.loyalty < 75); },
-      run: () => { const f = facByLord('劉備'), g = G_('馬超'); Game.joinFaction(g, f, G.factions[f].capital); g.loyalty = 90;
-        return { title: '馬超の帰順', gen: '馬超', expr: 'normal', fac: f, text: '行き場を失った錦馬超は、劉備の人柄を慕って帰順した。\n馬超が劉備軍に加わった' }; } },
+      run: () => { const f = facByLord('劉備'), g = G_('馬超'), old = g.faction; Game.joinFaction(g, f, G.factions[f].capital); g.loyalty = 90;
+        return { title: '馬超の帰順', gen: '馬超', expr: 'normal', fac: old === G.player ? old : f, text: '行き場を失った錦馬超は、劉備の人柄を慕って帰順した。\n馬超が劉備軍に加わった' }; } },
     { id: 'qibu', title: '七歩の詩', chance: 0.5,
       cond: () => { const cp = serving('曹丕'), cz = serving('曹植'); return cp && cz && cp.faction === cz.faction && G_('曹操').state === 'dead'; },
       run: () => { const cz = G_('曹植'); cz.loyalty = Math.max(0, cz.loyalty - 20); up(cz, 'int', 2);

@@ -235,6 +235,7 @@ const Sound = (() => {
   function tick() {
     if (!ctx || !curSong) return;
     const s = curSong, spb = 60 / s.bpm / 2, sc = SCALES[s.sc];
+    if (nextTime < ctx.currentTime) nextTime = ctx.currentTime + 0.05;   // 画面を離れていた間の音を一度に鳴らさない
     while (nextTime < ctx.currentTime + 0.3) {
       const sec = s[s.order[secIdx % s.order.length]];
       const i = secStep, bar = Math.floor(i / 16), bi = i % 16;

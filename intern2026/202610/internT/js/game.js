@@ -326,7 +326,8 @@ const Game = {
       // 前線には戦の将（統率・武力）、内地の大都市には政の将（政治）を
       const front = c => c.adj.some(a => { const o = G.cities[a].owner; return o !== null && o !== fi && !Game.isAlly(fi, o); });
       const score = g => front(need) ? g.lead + g.war : g.pol + g.int * 0.5;
-      const g = gensIn(donor).filter(x => !moves.some(m => m.g === x)).sort((a, b) => score(b) - score(a))[front(donor) && !front(need) ? gensIn(donor).length - 1 : 0];
+      const pool = gensIn(donor).filter(x => !moves.some(m => m.g === x)).sort((a, b) => score(b) - score(a));
+      const g = pool[front(donor) && !front(need) ? pool.length - 1 : 0];   // 前線から内地へは、戦の将を残して弱い将を
       if (!g) break;
       moves.push({ g, from: donor, to: need });
       count.set(donor.i, count.get(donor.i) - 1); count.set(need.i, count.get(need.i) + 1);
@@ -650,6 +651,7 @@ const Game = {
       if (Game.lordOf(oldF).city === c.i || G.factions[oldF].capital === c.i) return;
       // 独立：新勢力を作る
       const nf = { i: G.factions.length, name: g.name, color: '#' + (0x404040 + Math.floor(Math.random() * 0x9f9f9f)).toString(16).padStart(6, '0'), lord: g.i, alive: true, capital: c.i, allies: {}, isPlayer: false, hostility: {} };
+      const say = line(g, 'rebel');   // 主君の名が入るので、勢力を移る前に
       G.factions.push(nf);
       g.faction = nf.i; g.isLord = true; g.loyalty = 100;
       c.owner = nf.i;
@@ -658,7 +660,7 @@ const Game = {
       // ついていかない武将は本拠へ
       Game.gensIn(c.i, oldF).forEach(h => { h.city = G.factions[oldF].capital; });
       Game.log(`${g.name}が${c.name}で謀反を起こし、独立した！`);
-      ev.push({ type: oldF === G.player ? 'warn' : 'info', msg: `${g.name}が${G.factions[oldF].name}に背き、${c.name}で独立した！`, gen: g.i, expr: 'angry', city: c.i, line: line(g, 'rebel') });
+      ev.push({ type: oldF === G.player ? 'warn' : 'info', msg: `${g.name}が${G.factions[oldF].name}に背き、${c.name}で独立した！`, gen: g.i, expr: 'angry', city: c.i, line: say });
     });
     return ev;
   },
