@@ -525,13 +525,16 @@ const Portrait = (() => {
 
   function get(g, expr = 'normal', color) {
     const key = g.name + '|' + expr + '|' + (color || '');
-    if (cache.has(key)) return cache.get(key);
+    if (cache.has(key)) { const v = cache.get(key); cache.delete(key); cache.set(key, v); return v; }   // 最近使った順に並べ直す
     const cv = document.createElement('canvas');
     cv.width = 240; cv.height = 300;
     const c = cv.getContext('2d'); c.scale(2, 2);
     draw(c, g, expr, color);
     const url = cv.toDataURL('image/png');
     cache.set(key, url);
+    // 顔の絵は1枚およそ150KB。ためこみすぎるとスマホのブラウザがメモリ不足でページを読み込み直してしまう（タイトルに戻る）ので、
+    //  最近使った160枚（およそ24MB）までにする。古いものは、また必要になった時に描き直す
+    while (cache.size > 160) cache.delete(cache.keys().next().value);
     return url;
   }
   // 守備隊長（無名）

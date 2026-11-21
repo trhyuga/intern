@@ -151,6 +151,15 @@ const App = {
     UI.show('title');
     Sound.bgm('title');
     Cinema.titleBG($('#titlecv'));
+    // ゲームの途中でページが読み込み直された（スマホのメモリ不足など）時は、自動セーブから続けるか聞く
+    let mid = false; try { mid = localStorage.getItem('internT_inGame') === '1'; localStorage.removeItem('internT_inGame'); } catch (e) {}
+    if (mid && !App._askedResume && Game.hasSave()) {
+      App._askedResume = true;
+      setTimeout(async () => {
+        const inf = Game.slotInfo('auto');
+        if (await UI.confirm(`ゲームの途中で画面が閉じられたようです。自動セーブ（${inf && inf.year ? `${inf.year}年${SEASONS[inf.season]}・${inf.fac}軍` : '最後の季節の終わり'}）から続けますか？`, '続ける', 'やめる') && Game.loadSlot('auto')) App.enterMain();
+      }, 300);
+    }
   },
   async titleAction(a) {
     if (a === 'new') return App.scenList();
@@ -211,6 +220,7 @@ const App = {
 
   // ---------------- メイン画面 ----------------
   async enterMain(isNew) {
+    try { localStorage.setItem('internT_inGame', '1'); } catch (e) {}   // ゲーム中の印（読み込み直された時に続きを聞くため）
     UI.show('main');
     Sound.bgm('map');
     MapView.resize();
@@ -967,7 +977,7 @@ const App = {
     if (v === 'mute') { Sound.toggleMute(); UI.toast(Sound.muted ? '音を消しました' : '音を出します'); }
     if (v === 'speed') { G.opts.aiSpeed = G.opts.aiSpeed >= 2 ? 1 : 2; UI.toast('戦闘の速さを変えました'); }
     if (v === 'howto') App.howto();
-    if (v === 'title') { if (await UI.confirm('タイトルへ戻りますか？（保存していない進行は失われます）')) App.title(); }
+    if (v === 'title') { if (await UI.confirm('タイトルへ戻りますか？（保存していない進行は失われます）')) { try { localStorage.removeItem('internT_inGame'); } catch (e) {} App.title(); } }
   },
 
   // セーブ・ロードの枠の見出し
@@ -1021,6 +1031,7 @@ const App = {
     UI.closeSheet();
     UI.show('ending');
     await Cinema.ending($('#endcv'), $('#endRoll'), $('#ending .skip'), kind);
+    try { localStorage.removeItem('internT_inGame'); } catch (e) {}
     App.title();
   },
 };
