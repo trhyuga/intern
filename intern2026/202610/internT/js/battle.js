@@ -11,7 +11,9 @@ const Battle = (() => {
   const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.35, keep: 1.6, gate: 1.4, wall: 2, road: 1 };
   const TNAME = { plain: '平地', forest: '森', mount: '山', ford: '浅瀬', water: '川', inner: '城内', keep: '本丸', gate: '城門', wall: '城壁', road: '道' };
   let B = null, cv, ctx, cell, raf, resolveEnd, terrainLayer, anims = [], floaters = [], particles = [];
-  const sleep = ms => new Promise(r => setTimeout(r, ms / Math.max(G && G.opts.aiSpeed ? G.opts.aiSpeed : 1, B && B.watch ? Auto.speed : 1)));
+  // 合戦が進んでいる印（待ち時間が明けるたびに更新）。止まったままかどうかの見張りに使う
+  let beat = 0;
+  const sleep = ms => new Promise(r => setTimeout(() => { beat = performance.now(); r(); }, ms / Math.max(G && G.opts.aiSpeed ? G.opts.aiSpeed : 1, B && B.watch ? Auto.speed : 1)));
 
   // ---------- 地形の生成 ----------
   function genTerrain(city) {
@@ -105,7 +107,7 @@ const Battle = (() => {
       Sound.se('warcry');
       Sound.amb(B.weather === 'rain' ? 'rain' : null);
       draw();
-      (async () => { try { await deployField(); } catch (e) { console.error('deploy', e); } draw(); startDay(true); })();
+      (async () => { try { await deployField(); } catch (e) { console.error('deploy', e); } draw(); runDay(true); })();
     });
   }
 
@@ -515,7 +517,8 @@ const Battle = (() => {
     const fr = u.y, fc = u.x, t0 = performance.now(), dur = 220 + 60 * (Math.abs(r - fr) + Math.abs(c - fc));
     u.r = r; u.c = c;
     if (!auto && (r !== fr || c !== fc)) Sound.se('horse');
-    await new Promise(res => { const step = () => { const k = Math.min(1, (performance.now() - t0) / dur * (G.opts.aiSpeed || 1)); const e = k * (2 - k); u.y = fr + (r - fr) * e; u.x = fc + (c - fc) * e; if (k < 1) requestAnimationFrame(step); else res(); }; step(); });
+    // 画面の描き替えが止まっても（ブラウザの都合）、時間がたてば移動を終える
+    await new Promise(res => { let done = false; const fin = () => { if (done) return; done = true; u.y = r; u.x = c; beat = performance.now(); res(); }; const step = () => { if (done) return; const k = Math.min(1, (performance.now() - t0) / dur * (G.opts.aiSpeed || 1)); const e = k * (2 - k); u.y = fr + (r - fr) * e; u.x = fc + (c - fc) * e; if (k < 1) requestAnimationFrame(step); else fin(); }; step(); setTimeout(fin, dur / (G.opts.aiSpeed || 1) + 400); });
     if (r !== fr || c !== fc) await checkAmbush(u);
   }
 
@@ -1203,6 +1206,50 @@ const Battle = (() => {
   }
 
   // ---------- 日の流れ ----------
+  // ---------- 合戦が止まらないための見張り ----------
+  // 思わぬ不具合で1部隊の行動が途中で止まっても、合戦全体が固まらないようにする
+  function battleTrouble(e, where) {
+    console.error('battle', where, e);
+    window.__battleErr = (where || '') + ': ' + (e && e.stack || e);
+    try { UI.toast('戦場で問題が起きたため、この行動を飛ばして続けます'); } catch (_) { }
+  }
+  const overlayOpen = () => ['#duel.show', '#talk.show', '#modal.show', '#cutin.show', '#sheet.show'].some(q => document.querySelector(q));
+  // 20秒たっても何も進まず、一騎討ちや会話も出ていなければ、止まったとみなす
+  function stallGuard() {
+    let iv;
+    const p = new Promise(res => {
+      beat = performance.now();
+      iv = setInterval(() => {
+        if (!B || B.over) { clearInterval(iv); return; }
+        if (document.hidden || overlayOpen() || B.mode !== 'busy') { beat = performance.now(); return; }   // 自分の手番で操作を待っている間は、止まったとはみなさない
+        if (performance.now() - beat > 20000) { clearInterval(iv); res('stall'); }
+      }, 1000);
+    });
+    return { p, stop: () => clearInterval(iv) };
+  }
+  async function runUnit(u, rogue) {
+    const g = stallGuard();
+    try {
+      const r = await Promise.race([aiUnit(u, rogue), g.p]);
+      if (r === 'stall') battleTrouble(new Error('stall'), `${u.g.name}の行動が止まった`);
+    } catch (e) { battleTrouble(e, `${u.g.name}の行動`); }
+    finally { g.stop(); }
+    if (u.alive) u.acted = true;
+    if (B && !B.over) B.mode = 'busy';
+  }
+  // 1日の流れ。途中で不具合が出たら、その日の残りを飛ばして次の手番へ進める
+  function runDay(first, resume) {
+    const g = stallGuard(), day = B.day;
+    Promise.race([resume ? playerPhase() : startDay(first), g.p]).then(r => { if (r === 'stall') throw new Error('stall'); }).finally(() => g.stop()).catch(e => {
+      if (B && B.day !== day && e && e.message === 'stall') return;   // もう次の日に進んでいれば何もしない
+      battleTrouble(e, `${B && B.day}日目`);
+      if (!B || B.over) return;
+      B.fails = (B.fails || 0) + 1;
+      if (B.fails > 5) { B.day = CONFIG.BATTLE_DAYS + 1; checkEnd().catch(() => { }); return; }   // 何度も続くなら、時間切れとして戦を終える
+      setTimeout(() => { if (B && !B.over) runDay(false, true); }, 300);   // その日の残りを飛ばして、手番から続ける
+    });
+  }
+
   async function startDay(first) {
     if (B.over) return;
     if (!first) {
@@ -1316,10 +1363,10 @@ const Battle = (() => {
     B.sel = null; B.reach = null; B.targets = null; B.mode = 'busy'; setActions([]);
     if (await checkEnd()) return;
     // 同盟国の援軍は自分たちで動く
-    for (const u of B.units.filter(o => o.alive && o.ally && o.side === B.playerSide && !o.acted)) { await aiUnit(u, false); updateHUD(); if (await checkEnd()) return; }
+    for (const u of B.units.filter(o => o.alive && o.ally && o.side === B.playerSide && !o.acted)) { await runUnit(u, false); updateHUD(); if (await checkEnd()) return; }
     const enemy = B.playerSide === 'atk' ? 'def' : 'atk';
     if (B.playerSide === 'atk') { await aiPhase(enemy); if (B.over) return; }
-    startDay(false);
+    runDay(false);
   }
 
   async function onTap(ev) {
@@ -1383,7 +1430,7 @@ const Battle = (() => {
     for (const u of list) {
       if (B.over) return;
       if (!u.alive || u.acted) continue;
-      await aiUnit(u, false);
+      await runUnit(u, false);
       updateHUD();
       if (await checkEnd()) return;
     }
@@ -1888,7 +1935,7 @@ const Duel = (() => {
       st.raf = requestAnimationFrame(frame);
     }
     st.raf = requestAnimationFrame(frame);
-    const anim = (key, to, ms) => new Promise(res => { const from = st[key], t0 = performance.now(); const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); st[key] = from + (to - from) * (k * (2 - k)); if (k < 1) requestAnimationFrame(step); else res(); }; step(); });
+    const anim = (key, to, ms) => new Promise(res => { const from = st[key], t0 = performance.now(); let done = false; const fin = () => { if (done) return; done = true; st[key] = to; res(); }; const step = () => { if (done) return; const k = Math.min(1, (performance.now() - t0) / ms); st[key] = from + (to - from) * (k * (2 - k)); if (k < 1) requestAnimationFrame(step); else fin(); }; step(); setTimeout(fin, ms + 400); });   // 描き替えが止まっても、時間がたてば終える
     const swing = side => { const key = side === 'a' ? 'swA' : 'swD'; anim(key, 1, 120).then(() => anim(key, 0, 260)); };
     return {
       stop() { cancelAnimationFrame(st.raf); },
@@ -1983,7 +2030,13 @@ const Duel = (() => {
         btns.querySelector('button').onclick = () => close({ winner, outcome: 'fled' });
         if (autoEnd || Auto.running) setTimeout(() => { if (closed) return; const b = btns.querySelector('button'); if (b) b.click(); }, 2000 / Auto.speed);
       };
-      const exchange = async (modeP) => {
+      // 打ち合いの途中で思わぬ不具合が出ても、一騎討ちの画面が閉じないままにならないようにする
+      const exchange = modeP => exchange0(modeP).catch(e => {
+        console.error('duel', e); window.__battleErr = 'duel: ' + (e && e.stack || e);
+        busy = false; btns.innerHTML = ''; say(null, '決着つかず――');
+        setTimeout(() => finish(ha >= hd ? 'a' : 'd'), 500);
+      });
+      const exchange0 = async (modeP) => {
         if (busy) return; busy = true;
         btns.querySelectorAll('button').forEach(b => b.disabled = true);
         round++; roundEl.textContent = `第${round}合`;
