@@ -420,7 +420,7 @@ const Events = (() => {
         return { title: '河北四州の盟主', gen: '袁紹', expr: 'happy', fac: f, text: '鄴と南皮を押さえた袁紹のもとに、河北の名士と兵が集まった。名門袁家の威光は、いま頂点にある。\n袁紹の魅力 +2、家臣の忠誠 +6' }; } },
     { id: 'l_hanfu', title: '冀州は譲らぬ', chance: 0.5, cond: () => { const f = LF('韓馥'); return f >= 0 && owns(f, '鄴') && G.year >= 191; },
       run: () => { const f = LF('韓馥'), l = Game.lordOf(f), c = cityByName('鄴'); up(l, 'lead', 3); up(l, 'int', 2); c.def = Math.min(c.defMax, c.def + 150);
-        return { title: '冀州は譲らぬ', gen: '韓馥', expr: 'angry', fac: f, text: '史実の韓馥は、袁紹の圧力に屈して冀州を譲り渡した。だがこの天下では――\n韓馥「冀州の民を、名門の看板ひとつで明け渡してなるものか！」\n韓馥の統率 +3・知力 +2、鄴の城壁 +150' }; } },
+        return { title: '冀州は譲らぬ', gen: '韓馥', expr: 'angry', fac: f, text: '袁紹の使者が、冀州を明け渡すよう迫ってきた。韓馥は使者を追い返した――\n韓馥「冀州の民を、名門の看板ひとつで明け渡してなるものか！」\n韓馥の統率 +3・知力 +2、鄴の城壁 +150' }; } },
     { id: 'l_caocao', title: '求賢令', chance: 0.4, cond: () => { const f = LF('曹操'); return f >= 0 && Game.citiesOf(f).length >= 6; },
       run: () => { const f = LF('曹操'), cap = capOf(f); const rs = shuffle(G.gens.filter(g => g.state === 'ronin' && g.name !== '諸葛亮')).slice(0, 3); rs.forEach(g => { g.city = cap.i; g.known = true; }); up(Game.lordOf(f), 'pol', 1);
         return { title: '求賢令', gen: '曹操', expr: 'happy', fac: f, text: '曹操「才ある者なら、出自も品行も問わぬ。我がもとへ来たれ」\n曹操は天下に賢者を求める令を発した。\n' + (rs.length ? `在野の${rs.map(g => g.name).join('・')}が${cap.name}を訪ねてきた（登用できる）。` : '') + '曹操の政治 +1' }; } },
@@ -454,9 +454,9 @@ const Events = (() => {
     { id: 'l_taoqian', title: '徐州を託す', chance: 0.5, cond: () => { const f = LF('陶謙'); const lb = G_('劉備'), fl = LF('劉備'); return f >= 0 && G.year >= 193 && lb && (lb.state === 'ronin' || (fl >= 0 && fl !== f && !Game.isAlly(f, fl))); },
       run: () => { const f = LF('陶謙'), cap = capOf(f), lb = G_('劉備');
         if (lb.state === 'ronin') { const j = ['劉備', '関羽', '張飛'].map(n => joinIf(n, f, cap.i)).filter(Boolean); j.forEach(g => g.loyalty = Math.max(g.loyalty, 85));
-          return { title: '徐州を託す', gen: '陶謙', expr: 'happy', fac: f, text: '史実の陶謙は、臨終にあたって劉備に徐州を託したと伝わる。この天下では、陶謙が自ら劉備を招いた――\n陶謙「わしは老いた。徐州の民を、そなたの仁徳で守ってやってくれ」\n' + `${j.map(g => g.name).join('・')}が陶謙軍に加わった` }; }
+          return { title: '徐州を託す', gen: '陶謙', expr: 'happy', fac: f, text: '陶謙は、流浪の身の劉備を徐州に招いた――\n陶謙「わしは老いた。徐州の民を、そなたの仁徳で守ってやってくれ」\n' + `${j.map(g => g.name).join('・')}が陶謙軍に加わった` }; }
         const fl = LF('劉備'); allyWith(f, fl); up(Game.lordOf(f), 'cha', 2);
-        return { title: '徐州を託す', gen: '陶謙', expr: 'happy', fac: f, text: '史実の陶謙は、臨終にあたって劉備に徐州を託したと伝わる。この天下では、陶謙は劉備に使者を送り、固い盟を結んだ――\n陶謙「劉玄徳どのの仁徳を、わしは信じておる」\n陶謙軍と劉備軍が同盟、陶謙の魅力 +2' }; } },
+        return { title: '徐州を託す', gen: '陶謙', expr: 'happy', fac: f, text: '陶謙は劉備のもとへ使者を送り、固い盟を結んだ――\n陶謙「劉玄徳どのの仁徳を、わしは信じておる」\n陶謙軍と劉備軍が同盟、陶謙の魅力 +2' }; } },
     { id: 'l_kongrong', title: '梨を譲る心', chance: 0.4, cond: () => { const f = LF('孔融'); return f >= 0 && G.year >= 191; },
       run: () => { const f = LF('孔融'), cap = capOf(f); up(Game.lordOf(f), 'cha', 3); Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + 6); }); const rs = shuffle(G.gens.filter(g => g.state === 'ronin' && g.name !== '諸葛亮' && g.int >= 60)).slice(0, 2); rs.forEach(g => { g.city = cap.i; g.known = true; });
         return { title: '梨を譲る心', gen: '孔融', expr: 'happy', fac: f, text: '幼い日に大きな梨を兄に譲った孔融。その謙譲の心と学識を慕って、文人たちが北海に集まった。\n孔融の魅力 +3、家臣の忠誠 +6' + (rs.length ? `、在野の${rs.map(g => g.name).join('・')}が訪ねてきた（登用できる）` : '') }; } },
@@ -471,13 +471,13 @@ const Events = (() => {
         return { title: '東呉の徳王', gen: '厳白虎', expr: 'angry', fac: f, text: '厳白虎「江東は我ら厳家のものよ。若造の孫策などに渡すものか！」\n厳白虎は「東呉の徳王」を名乗り、呉郡の豪族たちを束ねた。\n呉の兵 +5000、厳白虎の武力 +2' }; } },
     { id: 'l_liuyao', title: '同郷のよしみ', chance: 0.5, cond: () => { const f = LF('劉繇'); const t = G_('太史慈'); return f >= 0 && t && (t.state === 'ronin' || (t.state === 'serve' && t.faction === f)); },
       run: () => { const f = LF('劉繇'), t = G_('太史慈'); if (t.state === 'ronin') Game.joinFaction(t, f, capOf(f).i); t.loyalty = Math.max(t.loyalty, 90); up(Game.lordOf(f), 'cha', 1);
-        return { title: '同郷のよしみ', gen: '太史慈', expr: 'happy', fac: f, text: '劉繇「子義（太史慈）よ、同郷のよしみだ。そなたの武勇、存分に振るってくれ」\n史実では太史慈を重く用いなかった劉繇が、この天下ではその力を信じた。\n太史慈が劉繇軍の将として奮い立った（忠誠 90以上）' }; } },
+        return { title: '同郷のよしみ', gen: '太史慈', expr: 'happy', fac: f, text: '劉繇「子義（太史慈）よ、同郷のよしみだ。そなたの武勇、存分に振るってくれ」\n劉繇は太史慈を重く用い、その力を信じた。\n太史慈が劉繇軍の将として奮い立った（忠誠 90以上）' }; } },
     { id: 'l_zhangyan', title: '飛燕、百万を号す', chance: 0.45, cond: () => { const f = LF('張燕'); return f >= 0 && G.year >= 191; },
       run: () => { const f = LF('張燕'), cap = capOf(f); cap.troops += 6000; const l = Game.lordOf(f); up(l, 'war', 1); up(l, 'lead', 1);
         return { title: '飛燕、百万を号す', gen: '張燕', expr: 'angry', fac: f, text: `山々に散る黒山の衆が、「飛燕」張燕のもとに続々と集まってきた。\n${cap.name}の兵 +6000、張燕の武力・統率 +1` }; } },
     { id: 'l_lubu', title: '轅門射戟', chance: 0.4, cond: () => { const f = LF('呂布'), fl = LF('劉備'); return f >= 0 && fl >= 0 && fl !== f && !Game.isAlly(f, fl) && G.year >= 195; },
       run: () => { const f = LF('呂布'), fl = LF('劉備'); allyWith(f, fl); up(Game.lordOf(f), 'cha', 2);
-        return { title: '轅門射戟', gen: '呂布', expr: 'happy', fac: f, big: true, text: '呂布「わしが門に立てた戟の小枝を一矢で射抜いたら、この戦はやめてもらおう」\n呂布の矢は見事に小枝を射抜き、劉備と袁術軍の争いは収まった。この天下では、これを機に呂布は劉備と手を結ぶ――\n呂布軍と劉備軍が同盟、呂布の魅力 +2' }; } },
+        return { title: '轅門射戟', gen: '呂布', expr: 'happy', fac: f, big: true, text: '呂布「わしが門に立てた戟の小枝を一矢で射抜いたら、この戦はやめてもらおう」\n呂布の矢は見事に小枝を射抜き、劉備と袁術軍の争いは収まった。これを機に、呂布は劉備と手を結んだ――\n呂布軍と劉備軍が同盟、呂布の魅力 +2' }; } },
     { id: 'l_sunce', title: '神亭の一騎討ち', chance: 0.5, cond: () => { const f = LF('孫策'); const t = G_('太史慈'); return f >= 0 && t && (t.state === 'ronin' || (t.state === 'serve' && t.faction !== f && !t.isLord && Game.citiesOf(t.faction).length <= 2)); },
       run: () => { const f = LF('孫策'), t = G_('太史慈'); Game.joinFaction(t, f, capOf(f).i); t.loyalty = 95; up(Game.lordOf(f), 'cha', 1);
         return { title: '神亭の一騎討ち', gen: '太史慈', expr: 'happy', fac: f, big: true, text: '神亭で一騎討ちを演じ、互いの武勇を認め合った孫策と太史慈。\n孫策「子義、おぬしほどの男を敵にしておくのは惜しい。わしと共に来い」\n太史慈が孫策軍に加わった' }; } },
@@ -489,13 +489,13 @@ const Events = (() => {
         return { title: '長安の実権', gen: '李傕', expr: 'happy', fac: f, text: '朝廷を思うままにする李傕は、官位と財宝を配下にばらまいて歓心を買った。\n長安の金 +1500、家臣の忠誠 +5。ただし長安の民忠 −8' }; } },
     { id: 'l_liuzhang', title: '劉璋、決断す', chance: 0.4, cond: () => { const f = LF('劉璋'); return f >= 0 && owns(f, '成都') && G.year >= 200; },
       run: () => { const f = LF('劉璋'), l = Game.lordOf(f); up(l, 'lead', 3); up(l, 'int', 2); Game.citiesOf(f).forEach(c => c.food += 4000);
-        return { title: '劉璋、決断す', gen: '劉璋', expr: 'angry', fac: f, text: '温和だが決断に欠けると言われた劉璋。だがこの天下では、益州の危機を前に腹をくくった――\n劉璋「父上から受け継いだ益州、この手で守り抜く！」\n劉璋の統率 +3・知力 +2、全都市の兵糧 +4000' }; } },
+        return { title: '劉璋、決断す', gen: '劉璋', expr: 'angry', fac: f, text: '温和で決断に欠けると言われてきた劉璋が、益州の危機を前に腹をくくった――\n劉璋「父上から受け継いだ益州、この手で守り抜く！」\n劉璋の統率 +3・知力 +2、全都市の兵糧 +4000' }; } },
     { id: 'l_sunquan', title: '碧眼児、江東を固める', chance: 0.4, cond: () => { const f = LF('孫権'); return f >= 0 && ['建業', '呉', '会稽'].filter(n => owns(f, n)).length >= 2; },
       run: () => { const f = LF('孫権'); Game.citiesOf(f).filter(c => c.terrain === 'river').forEach(c => c.def = Math.min(c.defMax, c.def + 80)); up(Game.lordOf(f), 'pol', 2);
         return { title: '碧眼児、江東を固める', gen: '孫権', expr: 'normal', fac: f, text: '父と兄の遺した江東を守るため、孫権は長江沿いの守りを固め、人材を広く登用した。\n大河沿いの全都市の城壁 +80、孫権の政治 +2' }; } },
     { id: 'l_hanxuan', title: '老将と若武者', chance: 0.45, cond: () => { const f = LF('韓玄'); return f >= 0 && (facOf('黄忠') === f || facOf('魏延') === f); },
       run: () => { const f = LF('韓玄'); ['黄忠', '魏延'].forEach(n => { const g = serving(n); if (g && g.faction === f) g.loyalty = Math.min(100, g.loyalty + 30); }); up(Game.lordOf(f), 'cha', 5);
-        return { title: '老将と若武者', gen: '黄忠', expr: 'happy', fac: f, text: '演義では人望に欠けたとされる韓玄。だがこの天下では、老将・黄忠と若き魏延の力を認め、篤く遇した――\n黄忠「殿がそこまで言われるなら、この老骨、長沙のために射ましょう」\n黄忠・魏延の忠誠 +30、韓玄の魅力 +5' }; } },
+        return { title: '老将と若武者', gen: '黄忠', expr: 'happy', fac: f, text: '韓玄は、老将・黄忠と若き魏延の力を認め、篤く遇した――\n黄忠「殿がそこまで言われるなら、この老骨、長沙のために射ましょう」\n黄忠・魏延の忠誠 +30、韓玄の魅力 +5' }; } },
     { id: 'l_jinxuan', title: '都仕込みの政', chance: 0.45, cond: () => { const f = LF('金旋'); return f >= 0 && G.year >= 200; },
       run: () => { const f = LF('金旋'), cap = capOf(f); up(Game.lordOf(f), 'pol', 3); cap.gold += 800; pct(cap, 'comm', 'commMax', 0.08);
         return { title: '都仕込みの政', gen: '金旋', expr: 'normal', fac: f, text: `都の官職を歴任した金旋は、朝廷で学んだ帳簿と法の扱いで、${cap.name}の政を立て直した。\n金旋の政治 +3、${cap.name}の金 +800・商業 +8%` }; } },
@@ -505,9 +505,9 @@ const Events = (() => {
     { id: 'l_zhaofan', title: '断られた縁談', chance: 0.5, cond: () => { const f = LF('趙範'); return f >= 0 && G.year >= 200; },
       run: () => { const f = LF('趙範'), z = G_('趙雲'), cap = capOf(f); up(Game.lordOf(f), 'cha', 2);
         if (z && z.state === 'ronin') { z.city = cap.i; z.known = true;
-          return { title: '断られた縁談', gen: '趙範', expr: 'normal', fac: f, text: `趙範は兄嫁の樊氏を趙雲に嫁がせようとしたが、きっぱり断られた。\nだがこの天下では、その一件で趙範は趙雲の義の固さに惚れ込み、改めて客として迎えた――\n在野の趙雲が${cap.name}に滞在している（登用できる）。趙範の魅力 +2` }; }
+          return { title: '断られた縁談', gen: '趙範', expr: 'normal', fac: f, text: `趙範は兄嫁の樊氏を趙雲に嫁がせようとしたが、きっぱり断られた。\nだがその一件で、趙範は趙雲の義の固さに惚れ込み、改めて客として迎えた――\n在野の趙雲が${cap.name}に滞在している（登用できる）。趙範の魅力 +2` }; }
         const r = shuffle(G.gens.filter(g => g.state === 'ronin' && g.name !== '諸葛亮' && g.war >= 65))[0]; if (r) { r.city = cap.i; r.known = true; }
-        return { title: '義の士を求めて', gen: '趙範', expr: 'normal', fac: f, text: `趙範は、縁談をきっぱり断った趙雲の義の固さを忘れられなかった。この天下では、趙範はそのような義の士を桂陽に求めた――\n` + (r ? `在野の${r.name}が${cap.name}を訪ねてきた（登用できる）。` : '') + `趙範の魅力 +2` }; } },
+        return { title: '義の士を求めて', gen: '趙範', expr: 'normal', fac: f, text: `趙範は、縁談をきっぱり断った趙雲の義の固さを忘れられなかった。趙範は、そのような義の士を桂陽に求めた――\n` + (r ? `在野の${r.name}が${cap.name}を訪ねてきた（登用できる）。` : '') + `趙範の魅力 +2` }; } },
     { id: 'l_gongsunkang', title: '袁氏の首', chance: 0.45, cond: () => { const f = LF('公孫康'), fc = LF('曹操'); return f >= 0 && fc >= 0 && fc !== f && !Game.isAlly(f, fc) && G.year >= 205; },
       run: () => { const f = LF('公孫康'), fc = LF('曹操'); allyWith(f, fc); capOf(f).gold += 1000;
         return { title: '袁氏の首', gen: '公孫康', expr: 'normal', fac: f, big: true, text: '逃げ込んできた袁尚・袁熙の首をはね、曹操に送り届けた公孫康。曹操はこれを喜び、遼東に手を出さなかった。\n公孫康軍と曹操軍が同盟、本拠の金 +1000' }; } },
