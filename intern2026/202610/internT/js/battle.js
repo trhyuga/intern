@@ -552,8 +552,8 @@ const Battle = (() => {
     // 兵が3割を切った将は、一度だけ弱音（または意地）を吐く
     if (d.gi >= 0 && !d.lowSaid && d.troops > 0 && d.troops < d.maxTroops * 0.3) { d.lowSaid = true; setTimeout(() => { if (B && !B.over && d.alive) bubble(d, line(d.g, 'lowTroops')); }, 500); }
     a.morale = Math.min(100, a.morale + 3);
-    // 反撃
-    if (!ranged && d.troops > 0) {
+    // 反撃（夜襲で不意を突かれた側は反撃できない）
+    if (!ranged && d.troops > 0 && !B.raiding) {
       await sleep(250);
       const back = Math.round(calcDamage(d, a, false) * 0.5);
       a.troops = Math.max(0, a.troops - back); a.shake = true; setTimeout(() => a.shake = false, 300);
@@ -932,6 +932,74 @@ const Battle = (() => {
     await sleep(500);
     await checkRout(t, schemer);
   }
+  async function tryNightRaid() {
+    B.raids = B.raids || 0;
+    if (B.raids >= 2 || B.day < 2 || (B.raidDay && B.day - B.raidDay < 4)) return;
+    const defs = B.units.filter(u => u.alive && u.side === 'def' && !u.ally && !u.ambush);
+    const schemer = defs.filter(isWise).sort((a, b) => b.g.int - a.g.int)[0];
+    if (!schemer) return;
+    const atks = B.units.filter(u => u.alive && u.side === 'atk');
+    if (!atks.length) return;
+    // 攻め手が勝ちを確信して油断しているとき、守り手が苦しいときほど狙う
+    let p = 0.12 + (schemer.g.int - 75) / 100 + (Game.has(schemer.g, '智謀') || Game.has(schemer.g, '神算') ? 0.08 : 0);
+    if (outlook('atk') > 0.2) p += 0.1;
+    if (outlook('def') < 0) p += 0.1;
+    if (Math.random() > clamp(p, 0.05, 0.45)) return;
+    // 夜襲に出る部隊：総大将以外の、兵の多い順に2〜3部隊（知略の将の隊は必ず。総大将が知略の将なら、策だけ授ける）
+    const raiders = defs.filter(u => !u.commander).sort((a, b) => (b === schemer ? 1e9 : 0) + b.troops - (a === schemer ? 1e9 : 0) - a.troops).slice(0, 3);
+    if (!raiders.length) return;
+    // 狙う陣：油断した大部隊、もしくは総大将（四方の空きが多い所）
+    const free = (r, c) => inb(r, c) && !unitAt(r, c) && !['wall', 'water', 'gate', 'inner', 'keep'].includes(B.tiles[r][c].t) && !B.tiles[r][c].fire;
+    const tScore = o => o.troops / 1000 + (o.commander ? 6 : 0) - (Game.has(o.g, '慎重') ? 4 : 0) + DIRS.filter(([dr, dc]) => free(o.r + dr, o.c + dc)).length * 2;
+    const target = atks.filter(o => DIRS.some(([dr, dc]) => free(o.r + dr, o.c + dc))).sort((a, b) => tScore(b) - tScore(a))[0];
+    if (!target) return;
+    B.raids++; B.raidDay = B.day;
+    const col = fi => fi === null ? '#777' : G.factions[fi].color;
+    if (!auto && !B.watch && B.playerSide === 'def') await UI.talk(schemer.g, 'normal', `${schemer.g.name}「敵は勝ちを急ぎ、夜の備えが甘うございます。今宵、闇に紛れて${target.g.name}の陣を襲い、夜明け前に引き上げましょう」`, col(schemer.fi), { tag: '夜襲の計' });
+    else bubble(schemer, '今宵、敵陣を襲う。松明を消せ');
+    B.night = true;
+    Sound.se('horn');
+    await banner('夜襲！', 1200);
+    // 見破られると、待ち構えられて逆に痛手を負う（攻め手の知力が高い・慎重・神算）
+    const watcher = atks.filter(o => o.gi >= 0).sort((a, b) => b.g.int - a.g.int)[0];
+    const seeP = watcher ? clamp((watcher.g.int - schemer.g.int + 15) / 100 + (Game.has(target.g, '慎重') ? 0.15 : 0) + (Game.has(watcher.g, '神算') ? 0.3 : 0), 0, 0.8) : 0;
+    if (Math.random() < seeP) {
+      addLog(`${schemer.g.name}の夜襲は、${watcher.g.name}に見破られていた！`);
+      bubble(watcher, pick(['夜襲は読めておったわ。射よ！', '来ると思うておった。返り討ちにせよ！']));
+      raiders.forEach(u => { const loss = Math.round(u.troops * 0.08); u.troops = Math.max(0, u.troops - loss); u.morale = Math.max(0, u.morale - 10); u.acted = true; addFloater(u.r, u.c, '-' + loss, '#ff6a5a'); });
+      Sound.se('volley'); await sleep(600);
+      for (const u of raiders) await checkRout(u, watcher);
+      return;
+    }
+    addLog(`${schemer.g.name}の夜襲！ 守り手が闇に紛れて${target.g.name}の陣を襲った`);
+    // 城を出て、狙った陣の四方に忍び寄る
+    const home = raiders.map(u => [u.r, u.c]);
+    const slots = DIRS.map(([dr, dc]) => [target.r + dr, target.c + dc]).filter(([r, c]) => free(r, c));
+    const go = raiders.slice(0, slots.length);
+    go.forEach((u, i) => { u.r = slots[i][0]; u.c = slots[i][1]; u.x = u.c; u.y = u.r; });
+    draw(); await sleep(300);
+    // 不意打ち：寝込みを襲われた陣は反撃できず、士気が大きく落ち、周りの陣も浮き足立つ
+    Sound.se('warcry');
+    addFloater(target.r, target.c, '夜襲！', '#ff6a5a');
+    target.morale = Math.max(0, target.morale - 15);
+    atks.filter(o => o !== target && dist(o, target) <= 2).forEach(o => { o.morale = Math.max(0, o.morale - 6); });
+    if (target.gi >= 0 && Math.random() < 0.35 + (schemer.g.int - 80) / 100) { target.confused = 2; addFloater(target.r, target.c, '混乱', '#ffd23a'); }
+    B.raiding = true;
+    try {
+      for (const u of go) {
+        if (!target.alive || !u.alive || B.over) break;
+        const extra = Math.round(target.troops * (isWise(u) ? 0.04 : 0.02));   // 闇の中の不意打ちの上乗せ
+        target.troops = Math.max(0, target.troops - extra);
+        await doAttack(u, target.r, target.c);
+      }
+    } finally { B.raiding = false; }
+    if (!auto && !B.watch && target.gi >= 0 && target.alive) await UI.talk(target.g, 'shock', `${target.g.name}「な、何事だ！ 夜襲か……！ 慌てるな、陣を立て直せ！」`, col(target.fi), { tag: '夜襲' });
+    else if (target.alive) bubble(target, '夜襲だ！ 慌てるな！');
+    // 夜明け前に城へ引き上げる（戻る場所が空いていれば）
+    go.forEach((u, i) => { if (!u.alive) return; const [r, c] = home[raiders.indexOf(u)]; if (!unitAt(r, c)) { u.r = r; u.c = c; u.x = c; u.y = r; } u.acted = true; });
+    addLog('夜襲の部隊は、夜明け前に城へ引き上げた');
+    draw(); await sleep(400);
+  }
   async function dramaEvents() {
     B.rally = B.rally || { atk: 0, def: 0 };
     B.reinf = B.reinf || { atk: 0, def: 0 };
@@ -962,6 +1030,8 @@ const Battle = (() => {
     }
     // 夜戦への吊り出し：攻め手が劣勢で逃げ腰になったとき、知略の将がいれば、偽って退いて守り手の猛将や総大将を夜戦におびき出し、伏兵で囲む
     await tryNightLure();
+    // 夜襲：守り手の知略の将が、闇に紛れて城を出て攻め手の陣を襲い、夜明け前に城へ引き上げる
+    if (!B.night) await tryNightRaid();
     // 守り手が苦しくなると、民が立ち上がることがある
     if (outlook('def') < -0.3) await tryMilitia('crisis');
     // 忠誠の低い武将が、戦の最中に寝返ることがある（1つの合戦で1回まで）
