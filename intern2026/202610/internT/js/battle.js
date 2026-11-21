@@ -190,6 +190,7 @@ const Battle = (() => {
     const s = cell;
     ctx.clearRect(0, 0, s * COLS, s * ROWS);
     ctx.drawImage(terrainLayer, 0, 0, s * COLS, s * ROWS);
+    if (B.night) { ctx.fillStyle = 'rgba(8,12,40,0.5)'; ctx.fillRect(0, 0, s * COLS, s * ROWS); }   // 夜戦
     // 城門の耐久
     const gt = B.tiles[2][4];
     if (gt.t === 'gate') {
@@ -303,6 +304,13 @@ const Battle = (() => {
   const inb = (r, c) => r >= 0 && r < ROWS && c >= 0 && c < COLS;
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const dist = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
+  // 知略の将（知力75以上か、智謀・神算）
+  const isWise = u => u && u.gi >= 0 && (u.g.int >= 75 || Game.has(u.g, '智謀') || Game.has(u.g, '神算'));
+  const isFierce = u => u && u.gi >= 0 && u.g.war >= 85;   // 猛将
+  const CASTLE_T = ['inner', 'keep', 'gate', 'wall'];
+  const isField = u => !CASTLE_T.includes(B.tiles[u.r][u.c].t);   // 門の外の野戦
+  // 包囲：d の上下左右にいる敵の部隊
+  function surrounders(d) { return DIRS.map(([dr, dc]) => unitAt(d.r + dr, d.c + dc)).filter(o => o && o.alive && o.side !== d.side); }
   function tileCost(u, r, c) {
     const t = B.tiles[r][c].t;
     if (t === 'water') return Game.has(u.g, '水軍') ? 2 : 99;
@@ -357,7 +365,7 @@ const Battle = (() => {
     if (Game.has(dg, '慎重')) k *= 0.9;
     const at = B.tiles[a.r][a.c].t;
     if ((at === 'water' || at === 'ford' || t === 'water' || t === 'ford')) k *= Game.has(ag, '水軍') ? 1.25 : 0.9;
-    if (ranged) k *= B.weather === 'rain' ? 0.5 : 0.7;
+    if (ranged) k *= (B.weather === 'rain' ? 0.5 : 0.7) * (B.night ? 0.6 : 1);   // 夜は矢が当たりにくい
     if (B.weather === 'rain') k *= 0.9;
     if (B.rally && B.rally[a.side] > 0) k *= 1.3;   // 背水の陣
     if (B.buff) { k *= B.buff[a.side].atk; k *= B.buff[d.side].guard; }   // 必殺技の効果
@@ -365,6 +373,20 @@ const Battle = (() => {
     if (a.gi >= 0) { k *= Game.topK(ag, 'war', 1.12, 1.22); k *= Game.topK(ag, 'lead', 1.08, 1.15); }
     if (d.gi >= 0) k /= Game.topK(dg, 'lead', 1.12, 1.2);
     // 城壁：城内・城門・本丸の守り手は、城壁の値に応じて被害が減る。門が破れると守りは半減
+    // 包囲：2部隊以上に囲まれた部隊は大きく崩れる。門の外の野戦ではさらに強く、知略の将が囲みに加わると一層強い
+    //  （猛将相手・兵が少ない側ほど、知略の囲みが効く。夜戦ではさらに1.3倍）
+    const sur = surrounders(d);
+    if (sur.length >= 2 && sur.includes(a) && isField(d)) {   // 城壁の内側（城内・城門）の部隊は囲まれても崩れない
+      const wise = sur.filter(isWise).length;
+      let bonus = (sur.length - 1) * 0.12 + wise * 0.1;
+      if (wise && isFierce(d)) bonus += wise * 0.1;
+      if (wise && a.troops < d.troops) bonus += 0.1;
+      if (B.night) bonus *= 1.3;
+      k *= 1 + bonus;
+    }
+    // 囲まれた部隊は、反撃の手も鈍る
+    const asur = surrounders(a).length;
+    if (asur >= 3 && isField(a)) k *= 0.85;
     const castle = ['inner', 'keep', 'gate'];
     if (d.side === 'def' && castle.includes(t)) k /= 1 + B.to.def / 750 * B.wallK * (gateUp() ? 1 : 0.5);
     // 城壁の上からの矢は届く
@@ -492,6 +514,8 @@ const Battle = (() => {
   async function doPlot(a, kind, d) {
     const H = Game.has;
     let p = 0.35 + (a.g.int - d.g.int) / 90 + (H(a.g, '智謀') ? 0.15 : 0) - (H(d.g, '神算') ? 0.3 : 0) + (a.gi >= 0 && Game.top(a.g, 'int') ? 0.15 : 0) - (d.gi >= 0 && Game.top(d.g, 'int') ? 0.2 : 0);
+    // 夜戦では知略の将の計略が冴える。猛将（知力の低い豪傑）は夜の計略にかかりやすい
+    if (B.night && isWise(a)) p += 0.2 + (isFierce(d) && d.g.int < 60 ? 0.1 : 0);
     if (kind === 'fire' && B.weather === 'rain') p = 0;
     if (kind === 'fire' && ['water', 'ford', 'wall', 'keep', 'gate'].includes(B.tiles[d.r][d.c].t)) p *= 0.3;
     a.acted = true;
@@ -766,6 +790,67 @@ const Battle = (() => {
     for (const r of rows) for (const c of shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8])) { const t = B.tiles[r][c].t; if (!unitAt(r, c) && !['wall', 'water', 'gate'].includes(t) && !B.tiles[r][c].fire) return [r, c]; }
     return null;
   }
+  async function tryNightLure() {
+    B.lures = B.lures || 0;
+    if (B.lures >= 2 || B.day < 3 || (B.lureDay && B.day - B.lureDay < 4)) return;
+    const atkT = troopsOf('atk'), defT = troopsOf('def');
+    if (!(outlook('atk') < -0.15 || atkT < defT * 0.9)) return;   // 逃げ腰（劣勢）のときだけ
+    const atks = B.units.filter(u => u.alive && u.side === 'atk' && !u.ally);
+    const schemer = atks.filter(isWise).sort((a, b) => b.g.int - a.g.int)[0];
+    if (!schemer) return;
+    // 狙う相手：守り手の猛将（猪突・剛勇ほどかかりやすい）か総大将
+    const cands = B.units.filter(u => u.alive && u.side === 'def' && u.gi >= 0 && (isFierce(u) || u.commander || Game.has(u.g, '猪突') || Game.has(u.g, '剛勇')));
+    if (!cands.length) return;
+    const bait = o => (Game.has(o.g, '猪突') ? 3 : 0) + (Game.has(o.g, '剛勇') ? 2 : 0) + (isFierce(o) ? 1.5 : 0) - (o.commander ? 1 : 0) - (Game.has(o.g, '慎重') ? 2 : 0) - o.g.int / 40;
+    const t = cands.sort((a, b) => bait(b) - bait(a))[0];
+    const p = clamp(0.3 + (schemer.g.int - 75) / 80 + (Game.has(schemer.g, '智謀') || Game.has(schemer.g, '神算') ? 0.1 : 0) + bait(t) * 0.05, 0.1, 0.7);
+    if (Math.random() > p) return;
+    B.lures++; B.lureDay = B.day;
+    const col = fi => fi === null ? '#777' : G.factions[fi].color;
+    // 見破られることもある（相手の知力が高い・慎重・神算）
+    const seeP = clamp((t.g.int - schemer.g.int + 20) / 100 + (Game.has(t.g, '慎重') ? 0.2 : 0) + (Game.has(t.g, '神算') ? 0.4 : 0), 0, 0.85);
+    if (!auto && !B.watch && B.playerSide === 'atk') await UI.talk(schemer.g, 'normal', `${schemer.g.name}「敵は我らが逃げ腰と見ております。今宵、偽って退き、${t.g.name}をおびき出しましょう。伏兵で囲めば、勝機はあります」`, col(schemer.fi), { tag: '夜戦の計' });
+    else bubble(schemer, '今宵、偽って退く。伏兵を伏せよ');
+    if (Math.random() < seeP) {
+      addLog(`${schemer.g.name}の夜戦の計は、${t.g.name}に見破られた`); addFloater(t.r, t.c, '見破った', '#aaa');
+      bubble(t, pick(['逃げる敵ほど怪しいものはない。追うな', '見え透いた手だ。城を出るな']));
+      await sleep(500); return;
+    }
+    // 吊り出す先：攻め手のそばの、門の外の空いたマス（四方に空きが多い所）
+    const free = (r, c) => inb(r, c) && !unitAt(r, c) && !['wall', 'water', 'gate', 'inner', 'keep'].includes(B.tiles[r][c].t) && !B.tiles[r][c].fire;
+    const cx = atks.reduce((s2, u) => s2 + u.c, 0) / atks.length, cy = atks.reduce((s2, u) => s2 + u.r, 0) / atks.length;
+    let spot = null, best = -1e9;
+    for (let r = 4; r < ROWS - 1; r++) for (let c = 0; c < COLS; c++) {
+      if (!free(r, c)) continue;
+      const open = DIRS.filter(([dr, dc]) => free(r + dr, c + dc)).length;
+      if (open < 3) continue;
+      const sc = open * 3 - Math.abs(r - cy) - Math.abs(c - cx);
+      if (sc > best) { best = sc; spot = [r, c]; }
+    }
+    if (!spot) return;
+    B.night = true;
+    Sound.se('horn');
+    await banner('夜戦！', 1200);
+    addLog(`${schemer.g.name}の計：攻め手は偽って退き、${t.g.name}隊を夜戦におびき出した！`);
+    bubble(t, pick(['逃がすか！ 追え、追えーっ！', '腰抜けどもめ、一人も帰すな！', '今こそ好機！ 我に続け！']));
+    t.r = spot[0]; t.c = spot[1]; t.x = t.c; t.y = t.r;
+    t.morale = Math.max(0, t.morale - 15); t.acted = true;   // 闇の中で道を見失い、この日は動けない
+    // 伏兵：近くの攻め手の部隊が四方から取り囲む（総大将は動かない）
+    const amb = atks.filter(u => !u.commander).sort((a, b) => (isWise(b) ? 1 : 0) - (isWise(a) ? 1 : 0) || dist(a, t) - dist(b, t));
+    const slots = DIRS.map(([dr, dc]) => [t.r + dr, t.c + dc]).filter(([r, c]) => free(r, c));
+    amb.slice(0, slots.length).forEach((u, i) => { u.r = slots[i][0]; u.c = slots[i][1]; u.x = u.c; u.y = u.r; u.morale = Math.min(100, u.morale + 15); });
+    Sound.se('warcry');
+    // 伏兵の奇襲：囲んだ部隊の数だけ、闇の中から一斉に斬りかかる（1部隊につき兵の7%、知略の将の隊は10%）
+    const n = Math.min(slots.length, amb.length), wiseN = amb.slice(0, n).filter(isWise).length;
+    const hit = Math.round(t.troops * (0.07 * n + 0.03 * wiseN));
+    t.troops = Math.max(0, t.troops - hit); t.morale = Math.max(0, t.morale - 5 * n);
+    addFloater(t.r, t.c, '伏兵！ -' + hit, '#ff6a5a');
+    addLog(`伏兵だ！ ${t.g.name}隊は闇の中で囲まれた`);
+    if (!auto && !B.watch) await UI.talk(t.g, 'shock', `${t.g.name}「な、伏兵だと……！？ しまった、謀られたか！」`, col(t.fi), { tag: '夜戦' });
+    else bubble(t, 'しまった、伏兵か！');
+    await sleep(500);
+    await checkRout(t, schemer);
+  }
   async function dramaEvents() {
     B.rally = B.rally || { atk: 0, def: 0 };
     B.reinf = B.reinf || { atk: 0, def: 0 };
@@ -794,6 +879,8 @@ const Battle = (() => {
       if (rf.day > B.day) continue;
       await arriveReinf(rf);
     }
+    // 夜戦への吊り出し：攻め手が劣勢で逃げ腰になったとき、知略の将がいれば、偽って退いて守り手の猛将や総大将を夜戦におびき出し、伏兵で囲む
+    await tryNightLure();
     // 守り手が苦しくなると、民が立ち上がることがある
     if (outlook('def') < -0.3) await tryMilitia('crisis');
     // 忠誠の低い武将が、戦の最中に寝返ることがある（1つの合戦で1回まで）
@@ -963,7 +1050,15 @@ const Battle = (() => {
       B.defFood -= troopsOf('def') * 0.03;
       if (B.defFood <= 0) { B.defFood = 0; B.units.filter(u => u.alive && u.side === 'def').forEach(u => u.morale = Math.max(0, u.morale - 20)); if (hadDefFood) addLog('城の兵糧が尽きた！'); }
     }
+    if (!first && B.night) { B.night = false; addLog('夜が明けた'); }
     B.units.forEach(u => { if (u.alive) { u.acted = false; if (u.confused > 0) { u.confused--; if (u.confused > 0) u.acted = true; } } });
+    // 包囲された部隊は士気が落ちる（野戦・知略の将の囲みで大きく）
+    if (!first) B.units.filter(u => u.alive).forEach(u => {
+      const sur = surrounders(u); if (sur.length < 2 || !isField(u)) return;
+      const wise = sur.filter(isWise).length;
+      const drop = Math.round(((sur.length - 1) * 4 + wise * 3) * (B.night ? 1.5 : 1));
+      u.morale = Math.max(0, u.morale - drop); addFloater(u.r, u.c, '包囲', '#ff9a6a');
+    });
     // 包囲：大軍に囲まれた城は、5日目から守り手の士気が落ち、兵が逃げ出す（攻め手が守り手の1.8倍以上のとき）
     if (!first && B.day >= 5) {
       const sum = sd => B.units.filter(u => u.alive && u.side === sd).reduce((s2, u) => s2 + u.troops, 0);
@@ -980,7 +1075,7 @@ const Battle = (() => {
     if (await checkEnd()) return;
     updateHUD();
     baseBgm(); Sound.amb(B.weather === 'rain' ? 'rain' : null);
-    await banner(`${B.day}日目　${WNAME[B.weather]}`, 700);
+    await banner(`${B.day}日目　${B.night ? '夜戦' : WNAME[B.weather]}`, 700);
     // 先手は攻め手
     if (B.playerSide === 'atk') await playerPhase(); else { await aiPhase('atk'); if (B.over) return; await playerPhase(); }
   }
@@ -1268,6 +1363,8 @@ const Battle = (() => {
       if (u.g.war >= 85 && !u.commander && tg.length) score += 6 + (Game.has(u.g, '剛勇') || Game.has(u.g, '猪突') ? 6 : 0);
       // 武勇の将は、一騎討ちを挑めそうな敵将の隣を目指す
       if (u.g.war >= 78 && !u.commander && u.gi >= 0 && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0 && o.g.war <= u.g.war + 5 && !isWeakVs(o.g, u.g); })) score += 10;
+      // 囲みに加わる：すでに味方が隣にいる敵の、空いた横を目指す（知略の将や野戦ではなおさら）
+      { let enc = 0; DIRS.forEach(([dr, dc]) => { const o = unitAt(r + dr, c + dc); if (o && o.alive && o.side !== u.side && isField(o)) { const n = surrounders(o).filter(x => x !== u).length; if (n >= 1) enc = Math.max(enc, n * 5 * (isWise(u) ? 1.4 : 1)); } }); score += enc; }
       if (u.charge && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0; })) score += 14;
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
       // 知力の高い将（知力75以上か智謀・神算）は、門が無事なうち、門を叩く1部隊でなければ城壁の矢が届かない所で待つ
