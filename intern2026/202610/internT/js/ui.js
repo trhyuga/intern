@@ -60,7 +60,7 @@ const UI = {
   },
   modal({ title, body, buttons, wide, auto }) {
     return new Promise(res => {
-      if (auto !== undefined && typeof Auto !== 'undefined' && Auto.running) setTimeout(() => { if (m.classList.contains('show') && UI._modalRes === myRes) UI.closeModal(auto); }, 2600 / Auto.speed);
+      if (auto !== undefined && typeof Auto !== 'undefined' && Auto.running) setTimeout(() => { if (m.classList.contains('show') && UI._modalRes === myRes) UI.closeModal(auto); }, Auto.speed >= 4 ? 2200 : 2600 / Auto.speed);   // 合戦の結果などは、超速でも読めるだけ出す
       const m = $('#modal');
       m.innerHTML = `<div class="modal-box">${title ? `<div class="modal-hd">${title}</div>` : ''}<div class="modal-bd">${body || ''}</div>${buttons && buttons.length ? `<div class="modal-ft"></div>` : ''}</div>`;
       const ft = $('.modal-ft', m);

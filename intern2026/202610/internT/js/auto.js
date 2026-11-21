@@ -1573,11 +1573,13 @@ const Auto = (() => {
   }
 
   // 会話の表示時間：文字数に応じて長く（1文字50ms、最大7秒）。「速い」でも長い文は読めるよう、速さの効きを弱める
+  const IMPORTANT = new Set(['敵襲', '外交', '天下の動き', '即位', '独立', '捕虜', '処断', '寝返り', '出陣願い', '仕官', '人物紹介', '生還', '忠義', '君主出陣', '三顧の礼', '援軍', '内応', '市民兵', '天下統一目前', '再起を誓う']);
   function talkMs(text, opts) {
     const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
     // 季節の変わり目の出来事は、どの速さでもじっくり読めるように（長い文ほど長く出す）
     if (opts && opts.ev) return Math.min(16000, 1600 + n * 90);
-    if (S.speed >= 4) return 280 / boost();   // 超速：会話は一瞬だけ見せて流す
+    // 超速：ふだんの会話は一瞬だけ見せて流す。ただし重要な知らせの長い文は「速い」と同じ時間だけ読ませる
+    if (S.speed >= 4) return n >= 40 && opts && IMPORTANT.has(opts.tag) ? Math.min(7000, 900 + n * 50) / Math.pow(2, 0.6) : 280 / boost();
     return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6);
   }
 
