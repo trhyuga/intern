@@ -895,7 +895,9 @@ const Battle = (() => {
     const schemer = atks.filter(isWise).sort((a, b) => b.g.int - a.g.int)[0];
     if (!schemer) return;
     // 狙う相手：守り手の猛将（猪突・剛勇ほどかかりやすい）か総大将
-    const cands = B.units.filter(u => u.alive && u.side === 'def' && u.gi >= 0 && (isFierce(u) || u.commander || Game.has(u.g, '猪突') || Game.has(u.g, '剛勇')));
+    // 君主・総大将は、よほど考えの浅い者（知力50未満で猪突か剛勇）でなければ誘いに乗らない
+    const rash = u => u.g.int < 50 && (Game.has(u.g, '猪突') || Game.has(u.g, '剛勇'));
+    const cands = B.units.filter(u => u.alive && u.side === 'def' && u.gi >= 0 && (isFierce(u) || u.commander || Game.has(u.g, '猪突') || Game.has(u.g, '剛勇')) && (!(u.commander || u.g.isLord) || rash(u)));
     if (!cands.length) return;
     const bait = o => (Game.has(o.g, '猪突') ? 3 : 0) + (Game.has(o.g, '剛勇') ? 2 : 0) + (isFierce(o) ? 1.5 : 0) - (o.commander ? 1 : 0) - (Game.has(o.g, '慎重') ? 2 : 0) - o.g.int / 40;
     const t = cands.sort((a, b) => bait(b) - bait(a))[0];
@@ -904,12 +906,16 @@ const Battle = (() => {
     B.lures++; B.lureDay = B.day;
     const col = fi => fi === null ? '#777' : G.factions[fi].color;
     // 見破られることもある（相手の知力が高い・慎重・神算）
-    const seeP = clamp((t.g.int - schemer.g.int + 20) / 100 + (Game.has(t.g, '慎重') ? 0.2 : 0) + (Game.has(t.g, '神算') ? 0.4 : 0), 0, 0.85);
+    let seeP = clamp((t.g.int - schemer.g.int + 20) / 100 + (Game.has(t.g, '慎重') ? 0.2 : 0) + (Game.has(t.g, '神算') ? 0.4 : 0), 0, 0.85);
+    // 守り手に知恵者（知力80以上か智謀・神算）がいれば、罠だと止める。守り手に余裕がある（優勢）なら、なおさら城を出ない
+    const adv = B.units.filter(u => u.alive && u.side === 'def' && u !== t && u.gi >= 0 && (u.g.int >= 80 || Game.has(u.g, '智謀') || Game.has(u.g, '神算'))).sort((a, b) => b.g.int - a.g.int)[0];
+    if (adv) seeP = Math.max(seeP, clamp(0.35 + (adv.g.int - schemer.g.int + 10) / 60, 0.3, 0.9));
+    if (outlook('def') > 0.2) seeP = Math.min(0.95, seeP + 0.3);
     if (!auto && !B.watch && B.playerSide === 'atk') await UI.talk(schemer.g, 'normal', `${schemer.g.name}「敵は我らが逃げ腰と見ております。今宵、偽って退き、${t.g.name}をおびき出しましょう。伏兵で囲めば、勝機はあります」`, col(schemer.fi), { tag: '夜戦の計' });
     else bubble(schemer, '今宵、偽って退く。伏兵を伏せよ');
     if (Math.random() < seeP) {
-      addLog(`${schemer.g.name}の夜戦の計は、${t.g.name}に見破られた`); addFloater(t.r, t.c, '見破った', '#aaa');
-      bubble(t, pick(['逃げる敵ほど怪しいものはない。追うな', '見え透いた手だ。城を出るな']));
+      if (adv && Math.random() < 0.6) { addLog(`${adv.g.name}が「罠です」と止め、${t.g.name}は城を出なかった`); addFloater(adv.r, adv.c, '罠です', '#aaa'); bubble(adv, pick(['お待ちを。あれは偽りの退却、罠でございます', '追ってはなりませぬ。敵は伏兵を伏せております'])); }
+      else { addLog(`${schemer.g.name}の夜戦の計は、${t.g.name}に見破られた`); addFloater(t.r, t.c, '見破った', '#aaa'); bubble(t, pick(['逃げる敵ほど怪しいものはない。追うな', '見え透いた手だ。城を出るな'])); }
       await sleep(500); return;
     }
     // 吊り出す先：攻め手のそばの、門の外の空いたマス（四方に空きが多い所）
