@@ -1225,6 +1225,21 @@ const Auto = (() => {
     return L ? `${keepNote}${best.t.name}を攻めても、${slim ? '勝ち目はほとんどない' : 'まだ勝ち目が薄い'}。兵を鍛えて機を待て。`
              : `${keepNote}いちばん取りやすい${best.t.name}でも、${slim ? '勝ち目はほとんどありません' : 'まだ勝ち目が薄うございます'}。兵を鍛えて機を待ちます。`;
   }
+  // 攻めない季節の、軍師のひと言に添える短い言い訳（数字は出さない。超速では読み飛ばされる）
+  function holdShort(br) {
+    const c = Game.citiesOf(G.player).sort((a, b) => b.troops - a.troops)[0];
+    if (!c) return '';
+    const L = strategist().isLord;
+    if (!Game.isFront(c)) return L ? `${c.name}の兵は前線へ回しておけ` : `${c.name}の兵は、前線へ回しておきます`;
+    const ts = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner)));
+    if (!ts.length) return '';
+    const army = Game.gensIn(c.i, G.player).filter(g => !g.isLord || g.lead + g.war >= 140).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+    if (!army.length) return L ? `${c.name}には兵を率いる将が足りぬ` : `${c.name}には、兵を率いる将が足りません`;
+    const best = ts.map(t => { const keep = garrison(c, br, t.i), send = Math.max(0, Math.min(c.troops - keep, army.reduce((s2, g) => s2 + Game.troopCap(g), 0))); return { t, ratio: send * atkFactor(c, army) / Math.max(1, defPower(t)) }; }).sort((a, b) => b.ratio - a.ratio)[0];
+    const near = best.ratio >= wantNow(br) * 0.8;
+    return L ? (near ? `${best.t.name}を落とすまで、あと一息だ` : `${best.t.name}を落とすには、まだ力が足りぬ`)
+             : (near ? `${best.t.name}を落とすまで、あと一息です` : `${best.t.name}を落とすには、まだ力が足りません`);
+  }
   async function sayText(text) {
     const g = strategist(); if (!g) return;
     await UI.talk(g, 'normal', `${title(g)}${g.name}「${text}」`, facColor(g), { tag: g.isLord ? '君主の采配' : '軍師' });
@@ -1340,7 +1355,10 @@ const Auto = (() => {
     // 出陣
     let sorties = 0;
     const triedC = new Set(), sortiedC = new Set();
-    if (!armies.length) await say('hold');
+    if (!armies.length) {   // 攻めない季節：いつものひと言に、短い言い訳を添える
+      const g = strategist();
+      if (g) { const base = sl('hold'), why = holdShort(br); await UI.talk(g, 'normal', `${title(g)}${g.name}「${base}${why ? (/[。！？…]$/.test(base) ? '' : '。') + why : ''}」`, facColor(g), { tag: g.isLord ? '君主の采配' : '軍師' }); }
+    }
     for (const a of armies) {
       if (stopReq) return false;
       const { p } = a;
