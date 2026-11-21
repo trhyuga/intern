@@ -283,6 +283,17 @@ const Game = {
     }
     return { ok: false };
   },
+  // 敵（コンピュータ）の在野登用の倍率。プレイヤーはいつも1
+  //  都市の武将：2人まで1倍、3人0.6倍、4人0.45倍、5人以上0.3倍
+  //  勢力の総武将数：8人まで1倍、それより多いと 8÷人数（16人0.5倍、32人0.25倍、下限0.2倍）
+  aiRecruitK(fi, ci) {
+    if (fi === G.player) return 1;
+    const n = Game.gensIn(ci, fi).length;
+    const cityK = n <= 2 ? 1 : n === 3 ? 0.6 : n === 4 ? 0.45 : 0.3;
+    const tot = Game.gensOf(fi).length;
+    const facK = tot <= 8 ? 1 : Math.max(0.2, 8 / tot);
+    return cityK * facK;
+  },
   joinFaction(t, fi, ci) {
     t.faction = fi; t.state = 'serve'; t.city = ci; t.isLord = false; t.loyalty = Game.has(t, '忠義') ? 90 : irnd(60, 80); t.joined = G.year;
     if (fi === G.player) G.stats.recruited++;
@@ -613,7 +624,7 @@ const Game = {
     G.gens.forEach(g => {
       if (g.state !== 'ronin') return;
       const c = G.cities[g.city];
-      if (c.owner !== null && c.owner !== G.player && g.name !== '諸葛亮' && Math.random() < 0.25) Game.joinFaction(g, c.owner, c.i);   // 諸葛亮は三顧の礼でしか仕えない
+      if (c.owner !== null && c.owner !== G.player && g.name !== '諸葛亮' && Math.random() < 0.25 * Game.aiRecruitK(c.owner, c.i)) Game.joinFaction(g, c.owner, c.i);   // 諸葛亮は三顧の礼でしか仕えない
     });
     return ev;
   },
@@ -679,7 +690,7 @@ const AI = {
     // 在野登用
     myCities.forEach(c => {
       const r = Game.roninIn(c.i);
-      if (r.length && Math.random() < 0.3) { const t = r[0]; if (t.name !== '諸葛亮') Game.joinFaction(t, fi, c.i); }
+      if (r.length && Math.random() < 0.3 * Game.aiRecruitK(fi, c.i)) { const t = r[0]; if (t.name !== '諸葛亮') Game.joinFaction(t, fi, c.i); }
     });
     // 計略（プレイヤーの武将に離間・引き抜き）を時々
     if (Math.random() < 0.25) AI.plot(fi);
