@@ -95,6 +95,8 @@ const Battle = (() => {
       ['atk', 'def'].forEach(sd => { if (B.units.some(u => u.side === sd && u.gi >= 0 && Game.top(u.g, 'cha'))) B.units.filter(u => u.side === sd).forEach(u => u.morale = Math.max(u.morale, 90)); });
       // 君主の位（公・王・皇帝）に応じて、その勢力の将兵の士気が上がる
       B.units.forEach(u => { const f = u.fi != null && G.factions[u.fi]; if (f && f.rank) u.morale = Math.min(100, u.morale + f.rank * 4); });
+      // 君主の統率が高い勢力の将兵は、士気が高い（最大+6）
+      B.units.forEach(u => { u.morale = Math.min(100, u.morale + Math.round(6 * Game.lordK(u.fi, 'lead'))); });
       B.reinfPlan = planReinf();
       B.weather = pickWeather();
       setupDOM(opts && opts.auto);
@@ -447,6 +449,8 @@ const Battle = (() => {
     if (ranged) k *= (B.weather === 'rain' ? 0.5 : 0.7) * (B.night ? 0.6 : 1);   // 夜は矢が当たりにくい
     if (B.weather === 'rain') k *= 0.9;
     if (B.rally && B.rally[a.side] > 0) k *= 1.3;   // 背水の陣
+    // 君主の武威（武力、最大+5%）と軍師の策（知力、最大+3%）
+    k *= 1 + 0.05 * Game.lordK(a.fi, 'war') + 0.03 * Game.sgK(a.fi, 'int');
     if (B.buff) { k *= B.buff[a.side].atk; k *= B.buff[d.side].guard; }   // 必殺技の効果
     // 能力の上位者：豪傑は攻撃↑、名将は攻撃↑・被害↓
     if (a.gi >= 0) { k *= Game.topK(ag, 'war', 1.12, 1.22); k *= Game.topK(ag, 'lead', 1.08, 1.15); }
@@ -605,6 +609,8 @@ const Battle = (() => {
     let p = 0.35 + (a.g.int - d.g.int) / 90 + (H(a.g, '智謀') ? 0.15 : 0) - (H(d.g, '神算') ? 0.3 : 0) + (a.gi >= 0 && Game.top(a.g, 'int') ? 0.15 : 0) - (d.gi >= 0 && Game.top(d.g, 'int') ? 0.2 : 0);
     // 夜戦では知略の将の計略が冴える。猛将（知力の低い豪傑）は夜の計略にかかりやすい
     if (B.night && isWise(a)) p += 0.2 + (isFierce(d) && d.g.int < 60 ? 0.1 : 0);
+    // 君主の知力（最大+8%）・軍師の知力（最大+6%）で、計略が成功しやすい
+    p += 0.08 * Game.lordK(a.fi, 'int') + 0.06 * Game.sgK(a.fi, 'int');
     if (kind === 'fire' && B.weather === 'rain') p = 0;
     if (kind === 'fire' && ['water', 'ford', 'wall', 'keep', 'gate'].includes(B.tiles[d.r][d.c].t)) p *= 0.3;
     a.acted = true;

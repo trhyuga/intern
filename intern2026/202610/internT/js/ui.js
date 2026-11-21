@@ -882,7 +882,7 @@ const App = {
       const fs = G.factions.filter(f => f.alive).sort((a, b) => Game.citiesOf(b.i).length - Game.citiesOf(a.i).length);
       const el = UI.sheet(`<div class="city-hd"><h3>勢力</h3><button class="x">×</button></div>` + fs.map(f => { const l = Game.lordOf(f.i); return `
         <div class="fac-row" data-f="${f.i}"><img src="${Portrait.get(l, 'normal', f.color)}"><div class="fr-body"><div class="fr-name"><i style="background:${f.color}"></i>${f.name}軍 ${f.i === G.player ? '<small>（自軍）</small>' : Game.isAlly(G.player, f.i) ? `<span class="ally">同盟 残り${G.factions[G.player].allies[f.i]}季</span>` : ''}</div>
-        <div class="fr-st">都市 ${Game.citiesOf(f.i).length}　武将 ${Game.gensOf(f.i).length}　兵 ${fmt(Game.power(f.i))}</div></div></div>`; }).join(''));
+        <div class="fr-st">都市 ${Game.citiesOf(f.i).length}　武将 ${Game.gensOf(f.i).length}　兵 ${fmt(Game.power(f.i))}</div>${(() => { const n = Game.boostNotes(f.i); return n.length ? `<div class="fr-st" style="font-size:12px;line-height:1.5">${n.join('<br>')}</div>` : ''; })()}</div></div>`; }).join(''));
       $('.x', el).onclick = () => UI.closeSheet();
       $$('[data-f]', el).forEach(r => r.onclick = () => { const f = G.factions[+r.dataset.f]; MapView.centerOn(f.capital); App.openCity(f.capital); });
     }

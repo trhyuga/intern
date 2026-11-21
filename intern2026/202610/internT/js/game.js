@@ -477,6 +477,28 @@ const Game = {
     return null;
   },
 
+  // ---------------- 君主・軍師の能力による全体の補正 ----------------
+  // 能力70までは何もなし（低くても罰はない）。70を超えた分だけ、100で最大になる（0〜1）
+  hiK(v) { return clamp(((v || 0) - 70) / 30, 0, 1); },
+  lordK(fi, k) { if (fi == null || fi < 0 || !G.factions[fi] || !G.factions[fi].alive) return 0; const l = Game.lordOf(fi); return l && l.state === 'serve' ? Game.hiK(l[k]) : 0; },
+  // 軍師（プレイヤーの勢力だけ。知力と政治）
+  sgK(fi, k) { if (fi !== G.player || G.strategist == null) return 0; const g = G.gens[G.strategist]; return g && g.state === 'serve' && g.faction === G.player ? Game.hiK(g[k]) : 0; },
+  // 収入・収穫の倍率：君主の政治（最大+6%）＋軍師の政治（最大+4%）
+  incomeK(fi) { return 1 + 0.06 * Game.lordK(fi, 'pol') + 0.04 * Game.sgK(fi, 'pol'); },
+  // 一覧（画面の説明用）
+  boostNotes(fi) {
+    const out = [], pct = v => (Math.round(v * 1000) / 10).toFixed(1).replace(/\.0$/, '');
+    const L = k => Game.lordK(fi, k), S = k => Game.sgK(fi, k);
+    if (L('lead')) out.push(`君主の統率：合戦の士気 +${Math.round(6 * L('lead'))}・毎季節の訓練 +${Math.round(2 * L('lead'))}`);
+    if (L('war')) out.push(`君主の武力：全軍の攻撃 +${pct(0.05 * L('war'))}%`);
+    if (L('int')) out.push(`君主の知力：合戦の計略の成功 +${pct(0.08 * L('int'))}%`);
+    if (L('pol')) out.push(`君主の政治：収入・収穫 +${pct(0.06 * L('pol'))}%`);
+    if (L('cha')) out.push(`君主の魅力：毎季節の民忠 +${(1.5 * L('cha')).toFixed(1)}`);
+    if (S('int')) out.push(`軍師の知力：全軍の攻撃 +${pct(0.03 * S('int'))}%・計略の成功 +${pct(0.06 * S('int'))}%`);
+    if (S('pol')) out.push(`軍師の政治：収入・収穫 +${pct(0.04 * S('pol'))}%`);
+    return out;
+  },
+
   // ---------------- 季節の進行 ----------------
   // 戻り値: 出来事（UIで順に表示）
   endSeason() {
@@ -485,11 +507,15 @@ const Game = {
     G.cities.forEach(c => {
       if (c.owner === null) { c.troops = Math.min(c.troops + 200, 6000); return; }
       const loyK = 0.5 + c.loyal / 200;
-      c.gold += Math.round((c.comm * 0.9 + c.pop / 4000) * loyK * 0.6);
+      const incK = Game.incomeK(c.owner);
+      c.gold += Math.round((c.comm * 0.9 + c.pop / 4000) * loyK * 0.6 * incK);
+      // 君主の統率：兵がよく鍛えられる。君主の魅力：民がよく懐く
+      c.train = Math.min(100, c.train + Math.round(2 * Game.lordK(c.owner, 'lead')));
+      c.loyal = Math.min(100, c.loyal + 1.5 * Game.lordK(c.owner, 'cha'));
       // 兵糧消費
       c.food -= Math.round(c.troops * 0.12);
       if (G.season === 2) { // 秋の収穫
-        const h = Math.round((c.farm * 30 + c.pop / 30) * loyK * (c.harvestK || 1));
+        const h = Math.round((c.farm * 30 + c.pop / 30) * loyK * (c.harvestK || 1) * incK);
         c.food += h;
         if (c.owner === G.player) ev.push({ type: 'info', msg: `${c.name}で収穫。兵糧 +${h}` , city: c.i, quiet: true});
       }
