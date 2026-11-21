@@ -265,8 +265,6 @@ const Auto = (() => {
     // 兵が、この都市の将の率いられる上限を超えている：これ以上の徴兵は出陣に使えないので、訓練を優先する
     { const capC = Game.gensIn(c.i, G.player).filter(g => !g.isLord).sort((a, b) => Game.troopCap(b) - Game.troopCap(a)).slice(0, 5).reduce((s2, g) => s2 + Game.troopCap(g), 0);
       if (c.troops - Math.max(5000, c.troops * 0.25) > capC && capC > 0) { if (n.train) n.train = n.train * 2 + 0.5; if (!must.draft) n.draft *= 0.2; } }
-    // 勝ち目がなくて出陣を見送った都市は、訓練と内政（開墾・商業・修築）を重く見る
-    if (G.buildUp && G.buildUp[c.i] === G.turn) { if (n.train) n.train = n.train * 2 + 0.6; ['farm', 'comm', 'wall'].forEach(k => { if (n[k]) n[k] *= 1.4; }); if (!must.draft) n.draft *= 0.5; }
     // 出陣を1季節見送って鍛えている都市は、訓練を最優先
     if (G.trainWait && G.trainWait[c.i] === G.turn && c.train < 95 && c.troops >= 2000) { n.train = 3 + (95 - c.train) / 50; must.train = true; }
     // 武将が1〜2人の都市は、隣の都市の在野まで探しに行けるので、人材探しを重く見る
@@ -276,6 +274,8 @@ const Auto = (() => {
     // 探して見つからなかった都市は、新しい人物が来るか、3季節たつまで探さない（ほかの役に立つ命令に回す）
     const memo = G.searchMemo && G.searchMemo[c.i];
     if (memo && G.turn - memo.turn < 3 && hidden.every(r => memo.seen.includes(r.i))) n.search = 0;
+    // 勝ち目がなくて出陣を見送った都市は、人材探し・訓練・内政（開墾・商業・修築）を重く見る
+    if (G.buildUp && G.buildUp[c.i] === G.turn) { if (n.search) n.search = n.search * 1.6 + 0.4; if (n.train) n.train = n.train * 2 + 0.6; ['farm', 'comm', 'wall'].forEach(k => { if (n[k]) n[k] *= 1.4; }); if (!must.draft) n.draft *= 0.5; }
     if (c.gold < CONFIG.CMD_COST) n.farm = n.comm = n.wall = 0;
     return { n, must };
   }
@@ -568,12 +568,21 @@ const Auto = (() => {
       orderArmy(army, br);
       usedT.add(best.o.i);
       pulled.set(c.i, (pulled.get(c.i) || 0) + army.filter(g => g.city === c.i).length);
-      // 兵が揃っていても、明らかに負けそうな時（見積もった力の比が0.55未満）は攻めず、訓練と内政で力をつける
-      if (full && best.ratio < 0.55) {
-        G.buildUp = G.buildUp || {}; G.buildUp[c.i] = G.turn;
-        UI.toast(`${c.name}：${best.o.name}は今の兵では落とせそうにない（勝ち目 ${best.ratio.toFixed(2)}）。この季節は訓練と内政で力をつけます`, 2600);
-        moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1));
-        return;
+      // 兵が揃っていても、勝ち目（力の比）が基準に届かなければ攻めず、人材登用・訓練・内政で力をつける。
+      //  基準は1.0（委任の合戦で勝率およそ50%）、訓練が70以上なら0.9。
+      //  ただし、登用できる在野がおらず（ほかの都市の将も呼び尽くし）、内政（農業・商業・城壁）がどれも上限の8割以上、訓練も80以上なら、基準に関係なく必ず攻める
+      if (full) {
+        const want = c.train >= 70 ? 0.9 : 1.0;
+        const ronin = G.gens.some(x => x.state === 'ronin' && x.name !== '諸葛亮' && (x.city === c.i || c.adj.includes(x.city)));
+        const dev = c.farm >= c.farmMax * 0.8 && c.comm >= c.commMax * 0.8 && c.def >= c.defMax * 0.8;
+        const maxed = !ronin && dev && c.train >= 80;
+        if (best.ratio < want && !maxed) {
+          G.buildUp = G.buildUp || {}; G.buildUp[c.i] = G.turn;
+          const todo = [ronin ? '人材登用' : '', c.train < 80 ? '訓練' : '', !dev ? '内政' : ''].filter(Boolean).join('・') || '備え';
+          UI.toast(`${c.name}：${best.o.name}への勝ち目 ${best.ratio.toFixed(2)}（基準${want}）に届かないので、この季節は${todo}で力をつけます`, 2600);
+          moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1));
+          return;
+        }
       }
       // ただし訓練が低い（40未満）時は、敵が迫っていなければ1季節だけ鍛えてから出る（2季節続けては待たない）
       G.trainWait = G.trainWait || {};
