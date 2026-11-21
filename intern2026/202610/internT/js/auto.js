@@ -252,6 +252,9 @@ const Auto = (() => {
     const canAlms = c.food - 1500 > Game.foodReserve(c) && c.loyal < 95;
     if (canAlms && c.loyal < 40) { n.alms = 3 + (40 - c.loyal) / 10; must.alms = true; }
     else n.alms = canAlms && c.loyal < 70 ? (70 - c.loyal) / 30 : 0;
+    // 魅力の高い将（70以上）がいる都市は、その将が納得する民忠（30＋魅力×0.6：魅力80で78、100で90）まで、施しを重く見る（最優先の項目には譲る）
+    { const ch = Game.gensIn(c.i, G.player).filter(g => !g.acted && g.cha >= 70).sort((a, b) => b.cha - a.cha)[0];
+      if (ch && canAlms) { const want = Math.round(30 + ch.cha * 0.6); if (c.loyal < want) n.alms = Math.max(n.alms, 1.1 + (want - c.loyal) / 25); } }
     // 徴兵：民忠を下げるので、民忠50未満ではしない
     const canDraft = c.gold >= CONFIG.RECRUIT_COST + 50 && c.loyal >= 50 && c.food > Game.foodReserve(c, c.troops + 3500);
     if (canDraft && front && c.troops < threat * 0.9) { n.draft = 2 + Math.min(1, (threat * 0.9 - c.troops) / 10000); must.draft = true; }

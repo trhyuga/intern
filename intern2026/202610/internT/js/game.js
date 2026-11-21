@@ -757,6 +757,8 @@ const AI = {
       const foodOk = add => c.food - Game.foodReserve(c, c.troops + add) > 0;
       if (c.loyal < 40 && c.food - 1500 > Game.foodReserve(c)) cmd = 'alms';
       else if (threat > c.troops * 0.8 && c.gold >= CONFIG.RECRUIT_COST && c.loyal >= 50 && foodOk(3000)) cmd = 'draft';
+      // 魅力の高い将（70以上）は、自分が納得する民忠（30＋魅力×0.6）に届くまで施しをする（上の急ぎの用には譲る）
+      else if (g.cha >= 70 && c.loyal < 30 + g.cha * 0.6 && c.food - 1500 > Game.foodReserve(c)) cmd = 'alms';
       else if (c.train < 60 && c.troops > 3000) cmd = 'train';
       else if (c.farm < c.farmMax * 0.8 && g.pol >= 50 && Math.random() < 0.5) cmd = 'farm';
       else if (c.comm < c.commMax * 0.8 && g.pol >= 50) cmd = 'comm';
