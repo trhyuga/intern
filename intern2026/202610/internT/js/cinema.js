@@ -410,55 +410,85 @@ const Cinema = (() => {
       const sc = SCENARIOS.find(s => s.id === G.scen);
       const H_ = Game.has;
       // ---- 結びの言葉：君主ごとの一文と、功臣・軍師・散った将の名を織り込む ----
+      //  「｜」は折り返してよい切れ目。切れ目の間では折り返さない（言葉の途中で行が変わらないように）
       const lname = lord ? lord.name : f.name;
       const WIN_LORD = {
-        劉備: '桃園に結んだ誓いは、ついに天下を照らした。漢の旗は、再び都の空に翻る。',
-        曹操: '「治世の能臣、乱世の奸雄」。そう評された男は、乱世を終わらせ、治世の主となった。',
-        孫権: '父と兄が遺した江東の地から、碧眼の若き君主は天下を掴み取った。',
-        孫策: '「小覇王」と呼ばれた若武者は、ついに真の覇王となった。',
-        孫堅: '江東の虎の咆哮は、天下の果てまで響き渡った。',
-        董卓: '暴威の前に、天下はひれ伏した。都の宮には、夜ごと宴の灯がともる。',
-        袁紹: '四世三公の名門は、その威光のままに天下を一つにした。',
-        袁術: '伝国の玉璽を手にした男は、ついに玉座へと上った。',
-        呂布: '人中に呂布あり、馬中に赤兎あり。天下最強の武は、ついに天下そのものを制した。',
-        劉表: '荊州に集った名士たちの知恵は、天下に文治の花を咲かせた。',
-        馬騰: '西涼の鉄騎は中原を駆け抜け、ついに天下を平らげた。',
-        公孫瓚: '白馬義従の蹄の音は、天下の隅々まで鳴り響いた。',
-        劉璋: '天府の国・益州から興った軍勢は、ついに天下を一つにした。',
-        劉焉: '天府の国・益州から興った軍勢は、ついに天下を一つにした。',
-        張魯: '漢中に始まった教えと軍は、ついに天下を覆った。',
-        孟獲: '南蛮の王の旗は、ついに中原の都に立った。',
+        董卓: '暴威の前に、｜天下はひれ伏した。｜都の宮には、｜夜ごと宴の灯がともる。',
+        袁紹: '四世三公の名門は、｜その威光のままに｜天下を一つにした。',
+        韓馥: '冀州を譲った臆病者と｜笑われた男が、｜いま天下の主として｜笑った者たちを見下ろす。',
+        曹操: '「治世の能臣、｜乱世の奸雄」。｜そう評された男は、｜乱世を終わらせ、｜治世の主となった。',
+        劉備: '桃園に結んだ誓いは、｜ついに天下を照らした。｜漢の旗は、｜再び都の空に翻る。',
+        公孫瓚: '白馬義従の蹄の音は、｜天下の隅々まで｜鳴り響いた。',
+        劉虞: 'かつて帝位を固辞した仁者は、｜民と諸族に推され、｜ついに天下を治める。',
+        孫堅: '江東の虎の咆哮は、｜天下の果てまで｜響き渡った。',
+        袁術: '伝国の玉璽を｜手にした男は、｜ついに玉座へと上った。',
+        劉表: '荊州に集った｜名士たちの知恵は、｜天下に文治の花を｜咲かせた。',
+        劉焉: '天府の国・益州に拠った｜劉焉の大望は、｜ついに天下を呑み込んだ。',
+        張魯: '師君の教えは｜漢中から天下へ広まり、｜乱世に疲れた民を｜救った。',
+        馬騰: '西涼の鉄騎は｜中原を駆け抜け、｜ついに天下を平らげた。',
+        陶謙: '徐州の老牧は｜乱世の荒波をしのぎきり、｜天下に安寧をもたらした。',
+        孔融: '孔子の末裔にして｜文名高き孔融は、｜筆と礼をもって｜治世の範を示した。',
+        公孫度: '遼東の果てに｜独り立った旗が、｜ついに中原の都に翻る。',
+        王朗: '経学に通じた｜会稽の儒者は、｜学と礼をもって｜新しい天下の秩序を築いた。',
+        厳白虎: '「東呉の徳王」を名乗った男は、｜その名のとおり、｜天下の王となった。',
+        劉繇: '漢室の血を引く｜揚州の刺史は、｜江東の地から｜天下を平らげた。',
+        張燕: '黒山を駆けた「飛燕」は、｜百万と号した配下とともに、｜ついに天下を制した。',
+        呂布: '人中に呂布あり、｜馬中に赤兎あり。｜天下最強の武は、｜ついに天下そのものを制した。',
+        孫策: '「小覇王」と｜呼ばれた若武者は、｜ついに真の覇王となった。',
+        張繍: '宛城で曹操を退けた張繍は、｜賈詡の知略とともに、｜天下へと手を伸ばし、｜ついに掴み取った。',
+        李傕: '長安を握った西涼の将は、｜ついに天下のすべてを｜手中に収めた。',
+        劉璋: '温厚と評された益州の主は、｜民を労りながら、｜天下を一つにした。',
+        孫権: '父と兄が遺した江東の地から、｜碧眼の若き君主は｜天下を掴み取った。',
+        韓玄: '長沙の一太守にすぎなかった男が、｜群雄を退け、｜天下の主となった。',
+        金旋: '武陵の一太守から｜身を起こした金旋の名は、｜天下を統べた主として｜史に刻まれた。',
+        劉度: '零陵の小さな郡から｜興った軍勢は、｜ついに天下を一つにした。',
+        趙範: '桂陽の太守・趙範は、｜乱世を巧みに渡りきり、｜ついに天下の主となった。',
+        公孫康: '父の遺した遼東を守り抜いた公孫康は、｜北の果てから｜天下を制した。',
+        孟獲: '七たび捕らえられても｜屈しなかった南蛮王の心は、｜ついに天下を制した。',
+        // 跡を継いで君主となった者
+        曹丕: '父の覇業を継いだ曹丕は、｜ついに天下を一つにし、｜新しい時代を開いた。',
+        劉禅: '先帝の遺志を継いだ劉禅のもと、｜漢の天下は｜再び一つとなった。',
+        馬超: '「錦馬超」の槍は、｜父の無念を晴らし、｜天下を貫いた。',
+        袁尚: '父・袁紹の覇業は、｜子の袁尚によって｜ついに成し遂げられた。',
+        袁譚: '父・袁紹の覇業は、｜長子の袁譚によって｜ついに成し遂げられた。',
+        劉琦: '父・劉表の遺した荊州から、｜劉琦は天下を一つにした。',
+        劉琮: '父・劉表の遺した荊州から、｜劉琮は天下を一つにした。',
+        孫亮: '孫家三代の悲願は、｜若き孫亮のもとで｜ついに果たされた。',
       };
-      const lordLine = WIN_LORD[lname] || (lord && H_(lord, '仁徳') ? '戦に疲れた民は、新しい君主の慈しみに涙したという。' : lord && H_(lord, '野心') ? '力で束ねた天下を、人々は畏れと共に仰ぎ見た。' : '名もなき群雄の一人と見られた男が、並み居る英雄を退け、天下の主となった。');
+      const lordLine = WIN_LORD[lname] || (lord && H_(lord, '仁徳') ? '戦に疲れた民は、｜新しい君主の慈しみに｜涙したという。' : lord && H_(lord, '野心') ? '力で束ねた天下を、｜人々は畏れと共に｜仰ぎ見た。' : '名もなき群雄の一人と｜見られた男が、｜並み居る英雄を退け、｜天下の主となった。');
       const sg = G.strategist != null ? G.gens[G.strategist] : null;
       const heroes = myGens.filter(g => g !== lord && g !== sg && !g.isLord).slice(0, 3).map(g => g.name);
       const years = sc.dream ? 0 : G.year - sc.year;
+      const ssn = SEASONS[G.season] || '';
       const epi = win ? [
-        '<span class="epi">天下の大勢は、<br>分かれること久しければ必ず合し、<br>合すること久しければ必ず分かる。</span>',
         years > 0 ? `挙兵より${years}年――。` : '幾多の戦いを経て――。',
-        `${G.year}年${SEASONS[G.season] || ''}、最後の敵が降り、群雄割拠の世は終わりを告げた。`,
-        `${lname}の旗のもと、天下はついに一つとなる。`,
+        `${G.year}年${ssn}、｜最後の敵が降り、｜群雄割拠の世は｜終わりを告げた。`,
+        `${lname}の旗のもと、｜天下はついに｜一つとなる。`,
         lordLine,
-        (sg && sg !== lord ? `帷幄にあっては${sg.name}が策を巡らせ、` : '') + (heroes.length ? `戦場にあっては${heroes.join('、')}らが武名を轟かせた。` : '君臣は心を一つにして戦い抜いた。'),
-        fallen.length ? `志半ばに倒れた${fallen.slice(0, 4).map(g => g.name).join('、')}${fallen.length > 4 ? 'ら' : ''}の名もまた、勝鬨の中に刻まれる。` : '',
-        '荒れ果てた田畑には再び麦が実り、街道には商人の声が戻る。',
-        'この日の勝鬨は、のちの世まで長く語り継がれていく。',
-        '<span class="climax">――天下、ここに定まる。</span>',
+        (sg && sg !== lord ? `帷幄にあっては｜${sg.name}が策を巡らせ、｜` : '') + (heroes.length ? `戦場にあっては｜${heroes.join('、')}らが｜武名を轟かせた。` : '君臣は心を一つにして｜戦い抜いた。'),
+        fallen.length ? `志半ばに倒れた｜${fallen.slice(0, 4).map(g => g.name).join('、')}${fallen.length > 4 ? 'ら' : ''}の名もまた、｜勝鬨の中に刻まれる。` : '',
+        '荒れ果てた田畑には｜再び麦が実り、｜街道には｜商人の声が戻る。',
+        'この日の勝鬨は、｜のちの世まで｜長く語り継がれていく。',
       ].filter(Boolean) : [
-        `${G.year}年${SEASONS[G.season] || ''}。`,
-        `${f.name}の大志は、ここに潰えた。`,
-        heroes.length ? `${heroes.join('、')}ら、最後まで旗を守った者たちの奮戦も、ついに時勢を覆せなかった。` : '最後まで旗を守った者たちの奮戦も、ついに時勢を覆せなかった。',
-        'されど、その旗のもとに集った者たちの戦いは、決して無駄ではない。',
-        '乱世はなお続く。',
-        '<span class="climax">天下を手にするのは、<br>果たして誰か――。</span>',
+        `${G.year}年${ssn}。`,
+        `${f.name}の大志は、｜ここに潰えた。`,
+        heroes.length ? `${heroes.join('、')}ら、｜最後まで旗を守った者たちの奮戦も、｜ついに時勢を覆せなかった。` : '最後まで旗を守った者たちの奮戦も、｜ついに時勢を覆せなかった。',
+        'されど、｜その旗のもとに集った者たちの戦いは、｜決して無駄ではない。',
+        '乱世は、なお続く。',
       ];
-      const roll = document.createElement('div'); roll.className = 'roll';
-      roll.innerHTML = `<h2>${win ? '天下統一' : '覇業ならず'}</h2>${win ? `<div class="h2sub">${lname}、天下に号令す</div>` : ''}` + epi.map(p => `<p>${p}</p>`).join('') +
-        (myGens.length ? `<h3>${win ? '功 臣' : '最後まで従った者たち'}</h3>` + myGens.slice(0, 16).map(g => `<div class="cr"><img src="${Portrait.get(g, win ? 'happy' : 'sad', f.color)}"><div><b>${g.name}</b><small>統${g.lead} 武${g.war} 知${g.int} 政${g.pol} 魅${g.cha}<br>戦功 ${g.wins}　一騎討ち ${g.duels}勝</small></div></div>`).join('') : '') +
-        (fallen.length ? `<h3>散っていった者たち</h3><p>${fallen.map(g => g.name).join('　')}</p>` : '') +
-        `<h3>戦 績</h3><p>シナリオ「${sc.title}」<br>${sc.dream ? '' : sc.year + '年 〜 '}${G.year}年<br>戦い ${G.stats.battles}回　勝利 ${G.stats.wins}回<br>捕らえた武将 ${G.stats.captured}人　登用 ${G.stats.recruited}人<br>一騎討ち勝利 ${G.stats.duelsWon}回</p>` +
-        `<h3>制 作</h3><p>群雄天下 ― 三国英傑伝 ―<br>intern2026 / internT</p><p>絵・音・物語　すべてプログラムで生成</p><p>Powered by GitHub + Vercel + Claude</p>` +
-        `<div class="fin">完</div>`;
+      const segs = str => str.split('｜').map(x => `<span class="sg">${x}</span>`).join('');
+      const crest = '<div class="orn"><i></i><b>◆</b><i></i></div>';
+      const roll = document.createElement('div'); roll.className = 'roll' + (win ? ' win' : ' lose');
+      roll.innerHTML =
+        (win ? `<div class="epi"><span class="sg">天下の大勢は、</span><br><span class="sg">分かれること久しければ必ず合し、</span><br><span class="sg">合すること久しければ必ず分かる。</span></div>${crest}` : '') +
+        epi.map(p => `<p>${segs(p)}</p>`).join('') +
+        `<div class="climax">${win ? '<span class="sg">――天下、</span><span class="sg">ここに定まる。</span>' : '<span class="sg">天下を手にするのは、</span><br><span class="sg">果たして誰か――。</span>'}</div>` +
+        (myGens.length ? `<h3><span>${win ? '功 臣' : '最後まで従った者たち'}</span></h3><div class="crs">` + myGens.slice(0, 16).map((g, i) => `<div class="cr${i === 0 ? ' first' : ''}"><img src="${Portrait.get(g, win ? 'happy' : 'sad', f.color)}"><div><b>${g.name}</b><small>統${g.lead} 武${g.war} 知${g.int}<br>政${g.pol} 魅${g.cha}<br><span class="sg">戦功 ${g.wins}</span>　<span class="sg">一騎討ち ${g.duels}勝</span></small></div></div>`).join('') + '</div>' : '') +
+        (fallen.length ? `<h3><span>散っていった者たち</span></h3><p class="fallen">${fallen.map(g => `<span class="sg">${g.name}</span>`).join('')}</p>` : '') +
+        `<h3><span>戦 績</span></h3><div class="stats">` +
+        [['シナリオ', sc.title], ['年月', `${sc.dream ? '' : sc.year + '年 〜 '}${G.year}年`], ['戦い', `${G.stats.battles}回（勝利 ${G.stats.wins}回）`], ['捕らえた武将', `${G.stats.captured}人`], ['登用した武将', `${G.stats.recruited}人`], ['一騎討ちの勝利', `${G.stats.duelsWon}回`]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('') + '</div>' +
+        `<h3><span>制 作</span></h3><p class="staff">群雄天下 ― 三国英傑伝 ―<br>intern2026 / internT</p><p class="staff">絵・音・物語　すべてプログラムで生成</p><p class="staff">Powered by GitHub + Vercel + Claude</p>` +
+        `<div class="fin"><span>完</span></div>`;
       rollEl.innerHTML = ''; rollEl.appendChild(roll);
       const t0 = performance.now();
       let done = false, raf;
@@ -471,6 +501,42 @@ const Cinema = (() => {
       const cl = makeClouds(19, 7, W, H);
       const crowd = srand(5);
       const crowdPts = Array.from({ length: 70 }, () => [crowd() * W, crowd()]);
+      // 花火（勝利）・火の粉（敗北）
+      const fw = [], dust = makeParticles(50, W, H, 53), embers = makeParticles(40, W, H, 59);
+      let nextFw = 3.2;
+      const FW_COL = ['255,214,110', '255,120,80', '255,250,230', '255,170,60', '240,90,70'];
+      const burst = (x, y) => { const col = FW_COL[Math.floor(Math.random() * FW_COL.length)], n = 46 + Math.floor(Math.random() * 20), sp = 1.6 + Math.random() * 1.4; for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; fw.push({ x, y, vx: Math.cos(a) * sp * (0.7 + Math.random() * 0.5), vy: Math.sin(a) * sp * (0.7 + Math.random() * 0.5), life: 70 + Math.random() * 30, max: 100, col }); } };
+      // 題字の場面（最初の5秒ほど）
+      const T0 = 5.2;   // 文字が流れ始める時刻
+      const titleCard = t => {
+        const a = t < 0.6 ? 0 : t < 1.4 ? (t - 0.6) / 0.8 : t > 4.4 ? Math.max(0, 1 - (t - 4.4) / 0.9) : 1;
+        if (a <= 0) return;
+        c.save();
+        c.globalAlpha = a * 0.55; c.fillStyle = '#000'; c.fillRect(0, 0, W, H); c.globalAlpha = 1;
+        const cy = H * 0.42, sc2 = 1 + Math.max(0, 1.4 - t) * 0.25;
+        // 金の横線が左右に伸びる
+        const lw = Math.min(1, Math.max(0, (t - 1.0) / 1.0)) * W * 0.36;
+        const lg = c.createLinearGradient(W / 2 - lw, 0, W / 2 + lw, 0); lg.addColorStop(0, 'rgba(212,175,55,0)'); lg.addColorStop(0.5, `rgba(240,210,120,${a})`); lg.addColorStop(1, 'rgba(212,175,55,0)');
+        c.fillStyle = lg; c.fillRect(W / 2 - lw, cy - 70, lw * 2, 1.5); c.fillRect(W / 2 - lw, cy + 52, lw * 2, 1.5);
+        // 大きな題字
+        const ttl = win ? '天下統一' : '覇業ならず', fs = Math.min(W / (ttl.length + 0.6), 86);
+        c.translate(W / 2, cy); c.scale(sc2, sc2);
+        c.font = `${fs}px 'Yuji Syuku', serif`; c.textAlign = 'center'; c.textBaseline = 'middle';
+        c.globalAlpha = a;
+        c.shadowColor = win ? 'rgba(255,190,80,0.8)' : 'rgba(0,0,0,0.9)'; c.shadowBlur = 30;
+        const g = c.createLinearGradient(0, -fs / 2, 0, fs / 2);
+        if (win) { g.addColorStop(0, '#fff6d0'); g.addColorStop(0.45, '#f0c860'); g.addColorStop(1, '#b07818'); } else { g.addColorStop(0, '#d8d8e0'); g.addColorStop(1, '#6a6a78'); }
+        c.fillStyle = g; c.fillText(ttl, 0, 0);
+        c.shadowBlur = 0; c.lineWidth = 1; c.strokeStyle = win ? 'rgba(120,70,10,0.6)' : 'rgba(0,0,0,0.6)'; c.strokeText(ttl, 0, 0);
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        const dpr = cv.width / W; c.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // 添え書き
+        const sa = Math.min(1, Math.max(0, (t - 1.8) / 0.7)) * a;
+        if (sa > 0) { c.globalAlpha = sa; c.font = `20px 'Yuji Syuku', serif`; c.fillStyle = '#f6e8c6'; c.shadowColor = '#000'; c.shadowBlur = 10; c.fillText(win ? `${lname}、天下に号令す` : `${f.name}の夢、ここに潰ゆ`, W / 2, cy + 86); c.shadowBlur = 0; }
+        // 落款（勝利のとき、どんと押す）
+        if (win && t > 2.3) { const k = Math.min(1, (t - 2.3) / 0.25), s0 = 54 * (1 + (1 - k) * 1.2); seal(c, W / 2 + Math.min(W * 0.36, fs * 2.2), cy + 56, s0, lname.length === 2 ? lname : lname[0], a * k, -0.1); }
+        c.restore();
+      };
       const frame = () => {
         const t = (performance.now() - t0) / 1000;
         if (win) {
@@ -491,6 +557,13 @@ const Cinema = (() => {
           crowdPts.forEach(([x, p]) => { const j = Math.abs(Math.sin(t * 6 + p * 20)) * 4; c.beginPath(); c.arc(x, H * 0.94 - j, 4, 0, 7); c.fill(); c.fillRect(x - 3, H * 0.94 - j + 3, 6, 10); c.fillRect(x + (p > 0.5 ? 2 : -4), H * 0.94 - j - 6 - j, 2, 8); });
           c.fillStyle = '#120a06'; c.fillRect(0, H * 0.96, W, H * 0.04);
           c.fillStyle = 'rgba(0,0,0,0.3)'; c.fillRect(0, 0, W, H);   // 字幕を読みやすく
+          // 花火
+          if (t > nextFw) { burst(W * (0.15 + Math.random() * 0.7), H * (0.1 + Math.random() * 0.3)); nextFw = t + 0.7 + Math.random() * 1.3; }
+          c.globalCompositeOperation = 'lighter';
+          for (let i = fw.length - 1; i >= 0; i--) { const p = fw[i]; p.x += p.vx; p.y += p.vy; p.vy += 0.025; p.vx *= 0.985; p.vy *= 0.985; p.life--; if (p.life <= 0) { fw.splice(i, 1); continue; } const al = p.life / p.max; c.fillStyle = `rgba(${p.col},${al})`; c.beginPath(); c.arc(p.x, p.y, 1.6, 0, 7); c.fill(); glow(c, p.x, p.y, 5, `rgba(${p.col},${al * 0.35})`); }
+          // 舞い上がる金の粒
+          dust.forEach(d => { d.y -= d.v * 0.6; d.x += Math.sin(t + d.p) * 0.2; if (d.y < -10) { d.y = H + 10; d.x = Math.random() * W; } const al = 0.35 + 0.35 * Math.sin(t * 3 + d.p * 5); c.fillStyle = `rgba(255,220,140,${al})`; c.fillRect(d.x, d.y, 1.5, 1.5); });
+          c.globalCompositeOperation = 'source-over';
           // 天灯
           lanterns.forEach(l => { l.y -= l.v * 0.5; l.x += Math.sin(t * 0.5 + l.p) * 0.3; if (l.y < -20) { l.y = H + 20; l.x = Math.random() * W; } glow(c, l.x, l.y, 18, 'rgba(255,200,110,0.55)'); c.fillStyle = '#ffd08a'; c.beginPath(); c.moveTo(l.x - 4, l.y - 5); c.lineTo(l.x + 4, l.y - 5); c.lineTo(l.x + 3, l.y + 5); c.lineTo(l.x - 3, l.y + 5); c.fill(); });
           // 紙吹雪（金と朱）
@@ -507,12 +580,15 @@ const Cinema = (() => {
           c.strokeStyle = 'rgba(190,200,220,0.35)'; c.lineWidth = 1;
           rain.forEach(p => { p.y += 9 + p.v * 4; p.x -= 2; if (p.y > H) { p.y = -10; p.x = Math.random() * (W + 60); } c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(p.x - 4, p.y + 14); c.stroke(); });
           if (Math.random() < 0.004) { c.fillStyle = 'rgba(220,230,255,0.25)'; c.fillRect(0, 0, W, H); }
+          // 燃え残りの火の粉
+          embers.forEach(e => { e.y -= e.v * 0.7; e.x += Math.sin(t * 0.8 + e.p) * 0.4; if (e.y < H * 0.3) { e.y = H; e.x = Math.random() * W; } const al = Math.max(0, (e.y - H * 0.3) / (H * 0.7)) * 0.7; c.fillStyle = `rgba(255,120,50,${al})`; c.fillRect(e.x, e.y, 1.8, 1.8); });
           c.fillStyle = 'rgba(0,0,0,0.3)'; c.fillRect(0, 0, W, H);
         }
         finish(c, W, H, 0.5);
-        const y = H - (t - 2) * 34;
+        titleCard(t);
+        const y = H - (t - T0) * 34;
         roll.style.transform = `translateY(${Math.min(0, y - H)}px)`;
-        if (t > 2 && -(y - H) > roll.offsetHeight + H * 0.2) return finishEnd();
+        if (t > T0 && -(y - H) > roll.offsetHeight + H * 0.2) return finishEnd();
         raf = requestAnimationFrame(frame);
       };
       raf = requestAnimationFrame(frame);
