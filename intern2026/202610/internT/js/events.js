@@ -154,6 +154,7 @@ const Events = (() => {
     { name: '役人の腐敗', run: (fi, k) => { let t = 0; Game.citiesOf(fi).forEach(c => { const v = Math.round(c.gold * 0.12 * k); c.gold -= v; t += v; }); return `広がりすぎた${G.factions[fi].name}軍の領地で、役人の横領がはびこっている。金 -${fmt(t)}`; } },
     { name: '重税への不満', run: (fi, k) => { Game.citiesOf(fi).forEach(c => c.loyal = Math.max(0, c.loyal - Math.round(5 * k))); return `${G.factions[fi].name}軍の戦続きの重税に、民の不満が高まっている。全都市の民忠 -${Math.round(5 * k)}`; } },
     { name: '辺境の兵の疲れ', run: (fi, k) => { const cs = Game.citiesOf(fi).filter(c => c.adj.some(a => G.cities[a].owner !== fi)); cs.forEach(c => { c.troops = Math.round(c.troops * (1 - 0.06 * k)); c.train = Math.max(0, c.train - Math.round(6 * k)); }); return cs.length ? `長い国境を守る${G.factions[fi].name}軍の兵に、疲れが溜まっている。前線の兵 -${Math.round(6 * k)}%・訓練 -${Math.round(6 * k)}` : null; } },
+    { name: '逃亡兵の続出', run: (fi, k) => { let t = 0; Game.citiesOf(fi).forEach(c => { const v = Math.round(c.troops * 0.04 * k); c.troops -= v; t += v; }); return `${G.factions[fi].name}軍では、遠い戦地へ送られるのを嫌って逃げ出す兵が後を絶たない。兵 -${fmt(t)}`; } },
     { name: '兵糧の目減り', run: (fi, k) => { let t = 0; Game.citiesOf(fi).forEach(c => { const v = Math.round(c.food * 0.1 * k); c.food -= v; t += v; }); return `${G.factions[fi].name}軍の遠い輸送路で、兵糧が腐ったり奪われたりしている。兵糧 -${fmt(t)}`; } },
   ];
   function bigEvents() {
@@ -161,7 +162,10 @@ const Events = (() => {
     G.factions.forEach(f => {
       if (!f.alive || mine(f.i)) return;
       const k = bigK(f.i);
-      if (k <= 1 || Math.random() > Math.min(0.6, 0.25 * (k - 1))) return;
+      if (k <= 1) return;
+      // 大軍を養いきれず、毎季節すこしずつ兵が散っていく（都市18以上で各都市の兵 −2%）
+      Game.citiesOf(f.i).forEach(c => { c.troops = Math.round(c.troops * (1 - 0.01 * (k - 1))); });
+      if (Math.random() > Math.min(0.6, 0.25 * (k - 1))) return;
       const e = pick(BIG_EV);
       const msg = e.run(f.i, k);
       if (!msg) return;
