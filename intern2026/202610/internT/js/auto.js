@@ -1186,6 +1186,22 @@ const Auto = (() => {
     }
   }
   // 手の空いた将に修行をさせる（武の将は統率・武力、文の将は政治・知力の低い方を伸ばす）
+  // 中盤からは、君主は毎季節修行する。魅力を85まで上げ、そのあとは一番低い能力を上げる（出陣・三顧の礼のあとに）
+  async function lordStudy() {
+    const lord = Game.lordOf(G.player);
+    if (!lord || lord.acted || lord.state !== 'serve') return;
+    if ((typeof Sound !== 'undefined' && Sound.mapStage ? Sound.mapStage() : (G.bgmStage || 0)) < 1) return;
+    const KS = ['lead', 'war', 'int', 'pol', 'cha'];
+    const k = lord.cha < 85 ? 'cha' : KS.filter(x => lord[x] < 99).sort((a, b) => lord[a] - lord[b])[0];
+    if (!k) return;
+    const NM = { lead: '統率', war: '武力', int: '知力', pol: '政治', cha: '魅力' };
+    await press(lord.city, 'per', '[data-cmd=study]');
+    const before = lord[k], gain = Game.study(lord, k);
+    lord.acted = true;
+    Sound.se(gain ? 'train' : 'ng');
+    await UI.talk(lord, gain ? 'happy' : 'normal', `${lord.name}「${gain ? line(lord, 'study_' + k) : line(lord, 'study_fail')}」\n<b>君主の修行：${NM[k]} ${before} → ${lord[k]}${gain ? `（+${gain}）` : '（変わらず）'}</b>`, facColor(lord), { tag: '君主の修行' });
+    App.refresh();
+  }
   async function idleStudy(br) {
     if (br.tier === 'dumb') return;
     const idle = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord);
@@ -1452,6 +1468,7 @@ const Auto = (() => {
     const armies0 = [];
     // 見つけてある在野の人物の登用は、外交・計略・配置換えより先に行う（魅力の高い将が先に他の仕事へ回ってしまわないように）
     await doRecruit(br, new Set()); if (stopReq) return false;
+    await lordStudy(); if (stopReq) return false;
     await doDiplo(br, new Set()); if (stopReq) return false;
     await doPlots(br, new Set(armies0.map(x => x.i)), [...new Set([...attacks.filter(p => p.t.owner !== G.player).map(p => p.t.i), ...(G.stage ? [G.stage.t] : [])])]); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
