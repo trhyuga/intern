@@ -864,6 +864,7 @@ const Auto = (() => {
       if (c.owner !== G.player) continue;
       const fails = G.recFail[t.i] || 0;
       if (G.recGo && G.recGo[t.i] === G.turn) continue;   // この季節、すでに誘いの使者を向かわせた
+      if (G.recTry && G.recTry[t.i] === G.turn) continue;  // この季節、すでに誘った（断られた）人物には、もう一度は行かない
       // 三顧の礼：君主自身が訪ねる
       if (t.name === '諸葛亮') {
         if (lord.acted || reserved.has(lord.i)) continue;
@@ -902,6 +903,7 @@ const Auto = (() => {
       await say('rec', { gen: t.name });
       env.acted = true;
       const before = t.state;
+      (G.recTry = G.recTry || {})[t.i] = G.turn;
       await App.doRecruit(env, t);
       if (t.state === before) G.recFail[t.i] = fails + 1; else delete G.recFail[t.i];
     }

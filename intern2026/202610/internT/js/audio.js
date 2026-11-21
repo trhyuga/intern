@@ -14,6 +14,7 @@ const Sound = (() => {
   // iPhone は、ほかのアプリへ移ると音の仕組みが止められ（interrupted）、戻っても鳴らないままのことがある。
   //  離れていた後に最初に画面に触れた時は、音の仕組みを作り直して、流れていた曲と雨音を鳴らし直す
   let wasAway = false;
+  const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') { wasAway = true; try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) { } }
   });
@@ -29,7 +30,8 @@ const Sound = (() => {
   }
   function init(gesture) {
     if (ctx) {
-      if (gesture && wasAway) { wasAway = false; rebuild(); return; }
+      // iPhone・iPad は、戻ったあと「動いている」と言いながら鳴らないことがあるので作り直す。ほかは止まったままの時だけ
+      if (gesture && wasAway) { wasAway = false; if (IOS || ctx.state !== 'running') { rebuild(); return; } }
       if (ctx.state !== 'running' && ctx.state !== 'closed') { try { const p = ctx.resume(); if (p && p.catch) p.catch(() => { }); } catch (e) { } }
       return;
     }

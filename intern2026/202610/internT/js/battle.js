@@ -518,6 +518,7 @@ const Battle = (() => {
   }
 
   async function animateMove(u, r, c) {
+    if (u.staleDay === B.day) return;
     const fr = u.y, fc = u.x, t0 = performance.now(), dur = 220 + 60 * (Math.abs(r - fr) + Math.abs(c - fc));
     u.r = r; u.c = c;
     if (!auto && (r !== fr || c !== fc)) Sound.se('horse');
@@ -527,6 +528,7 @@ const Battle = (() => {
   }
 
   async function doAttack(a, r, c) {
+    if (a.staleDay === B.day) return;   // 見張りに飛ばされた行動の続き
     a.ambush = false;   // 攻めかかれば、伏兵は姿を現す
     if (r === 2 && c === 4 && B.tiles[2][4].t === 'gate' && !unitAt(r, c)) {
       // 城門攻撃
@@ -615,6 +617,7 @@ const Battle = (() => {
 
   // ---------- 計略 ----------
   async function doPlot(a, kind, d) {
+    if (a.staleDay === B.day) return;
     const H = Game.has;
     let p = 0.35 + (a.g.int - d.g.int) / 90 + (H(a.g, '智謀') ? 0.15 : 0) - (H(d.g, '神算') ? 0.3 : 0) + (a.gi >= 0 && Game.top(a.g, 'int') ? 0.15 : 0) - (d.gi >= 0 && Game.top(d.g, 'int') ? 0.2 : 0);
     // 夜戦では知略の将の計略が冴える。猛将（知力の低い豪傑）は夜の計略にかかりやすい
@@ -1222,12 +1225,14 @@ const Battle = (() => {
   }
   const overlayOpen = () => ['#duel.show', '#talk.show', '#modal.show', '#cutin.show', '#sheet.show'].some(q => document.querySelector(q));
   // 20秒たっても何も進まず、一騎討ちや会話も出ていなければ、止まったとみなす
-  function stallGuard() {
+  let unitGuards = 0;
+  function stallGuard(dayLevel) {
     let iv;
     const p = new Promise(res => {
       beat = performance.now();
       iv = setInterval(() => {
         if (!B || B.over) { clearInterval(iv); return; }
+        if (dayLevel && unitGuards > 0) { beat = performance.now(); return; }   // 部隊の見張りが働いている間は、そちらに任せる
         if (document.hidden || overlayOpen() || B.mode !== 'busy') { beat = performance.now(); return; }   // 自分の手番で操作を待っている間は、止まったとはみなさない
         if (performance.now() - beat > 20000) { clearInterval(iv); res('stall'); }
       }, 1000);
@@ -1235,32 +1240,34 @@ const Battle = (() => {
     return { p, stop: () => clearInterval(iv) };
   }
   async function runUnit(u, rogue) {
-    const g = stallGuard();
+    const g = stallGuard(false);
+    unitGuards++;
     try {
       const r = await Promise.race([aiUnit(u, rogue), g.p]);
-      if (r === 'stall') battleTrouble(new Error('stall'), `${u.g.name}の行動が止まった`);
+      if (r === 'stall') { u.staleDay = B.day; battleTrouble(new Error('stall'), `${u.g.name}の行動が止まった`); }   // 止まった行動が後で動き出しても、その日はもう何もさせない
     } catch (e) { battleTrouble(e, `${u.g.name}の行動`); }
-    finally { g.stop(); }
+    finally { g.stop(); unitGuards--; }
     if (u.alive) u.acted = true;
     if (B && !B.over) B.mode = 'busy';
   }
   // 1日の流れ。途中で不具合が出たら、その日の残りを飛ばして次の手番へ進める
   function runDay(first, resume) {
-    const g = stallGuard(), day = B.day;
+    const g = stallGuard(true), day = B.day;
     Promise.race([resume ? playerPhase() : startDay(first), g.p]).then(r => { if (r === 'stall') throw new Error('stall'); }).finally(() => g.stop()).catch(e => {
       if (B && B.day !== day && e && e.message === 'stall') return;   // もう次の日に進んでいれば何もしない
       battleTrouble(e, `${B && B.day}日目`);
       if (!B || B.over) return;
+      B.gen = (B.gen || 0) + 1;   // 古い流れが後で動き出しても、二重に進まないように
       B.fails = (B.fails || 0) + 1;
-      if (B.fails > 5) { B.day = CONFIG.BATTLE_DAYS + 1; checkEnd().catch(() => { }); return; }   // 何度も続くなら、時間切れとして戦を終える
-      setTimeout(() => { if (B && !B.over) runDay(false, true); }, 300);   // その日の残りを飛ばして、手番から続ける
+      // 同じ日に何度も続くなら、その日を終えて次の日へ（勝ち負けは決めない）
+      setTimeout(() => { if (B && !B.over) runDay(false, B.fails <= 3); }, 300);
     });
   }
 
   async function startDay(first) {
     if (B.over) return;
     if (!first) {
-      B.day++;
+      B.day++; B.fails = 0;
       // 炎のダメージと消火
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const tl = B.tiles[r][c];
@@ -1330,12 +1337,14 @@ const Battle = (() => {
     baseBgm(); Sound.amb(B.weather === 'rain' ? 'rain' : null);
     await banner(`${B.day}日目　${B.night ? '夜戦' : WNAME[B.weather]}`, 700);
     // 先手は攻め手
-    if (B.playerSide === 'atk') await playerPhase(); else { await aiPhase('atk'); if (B.over) return; await playerPhase(); }
+    const g0 = B.gen || 0;
+    if (B.playerSide === 'atk') await playerPhase(); else { await aiPhase('atk'); if (B.over || (B.gen || 0) !== g0) return; await playerPhase(); }
   }
 
   async function playerPhase() {
     if (B.over) return;
-    if (auto) { await aiPhase(B.playerSide); return endPlayerPhase(); }
+    const g0 = B.gen || 0;   // この手番の流れの世代。見張りが立て直したあとの古い流れは、ここで止まる
+    if (auto) { await aiPhase(B.playerSide); if ((B.gen || 0) !== g0) return; return endPlayerPhase(g0); }
     if (B.watch) {
       B.mode = 'busy';   // 観戦中は操作を待たない（見張りが止まりを見つけられるように）
       setActions([{ label: '▶ ここから自分で指揮する', cls: 'primary', fn: () => { B.watch = false; setActions([]); UI.toast('この手番のあとから、自分で指揮できます'); } }]);
@@ -1345,9 +1354,8 @@ const Battle = (() => {
         await UI.talk(sg, 'normal', `${Auto.title(sg)}${sg.name}「${Auto.sl(B.playerSide === 'atk' ? 'battle' : 'defend', { foe: foeCmd ? foeCmd.g.name : '' })}」`, facColor(sg), { tag: sg.isLord ? '君主の采配' : '軍師' });
       }
       await aiPhase(B.playerSide);
-      if (B.over) return;
-      if (B.watch) return endPlayerPhase();
-      return endPlayerPhase();
+      if (B.over || (B.gen || 0) !== g0) return;
+      return endPlayerPhase(g0);
     }
     B.mode = 'idle'; B.sel = null; B.reach = null; B.targets = null;
     // 命令無視（猪突・忠誠の低い武将）
@@ -1372,14 +1380,15 @@ const Battle = (() => {
       { label: '撤退', cls: 'danger', fn: async () => { if (await UI.confirm('全軍を退却させますか？')) { B.units.filter(u => u.alive && u.side === B.playerSide).forEach(u => { u.alive = false; u.status = 'retreat'; }); checkEnd(); } } },
     ]);
   }
-  async function endPlayerPhase() {
-    if (B.over) return;
+  async function endPlayerPhase(g0 = B.gen || 0) {
+    if (B.over || (B.gen || 0) !== g0) return;
     B.sel = null; B.reach = null; B.targets = null; B.mode = 'busy'; setActions([]);
     if (await checkEnd()) return;
     // 同盟国の援軍は自分たちで動く
     for (const u of B.units.filter(o => o.alive && o.ally && o.side === B.playerSide && !o.acted)) { await runUnit(u, false); updateHUD(); if (await checkEnd()) return; }
     const enemy = B.playerSide === 'atk' ? 'def' : 'atk';
     if (B.playerSide === 'atk') { await aiPhase(enemy); if (B.over) return; }
+    if ((B.gen || 0) !== g0) return;
     runDay(false);
   }
 
@@ -1441,8 +1450,9 @@ const Battle = (() => {
     const list = B.units.filter(u => u.alive && u.side === side && !u.acted);
     // 総大将は最後に動く
     list.sort((a, b) => (a.commander ? 1 : 0) - (b.commander ? 1 : 0));
+    const g0 = B.gen || 0;
     for (const u of list) {
-      if (B.over) return;
+      if (B.over || (B.gen || 0) !== g0) return;
       if (!u.alive || u.acted) continue;
       await runUnit(u, false);
       updateHUD();
@@ -2110,7 +2120,9 @@ const Duel = (() => {
       const close = res => { if (closed) return; closed = true; arena.stop(); el.classList.remove('show'); const cvs = el.querySelector('.d-arena'); if (cvs) cvs.width = cvs.height = 0; resolve(res); };
       say('a', line(a, 'duelChallenge', { foe: d.name }));
       setTimeout(() => say('d', line(d, 'duelAccept', { foe: a.name })), 500);
+      let ended = false;
       const finish = (winner) => {
+        if (ended) return; ended = true;
         const w = winner === 'a' ? a : d, l = winner === 'a' ? d : a, ws = winner, ls = winner === 'a' ? 'd' : 'a';
         const r = Math.random();
         const outcome = r < 0.15 ? 'killed' : r < 0.6 ? 'captured' : 'fled';   // 討ち取られるのは15%（前は30%）
@@ -2125,6 +2137,7 @@ const Duel = (() => {
         if (autoEnd || Auto.running) setTimeout(() => { if (closed) return; const b = btns.querySelector('button'); if (b) b.click(); }, 2400 / Auto.speed);
       };
       const finishFlee = winner => {
+        if (ended) return; ended = true;
         Sound.se('ng');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
         btns.querySelector('button').onclick = () => close({ winner, outcome: 'fled' });
@@ -2133,8 +2146,9 @@ const Duel = (() => {
       // 打ち合いの途中で思わぬ不具合が出ても、一騎討ちの画面が閉じないままにならないようにする
       const exchange = modeP => exchange0(modeP).catch(e => {
         console.error('duel', e); window.__battleErr = 'duel: ' + (e && e.stack || e);
-        busy = false; btns.innerHTML = ''; say(null, '決着つかず――');
-        setTimeout(() => finish(ha >= hd ? 'a' : 'd'), 500);
+        if (ended) return;   // すでに決着がついていれば何もしない
+        busy = false; btns.innerHTML = ''; say(null, '決着つかず――両者、馬を返した');
+        setTimeout(() => finishFlee(ha >= hd ? 'a' : 'd'), 500);   // 討ち取りや捕縛は起こさない
       });
       const exchange0 = async (modeP) => {
         if (busy) return; busy = true;
