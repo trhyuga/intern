@@ -221,9 +221,21 @@ const Game = {
       }
       case 'search': {
         const ronin = Game.roninIn(c.i);
-        if (ronin.length && Math.random() < 0.45 + g.cha / 250 + (Game.top(g, 'cha') ? 0.2 : 0)) {
+        // 武将の少ない都市ほど、人を求めて熱心に探す（1人の都市 +35%、2人の都市 +20%）
+        const few = Game.gensIn(c.i, g.faction).length;
+        const fewK = few <= 1 ? 0.35 : few === 2 ? 0.2 : 0;
+        if (ronin.length && Math.random() < 0.45 + g.cha / 250 + (Game.top(g, 'cha') ? 0.2 : 0) + fewK) {
           const t = pick(ronin);
           return { ok: true, found: t, msg: `在野の人物「${t.name}」を見つけた！`, expr: 'happy' };
+        }
+        // さらに、隣の都市にいる在野の人物まで探しに行き、この都市へ招く（1人の都市 65%、2人の都市 40%）
+        if (fewK) {
+          const near = G.gens.filter(x => x.state === 'ronin' && c.adj.includes(x.city) && x.name !== '諸葛亮');
+          if (near.length && Math.random() < (few <= 1 ? 0.65 : 0.4) + g.cha / 400) {
+            const t = pick(near), from = G.cities[t.city];
+            t.city = c.i;
+            return { ok: true, found: t, msg: `人手の足りぬ${c.name}のため、隣の${from.name}まで足を延ばし、在野の人物「${t.name}」を見つけて招いた！`, expr: 'happy' };
+          }
         }
         if (Math.random() < 0.35) {
           const gold = irnd(50, 200); c.gold += gold;

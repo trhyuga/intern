@@ -259,8 +259,10 @@ const Auto = (() => {
     else n.draft = canDraft ? (front ? (c.troops < threat * 1.2 ? 0.8 : 0.3) : (c.troops < 12000 ? 0.45 : 0.1)) : 0;
     // 内地は兵を鍛える場所（鍛えた兵を前線へ送る）
     n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? 1.0 : 1.4) : 0;
-    const hidden = Game.roninIn(c.i).filter(r => !r.known);
-    n.search = hidden.length ? 1.0 + Math.min(1, Math.max(...hidden.map(r => r.lead + r.war + r.int + r.pol + r.cha)) / 400) : 0.1;
+    // 武将が1〜2人の都市は、隣の都市の在野まで探しに行けるので、人材探しを重く見る
+    const few = Game.gensIn(c.i, G.player).length;
+    const hidden = Game.roninIn(c.i).filter(r => !r.known).concat(few <= 2 ? G.gens.filter(r => r.state === 'ronin' && c.adj.includes(r.city) && r.name !== '諸葛亮') : []);
+    n.search = hidden.length ? 1.0 + Math.min(1, Math.max(...hidden.map(r => r.lead + r.war + r.int + r.pol + r.cha)) / 400) + (few <= 1 ? 0.5 : few === 2 ? 0.25 : 0) : (few <= 1 ? 0.3 : 0.1);
     if (c.gold < CONFIG.CMD_COST) n.farm = n.comm = n.wall = 0;
     return { n, must };
   }
