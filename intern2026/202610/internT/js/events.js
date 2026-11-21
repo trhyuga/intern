@@ -517,6 +517,47 @@ const Events = (() => {
   ];
   HIST.push(...LORD_EVENTS);
 
+  // ---------------- 君主ごとのイベントの別の展開 ----------------
+  // 本来のイベントが、ゲーム開始から3年たっても起きていない（条件がそろわない）とき、代わりにこちらが起きる。
+  // どちらか一方だけ。どの君主でも、1回のゲームで必ずどちらかが起きる（その君主が生きて君主である限り）
+  const startYear = () => { const sc = SCENARIOS.find(x => x.id === G.scen); return sc ? sc.year : 190; };
+  const mainIdOf = {};
+  LORD_EVENTS.forEach(e => { const m = e.cond.toString().match(/LF\('([^']+)'\)/); if (m) mainIdOf[m[1]] = e.id; });
+  const ALT = {
+    孫堅: { title: '江東の虎、吼える', run: (f, l) => { up(l, 'war', 2); up(l, 'lead', 1); Game.citiesOf(f).forEach(c => c.train = Math.min(100, c.train + 8)); return '洛陽はまだ遠い。だが江東の虎の牙は鈍ってはいない。\n孫堅「天子の都は、いずれこの手で取り戻す。それまで牙を研いでおけ！」\n孫堅の武力 +2・統率 +1、全都市の訓練 +8'; } },
+    袁紹: { title: '名門の檄文', run: (f, l) => { const rs = gatherTo(f, 2); up(l, 'cha', 1); loyF(f, 5); return '袁紹は天下に檄文を飛ばし、名門袁家のもとに集えと呼びかけた。\n袁紹「四世三公の家に、仕えぬ理由があろうか」\n' + (rs.length ? `在野の${rs.map(g => g.name).join('・')}が訪ねてきた（登用できる）。` : '') + '袁紹の魅力 +1、家臣の忠誠 +5'; } },
+    曹操: { title: '乱世の奸雄', run: (f, l) => { up(l, 'int', 1); up(l, 'lead', 1); capOf(f).gold += 800; return '人物評の名人・許劭は、若き日の曹操を「治世の能臣、乱世の奸雄」と評した。\n曹操「奸雄、大いに結構。乱世を終わらせるのは、きれいごとではない」\n曹操の知力 +1・統率 +1、本拠の金 +800'; } },
+    劉備: { title: '仁徳の君', run: (f, l) => { Game.citiesOf(f).forEach(c => c.loyal = Math.min(100, c.loyal + 6)); loyF(f, 6); up(l, 'cha', 1); return '城が増えても、劉備は民と将兵を第一に考えることを忘れなかった。\n劉備「国の大きさは城の数ではない。民の笑顔の数だ」\n全都市の民忠 +6、家臣の忠誠 +6、劉備の魅力 +1'; } },
+    張繍: { title: '宛城の守り', run: (f, l) => { const c = capOf(f); c.def = Math.min(c.defMax, c.def + 120); Game.citiesOf(f).forEach(x => x.train = Math.min(100, x.train + 6)); up(l, 'lead', 2); return `涼州の兵を鍛え上げた張繍は、${c.name}の守りを固めた。\n張繍「寡兵でも、守りを固めれば大軍を退けられる」\n${c.name}の城壁 +120、全都市の訓練 +6、張繍の統率 +2`; } },
+    韓玄: { title: '長沙の再起', run: (f, l) => { const rs = gatherTo(f, 2, g => g.war >= 65); up(l, 'cha', 3); return '人望がないと噂された韓玄は、心を入れ替えて広く武人を求めた。\n韓玄「わしの不明であった。腕に覚えのある者は、長沙へ来い！」\n' + (rs.length ? `在野の${rs.map(g => g.name).join('・')}が訪ねてきた（登用できる）。` : '') + '韓玄の魅力 +3'; } },
+    劉繇: { title: '揚州の名士', run: (f, l) => { const rs = gatherTo(f, 2); up(l, 'cha', 2); return '漢の皇族である劉繇を頼って、戦乱を逃れた名士が揚州に集まった。\n' + (rs.length ? `在野の${rs.map(g => g.name).join('・')}が訪ねてきた（登用できる）。` : '') + '劉繇の魅力 +2'; } },
+    孫策: { title: '若き覇気', run: (f, l) => { Game.citiesOf(f).forEach(c => c.train = Math.min(100, c.train + 8)); up(l, 'war', 1); loyF(f, 5); return '孫策「江東の地は、俺たちの手で平らげる！ ついて来い！」\n若き主君の覇気に、将兵は奮い立った。\n全都市の訓練 +8、孫策の武力 +1、家臣の忠誠 +5'; } },
+    呂布: { title: '赤兎、千里を駆ける', run: (f, l) => { up(l, 'lead', 2); Game.citiesOf(f).forEach(c => c.train = Math.min(100, c.train + 6)); capOf(f).troops += 3000; return '「人中に呂布あり、馬中に赤兎あり」。赤兎馬を駆る呂布の武名を慕って、腕自慢の兵が集まってきた。\n呂布「強い者だけついて来い。天下最強の軍を見せてやる」\n呂布の統率 +2、全都市の訓練 +6、本拠の兵 +3000'; } },
+    公孫康: { title: '遼東の守り', run: (f, l) => { const c = owns(f, '襄平') ? cityByName('襄平') : capOf(f); c.def = Math.min(c.defMax, c.def + 150); c.food += 5000; up(l, 'lead', 1); return `中原の争いをよそに、公孫康は北の守りを固めた。\n公孫康「遼東は父祖の地。誰にも渡さぬ」\n${c.name}の城壁 +150・兵糧 +5000、公孫康の統率 +1`; } },
+  };
+  // 上の10人以外：その君主の人物像（君主紹介）にちなむ「志」のイベント。得意な能力が伸びる
+  const STAT_JP = { lead: '統率', war: '武力', int: '知力', pol: '政治', cha: '魅力' };
+  function gatherTo(f, n, pred) { const cap = capOf(f); const rs = shuffle(G.gens.filter(g => g.state === 'ronin' && g.name !== '諸葛亮' && (!pred || pred(g)))).slice(0, n); rs.forEach(g => { g.city = cap.i; g.known = true; }); return rs; }
+  function loyF(f, v) { Game.gensOf(f).forEach(g => { if (!g.isLord) g.loyalty = Math.min(100, g.loyalty + v); }); }
+  Object.keys(mainIdOf).forEach(name => {
+    const mainId = mainIdOf[name];
+    HIST.push({ id: mainId + '_alt', title: (ALT[name] ? ALT[name].title : `${name}の志`), chance: 0.5,
+      cond: () => { const f = LF(name); return f >= 0 && !(G.events.hist && G.events.hist[mainId]) && G.year >= startYear() + 3; },
+      run: () => {
+        const f = LF(name), l = Game.lordOf(f);
+        (G.events.hist = G.events.hist || {})[mainId] = true;   // 本来のイベントは、もう起きない
+        let text;
+        if (ALT[name]) text = ALT[name].run(f, l);
+        else {
+          const k = ['lead', 'war', 'int', 'pol', 'cha'].sort((a, b) => l[b] - l[a])[0];
+          up(l, k, 2); loyF(f, 4); capOf(f).gold += 500;
+          const bio = (typeof Flavor !== 'undefined' && Flavor.bio && Flavor.bio(name)) || '';
+          text = `${bio}\n${name}「${voice(l, 'big')}」\n${name}の${STAT_JP[k]} +2、家臣の忠誠 +4、本拠の金 +500`;
+        }
+        return { title: ALT[name] ? ALT[name].title : `${name}の志`, gen: name, expr: 'happy', fac: f, text };
+      } });
+  });
+
   // 同じ都市に集まると起きやすいイベント
   const MEET = [
     { id: 'taoyuan', who: ['劉備', '関羽', '張飛'] }, { id: 'shuiyu', who: ['劉備', '諸葛亮'] }, { id: 'wolong', who: ['諸葛亮', '龐統'] },

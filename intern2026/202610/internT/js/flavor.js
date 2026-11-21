@@ -549,5 +549,5 @@ const Flavor = (() => {
     return `${bio}\n<small>統率${g.lead} 武力${g.war} 知力${g.int} 政治${g.pol} 魅力${g.cha}${traits}<br>${STAT_TIP[best]}</small>`;
   }
 
-  return { LOCAL, local, lordIntro, counts: () => ({ local: Object.values(LOCAL).flat().length, hist: H.length, fun: Object.keys(FUN).length }) };
+  return { LOCAL, local, lordIntro, bio: n => LORD_BIO[n], counts: () => ({ local: Object.values(LOCAL).flat().length, hist: H.length, fun: Object.keys(FUN).length }) };
 })();
