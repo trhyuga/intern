@@ -11,8 +11,28 @@ const Sound = (() => {
   let amb = null, ambKind = null, thunderTimer = null;
   try { muted = localStorage.getItem('internT_mute') === '1'; } catch (e) {}
 
-  function init() {
-    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  // iPhone は、ほかのアプリへ移ると音の仕組みが止められ（interrupted）、戻っても鳴らないままのことがある。
+  //  離れていた後に最初に画面に触れた時は、音の仕組みを作り直して、流れていた曲と雨音を鳴らし直す
+  let wasAway = false;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { wasAway = true; try { if (ctx && ctx.state === 'running') ctx.suspend(); } catch (e) { } }
+  });
+  function rebuild() {
+    const mood = curMood, ak = ambKind;
+    if (timer) clearInterval(timer); timer = null;
+    if (thunderTimer) { clearInterval(thunderTimer); thunderTimer = null; }
+    amb = null; ambKind = null;
+    try { ctx.close(); } catch (e) { }
+    ctx = null; curSong = null; curMood = mood;
+    init();
+    if (ak) setAmb(ak);
+  }
+  function init(gesture) {
+    if (ctx) {
+      if (gesture && wasAway) { wasAway = false; rebuild(); return; }
+      if (ctx.state !== 'running' && ctx.state !== 'closed') { try { const p = ctx.resume(); if (p && p.catch) p.catch(() => { }); } catch (e) { } }
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();

@@ -195,6 +195,7 @@ const Battle = (() => {
   function setupDOM(isAuto) {
     auto = !!isAuto;
     root = document.getElementById('battle');
+    root.querySelectorAll('canvas').forEach(c => { c.width = c.height = 0; });   // 前の合戦の描く台を空ける（iPhone の上限対策）
     root.innerHTML = `
       <div class="b-hud"></div>
       <div class="b-field"><canvas id="bcv"></canvas><div class="b-banner"></div></div>
@@ -218,6 +219,7 @@ const Battle = (() => {
   }
 
   function buildTerrainLayer(dpr) {
+    if (terrainLayer) terrainLayer.width = terrainLayer.height = 0;   // 古い地形の絵を空ける
     terrainLayer = document.createElement('canvas');
     terrainLayer.width = cell * COLS * dpr; terrainLayer.height = cell * ROWS * dpr;
     const c = terrainLayer.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1324,6 +1326,7 @@ const Battle = (() => {
     if (B.over) return;
     if (auto) { await aiPhase(B.playerSide); return endPlayerPhase(); }
     if (B.watch) {
+      B.mode = 'busy';   // 観戦中は操作を待たない（見張りが止まりを見つけられるように）
       setActions([{ label: '▶ ここから自分で指揮する', cls: 'primary', fn: () => { B.watch = false; setActions([]); UI.toast('この手番のあとから、自分で指揮できます'); } }]);
       const sg = Auto.strategist();
       if (sg && ((B.day === 1 && B.playerSide === 'atk') || (B.day > 1 && Math.random() < 0.15))) {
@@ -2007,7 +2010,7 @@ const Duel = (() => {
       const setFace = (side, e) => { if (side === 'a') exprA = e; else exprD = e; el.querySelector(side === 'a' ? '#dA img' : '#dD img').src = Portrait.get(side === 'a' ? a : d, e, side === 'a' ? ca : cd); };
       const setHp = () => { hpA.style.width = Math.max(0, ha) + '%'; hpD.style.width = Math.max(0, hd) + '%'; hpAt.textContent = Math.max(0, ha); hpDt.textContent = Math.max(0, hd); };
       let closed = false;
-      const close = res => { if (closed) return; closed = true; arena.stop(); el.classList.remove('show'); resolve(res); };
+      const close = res => { if (closed) return; closed = true; arena.stop(); el.classList.remove('show'); const cvs = el.querySelector('.d-arena'); if (cvs) cvs.width = cvs.height = 0; resolve(res); };
       say('a', line(a, 'duelChallenge', { foe: d.name }));
       setTimeout(() => say('d', line(d, 'duelAccept', { foe: a.name })), 500);
       const finish = (winner) => {

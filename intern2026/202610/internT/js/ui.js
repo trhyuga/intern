@@ -135,7 +135,8 @@ const App = {
     $('#tap').onclick = () => { Sound.init(); App.opening(); };
     // iPhone はほかのアプリから戻ると音が止まったままになるので、画面に戻った時・画面に触れた時に音を起こし直す
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') try { Sound.init(); } catch (e) {} });
-    document.addEventListener('touchend', () => { try { Sound.init(); } catch (e) {} }, { passive: true });
+    document.addEventListener('touchend', () => { try { Sound.init(true); } catch (e) {} }, { passive: true });
+    document.addEventListener('click', () => { try { Sound.init(true); } catch (e) {} }, true);
     $$('#title [data-act]').forEach(b => b.onclick = () => { Sound.se('tap'); App.titleAction(b.dataset.act); });
     $$('.back').forEach(b => b.onclick = () => { Sound.se('tap'); UI.show(b.closest('#lord') ? 'scen' : 'title'); if (b.closest('#scen')) App.title(); });
     $$('.bottombar [data-nav]').forEach(b => b.onclick = () => { Sound.se('tap'); App.nav(b.dataset.nav); });
