@@ -527,6 +527,7 @@ const Game = {
     G.season++; G.turn++;
     if (G.season > 3) { G.season = 0; G.year++; ev.push(...Game.newYear()); }
     G.gens.forEach(g => g.acted = false);
+    ev.push(...Game.wanderRonin());
     // 不定期イベントと史実イベント
     if (typeof Events !== 'undefined') ev.push(...Events.run());
     return ev;
@@ -600,6 +601,22 @@ const Game = {
     return ev;
   },
 
+  // 在野武将の放浪：同じ都市に3〜5季節（人ごとに決まる）とどまると、隣の都市へ移る
+  //  諸葛亮は三顧の礼のため動かない。顔を知っている在野がプレイヤーの都市を去る時は知らせる
+  wanderRonin() {
+    const ev = [];
+    G.gens.forEach(g => {
+      if (g.state !== 'ronin' || g.name === '諸葛亮') return;
+      if (g.stayMax == null) { g.stayMax = irnd(3, 5); g.stay = irnd(0, g.stayMax - 1); }   // はじめは、滞在の途中から数える
+      g.stay = (g.stay || 0) + 1;
+      if (g.stay < g.stayMax) return;
+      const from = G.cities[g.city], to = G.cities[pick(from.adj)];
+      g.city = to.i; g.stay = 0; g.stayMax = irnd(3, 5);
+      if (g.known && from.owner === G.player && to.owner !== G.player && ev.length < 2) ev.push({ type: 'info', msg: `在野の${g.name}が${from.name}を去り、${to.name}へ旅立った` });
+    });
+    return ev;
+  },
+
   newYear() {
     const ev = [];
     // 寿命
@@ -618,8 +635,6 @@ const Game = {
     G.gens.forEach(g => {
       if (g.state === 'future' && g.appear <= G.year && g.die > G.year) { g.state = 'ronin'; g.city = g.home; }
     });
-    // 在野武将の放浪
-    G.gens.forEach(g => { if (g.state === 'ronin' && Math.random() < 0.15) g.city = pick(G.cities[g.city].adj); });
     // AI の勧誘（在野）
     G.gens.forEach(g => {
       if (g.state !== 'ronin') return;
