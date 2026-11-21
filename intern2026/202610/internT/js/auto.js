@@ -866,6 +866,7 @@ const Auto = (() => {
       const c = G.cities[t.city];
       if (c.owner !== G.player) continue;
       const fails = G.recFail[t.i] || 0;
+      if (G.recGo && G.recGo[t.i] === G.turn) continue;   // この季節、すでに誘いの使者を向かわせた
       // 三顧の礼：君主自身が訪ねる
       if (t.name === '諸葛亮') {
         if (lord.acted || reserved.has(lord.i)) continue;
@@ -890,13 +891,12 @@ const Auto = (() => {
         .sort((a, b) => b.cha - a.cha)[0];
       const env = here[0];
       const wantBetter = best && (!env || (br.tier !== 'dumb' && best.cha >= env.cha + (fails ? 8 : 20) && worth(t) >= 300));
-      if (wantBetter) {
-        if (moves >= (br.tier === 'smart' ? 3 : 2)) continue;
+      if (wantBetter && moves < (br.tier === 'smart' ? 3 : 2)) {
         const from = G.cities[best.city];
         await press(from.i, 'per', '[data-cmd=move]');
         await say('recruitGo', { gen: t.name, envoy: best.name, city: c.name });
         await MapView.march(from.i, c.i, G.factions[G.player].color);
-        Game.move(best, c.i); moves++;
+        Game.move(best, c.i); moves++; (G.recGo = G.recGo || {})[t.i] = G.turn;
         UI.toast(`${best.name}（魅力${best.cha}）が${t.name}を誘いに ${from.name} → ${c.name} へ`, 2400);
         continue;   // 移動で今季の行動は終わり。次の季節に誘う
       }
@@ -1435,13 +1435,15 @@ const Auto = (() => {
     // 出陣が済んだら、出陣した将は行動済み。取りやめになった出陣の将は、このあとの外交・内政などで働ける
     reserved.clear();
     const armies0 = [];
+    // 見つけてある在野の人物の登用は、外交・計略・配置換えより先に行う（魅力の高い将が先に他の仕事へ回ってしまわないように）
+    await doRecruit(br, new Set()); if (stopReq) return false;
     await doDiplo(br, new Set()); if (stopReq) return false;
     await doPlots(br, new Set(armies0.map(x => x.i)), [...new Set([...attacks.filter(p => p.t.owner !== G.player).map(p => p.t.i), ...(G.stage ? [G.stage.t] : [])])]); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
     await placeCivil(br, new Set()); if (stopReq) return false;
     await balanceCommanders(br); if (stopReq) return false;
     await eventSeek(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
-    await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
+    await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;   // 配置換えのあとで手の空いた将がいれば、もう一度
     await doLogistics(br); if (stopReq) return false;
     // 内政
     for (const c of Game.citiesOf(G.player)) {
