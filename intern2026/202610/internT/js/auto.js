@@ -10,7 +10,9 @@ const Auto = (() => {
   const SPEED_NAME = sp => sp >= 4 ? '超速' : sp >= 2 ? '速い' : '普通';
   const nextSpeed = sp => sp >= 4 ? 1 : sp >= 2 ? 4 : 2;
   try { S.speed = +(localStorage.getItem('internT_autoSpeed') || 1); } catch (e) {}
-  const wait = ms => new Promise(r => setTimeout(r, ms / S.speed));
+  // 超速では、配下が増えるほど内政の手順を速く流す（15人から上は速まり、40人で2倍）
+  const boost = () => { if (S.speed < 4 || typeof G === 'undefined' || !G || !G.gens) return 1; const n = G.gens.filter(g => g.state === 'serve' && g.faction === G.player).length; return 1 + Math.max(0, Math.min(1, (n - 15) / 25)); };
+  const wait = ms => new Promise(r => setTimeout(r, ms / (S.speed * boost())));
 
   // ---------- 軍師 ----------
   function strategist() {
@@ -1569,8 +1571,13 @@ const Auto = (() => {
   }
 
   // 会話の表示時間：文字数に応じて長く（1文字50ms、最大7秒）。「速い」でも長い文は読めるよう、速さの効きを弱める
-  function talkMs(text) { if (S.speed >= 4) return 280;   // 超速：会話は一瞬だけ見せて流す
-    const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length; return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6); }
+  function talkMs(text, opts) {
+    const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
+    // 季節の変わり目の出来事は、どの速さでもじっくり読めるように（長い文ほど長く出す）
+    if (opts && opts.ev) return Math.min(16000, 1600 + n * 90);
+    if (S.speed >= 4) return 280 / boost();   // 超速：会話は一瞬だけ見せて流す
+    return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6);
+  }
 
   function init() {
     const bar = document.getElementById('autobar');

@@ -22,7 +22,7 @@ const UI = {
   talk(g, expr, text, color, opts = {}) {
     return new Promise(res => {
       const el = $('#talk');
-      const autoMs = (typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text) : 0;
+      const autoMs = (typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text, opts) : 0;
       el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/<b>[\s\S]*?<\/b>/g, m => m.replace(/\n/g, '<br>')).split('\n').map(t => `<span class="tl">${t}</span>`).join('<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div>` : '<div class="talk-next">▼</div>'}</div></div>`;
       el.classList.add('show');
       UI.fixOrphans(el);
@@ -762,8 +762,8 @@ const App = {
     const ctx = { foe, city: foeCities[0] ? foeCities[0].name : '' };
     const fill = t => t.replace(/\{city\}/g, ctx.city);
     Sound.se(kind === 'final' ? 'bell' : 'horn');
-    if (sg) await UI.talk(sg, kind === 'final' ? 'happy' : 'normal', `軍師 ${sg.name}「${fill(line(sg, kind + 'Sg', ctx))}」`, facColor(sg), { tag: kind === 'final' ? '天下統一目前' : '再起を誓う' });
-    if (hero) await UI.talk(hero, kind === 'final' ? 'happy' : 'angry', `${hero.name}「${fill(line(hero, kind + 'Hero', ctx))}」${merit(hero) ? `\n<small>戦功 ${hero.wins}・一騎討ち ${hero.duels}勝</small>` : ''}`, facColor(hero), { tag: kind === 'final' ? '功臣の言葉' : '忠臣の言葉' });
+    if (sg) await UI.talk(sg, kind === 'final' ? 'happy' : 'normal', `軍師 ${sg.name}「${fill(line(sg, kind + 'Sg', ctx))}」`, facColor(sg), { tag: kind === 'final' ? '天下統一目前' : '再起を誓う', ev: true });
+    if (hero) await UI.talk(hero, kind === 'final' ? 'happy' : 'angry', `${hero.name}「${fill(line(hero, kind + 'Hero', ctx))}」${merit(hero) ? `\n<small>戦功 ${hero.wins}・一騎討ち ${hero.duels}勝</small>` : ''}`, facColor(hero), { tag: kind === 'final' ? '功臣の言葉' : '忠臣の言葉', ev: true });
   },
 
   async handleCaptive(g, captor, city) {
@@ -888,8 +888,8 @@ const App = {
         if (e.quiet) continue;
         const eg = e.gen != null ? G.gens[e.gen] : null;
         const ecol = eg ? (G.factions[eg.faction] ? G.factions[eg.faction].color : '#6a5a4a') : undefined;
-        if (e.hist) { Sound.se(e.se || 'gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag }); }
-        else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag } : {}); }
+        if (e.hist) { Sound.se(e.se || 'gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag, ev: true }); }
+        else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag, ev: true } : { ev: true }); }
         else UI.toast(e.msg, 2600), await new Promise(r => setTimeout(r, 900));
       }
       await App.milestones();
