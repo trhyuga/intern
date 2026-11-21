@@ -409,20 +409,51 @@ const Cinema = (() => {
       const fallen = G.gens.filter(g => g.state === 'dead' && g.deathReason === '戦死' && g.faction === G.player);
       const sc = SCENARIOS.find(s => s.id === G.scen);
       const H_ = Game.has;
+      // ---- 結びの言葉：君主ごとの一文と、功臣・軍師・散った将の名を織り込む ----
+      const lname = lord ? lord.name : f.name;
+      const WIN_LORD = {
+        劉備: '桃園に結んだ誓いは、ついに天下を照らした。漢の旗は、再び都の空に翻る。',
+        曹操: '「治世の能臣、乱世の奸雄」。そう評された男は、乱世を終わらせ、治世の主となった。',
+        孫権: '父と兄が遺した江東の地から、碧眼の若き君主は天下を掴み取った。',
+        孫策: '「小覇王」と呼ばれた若武者は、ついに真の覇王となった。',
+        孫堅: '江東の虎の咆哮は、天下の果てまで響き渡った。',
+        董卓: '暴威の前に、天下はひれ伏した。都の宮には、夜ごと宴の灯がともる。',
+        袁紹: '四世三公の名門は、その威光のままに天下を一つにした。',
+        袁術: '伝国の玉璽を手にした男は、ついに玉座へと上った。',
+        呂布: '人中に呂布あり、馬中に赤兎あり。天下最強の武は、ついに天下そのものを制した。',
+        劉表: '荊州に集った名士たちの知恵は、天下に文治の花を咲かせた。',
+        馬騰: '西涼の鉄騎は中原を駆け抜け、ついに天下を平らげた。',
+        公孫瓚: '白馬義従の蹄の音は、天下の隅々まで鳴り響いた。',
+        劉璋: '天府の国・益州から興った軍勢は、ついに天下を一つにした。',
+        劉焉: '天府の国・益州から興った軍勢は、ついに天下を一つにした。',
+        張魯: '漢中に始まった教えと軍は、ついに天下を覆った。',
+        孟獲: '南蛮の王の旗は、ついに中原の都に立った。',
+      };
+      const lordLine = WIN_LORD[lname] || (lord && H_(lord, '仁徳') ? '戦に疲れた民は、新しい君主の慈しみに涙したという。' : lord && H_(lord, '野心') ? '力で束ねた天下を、人々は畏れと共に仰ぎ見た。' : '名もなき群雄の一人と見られた男が、並み居る英雄を退け、天下の主となった。');
+      const sg = G.strategist != null ? G.gens[G.strategist] : null;
+      const heroes = myGens.filter(g => g !== lord && g !== sg && !g.isLord).slice(0, 3).map(g => g.name);
+      const years = sc.dream ? 0 : G.year - sc.year;
       const epi = win ? [
-        `${G.year}年。`,
-        `${lord.name}は、ついに天下を平定した。`,
-        H_(lord, '仁徳') ? '戦に疲れた民は、新しい君主の慈しみに涙したという。' : H_(lord, '野心') ? '力で束ねた天下を、恐れと共に人々は仰ぎ見た。' : '長く続いた乱世は、ここに終わりを告げた。',
-        '荒れた田畑には再び麦が実り、街道には商人の声が戻る。',
-        '英雄たちの名は、のちの世まで語り継がれていく――。',
-      ] : [
-        `${G.year}年。`,
-        `${f.name}の夢は、ここに潰えた。`,
+        '<span class="epi">天下の大勢は、<br>分かれること久しければ必ず合し、<br>合すること久しければ必ず分かる。</span>',
+        years > 0 ? `挙兵より${years}年――。` : '幾多の戦いを経て――。',
+        `${G.year}年${SEASONS[G.season] || ''}、最後の敵が降り、群雄割拠の世は終わりを告げた。`,
+        `${lname}の旗のもと、天下はついに一つとなる。`,
+        lordLine,
+        (sg && sg !== lord ? `帷幄にあっては${sg.name}が策を巡らせ、` : '') + (heroes.length ? `戦場にあっては${heroes.join('、')}らが武名を轟かせた。` : '君臣は心を一つにして戦い抜いた。'),
+        fallen.length ? `志半ばに倒れた${fallen.slice(0, 4).map(g => g.name).join('、')}${fallen.length > 4 ? 'ら' : ''}の名もまた、勝鬨の中に刻まれる。` : '',
+        '荒れ果てた田畑には再び麦が実り、街道には商人の声が戻る。',
+        'この日の勝鬨は、のちの世まで長く語り継がれていく。',
+        '<span class="climax">――天下、ここに定まる。</span>',
+      ].filter(Boolean) : [
+        `${G.year}年${SEASONS[G.season] || ''}。`,
+        `${f.name}の大志は、ここに潰えた。`,
+        heroes.length ? `${heroes.join('、')}ら、最後まで旗を守った者たちの奮戦も、ついに時勢を覆せなかった。` : '最後まで旗を守った者たちの奮戦も、ついに時勢を覆せなかった。',
+        'されど、その旗のもとに集った者たちの戦いは、決して無駄ではない。',
         '乱世はなお続く。',
-        '天下を手にするのは、果たして誰か――。',
+        '<span class="climax">天下を手にするのは、<br>果たして誰か――。</span>',
       ];
       const roll = document.createElement('div'); roll.className = 'roll';
-      roll.innerHTML = `<h2>${win ? '天下統一' : '覇業ならず'}</h2>` + epi.map(p => `<p>${p}</p>`).join('') +
+      roll.innerHTML = `<h2>${win ? '天下統一' : '覇業ならず'}</h2>${win ? `<div class="h2sub">${lname}、天下に号令す</div>` : ''}` + epi.map(p => `<p>${p}</p>`).join('') +
         (myGens.length ? `<h3>${win ? '功 臣' : '最後まで従った者たち'}</h3>` + myGens.slice(0, 16).map(g => `<div class="cr"><img src="${Portrait.get(g, win ? 'happy' : 'sad', f.color)}"><div><b>${g.name}</b><small>統${g.lead} 武${g.war} 知${g.int} 政${g.pol} 魅${g.cha}<br>戦功 ${g.wins}　一騎討ち ${g.duels}勝</small></div></div>`).join('') : '') +
         (fallen.length ? `<h3>散っていった者たち</h3><p>${fallen.map(g => g.name).join('　')}</p>` : '') +
         `<h3>戦 績</h3><p>シナリオ「${sc.title}」<br>${sc.dream ? '' : sc.year + '年 〜 '}${G.year}年<br>戦い ${G.stats.battles}回　勝利 ${G.stats.wins}回<br>捕らえた武将 ${G.stats.captured}人　登用 ${G.stats.recruited}人<br>一騎討ち勝利 ${G.stats.duelsWon}回</p>` +

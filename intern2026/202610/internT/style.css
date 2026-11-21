@@ -49,9 +49,12 @@ button { font-family: inherit; }
 .skip { position: absolute; right: 12px; bottom: calc(14px + var(--safe-b)); background: #0008; color: #e8d9b0; border: 1px solid #e8d9b060; border-radius: 20px; padding: 7px 14px; font-size: 13px; z-index: 5; }
 .end-roll { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: #f6e8c6; text-align: center; }
 .end-roll .roll { position: absolute; left: 0; right: 0; top: 100%; }
-.roll h2 { font-family: var(--brush); font-size: 34px; color: var(--gold2); margin: 30px 0 10px; text-shadow: 0 0 12px #000; }
+.roll h2 { font-family: var(--brush); font-size: 44px; color: var(--gold2); margin: 30px 0 10px; text-shadow: 0 0 12px #000; }
 .roll h3 { font-size: 16px; color: var(--gold); margin: 40px 0 12px; letter-spacing: .3em; }
 .roll p { margin: 6px 24px; font-size: 15px; line-height: 1.9; text-shadow: 0 1px 4px #000; }
+.roll .h2sub { font-family: var(--brush); font-size: 18px; color: #f6e8c6; letter-spacing: .2em; margin: -4px 0 26px; text-shadow: 0 0 10px #000; }
+.roll .epi { display: block; font-family: var(--brush); font-size: 15px; color: #e8d3a0; line-height: 2; margin: 0 0 22px; opacity: .9; }
+.roll .climax { display: block; font-family: var(--brush); font-size: 24px; color: var(--gold2); margin: 26px 0 8px; letter-spacing: .1em; text-shadow: 0 0 14px #000, 0 0 24px rgba(255,200,90,.35); }
 .roll .cr { display: flex; align-items: center; gap: 12px; justify-content: center; margin: 10px 0; }
 .roll .cr img { width: 56px; height: 70px; border: 1px solid #d4af3780; border-radius: 4px; }
 .roll .cr div { text-align: left; min-width: 150px; }
