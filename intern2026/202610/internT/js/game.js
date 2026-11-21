@@ -36,7 +36,7 @@ const Game = {
     const gens = GENERAL_SRC.trim().split('\n').map((line, i) => {
       const p = line.split(',');
       return { i, name: p[0], lead: +p[1], war: +p[2], int: +p[3], pol: +p[4], cha: +p[5],
-        traits: p[6] === '-' ? [] : p[6].split(' '), home: cityIndex[p[7]], appear: +p[8], die: +p[9], female: p[10] === 'F',
+        traits: p[6] === '-' ? [] : p[6].split(' '), home: p[7] === '*' ? -1 : cityIndex[p[7]], anywhere: p[7] === '*', appear: +p[8], die: +p[9], female: p[10] === 'F',
         city: -1, faction: -1, state: 'future', loyalty: 80, acted: false, isLord: false, wins: 0, duels: 0, kills: 0, joined: 0 };
     });
     const byName = {}; gens.forEach(g => byName[g.name] = g);
@@ -82,9 +82,14 @@ const Game = {
     const year = sc.year;
     gens.forEach(g => {
       if (g.state !== 'future') return;
-      if (sc.dream) { g.state = 'ronin'; g.city = g.home; return; }
+      if (sc.dream) { g.state = 'ronin'; g.city = g.home >= 0 ? g.home : irnd(0, cities.length - 1); return; }
       if (g.die <= year) g.state = 'dead';
-      else if (g.appear <= year) { g.state = 'ronin'; g.city = g.home; }
+      else if (g.appear <= year) {
+        // 武将の子：父が仕えていれば、父の勢力に仕える（父のいる都市へ）
+        const fa = typeof GEN_FATHER !== 'undefined' && GEN_FATHER[g.name] && byName[GEN_FATHER[g.name]];
+        if (fa && fa.state === 'serve' && fa.faction >= 0) { g.state = 'serve'; g.faction = fa.faction; g.city = fa.city; g.loyalty = irnd(80, 95); }
+        else { g.state = 'ronin'; g.city = g.home >= 0 ? g.home : irnd(0, cities.length - 1); }   // 出身の決まっていない者は、どこかの都市に現れる
+      }
     });
     if (sc.dream) gens.forEach(g => g.die = 9999);
 
@@ -559,6 +564,7 @@ const Game = {
       const drift = (lord.cha - 70) / 60 - (Game.has(g, '野心') ? 1.2 : 0.3);
       g.loyalty = clamp(g.loyalty + drift, 0, 100);
     });
+    ev.push(...Game.checkDesertion());
     ev.push(...Game.checkRebellion());
     ev.push(...Game.checkIndependence());
 
@@ -572,6 +578,21 @@ const Game = {
     return ev;
   },
 
+  // 出奔：コンピュータの勢力で忠誠が30を切った武将（君主・忠義を除く）は、季節ごとに (30−忠誠)÷60＋5% の確率で主のもとを去り、在野に下る。
+  //  在野の武将はあちこちの都市をさまよう（wanderRonin）。プレイヤーの武将には起きない。顔を知っている武将が隣国から出た時は知らせる
+  checkDesertion() {
+    const ev = [];
+    G.gens.forEach(g => {
+      if (g.state !== 'serve' || g.isLord || g.faction === G.player || g.faction < 0 || Game.has(g, '忠義') || g.loyalty >= 30) return;
+      if (Math.random() > (30 - g.loyalty) / 60 + 0.05) return;
+      const fname = G.factions[g.faction] ? G.factions[g.faction].name : '';
+      g.state = 'ronin'; g.faction = -1; g.isLord = false; g.stay = 0; g.stayMax = irnd(2, 4);
+      Game.log(`${g.name}が${fname}軍を去り、在野に下った。`);
+      const c = G.cities[g.city];
+      if (c && c.adj.some(a => G.cities[a].owner === G.player) && ev.length < 2) ev.push({ type: 'info', msg: `${fname}軍の${g.name}が主のもとを去り、在野に下った（${c.name}）` });
+    });
+    return ev;
+  },
   checkRebellion() {
     const ev = [];
     G.gens.forEach(g => {
@@ -672,7 +693,20 @@ const Game = {
     }
     // 新しい人物の登場
     G.gens.forEach(g => {
-      if (g.state === 'future' && g.appear <= G.year && g.die > G.year) { g.state = 'ronin'; g.city = g.home; }
+      if (g.state === 'future' && g.appear <= G.year && g.die > G.year) {
+        // 武将の子が大人になった：父が仕えていれば、父の勢力に仕官する
+        const fn = typeof GEN_FATHER !== 'undefined' && GEN_FATHER[g.name];
+        const fa = fn && G.gens.find(x => x.name === fn);
+        if (fa && fa.state === 'serve' && fa.faction >= 0 && G.factions[fa.faction].alive) {
+          Game.joinFaction(g, fa.faction, fa.city); g.loyalty = irnd(80, 95);
+          if (fa.faction === G.player) ev.push({ type: 'good', msg: `${fa.name}の子・${g.name}が一人前となり、父のもとで仕官した`, gen: g.i, expr: 'happy', line: '父上に恥じぬ働きをいたします！', tag: '仕官' });
+          return;
+        }
+        g.state = 'ronin';
+        // 出身の決まっていない者は、どこかの都市にふらりと現れる（武将の少ない勢力の都市に現れやすい）
+        if (g.home >= 0) g.city = g.home;
+        else { const few = G.cities.filter(c => c.owner !== null && Game.gensOf(c.owner).length <= 6); g.city = (few.length && Math.random() < 0.5 ? pick(few) : pick(G.cities)).i; }
+      }
     });
     // AI の勧誘（在野）
     G.gens.forEach(g => {

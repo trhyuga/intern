@@ -785,12 +785,12 @@ const App = {
     // AI が捕らえた場合
     const mine = g.faction === G.player;
     let outcome;
-    if (g.isLord) outcome = Math.random() < 0.4 ? 'kill' : 'rel';
+    if (g.isLord) outcome = Math.random() < 0.2 ? 'kill' : 'rel';   // 捕らえた君主を処断するのは20%（前は40%）
     else {
       let p = (100 - g.loyalty) / 100 * 0.7 + (ownerAlive ? 0 : 0.4);
       if (Game.has(g, '忠義') && ownerAlive) p = 0.03;
       const k = mine && ownerAlive ? Game.lossK(G.player) : 1;   // 武将の少ないうちは、寝返り・処断も起きにくい
-      outcome = Math.random() < p * k ? 'rec' : (Game.has(Game.lordOf(captor), '野心') && Math.random() < 0.25 * k ? 'kill' : 'rel');
+      outcome = Math.random() < p * k ? 'rec' : (Game.has(Game.lordOf(captor), '野心') && Math.random() < 0.12 * k ? 'kill' : 'rel');
     }
     if (outcome === 'rec') { Game.joinFaction(g, captor, G.factions[captor].capital); Game.log(`${g.name}が${G.factions[captor].name}軍に降った。`); }
     else if (outcome === 'kill') { const fi = g.faction; const heir = Game.killGeneral(g, '処断'); Game.log(`${g.name}、${G.factions[captor].name}軍に処断される。`); if (fi === G.player && !heir && !G.factions[G.player].alive) return; }

@@ -581,7 +581,8 @@ const Battle = (() => {
       u.alive = false;
       const r = Math.random();
       if (u.gi >= 0) {
-        if (r < 0.06) { u.status = 'killed'; addLog(`${u.g.name}、討ち死に！`); await say(u, 'sad', `${u.g.name}「${line(u.g, 'defeat')}」`); }
+        // 部隊が全滅しても、将が討ち死にするのは3%（前は6%）
+        if (r < 0.03) { u.status = 'killed'; addLog(`${u.g.name}、討ち死に！`); await say(u, 'sad', `${u.g.name}「${line(u.g, 'defeat')}」`); }
         else if (r < 0.6) { u.status = 'captured'; addLog(`${u.g.name}を捕らえた！`); }
         else { u.status = 'fled'; addLog(`${u.g.name}隊は壊滅し、${u.g.name}は落ち延びた`); }
       } else { addLog('守備隊は壊滅した'); }
@@ -1720,7 +1721,7 @@ const Duel = (() => {
     for (let i = 0; i < 30 && ha > 0 && hd > 0; i++) { hd -= strike(a, d, Math.random() < 0.25 ? 'power' : 'atk').dmg; if (hd > 0) ha -= strike(d, a, Math.random() < 0.25 ? 'power' : 'atk').dmg; }
     const winner = ha > hd ? 'a' : 'd';
     const r = Math.random();
-    return { winner, outcome: r < 0.3 ? 'killed' : r < 0.75 ? 'captured' : 'fled' };
+    return { winner, outcome: r < 0.15 ? 'killed' : r < 0.6 ? 'captured' : 'fled' };
   }
   // pSide: 'a' or 'd' プレイヤーが操作する側（null なら観戦）
   // ---------- 一騎討ちの闘技場（2騎が駆け寄って打ち合う絵） ----------
@@ -1944,7 +1945,7 @@ const Duel = (() => {
       const finish = (winner) => {
         const w = winner === 'a' ? a : d, l = winner === 'a' ? d : a, ws = winner, ls = winner === 'a' ? 'd' : 'a';
         const r = Math.random();
-        const outcome = r < 0.3 ? 'killed' : r < 0.75 ? 'captured' : 'fled';
+        const outcome = r < 0.15 ? 'killed' : r < 0.6 ? 'captured' : 'fled';   // 討ち取られるのは15%（前は30%）
         setFace(ws, 'happy'); setFace(ls, 'sad');
         say(ls, line(l, 'duelLose'));
         say(ws, `<b>${line(w, 'duelWin', { foe: l.name })}</b>`);
