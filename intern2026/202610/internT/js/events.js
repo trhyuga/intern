@@ -651,6 +651,54 @@ const Events = (() => {
   function sameF2(a, b) { const x = sv(a), y = sv(b); return !!(x && y && x.faction === y.faction); }
   HIST.push(...WEAK_EVENTS);
 
+  // ---------------- 武将一人ひとりのイベント（js/data_genev.js） ----------------
+  // ほかにイベントのない武将の、逸話や人物像にちなむ出来事。仕えていて条件がそろうと、季節ごとに20%で1回だけ起きる
+  const STAT_NM = { lead: '統率', war: '武力', int: '知力', pol: '政治', cha: '魅力' };
+  const CITY_K = { train: '訓練', troops: '兵', def: '城壁', gold: '金', food: '兵糧', loyal: '民忠' };
+  const sgn = v => (v >= 0 ? '+' : '−') + Math.abs(v);
+  function genCond(g, c) {
+    const fi = g.faction;
+    switch (c.t) {
+      case 'with': { const x = serving(c.who); return !!(x && x.faction === fi); }
+      case 'foe': { const x = serving(c.who); return !!(x && x.faction !== fi && !Game.isAlly(fi, x.faction)); }
+      case 'lord': { const l = Game.lordOf(fi); return !!(l && l.name === c.who); }
+      case 'owns': return owns(fi, c.city);
+      case 'cities_le': return Game.citiesOf(fi).length <= c.n;
+      case 'cities_ge': return Game.citiesOf(fi).length >= c.n;
+      case 'year_ge': return G.year >= c.y;
+    }
+    return true;
+  }
+  function applyCity(c, k, v) {
+    if (k === 'def') c.def = clamp(c.def + v, 0, c.defMax);
+    else if (k === 'train' || k === 'loyal') c[k] = clamp(c[k] + v, 0, 100);
+    else c[k] = Math.max(0, c[k] + v);
+  }
+  function genFx(g, f) {
+    const fi = g.faction, who = f.who === 'lord' ? Game.lordOf(fi) : f.who ? serving(f.who) : g;
+    switch (f.t) {
+      case 'stat': if (!who) return ''; who[f.k] = clamp(who[f.k] + f.v, 1, 99); return `${who.name}の${STAT_NM[f.k]} ${sgn(f.v)}`;
+      case 'loyalty': if (!who || who.isLord) return ''; who.loyalty = clamp(who.loyalty + f.v, 0, 100); return `${who.name}の忠誠 ${sgn(f.v)}`;
+      case 'city': { const c = G.cities[g.city]; applyCity(c, f.k, f.v); return `${c.name}の${CITY_K[f.k]} ${sgn(f.v)}`; }
+      case 'all': Game.citiesOf(fi).forEach(c => applyCity(c, f.k, f.v)); return `全都市の${CITY_K[f.k]} ${sgn(f.v)}`;
+      case 'pct': { const k = f.k === 'farm' ? 'farm' : 'comm'; Game.citiesOf(fi).forEach(c => pct(c, k, k + 'Max', f.v / 100)); } return `全都市の${f.k === 'farm' ? '農業' : '商業'} ${sgn(f.v)}%`;
+      case 'gens_loyalty': Game.gensOf(fi).forEach(x => { if (!x.isLord) x.loyalty = clamp(x.loyalty + f.v, 0, 100); }); return `家臣の忠誠 ${sgn(f.v)}`;
+      case 'recruit': { const cap = G.cities[G.factions[fi].capital]; const rs = shuffle(G.gens.filter(x => x.state === 'ronin' && x.name !== '諸葛亮')).slice(0, f.n || 1); rs.forEach(x => { x.city = cap.i; x.known = true; }); return rs.length ? `在野の${rs.map(x => x.name).join('・')}が${cap.name}を訪ねてきた（登用できる）` : ''; }
+      case 'foe_city': { let n = 0; Game.citiesOf(fi).forEach(c => c.adj.forEach(a => { const o = G.cities[a]; if (o.owner !== null && o.owner !== fi && !Game.isAlly(fi, o.owner)) { applyCity(o, f.k, f.v); n++; } })); return n ? `隣の敵都市の${CITY_K[f.k]} ${sgn(f.v)}` : ''; }
+    }
+    return '';
+  }
+  if (typeof GEN_EVENTS !== 'undefined') GEN_EVENTS.forEach(e => {
+    HIST.push({ id: 'g_' + e.name, title: e.title, chance: 0.2,
+      cond: () => { const g = serving(e.name); return !!g && (e.cond || []).every(c => genCond(g, c)); },
+      run: () => {
+        const g = serving(e.name);
+        const fx = (e.fx || []).map(f => genFx(g, f)).filter(Boolean);
+        const bad = (e.fx || []).some(f => f.v < 0 && f.t !== 'foe_city');
+        return { title: e.title, gen: e.name, expr: bad ? 'sad' : 'happy', fac: g.faction, text: `${e.text}\n${e.name}「${e.quote}」` + (fx.length ? `\n${fx.join('、')}` : '') };
+      } });
+  });
+
   // ---------------- 君主ごとのイベントの別の展開 ----------------
   // 本来のイベントが、ゲーム開始から3年たっても起きていない（条件がそろわない）とき、代わりにこちらが起きる。
   // どちらか一方だけ。どの君主でも、1回のゲームで必ずどちらかが起きる（その君主が生きて君主である限り）
