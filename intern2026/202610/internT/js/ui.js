@@ -632,6 +632,17 @@ const App = {
       if (pDef) Game.gensIn(to.i, G.player).forEach(g => g.wins++);
       Game.log(`${to.name}の${defFi === null ? '守備隊' : G.factions[defFi].name + '軍'}が${G.factions[atkFi].name}軍を退けた。`);
     }
+    // 武将の少ないうちは、負けても将を失いにくい（プレイヤーだけ）。討死・捕縛を、ある確率で「逃げ延びた」に変える
+    const saved = [];
+    {
+      const k = Game.lossK(G.player);
+      if (k < 1) {
+        const home = () => { const own = Game.citiesOf(G.player); const near = own.find(c => to.adj.includes(c.i)) || (own.includes(from) ? from : null); return (near || G.cities[G.factions[G.player].capital]).i; };
+        const spare = g => g.faction === G.player && g.state === 'serve' && Math.random() >= k;
+        deaths.filter(spare).forEach(g => { deaths.splice(deaths.indexOf(g), 1); g.city = home(); saved.push(g); });
+        caps.filter(gi => spare(G.gens[gi]) && !saved.includes(G.gens[gi])).forEach(gi => { caps.splice(caps.indexOf(gi), 1); G.gens[gi].city = home(); saved.push(G.gens[gi]); });
+      }
+    }
     // 結果表示
     if (show) {
       const atkName = G.factions[atkFi].name, defName = defFi === null ? '守備隊' : G.factions[defFi].name;
@@ -642,10 +653,15 @@ const App = {
         <p>攻 ${atkName}軍　残兵 ${fmt(res.atkLeft)}<br>守 ${defName}　残兵 ${fmt(res.defLeft)}</p>
         ${res.atkWin ? `<p><b>${to.name}は${atkName}軍のものとなった。</b></p>` : ''}
         ${deaths.length ? `<p>討死：${deaths.map(g => g.name).join('、')}</p>` : ''}
-        ${caps.length ? `<p>捕虜：${caps.map(i => G.gens[i].name).join('、')}</p>` : ''}`, buttons: [{ label: '次へ', cls: 'primary', value: 1 }], auto: 1 });
+        ${caps.length ? `<p>捕虜：${caps.map(i => G.gens[i].name).join('、')}</p>` : ''}
+        ${saved.length ? `<p>逃げ延びた：${saved.map(g => g.name).join('、')}</p>` : ''}`, buttons: [{ label: '次へ', cls: 'primary', value: 1 }], auto: 1 });
       if (Auto.running && Auto.strategist()) await Auto.say(playerWon ? (pAtk ? 'win' : 'held') : (pAtk ? 'lose' : 'lost'), { city: to.name }, playerWon ? 'happy' : 'sad');
       if (playerWon && hero) await UI.talk(hero, 'happy', `${hero.name}「${line(hero, 'victory')}」`);
       if (!playerWon && pAtk) { const lg = atkGens.find(g => g.state === 'serve' && !caps.includes(g.i) && !deaths.includes(g)); if (lg) await UI.talk(lg, 'sad', `${lg.name}「${line(lg, 'defeat')}」`); }
+    }
+    for (const g of saved) {
+      Game.log(`${g.name}、${to.name}の戦いから逃げ延びる。`);
+      if (show || pDef || pAtk) await UI.talk(g, 'shock', `${g.name}「${pick(['はぁ、はぁ……殿、面目ございませぬ。何とか、囲みを斬り破ってまいりました', '危ういところでした……この命、まだ殿にお返しできておりませぬゆえ', '兵に担がれて、どうにか逃げ延びました……次こそは！', '首を取られるわけにはいかぬと、夜陰に紛れて抜け出してまいりました'])}」\n<b>${g.name}は深手を負いながらも逃げ延びた</b>`, G.factions[G.player].color, { tag: '生還' });
     }
     // 討死の処理
     for (const g of deaths) {
@@ -749,7 +765,8 @@ const App = {
     else {
       let p = (100 - g.loyalty) / 100 * 0.7 + (ownerAlive ? 0 : 0.4);
       if (Game.has(g, '忠義') && ownerAlive) p = 0.03;
-      outcome = Math.random() < p ? 'rec' : (Game.has(Game.lordOf(captor), '野心') && Math.random() < 0.25 ? 'kill' : 'rel');
+      const k = mine && ownerAlive ? Game.lossK(G.player) : 1;   // 武将の少ないうちは、寝返り・処断も起きにくい
+      outcome = Math.random() < p * k ? 'rec' : (Game.has(Game.lordOf(captor), '野心') && Math.random() < 0.25 * k ? 'kill' : 'rel');
     }
     if (outcome === 'rec') { Game.joinFaction(g, captor, G.factions[captor].capital); Game.log(`${g.name}が${G.factions[captor].name}軍に降った。`); }
     else if (outcome === 'kill') { const fi = g.faction; const heir = Game.killGeneral(g, '処断'); Game.log(`${g.name}、${G.factions[captor].name}軍に処断される。`); if (fi === G.player && !heir && !G.factions[G.player].alive) return; }
