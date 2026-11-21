@@ -53,6 +53,8 @@ const Events = (() => {
     { w: 2, name: '井戸の発見', run: c => { pct(c, 'farm', 'farmMax', 0.03); c.loyal = Math.min(100, c.loyal + 2); return { msg: `${c.name}で良い水の出る井戸が掘り当てられた。農業 +3%、民忠 +2`, expr: 'happy', line: '冷たくて甘い水です！', good: true }; } },
   ];
 
+  const BAD_CITY = new Set(['大地震', '大火', '盗賊の出没', '干ばつ', '凶兆', '異民族の侵入', '兵の脱走', '蝗の害', '疫病', '大雪', '偽商人']);
+
   // ---------------- 不定期イベント（武将） ----------------
   const GEN = [
     { w: 5, name: '武芸の鍛錬', cond: g => g.war >= 60 && g.war < 99, run: g => { up(g, 'war', 1); return { msg: `${g.name}は日夜武芸に励んだ。武力 +1`, expr: 'angry', line: pick(['まだまだ強くなれる', 'はっ！ せいっ！']), good: true }; } },
@@ -77,6 +79,8 @@ const Events = (() => {
     { w: 2, name: '腕相撲大会', cond: g => g.war >= 75 && !g.isLord, run: g => { const win = Math.random() < g.war / 110; if (win) { up(g, 'war', 1); g.loyalty = Math.min(100, g.loyalty + 2); return { msg: `${g.name}が兵の腕相撲大会で優勝した。武力 +1`, expr: 'happy', line: '次の挑戦者は誰だ！', good: true }; } return { msg: `${g.name}が兵の腕相撲大会で、炊事係に負けた`, expr: 'shock', line: '……あの男、何者だ……' }; } },
     { w: 1, name: '夢のお告げ', run: g => { up(g, 'int', 1); return { msg: `${g.name}が不思議な夢を見たと言っている。知力 +1`, expr: 'normal', line: '夢に古の賢者が現れて、何か大事なことを……忘れました', good: true }; } },
   ];
+
+  const BAD_GEN = new Set(['酒の失敗', '不満', '病', '寝坊', '馬が逃げた']);
 
   // ---------------- 能力の上位者だけに起きるイベント ----------------
   const adjEnemy = c => c.adj.map(a => G.cities[a]).filter(o => o.owner !== null && o.owner !== c.owner && !Game.isAlly(c.owner, o.owner));
@@ -122,6 +126,51 @@ const Events = (() => {
     return ev;
   }
 
+  // ---------------- 大勢力の驕り ----------------
+  // 敵の勢力は大きくなるほど、悪い出来事が起きやすく、被害も大きくなる（プレイヤーの勢力はいつも同じ）
+  // 都市5つまでは1倍、それを超えると1都市ごとに +0.15倍、最大3倍
+  function bigK(fi) {
+    if (fi == null || fi < 0 || mine(fi)) return 1;
+    const n = Game.citiesOf(fi).length;
+    return Math.min(3, 1 + Math.max(0, n - 5) * 0.15);
+  }
+  // 悪い出来事の被害（下がった数値）を k 倍にする
+  const CITY_KEYS = ['gold', 'food', 'troops', 'pop', 'loyal', 'def', 'comm', 'farm', 'train'];
+  const GEN_KEYS = ['lead', 'war', 'int', 'pol', 'cha', 'loyalty'];
+  function amplify(obj, before, keys, k) {
+    if (k <= 1) return;
+    keys.forEach(key => {
+      const d = before[key] - obj[key];
+      const floor = GEN_KEYS.includes(key) && key !== 'loyalty' ? 1 : 0;   // 能力は1より下げない
+      if (d > 0) obj[key] = Math.max(floor, Math.round(before[key] - d * k));
+    });
+    if (before.harvestK !== undefined && obj.harvestK !== undefined && obj.harvestK < (before.harvestK || 1)) obj.harvestK = Math.max(0.3, 1 - (1 - obj.harvestK) * k);
+  }
+  const snap = (o, keys) => { const b = {}; keys.forEach(k => b[k] = o[k]); b.harvestK = o.harvestK; return b; };
+  // 大きくなった勢力だけに起きる災い（季節ごとに 25%×(k−1)、最大60%、1勢力1件まで）
+  const BIG_EV = [
+    { name: '宮廷の内紛', run: (fi, k) => { const gs = Game.gensOf(fi).filter(g => !g.isLord).sort(() => Math.random() - 0.5).slice(0, 3 + Math.round(k));
+        gs.forEach(g => g.loyalty = Math.max(0, g.loyalty - Math.round(8 * k))); return gs.length ? `${G.factions[fi].name}軍の宮廷で派閥争いが起きた。${gs.slice(0, 3).map(g => g.name).join('・')}${gs.length > 3 ? 'ら' : ''}の忠誠が下がった` : null; } },
+    { name: '役人の腐敗', run: (fi, k) => { let t = 0; Game.citiesOf(fi).forEach(c => { const v = Math.round(c.gold * 0.12 * k); c.gold -= v; t += v; }); return `広がりすぎた${G.factions[fi].name}軍の領地で、役人の横領がはびこっている。金 -${fmt(t)}`; } },
+    { name: '重税への不満', run: (fi, k) => { Game.citiesOf(fi).forEach(c => c.loyal = Math.max(0, c.loyal - Math.round(5 * k))); return `${G.factions[fi].name}軍の戦続きの重税に、民の不満が高まっている。全都市の民忠 -${Math.round(5 * k)}`; } },
+    { name: '辺境の兵の疲れ', run: (fi, k) => { const cs = Game.citiesOf(fi).filter(c => c.adj.some(a => G.cities[a].owner !== fi)); cs.forEach(c => { c.troops = Math.round(c.troops * (1 - 0.06 * k)); c.train = Math.max(0, c.train - Math.round(6 * k)); }); return cs.length ? `長い国境を守る${G.factions[fi].name}軍の兵に、疲れが溜まっている。前線の兵 -${Math.round(6 * k)}%・訓練 -${Math.round(6 * k)}` : null; } },
+    { name: '兵糧の目減り', run: (fi, k) => { let t = 0; Game.citiesOf(fi).forEach(c => { const v = Math.round(c.food * 0.1 * k); c.food -= v; t += v; }); return `${G.factions[fi].name}軍の遠い輸送路で、兵糧が腐ったり奪われたりしている。兵糧 -${fmt(t)}`; } },
+  ];
+  function bigEvents() {
+    const ev = [];
+    G.factions.forEach(f => {
+      if (!f.alive || mine(f.i)) return;
+      const k = bigK(f.i);
+      if (k <= 1 || Math.random() > Math.min(0.6, 0.25 * (k - 1))) return;
+      const e = pick(BIG_EV);
+      const msg = e.run(f.i, k);
+      if (!msg) return;
+      Game.log(msg);
+      if (ev.length < 1) { const lord = Game.lordOf(f.i); ev.push({ type: 'info', msg, gen: lord ? lord.i : null, expr: 'angry', line: null, tag: `天下の動き・${e.name}`, talk: true }); }
+    });
+    return ev;
+  }
+
   function weighted(list) { const tot = list.reduce((s, x) => s + x.w, 0); let r = Math.random() * tot; for (const x of list) { if ((r -= x.w) <= 0) return x; } return list[0]; }
 
   function randomEvents() {
@@ -129,11 +178,17 @@ const Events = (() => {
     let shown = 0;
     // 都市：季節ごとに各都市5%
     G.cities.forEach(c => {
-      if (c.owner === null || Math.random() > 0.05) return;
-      const cand = CITY.filter(e => !e.cond || e.cond(c));
+      if (c.owner === null) return;
+      const k = bigK(c.owner);
+      // 大きな敵勢力の都市には、悪い出来事が 8%×(k−1) の確率で余分に起きる
+      let badOnly = false;
+      if (Math.random() > 0.05) { if (k > 1 && Math.random() < 0.08 * (k - 1)) badOnly = true; else return; }
+      const cand = CITY.filter(e => (!e.cond || e.cond(c)) && (!badOnly || BAD_CITY.has(e.name)));
       if (!cand.length) return;
       const e = weighted(cand);
+      const before = snap(c, CITY_KEYS);
       const r = e.run(c);
+      if (!r.good) amplify(c, before, CITY_KEYS, k);
       if (mine(c.owner) && shown < 4) {
         const sp = r.speaker || govOf(c);
         ev.push({ type: r.good ? 'good' : 'warn', msg: r.msg, gen: sp ? sp.i : null, expr: r.expr, line: sp ? r.line : null, tag: e.name, talk: true });
@@ -142,11 +197,17 @@ const Events = (() => {
     });
     // 武将：季節ごとに各武将2.5%
     G.gens.forEach(g => {
-      if (g.state !== 'serve' || Math.random() > 0.025) return;
-      const cand = GEN.filter(e => !e.cond || e.cond(g));
+      if (g.state !== 'serve') return;
+      const k = bigK(g.faction);
+      let badOnly = false;
+      if (Math.random() > 0.025) { if (k > 1 && Math.random() < 0.025 * (k - 1)) badOnly = true; else return; }
+      const cand = GEN.filter(e => (!e.cond || e.cond(g)) && (!badOnly || BAD_GEN.has(e.name)));
       if (!cand.length) return;
       const e = weighted(cand);
+      const before = snap(g, GEN_KEYS);
       const r = e.run(g);
+      // 武将の悪い出来事：忠誠が下がる分だけ k 倍（能力の衰えは同じ）。町の騒ぎ（酒の失敗）は都市の民忠も k 倍
+      if (!r.good && k > 1) { amplify(g, before, ['loyalty'], k); if (e.name === '酒の失敗') { const c = G.cities[g.city]; c.loyal = Math.max(0, Math.round(c.loyal - 5 * (k - 1))); } }
       if (mine(g.faction) && shown < 5) { ev.push({ type: r.good ? 'good' : 'warn', msg: r.msg, gen: g.i, expr: r.expr, line: r.line, tag: e.name, talk: true }); shown++; }
     });
     return ev;
@@ -426,7 +487,8 @@ const Events = (() => {
   }
 
   return {
-    run() { return [...crownEvents(), ...histEvents(), ...topEvents(), ...randomEvents()]; },
+    run() { return [...crownEvents(), ...histEvents(), ...topEvents(), ...randomEvents(), ...bigEvents()]; },
+    bigK,
     rankName,
     counts: () => ({ city: CITY.length, gen: GEN.length, hist: HIST.length }),
     MEET, FACE,
