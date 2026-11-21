@@ -906,24 +906,67 @@ const Events = (() => {
   };
   // 司馬氏の政変：残り2勢力になった時、コンピュータの国に仕える司馬氏が国を二つに割る
   const SIMA = ['司馬懿', '司馬師', '司馬昭'];
-  function simaCoup(fi) {
-    const sima = SIMA.map(serving).filter(g => g && g.faction === fi && !g.isLord);
+  // 司馬氏の政変：天下が二つになった時、司馬懿（いなければ司馬師・司馬昭）が仕える勢力から、
+  //  都市の三分の一を地続きで持って独立する。もう一方の勢力と同盟を結び、手を組める場所（相手と接する所）を選ぶ。
+  //  魏に仕えた人々（曹・夏侯の一族は除く）が多く従う。離反する都市に残った元の勢力の将は、隣の自領へ均等に移る
+  const WEI_LATE = ['司馬孚', '司馬望', '鄧艾', '鍾会', '賈充', '王基', '陳泰', '郭淮', '毌丘倹', '諸葛誕', '王昶', '杜預', '羊祜', '衛瓘', '胡質', '王凌', '孫礼', '辛毗', '高柔', '陳矯', '牽招', '田豫', '楽綝', '文鴦', '王双', '費曜', '戴陵', '鄧忠', '石苞', '州泰'];
+  const SIMA_CLOSE = ['鄧艾', '鍾会', '賈充', '王基', '陳泰', '郭淮', '杜預', '羊祜', '衛瓘', '胡質', '王昶', '孫礼', '蒋済', '高柔', '石苞'];
+  function weiSet() {
+    const w = new Set(WEI_LATE);
+    SCENARIOS.forEach(sc => sc.lords.forEach(L => { if (L[0] === '曹操' || L[0] === '曹丕') L[3].forEach(n => w.add(n)); }));
+    if (typeof GEN_FATHER !== 'undefined') Object.entries(GEN_FATHER).forEach(([ch, fa]) => { if (w.has(fa)) w.add(ch); });
+    return w;
+  }
+  const isCaoClan = n => n.startsWith('曹') || n.startsWith('夏侯');
+  function simaCoup() {
+    const alive = G.factions.filter(f => f.alive);
+    if (alive.length !== 2) return null;
+    const sima = SIMA.map(serving).filter(g => g && !g.isLord && g.faction >= 0 && G.factions[g.faction] && G.factions[g.faction].alive);
     if (!sima.length) return null;
-    const head = sima[0], f = G.factions[fi];
+    const head = sima[0], fi = head.faction, f = G.factions[fi];
+    const other = alive.find(x => x.i !== fi);
     const mine = Game.citiesOf(fi);
-    if (mine.length < 2) return null;
-    // 司馬氏のいる都市から、地続きに半分の都市が離反する（本拠は除く）
-    let start = G.cities[head.city].owner === fi && head.city !== f.capital ? G.cities[head.city] : mine.find(c => c.i !== f.capital);
-    if (!start) return null;
-    const take = new Set([start.i]), q = [start];
-    const half = Math.floor(mine.length / 2);
-    while (q.length && take.size < half) { const c = q.shift(); c.adj.forEach(a => { const o = G.cities[a]; if (take.size < half && o.owner === fi && o.i !== f.capital && !take.has(o.i)) { take.add(o.i); q.push(o); } }); }
+    if (mine.length < 3) return null;
+    const want = Math.max(1, Math.round(mine.length / 3));
+    // 起点：もう一方の勢力と接する都市（司馬氏のいる都市を優先）。本拠は除く
+    const touchesOther = c => c.adj.some(a => G.cities[a].owner === other.i);
+    const cand = mine.filter(c => c.i !== f.capital);
+    if (!cand.length) return null;
+    const hc = G.cities[head.city];
+    const start = (hc.owner === fi && hc.i !== f.capital && touchesOther(hc)) ? hc : (cand.filter(touchesOther).sort((a, b) => Game.gensIn(b.i, fi).filter(g => sima.includes(g)).length - Game.gensIn(a.i, fi).filter(g => sima.includes(g)).length)[0] || (hc.owner === fi && hc.i !== f.capital ? hc : cand[0]));
+    // 地続きに広げる。相手と接する都市を先に取り、同盟相手と連携しやすい形にする
+    const take = new Set([start.i]);
+    while (take.size < want) {
+      const front = [];
+      take.forEach(ci => G.cities[ci].adj.forEach(a => { const o = G.cities[a]; if (o.owner === fi && o.i !== f.capital && !take.has(o.i) && !front.includes(o)) front.push(o); }));
+      if (!front.length) break;
+      front.sort((a, b) => (touchesOther(b) ? 1 : 0) - (touchesOther(a) ? 1 : 0) || b.adj.filter(x => take.has(x)).length - a.adj.filter(x => take.has(x)).length);
+      take.add(front[0].i);
+    }
     const nf = { i: G.factions.length, name: head.name, color: '#5a5a8c', lord: head.i, alive: true, capital: start.i, allies: {}, isPlayer: false, hostility: {} };
     G.factions.push(nf);
-    head.faction = nf.i; head.isLord = true; head.loyalty = 100; head.city = start.i;
-    sima.slice(1).forEach(g => { g.faction = nf.i; g.city = start.i; g.loyalty = 95; });
-    take.forEach(ci => { const c = G.cities[ci]; c.owner = nf.i; Game.gensIn(ci, fi).forEach(g => { if (g.isLord) return; if (!Game.has(g, '忠義') && (g.loyalty < 75 || Game.has(g, '野心'))) { g.faction = nf.i; g.loyalty = irnd(70, 90); } else g.city = f.capital; }); });
-    return { head, f, n: take.size };
+    // 従う者：司馬一族 → 司馬氏に近い魏の重臣 → ほかの魏の人々（曹・夏侯の一族と君主は除く）。多くても勢力の将の三分の一まで
+    const W = weiSet();
+    const all = Game.gensOf(fi).filter(g => !g.isLord);
+    const cap = Math.max(sima.length, Math.round(all.length / 3));
+    const rank = g => SIMA.includes(g.name) ? 0 : SIMA_CLOSE.includes(g.name) ? 1 : 2;
+    const followers = all.filter(g => SIMA.includes(g.name) || (W.has(g.name) && !isCaoClan(g.name))).sort((a, b) => rank(a) - rank(b) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, cap);
+    take.forEach(ci => { G.cities[ci].owner = nf.i; });
+    const takeArr = [...take];
+    followers.forEach((g, k) => {
+      g.faction = nf.i; g.isLord = false; g.loyalty = SIMA.includes(g.name) ? 95 : irnd(75, 92); g.acted = false;
+      if (!take.has(g.city)) g.city = takeArr[k % takeArr.length];
+    });
+    head.isLord = true; head.loyalty = 100; head.city = start.i;
+    // 離反した都市に残った元の勢力の将は、隣の自領の都市へ均等に移る（隣がなければ本拠へ）
+    const stay = Game.gensOf(fi).filter(g => take.has(g.city));
+    const dest = Game.citiesOf(fi).filter(c => c.adj.some(a => take.has(a)));
+    const pool = dest.length ? dest : [G.cities[f.capital]];
+    stay.sort((a, b) => a.city - b.city).forEach((g, k) => { g.city = pool[k % pool.length].i; });
+    // もう一方の勢力と同盟を結ぶ
+    nf.allies[other.i] = CONFIG.ALLY_TURNS; other.allies[nf.i] = CONFIG.ALLY_TURNS;
+    Game.log(`${head.name}が政変を起こし、${take.size}の城とともに${f.name}軍から独立した。${other.name}軍と同盟を結んだ。`);
+    return { head, f, other, n: take.size, followers, moved: stay.length, mine: fi === G.player };
   }
   // 初めて：ゲーム開始時点ですでに満たしている節目は、起きたことにしておく（「得た時」だけ起こす）
   function initProg() {
@@ -988,11 +1031,14 @@ const Events = (() => {
         up99(lord, 'cha', 2); loyAll(5); cityAll('loyal', 5);
         push('三国鼎立', `天下は三つに分かれた。\n${names}\n鼎の三本の足のように、三つの国が並び立つ。\n${lord.name}「${voice(lord, 'big')}」\n<small>${lord.name}の魅力 +2、家臣の忠誠 +5、全都市の民忠 +5</small>`, lord, '天下の形', { se: 'coronation' });
       } else {
-        const foe = alive.find(f => f.i !== G.player);
-        const coup = foe ? simaCoup(foe.i) : null;
+        const coup = simaCoup();
         const mySima = SIMA.map(serving).find(g => g && g.faction === G.player && !g.isLord);
         if (coup) {
-          push('天下二分、そして政変', `天下は二つの国に分かれた——と思われた矢先、${coup.f.name}軍で政変が起きた。\n${coup.head.name}が兵を挙げ、${coup.n}つの城とともに${coup.f.name}軍から離れた！\n天下は再び三つに割れた。`, coup.head, '天下の形', { expr: 'angry', se: 'gong' });
+          const fl = coup.followers.filter(g => g !== coup.head).slice(0, 5).map(g => g.name);
+          push('天下二分、そして政変', coup.mine
+            ? `天下は二つの国に分かれた——と思われた矢先、我が軍で政変が起きた。\n${coup.head.name}が兵を挙げ、${coup.n}の城とともに独立した！${fl.length ? `\n${fl.join('、')}${coup.followers.length - 1 > fl.length ? 'ら' : ''}が${coup.head.name}に従った。` : ''}\n${coup.head.name}は${coup.other.name}軍と同盟を結び、天下は再び三つに割れた。${coup.moved ? `\n<small>離反した城に残った将${coup.moved}人は、隣の城へ移った</small>` : ''}`
+            : `天下は二つの国に分かれた——と思われた矢先、${coup.f.name}軍で政変が起きた。\n${coup.head.name}が兵を挙げ、${coup.n}の城とともに${coup.f.name}軍から離れた！${fl.length ? `\n${fl.join('、')}${coup.followers.length - 1 > fl.length ? 'ら' : ''}が${coup.head.name}に従った。` : ''}\n${coup.head.name}は我が軍と同盟を結んだ。天下は再び三つに割れた。`,
+            coup.head, '天下の形', { expr: 'angry', se: 'gong' });
         } else {
           loyAll(10); const l2 = lord; ['lead', 'war', 'int', 'pol', 'cha'].sort((a, b) => l2[b] - l2[a]).slice(0, 1).forEach(k => up99(l2, k, 2));
           push('天下二分', `天下は二つに分かれた。\n${names}\n残るは、雌雄を決する最後の戦いのみ。\n${lord.name}「${voice(lord, 'big')}」\n<small>家臣の忠誠 +10、${lord.name}の得意な能力 +2</small>` + (mySima ? `\n<small>${mySima.name}が、何やら静かに天下の形を見つめている……（忠誠 −10）</small>` : ''), lord, '天下の形', { se: 'coronation' });
