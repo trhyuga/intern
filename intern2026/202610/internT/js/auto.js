@@ -752,13 +752,14 @@ const Auto = (() => {
     Sound.se(r.ok ? 'win' : 'ng');
     await UI.talk(tl, r.ok ? 'sad' : 'angry', r.msg, col, { tag: '外交' });
     if (r.ok) Game.log(r.msg);
+    if (r.ok && Game.checkEnd() === 'win') { App.refresh(); await App.milestones(); await App.finish('win'); }   // 最後の敵が降れば、その場で天下統一
   }
   async function doDiplo(br, reserved = new Set()) {
     const myPow = Game.power(G.player);
     const neigh = new Set();
     Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player) neigh.add(o); }));
     let list = [...neigh].filter(fi => !Game.isAlly(G.player, fi));
-    if (list.length) { await doSurrender(br, list, reserved); list = list.filter(fi => G.factions[fi].alive && Game.citiesOf(fi).length); }
+    if (list.length) { await doSurrender(br, list, reserved); if (G.gameOver) return; list = list.filter(fi => G.factions[fi].alive && Game.citiesOf(fi).length); }
     if (stopReq) return;
     // 弱小勢力の外交：強い隣国とは手を結んで背後を固め、空き城や弱い相手へ伸びる（ふつう以上の軍師）
     if (weak() && br.tier !== 'dumb') {
@@ -1475,7 +1476,7 @@ const Auto = (() => {
     // 見つけてある在野の人物の登用は、外交・計略・配置換えより先に行う（魅力の高い将が先に他の仕事へ回ってしまわないように）
     await doRecruit(br, new Set()); if (stopReq) return false;
     await lordStudy(); if (stopReq) return false;
-    await doDiplo(br, new Set()); if (stopReq) return false;
+    await doDiplo(br, new Set()); if (stopReq || G.gameOver) return false;
     await doPlots(br, new Set(armies0.map(x => x.i)), [...new Set([...attacks.filter(p => p.t.owner !== G.player).map(p => p.t.i), ...(G.stage ? [G.stage.t] : [])])]); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
     await placeCivil(br, new Set()); if (stopReq) return false;
