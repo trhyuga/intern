@@ -5,12 +5,15 @@
 //  ・守り手の勝ち: 30日守り切る / 攻め手全滅 / 攻めの総大将を倒す / 攻め手の兵糧切れ
 // ============================================================
 const Battle = (() => {
+  const fcol = fi => (fi != null && G.factions[fi]) ? G.factions[fi].color : '#777';   // 勢力の色（勢力がなければ灰色）
   const COLS = 9, ROWS = 11;
   const COST = { plain: 1, forest: 2, mount: 3, ford: 2, water: 99, inner: 1, keep: 1, gate: 1, wall: 99, road: 1 };
   const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.35, keep: 1.6, gate: 1.4, wall: 2, road: 1 };
   const TNAME = { plain: '平地', forest: '森', mount: '山', ford: '浅瀬', water: '川', inner: '城内', keep: '本丸', gate: '城門', wall: '城壁', road: '道' };
   let B = null, cv, ctx, cell, raf, resolveEnd, terrainLayer, anims = [], floaters = [], particles = [];
-  const sleep = ms => new Promise(r => setTimeout(r, ms / Math.max(G && G.opts.aiSpeed ? G.opts.aiSpeed : 1, B && B.watch ? Auto.speed : 1)));
+  // 合戦が進んでいる印（待ち時間が明けるたびに更新）。止まったままかどうかの見張りに使う
+  let beat = 0;
+  const sleep = ms => new Promise(r => setTimeout(() => { beat = performance.now(); r(); }, ms / Math.max(G && G.opts.aiSpeed ? G.opts.aiSpeed : 1, B && B.watch ? Auto.speed : 1)));
 
   // ---------- 地形の生成 ----------
   function genTerrain(city) {
@@ -56,7 +59,7 @@ const Battle = (() => {
       const atkGens = plan.gens.map(i => G.gens[i]);
       const defGensAll = Game.gensIn(to.i, defFi === null ? undefined : defFi);
       const defGens = defGensAll.slice().sort((a, b) => (b.isLord ? 1000 : 0) + b.lead + b.war - (a.isLord ? 1000 : 0) - a.lead - a.war).slice(0, 5);
-      B = { plan, atkFi: plan.atkFi, defFi, from, to, tiles: genTerrain(to), units: [], day: 1, weather: 'sun', food: plan.food,
+      B = { plan, atkFi: plan.atkFi, defFi, from, to, tiles: genTerrain(to), units: [], day: 1, weather: 'sun', food: plan.food, defFood: Math.max(0, to.food || 0),
         playerSide: plan.atkFi === G.player ? 'atk' : 'def', gateHP: Math.round(400 + to.def * (3 + 6 * Game.siegeK(plan.atkFi))), gateMax: Math.round(400 + to.def * (3 + 6 * Game.siegeK(plan.atkFi))), wallK: Game.siegeK(plan.atkFi), log: [], sel: null, mode: 'idle', reach: null, targets: null, over: false,
         bondAtk: Game.bondOf(atkGens.map(g => g.name)), bondDef: Game.bondOf(defGens.map(g => g.name)),
         watch: !!(opts && opts.watch), smart: 0.5,
@@ -95,6 +98,8 @@ const Battle = (() => {
       ['atk', 'def'].forEach(sd => { if (B.units.some(u => u.side === sd && u.gi >= 0 && Game.top(u.g, 'cha'))) B.units.filter(u => u.side === sd).forEach(u => u.morale = Math.max(u.morale, 90)); });
       // 君主の位（公・王・皇帝）に応じて、その勢力の将兵の士気が上がる
       B.units.forEach(u => { const f = u.fi != null && G.factions[u.fi]; if (f && f.rank) u.morale = Math.min(100, u.morale + f.rank * 4); });
+      // 君主の統率が高い勢力の将兵は、士気が高い（最大+6）
+      B.units.forEach(u => { u.morale = Math.min(100, u.morale + Math.round(6 * Game.lordK(u.fi, 'lead'))); });
       B.reinfPlan = planReinf();
       B.weather = pickWeather();
       setupDOM(opts && opts.auto);
@@ -102,8 +107,84 @@ const Battle = (() => {
       Sound.se('warcry');
       Sound.amb(B.weather === 'rain' ? 'rain' : null);
       draw();
-      startDay(true);
+      (async () => { try { await deployField(); } catch (e) { console.error('deploy', e); } draw(); runDay(true); })();
     });
+  }
+
+  // ---------- 守り手の城外の布陣 ----------
+  // 守り手の部隊（総大将・君主以外）を、森（伏兵）・山（陣取る）・川辺（渡河を狙う）に置ける。
+  // 部隊の多い同士の戦いほど、城外に出る部隊が増える
+  const POST_NAME = { forest: '森に伏兵', mount: '山に陣取る', river: '川辺で待ち構える' };
+  function postSpots(kind) {
+    const out = [];
+    for (let r = 3; r < ROWS - 2; r++) for (let c = 0; c < COLS; c++) {
+      if (unitAt(r, c)) continue;
+      const t = B.tiles[r][c].t;
+      if (kind === 'forest' && t === 'forest') out.push([r, c]);
+      if (kind === 'mount' && t === 'mount') out.push([r, c]);
+      if (kind === 'river' && !['water', 'ford'].includes(t) && inb(r + 1, c) && ['water', 'ford'].includes(B.tiles[r + 1][c].t)) out.push([r, c]);
+    }
+    // 城に近く、道（真ん中）に近い所から。川辺は浅瀬の前を優先
+    return out.sort((a, b) => (a[0] + Math.abs(a[1] - 4) * 0.7 - (kind === 'river' && B.tiles[a[0] + 1][a[1]].t === 'ford' ? 3 : 0)) - (b[0] + Math.abs(b[1] - 4) * 0.7 - (kind === 'river' && B.tiles[b[0] + 1][b[1]].t === 'ford' ? 3 : 0)));
+  }
+  function placePost(u, kind) {
+    const sp = postSpots(kind)[0];
+    if (!sp) return false;
+    u.r = sp[0]; u.c = sp[1]; u.x = u.c; u.y = u.r; u.post = kind; u.holdPost = true;
+    if (kind === 'forest') u.ambush = true;
+    return true;
+  }
+  // 将に向いた布陣：知力が高ければ森の伏兵、統率が高ければ山、武力が高ければ川辺
+  function bestPost(u) {
+    const g = u.g, opts = [];
+    if (postSpots('forest').length) opts.push(['forest', g.int * 1.2 + (Game.has(g, '智謀') || Game.has(g, '神算') ? 15 : 0)]);
+    if (postSpots('mount').length) opts.push(['mount', g.lead * 1.1 + (Game.has(g, '慎重') ? 10 : 0)]);
+    if (postSpots('river').length) opts.push(['river', g.war * 1.1 + (Game.has(g, '弓術') ? 15 : 0) + (Game.has(g, '水軍') ? 10 : 0)]);
+    opts.sort((a, b) => b[1] - a[1]);
+    return opts[0] ? opts[0][0] : null;
+  }
+  async function deployField() {
+    const defs = B.units.filter(u => u.side === 'def' && !u.commander && u.gi >= 0 && !u.g.isLord);
+    const nDef = B.units.filter(u => u.side === 'def').length, nAtk = B.units.filter(u => u.side === 'atk').length;
+    if (!defs.length || nDef < 3) return;
+    const manual = B.playerSide === 'def' && !auto && !B.watch;
+    if (manual) {
+      for (const u of defs) {
+        const opts = [{ label: '城内に構える', sub: '城壁に拠って戦う', value: 'castle' }];
+        [['forest', `敵が隣に来た瞬間に奇襲（知力 ${u.g.int}：高いほど大打撃）`], ['mount', '山の上で守りが固くなる'], ['river', '川を渡る敵を大きく叩く']].forEach(([k, sub]) => opts.push({ label: POST_NAME[k], sub, value: k, disabled: !postSpots(k).length }));
+        const v = await UI.choose(`${u.g.name}隊（兵 ${u.troops}）の布陣`, opts, false);
+        if (v && v !== 'castle') placePost(u, v);
+        draw();
+      }
+    } else {
+      // コンピュータ（と委任・観戦）：部隊の多い同士ほど城外に出す
+      let n = Math.floor(nDef / 2) + (nAtk >= 4 ? 1 : 0);
+      if (nAtk < 3 && Math.random() < 0.5) n--;
+      n = Math.min(n, defs.length);
+      const order = defs.slice().sort((a, b) => Math.max(b.g.int, b.g.lead, b.g.war) - Math.max(a.g.int, a.g.lead, a.g.war));
+      for (const u of order.slice(0, Math.max(0, n))) { const k = bestPost(u); if (k) placePost(u, k); }
+    }
+    const out = B.units.filter(u => u.post);
+    if (out.length) addLog(`守り手は城外に布陣した：${out.map(u => `${u.g.name}（${POST_NAME[u.post]}）`).join('、')}`);
+  }
+  // 森の伏兵：敵が隣に来た瞬間、知力に応じた大打撃を与える
+  async function checkAmbush(mover) {
+    if (!mover.alive) return;
+    const amb = B.units.filter(o => o.alive && o.ambush && o.side !== mover.side && dist(o, mover) === 1);
+    for (const o of amb) {
+      o.ambush = false;
+      const rate = (0.05 + o.g.int * 0.0022 + (Game.has(o.g, '智謀') || Game.has(o.g, '神算') ? 0.04 : 0)) * (isRain() ? 1.5 : 1);   // 雨の森は気配が消え、深く斬り込める
+      const dmg = Math.round(Math.min(mover.troops * rate, o.troops * 0.6) + 100);
+      mover.troops = Math.max(0, mover.troops - dmg); mover.morale = Math.max(0, mover.morale - 15); mover.acted = true;
+      if ((o.g.int >= 80 || isRain()) && Math.random() < (o.g.int - 60) / 80 + (isRain() ? 0.25 : 0)) { mover.confused = 2; addFloater(mover.r, mover.c, '混乱', '#ffd23a'); }
+      Sound.se('warcry'); slash(mover.r, mover.c);
+      addFloater(mover.r, mover.c, `伏兵！-${dmg}`, '#ff6a5a');
+      addLog(isRain() ? `雨音に紛れて森に伏せていた${o.g.name}隊が、${mover.g.name}隊に襲いかかった！` : `森に伏せていた${o.g.name}隊が、${mover.g.name}隊に襲いかかった！`);
+      bubble(o, pick(['かかったな！ 森の中こそ我らの城よ', '今だ、伏兵、かかれーっ！', '待っておったぞ。討ち取れ！']));
+      await sleep(600);
+      await checkRout(mover, o);
+      if (!mover.alive) return;
+    }
   }
 
   function pickWeather() { const r = Math.random(); return r < 0.6 ? 'sun' : r < 0.85 ? 'cloud' : 'rain'; }
@@ -114,6 +195,7 @@ const Battle = (() => {
   function setupDOM(isAuto) {
     auto = !!isAuto;
     root = document.getElementById('battle');
+    root.querySelectorAll('canvas').forEach(c => { c.width = c.height = 0; });   // 前の合戦の描く台を空ける（iPhone の上限対策）
     root.innerHTML = `
       <div class="b-hud"></div>
       <div class="b-field"><canvas id="bcv"></canvas><div class="b-banner"></div></div>
@@ -137,6 +219,7 @@ const Battle = (() => {
   }
 
   function buildTerrainLayer(dpr) {
+    if (terrainLayer) terrainLayer.width = terrainLayer.height = 0;   // 古い地形の絵を空ける
     terrainLayer = document.createElement('canvas');
     terrainLayer.width = cell * COLS * dpr; terrainLayer.height = cell * ROWS * dpr;
     const c = terrainLayer.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -190,6 +273,7 @@ const Battle = (() => {
     const s = cell;
     ctx.clearRect(0, 0, s * COLS, s * ROWS);
     ctx.drawImage(terrainLayer, 0, 0, s * COLS, s * ROWS);
+    if (B.night) { ctx.fillStyle = 'rgba(8,12,40,0.5)'; ctx.fillRect(0, 0, s * COLS, s * ROWS); }   // 夜戦
     // 城門の耐久
     const gt = B.tiles[2][4];
     if (gt.t === 'gate') {
@@ -205,7 +289,7 @@ const Battle = (() => {
     if (B.reach) { B.reach.forEach(k => { const [r, q] = k.split(',').map(Number); ctx.fillStyle = 'rgba(80,160,255,0.35)'; ctx.fillRect(q * s + 1, r * s + 1, s - 2, s - 2); }); }
     if (B.targets) { B.targets.forEach(([r, q]) => { ctx.strokeStyle = '#ff3b2f'; ctx.lineWidth = 3; ctx.strokeRect(q * s + 2, r * s + 2, s - 4, s - 4); ctx.fillStyle = 'rgba(255,60,40,0.2)'; ctx.fillRect(q * s + 2, r * s + 2, s - 4, s - 4); }); }
     // 部隊
-    B.units.filter(u => u.alive).sort((a, b) => a.y - b.y).forEach(u => drawUnit(u));
+    B.units.filter(u => u.alive && !(u.ambush && (u.side !== B.playerSide || B.watch))).sort((a, b) => a.y - b.y).forEach(u => { if (u.ambush) { ctx.globalAlpha = 0.5; drawUnit(u); ctx.globalAlpha = 1; } else drawUnit(u); });
     // 粒子
     particles = particles.filter(p => p.life > 0);
     particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; ctx.globalAlpha = p.life / p.max; ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0, p.size * p.life / p.max), 0, 7); ctx.fill(); });
@@ -229,7 +313,7 @@ const Battle = (() => {
 
   function drawUnit(u) {
     const s = cell, x = u.x * s, y = u.y * s;
-    const col = u.fi === null ? '#777' : G.factions[u.fi].color;
+    const col = (G.factions[u.fi] ? fcol(u.fi) : '#777');
     const shake = u.shake ? Math.sin(performance.now() / 20) * 3 : 0;
     const cx = x + s / 2 + shake, cy = y + s / 2;
     // 影
@@ -268,7 +352,7 @@ const Battle = (() => {
     const tot = side => B.units.filter(u => u.alive && u.side === side).reduce((s, u) => s + u.troops, 0);
     const an = B.atkFi === null ? '' : G.factions[B.atkFi].name, dn = B.defFi === null ? '守備隊' : G.factions[B.defFi].name;
     hud.innerHTML = `
-      <div class="b-hud-row"><span class="b-day">${B.day}<small>/${CONFIG.BATTLE_DAYS}日</small></span><span class="b-w">${WNAME[B.weather]}</span><span class="b-city">${B.to.name}攻防戦</span><span class="b-food">兵糧 ${Math.max(0, Math.round(B.food))}</span></div>
+      <div class="b-hud-row"><span class="b-day">${B.day}<small>/${CONFIG.BATTLE_DAYS}日</small></span><span class="b-w">${WNAME[B.weather]}</span><span class="b-city">${B.to.name}攻防戦</span><span class="b-food">兵糧 攻${foodDays('atk')}日 守${foodDays('def')}日</span></div>
       <div class="b-hud-row b-vs"><span style="color:${G.factions[B.atkFi].color}">攻 ${an} ${tot('atk')}</span><span>vs</span><span style="color:${B.defFi === null ? '#aaa' : G.factions[B.defFi].color}">守 ${dn} ${tot('def')}</span></div>`;
   }
   function showInfo(u) {
@@ -276,7 +360,7 @@ const Battle = (() => {
     const g = u.g;
     const t = B.tiles[u.r][u.c].t;
     info.innerHTML = `<div class="b-unit">
-      <img src="${Portrait.get(g, u.troops < u.maxTroops * 0.3 ? 'sad' : 'normal', u.fi === null ? '#777' : G.factions[u.fi].color)}" />
+      <img src="${Portrait.get(g, u.troops < u.maxTroops * 0.3 ? 'sad' : 'normal', (G.factions[u.fi] ? fcol(u.fi) : '#777'))}" />
       <div class="b-unit-body">
         <div class="b-unit-name">${g.name}${u.commander ? ' <span class="star">★総大将</span>' : ''} <small>${u.side === 'atk' ? '攻' : '守'}</small></div>
         <div class="b-unit-stat">兵 <b>${u.troops}</b> / 士気 ${Math.round(u.morale)} / ${TNAME[t]}</div>
@@ -303,6 +387,18 @@ const Battle = (() => {
   const inb = (r, c) => r >= 0 && r < ROWS && c >= 0 && c < COLS;
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const dist = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
+  // 鉄壁の采配を持つ守りの名手（史書・演義で城や陣を守り抜いたことで知られる将）
+  //  曹仁（樊城）・郝昭（陳倉）・満寵（合肥）・陸遜（夷陵・石亭）・司馬懿（五丈原で蜀の北伐を防ぐ）
+  const GUARDIANS = ['曹仁', '郝昭', '満寵', '陸遜', '司馬懿'];
+  // 雨：夜襲・伏兵が決まりやすく強い、兵糧が傷む、増水した川を渡る部隊は大きな痛手を負う
+  const isRain = () => B && B.weather === 'rain';
+  // 知略の将（知力75以上か、智謀・神算）
+  const isWise = u => u && u.gi >= 0 && (u.g.int >= 75 || Game.has(u.g, '智謀') || Game.has(u.g, '神算'));
+  const isFierce = u => u && u.gi >= 0 && u.g.war >= 85;   // 猛将
+  const CASTLE_T = ['inner', 'keep', 'gate', 'wall'];
+  const isField = u => !CASTLE_T.includes(B.tiles[u.r][u.c].t);   // 門の外の野戦
+  // 包囲：d の上下左右にいる敵の部隊
+  function surrounders(d) { return DIRS.map(([dr, dc]) => unitAt(d.r + dr, d.c + dc)).filter(o => o && o.alive && o.side !== d.side); }
   function tileCost(u, r, c) {
     const t = B.tiles[r][c].t;
     if (t === 'water') return Game.has(u.g, '水軍') ? 2 : 99;
@@ -337,13 +433,13 @@ const Battle = (() => {
     let range = Game.has(u.g, '弓術') ? 2 : 1;
     // 城壁の上からは、城外の敵にも矢が届く
     if (u.side === 'def' && r <= 2 && B.tiles[2][4].t === 'gate' && ['inner', 'gate'].includes(B.tiles[r][c].t)) range = 2;
-    const res = B.units.filter(o => o.alive && o.side !== u.side && Math.abs(o.r - r) + Math.abs(o.c - c) <= range);
+    const res = B.units.filter(o => o.alive && o.side !== u.side && !o.ambush && Math.abs(o.r - r) + Math.abs(o.c - c) <= range);
     const out = res.map(o => [o.r, o.c]);
     if (u.side === 'atk' && B.tiles[2][4].t === 'gate' && !unitAt(2, 4) && Math.abs(2 - r) + Math.abs(4 - c) <= 1) out.push([2, 4]);   // 門の上に誰かいれば、その部隊が相手
     return out;
   }
-  function plotTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && dist(u, o) <= 2).map(o => [o.r, o.c]); }
-  function duelTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && u.gi >= 0 && dist(u, o) === 1).map(o => [o.r, o.c]); }
+  function plotTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && !o.ambush && dist(u, o) <= 2).map(o => [o.r, o.c]); }
+  function duelTargets(u) { return B.units.filter(o => o.alive && o.side !== u.side && !o.ambush && o.gi >= 0 && u.gi >= 0 && dist(u, o) === 1).map(o => [o.r, o.c]); }
 
   // ---------- 戦闘計算 ----------
   function bondBonus(u) { const list = u.side === 'atk' ? B.bondAtk : B.bondDef; return list.filter(b => b.members.includes(u.g.name) && b.members.filter(m => B.units.some(v => v.alive && v.side === u.side && v.g.name === m)).length >= 2).reduce((s, b) => s + b.bonus, 0); }
@@ -357,14 +453,38 @@ const Battle = (() => {
     if (Game.has(dg, '慎重')) k *= 0.9;
     const at = B.tiles[a.r][a.c].t;
     if ((at === 'water' || at === 'ford' || t === 'water' || t === 'ford')) k *= Game.has(ag, '水軍') ? 1.25 : 0.9;
-    if (ranged) k *= B.weather === 'rain' ? 0.5 : 0.7;
+    if (ranged) k *= (B.weather === 'rain' ? 0.5 : 0.7) * (B.night ? 0.6 : 1);   // 夜は矢が当たりにくい
     if (B.weather === 'rain') k *= 0.9;
     if (B.rally && B.rally[a.side] > 0) k *= 1.3;   // 背水の陣
+    // 君主の武威（武力、最大+5%）と軍師の策（知力、最大+3%）
+    k *= 1 + 0.05 * Game.lordK(a.fi, 'war') + 0.03 * Game.sgK(a.fi, 'int');
     if (B.buff) { k *= B.buff[a.side].atk; k *= B.buff[d.side].guard; }   // 必殺技の効果
     // 能力の上位者：豪傑は攻撃↑、名将は攻撃↑・被害↓
     if (a.gi >= 0) { k *= Game.topK(ag, 'war', 1.12, 1.22); k *= Game.topK(ag, 'lead', 1.08, 1.15); }
     if (d.gi >= 0) k /= Game.topK(dg, 'lead', 1.12, 1.2);
+    // 統率：85以上の将だけ、陣が崩れにくい。高いほど尖って効く（被害が 85で約0.2%・90で約3%・95で約7%・100で15% 減る）
+    if (d.gi >= 0 && dg.lead >= 85) k /= 1 + Math.pow((dg.lead - 84) / 16, 1.5) * 0.15;
+    // 鉄壁の采配：守りの名手（ごく数名）の隣にいる味方は、被害が15%減る
+    if (DIRS.some(([dr, dc]) => { const o = unitAt(d.r + dr, d.c + dc); return o && o.alive && o.side === d.side && o.gi >= 0 && GUARDIANS.includes(o.g.name); })) k *= 0.85;
     // 城壁：城内・城門・本丸の守り手は、城壁の値に応じて被害が減る。門が破れると守りは半減
+    // 包囲：2部隊以上に囲まれた部隊は大きく崩れる。門の外の野戦ではさらに強く、知略の将が囲みに加わると一層強い
+    //  （猛将相手・兵が少ない側ほど、知略の囲みが効く。夜戦ではさらに1.3倍）
+    const sur = surrounders(d);
+    if (sur.length >= 2 && sur.includes(a) && isField(d)) {   // 城壁の内側（城内・城門）の部隊は囲まれても崩れない
+      const wise = sur.filter(isWise).length;
+      let bonus = (sur.length - 1) * 0.12 + wise * 0.1;
+      if (wise && isFierce(d)) bonus += wise * 0.1;
+      if (wise && a.troops < d.troops) bonus += 0.1;
+      if (B.night) bonus *= 1.3;
+      k *= 1 + bonus;
+    }
+    // 山に陣取った守り手は、さらに守りが固い
+    if (d.post === 'mount' && t === 'mount') k /= 1.3;
+    // 渡河中（川・浅瀬にいる）の部隊を、岸から叩くと大打撃。川辺で待ち構えた部隊ならなおさら
+    if (['water', 'ford'].includes(t) && !['water', 'ford'].includes(at)) k *= (a.post === 'river' ? 1.7 : 1.35) * (isRain() ? 1.35 : 1);   // 雨で増水した川では、足を取られてなお脆い
+    // 囲まれた部隊は、反撃の手も鈍る
+    const asur = surrounders(a).length;
+    if (asur >= 3 && isField(a)) k *= 0.85;
     const castle = ['inner', 'keep', 'gate'];
     if (d.side === 'def' && castle.includes(t)) k /= 1 + B.to.def / 750 * B.wallK * (gateUp() ? 1 : 0.5);
     // 城壁の上からの矢は届く
@@ -398,13 +518,18 @@ const Battle = (() => {
   }
 
   async function animateMove(u, r, c) {
+    if (u.staleDay === B.day) return;
     const fr = u.y, fc = u.x, t0 = performance.now(), dur = 220 + 60 * (Math.abs(r - fr) + Math.abs(c - fc));
     u.r = r; u.c = c;
     if (!auto && (r !== fr || c !== fc)) Sound.se('horse');
-    await new Promise(res => { const step = () => { const k = Math.min(1, (performance.now() - t0) / dur * (G.opts.aiSpeed || 1)); const e = k * (2 - k); u.y = fr + (r - fr) * e; u.x = fc + (c - fc) * e; if (k < 1) requestAnimationFrame(step); else res(); }; step(); });
+    // 画面の描き替えが止まっても（ブラウザの都合）、時間がたてば移動を終える
+    await new Promise(res => { let done = false; const fin = () => { if (done) return; done = true; u.y = r; u.x = c; beat = performance.now(); res(); }; const step = () => { if (done) return; const k = Math.min(1, (performance.now() - t0) / dur * (G.opts.aiSpeed || 1)); const e = k * (2 - k); u.y = fr + (r - fr) * e; u.x = fc + (c - fc) * e; if (k < 1) requestAnimationFrame(step); else fin(); }; step(); setTimeout(fin, dur / (G.opts.aiSpeed || 1) + 400); });
+    if (r !== fr || c !== fc) await checkAmbush(u);
   }
 
   async function doAttack(a, r, c) {
+    if (a.staleDay === B.day) return;   // 見張りに飛ばされた行動の続き
+    a.ambush = false;   // 攻めかかれば、伏兵は姿を現す
     if (r === 2 && c === 4 && B.tiles[2][4].t === 'gate' && !unitAt(r, c)) {
       // 城門攻撃
       const dmg = Math.round(Math.pow(a.troops, 0.8) * 0.9 * ((a.g.lead || 40) + a.g.war) / 120 * rnd(0.85, 1.15));
@@ -432,8 +557,8 @@ const Battle = (() => {
     if (a.g.name === '関羽' && d.g.name === '曹操' && d.troops < d.maxTroops * 0.35 && !(G.events && G.events.huarong)) {
       G.events.huarong = true;
       if (!auto) {
-        await UI.talk(d.g, 'sad', '曹操「雲長、かつての情けを覚えておるか……」', G.factions[d.fi].color, { tag: '華容道' });
-        await UI.talk(a.g, 'sad', '関羽「……行け。これで恩は返した」', G.factions[a.fi].color, { tag: '華容道' });
+        await UI.talk(d.g, 'sad', '曹操「雲長、かつての情けを覚えておるか……」', fcol(d.fi), { tag: '華容道' });
+        await UI.talk(a.g, 'sad', '関羽「……行け。これで恩は返した」', fcol(a.fi), { tag: '華容道' });
       }
       d.alive = false; d.status = 'retreat'; a.acted = true;
       addLog('華容道：関羽は曹操を見逃した');
@@ -449,8 +574,8 @@ const Battle = (() => {
     // 兵が3割を切った将は、一度だけ弱音（または意地）を吐く
     if (d.gi >= 0 && !d.lowSaid && d.troops > 0 && d.troops < d.maxTroops * 0.3) { d.lowSaid = true; setTimeout(() => { if (B && !B.over && d.alive) bubble(d, line(d.g, 'lowTroops')); }, 500); }
     a.morale = Math.min(100, a.morale + 3);
-    // 反撃
-    if (!ranged && d.troops > 0) {
+    // 反撃（夜襲で不意を突かれた側は反撃できない）
+    if (!ranged && d.troops > 0 && !B.raiding) {
       await sleep(250);
       const back = Math.round(calcDamage(d, a, false) * 0.5);
       a.troops = Math.max(0, a.troops - back); a.shake = true; setTimeout(() => a.shake = false, 300);
@@ -467,7 +592,8 @@ const Battle = (() => {
       u.alive = false;
       const r = Math.random();
       if (u.gi >= 0) {
-        if (r < 0.06) { u.status = 'killed'; addLog(`${u.g.name}、討ち死に！`); await say(u, 'sad', `${u.g.name}「${line(u.g, 'defeat')}」`); }
+        // 部隊が全滅しても、将が討ち死にするのは3%（前は6%）
+        if (r < 0.03) { u.status = 'killed'; addLog(`${u.g.name}、討ち死に！`); await say(u, 'sad', `${u.g.name}「${line(u.g, 'defeat')}」`); }
         else if (r < 0.6) { u.status = 'captured'; addLog(`${u.g.name}を捕らえた！`); }
         else { u.status = 'fled'; addLog(`${u.g.name}隊は壊滅し、${u.g.name}は落ち延びた`); }
       } else { addLog('守備隊は壊滅した'); }
@@ -475,7 +601,8 @@ const Battle = (() => {
       return;
     }
     // 臆病・士気崩壊による退却
-    if ((Game.has(u.g, '臆病') && u.troops < u.maxTroops * 0.3) || u.morale < 12) {
+    // 統率85以上の将の部隊は、士気が落ちても崩れにくい
+    if ((Game.has(u.g, '臆病') && u.troops < u.maxTroops * 0.3) || u.morale < (u.gi >= 0 && u.g.lead >= 85 ? 9 : 12)) {
       u.alive = false; u.status = 'retreat';
       addLog(`${u.g.name}隊が退却した`);
       if (u.gi >= 0) await say(u, 'shock', `${u.g.name}「${line(u.g, 'flee')}」`);
@@ -485,13 +612,18 @@ const Battle = (() => {
   function addLog(t) { B.log.unshift(t); const el = root && root.querySelector('.b-tip'); if (el) el.textContent = t; }
   async function say(u, expr, text) {
     if (auto) return;
-    await UI.talk(u.g, expr, text, u.fi === null ? '#777' : G.factions[u.fi].color, { quick: true });
+    await UI.talk(u.g, expr, text, (G.factions[u.fi] ? fcol(u.fi) : '#777'), { quick: true });
   }
 
   // ---------- 計略 ----------
   async function doPlot(a, kind, d) {
+    if (a.staleDay === B.day) return;
     const H = Game.has;
     let p = 0.35 + (a.g.int - d.g.int) / 90 + (H(a.g, '智謀') ? 0.15 : 0) - (H(d.g, '神算') ? 0.3 : 0) + (a.gi >= 0 && Game.top(a.g, 'int') ? 0.15 : 0) - (d.gi >= 0 && Game.top(d.g, 'int') ? 0.2 : 0);
+    // 夜戦では知略の将の計略が冴える。猛将（知力の低い豪傑）は夜の計略にかかりやすい
+    if (B.night && isWise(a)) p += 0.2 + (isFierce(d) && d.g.int < 60 ? 0.1 : 0);
+    // 君主の知力（最大+8%）・軍師の知力（最大+6%）で、計略が成功しやすい
+    p += 0.08 * Game.lordK(a.fi, 'int') + 0.06 * Game.sgK(a.fi, 'int');
     if (kind === 'fire' && B.weather === 'rain') p = 0;
     if (kind === 'fire' && ['water', 'ford', 'wall', 'keep', 'gate'].includes(B.tiles[d.r][d.c].t)) p *= 0.3;
     a.acted = true;
@@ -520,7 +652,7 @@ const Battle = (() => {
   function cutin(u, sk) {
     if (auto) return Promise.resolve();
     const el = document.getElementById('cutin');
-    const col = u.fi === null ? '#777' : G.factions[u.fi].color;
+    const col = (G.factions[u.fi] ? fcol(u.fi) : '#777');
     el.innerHTML = `<div class="ci-band" style="--c:${col}"><img src="${Portrait.get(u.g, 'angry', col)}"><div class="ci-txt"><div class="ci-who">${u.g.name}</div><div class="ci-name">${sk.name}</div><div class="ci-line">「${sk.line}」</div></div></div>`;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     Sound.se('skill');
@@ -528,7 +660,7 @@ const Battle = (() => {
   }
   // 目標を選ぶ必要がある技なら、その候補マス。不要なら null
   function skillTargets(u, sk) {
-    const foes = B.units.filter(o => o.alive && o.side !== u.side);
+    const foes = B.units.filter(o => o.alive && o.side !== u.side && !o.ambush);
     switch (sk.type) {
       case 'strike': case 'sweep': case 'dash': return sk.type === 'sweep' ? null : foes.filter(o => dist(o, u) === 1).map(o => [o.r, o.c]);
       case 'ranged': return foes.filter(o => dist(o, u) <= sk.range).map(o => [o.r, o.c]);
@@ -644,14 +776,28 @@ const Battle = (() => {
     for (const l of p.lines) {
       const nm = l.split('「')[0];
       const u = B.units.find(x => x.g.name === nm);
-      await UI.talk(u ? u.g : null, 'angry', l, u && u.fi !== null ? G.factions[u.fi].color : undefined, { tag: p.title });
+      await UI.talk(u ? u.g : null, 'angry', l, u && u.fi !== null ? fcol(u.fi) : undefined, { tag: p.title });
     }
   }
 
   // ---------- 一騎打ち ----------
   // 戦況に応じた合戦の曲（攻め／守り／劣勢）
-  function baseBgm() { Sound.bgm(B.playerSide && outlook(B.playerSide) < -0.45 ? 'crisis' : B.playerSide === 'def' ? 'defend' : 'battle'); }
+  // 自分が攻め手で、守りに敵の君主がいる時は、決戦の曲にする
+  const lordBattle = () => B.playerSide === 'atk' && B.units.some(u => u.side === 'def' && u.gi >= 0 && u.g.isLord && u.alive);
+  function baseBgm() { Sound.bgm(B.playerSide && outlook(B.playerSide) < -0.45 ? 'crisis' : B.playerSide === 'def' ? 'defend' : lordBattle() ? 'lordwar' : 'battle'); }
   // 戦況の見通し（-1：ジリ貧で負けそう 〜 +1：このまま押し切れそう）
+  // 兵糧：あと何日もつか（これ以上は表示しない）
+  function troopsOf(side) { return B.units.filter(u => u.alive && u.side === side).reduce((s, u) => s + u.troops, 0); }
+  function foodDays(side) {
+    const f = side === 'atk' ? B.food : B.defFood;
+    return Math.max(0, Math.min(99, Math.floor(f / Math.max(1, troopsOf(side) * 0.03))));
+  }
+  // 時を待てば勝てるか：先に兵糧が尽きる（攻め手は30日の期限も）のが敵の方なら true
+  function timeOnMySide(side) {
+    const daysLeft = CONFIG.BATTLE_DAYS - B.day + 1;
+    const atkEnd = Math.min(daysLeft, foodDays('atk')), defEnd = foodDays('def');
+    return side === 'atk' ? defEnd < atkEnd : atkEnd <= defEnd;
+  }
   function outlook(side) {
     const sum = sd => B.units.filter(u => u.alive && u.side === sd).reduce((t, u) => t + u.troops * (0.5 + u.morale / 200), 0);
     const mine = sum(side), foe = sum(side === 'atk' ? 'def' : 'atk');
@@ -694,7 +840,7 @@ const Battle = (() => {
   async function doDuel(a, d) {
     a.acted = true;
     // 典韋の護衛：主君（曹操）への一騎討ちを引き受ける
-    if (d.g.name === '曹操') { const dw = B.units.find(x => x.alive && x.side === d.side && x.g.name === '典韋' && dist(x, a) <= 2); if (dw) { if (!auto) await UI.talk(dw.g, 'angry', '典韋「殿には指一本触れさせん！ 相手はこの俺だ！」', G.factions[dw.fi].color, { tag: '護衛' }); d = dw; } }
+    if (d.g.name === '曹操') { const dw = B.units.find(x => x.alive && x.side === d.side && x.g.name === '典韋' && dist(x, a) <= 2); if (dw) { if (!auto) await UI.talk(dw.g, 'angry', '典韋「殿には指一本触れさせん！ 相手はこの俺だ！」', fcol(dw.fi), { tag: '護衛' }); d = dw; } }
     // 三英戦呂布：劉備・関羽・張飛のうち2人以上がいると、三人がかりで呂布を退ける
     const lu = a.g.name === '呂布' ? a : d.g.name === '呂布' ? d : null;
     if (lu) {
@@ -703,8 +849,8 @@ const Battle = (() => {
       if (trio.length >= 2 && trio.includes(other) && !B.trioDone) {
         B.trioDone = true;
         if (!auto) {
-          await UI.talk(other.g, 'angry', `${trio.map(x => x.g.name).join('・')}「三人でかかれ！ 呂布を討て！」`, G.factions[other.fi].color, { tag: '三英戦呂布' });
-          await UI.talk(lu.g, 'shock', '呂布「三人がかりとは……！ ちっ、ここは退く！」', G.factions[lu.fi] ? G.factions[lu.fi].color : '#777', { tag: '三英戦呂布' });
+          await UI.talk(other.g, 'angry', `${trio.map(x => x.g.name).join('・')}「三人でかかれ！ 呂布を討て！」`, fcol(other.fi), { tag: '三英戦呂布' });
+          await UI.talk(lu.g, 'shock', '呂布「三人がかりとは……！ ちっ、ここは退く！」', G.factions[lu.fi] ? fcol(lu.fi) : '#777', { tag: '三英戦呂布' });
         }
         lu.alive = false; lu.status = 'fled'; lu.troops = Math.round(lu.troops * 0.7);
         trio.forEach(x => { x.morale = Math.min(100, x.morale + 25); if (x.gi >= 0 && x.fi === G.player) G.gens[x.gi].duels++; });
@@ -722,16 +868,16 @@ const Battle = (() => {
       return;
     }
     if (pair && pair.kind === 'normal') await pairTalk(pair, a);
-    if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? G.factions[a.fi].color : '#777', { tag: '一騎討ち' });
+    if (!auto) await UI.talk(a.g, 'angry', `${a.g.name}「${line(a.g, 'duelChallenge', { foe: d.g.name })}」`, G.factions[a.fi] ? fcol(a.fi) : '#777', { tag: '一騎討ち' });
     const accept = willAcceptDuel(d, a);
     if (!accept) {
-      if (!auto) await UI.talk(d.g, 'normal', d._lordHeld ? `${d.g.name}「${pick(['一国の主が、匹夫の勇を競うわけにはいかぬ', '我が身はもはや我一人のものではない。相手にするな', '挑発には乗らん。将兵よ、わしを守れ'])}」` : d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : d._winning ? `${d.g.name}「${pick(['勝ち戦で、貴様の遊びに付き合う義理はない', 'ふん、焦っておるな。その手には乗らん', 'このまま押し潰せば済むこと。相手にするまでもない'])}」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777');
+      if (!auto) await UI.talk(d.g, 'normal', d._lordHeld ? `${d.g.name}「${pick(['一国の主が、匹夫の勇を競うわけにはいかぬ', '我が身はもはや我一人のものではない。相手にするな', '挑発には乗らん。将兵よ、わしを守れ'])}」` : d._held ? `${d.g.name}「……総大将が軽々しく動くわけにはいかん。相手にするな！」` : d._winning ? `${d.g.name}「${pick(['勝ち戦で、貴様の遊びに付き合う義理はない', 'ふん、焦っておるな。その手には乗らん', 'このまま押し潰せば済むこと。相手にするまでもない'])}」` : `${d.g.name}「${line(d.g, 'duelRefuse')}」`, G.factions[d.fi] ? fcol(d.fi) : '#777');
       d._held = false; d._winning = false; d._lordHeld = false;
       d.morale = Math.max(0, d.morale - 8); a.morale = Math.min(100, a.morale + 5);
       addLog(`${d.g.name}は一騎打ちを避けた（士気が下がった）`);
       return;
     }
-    if (d._desperate) { d._desperate = false; if (!auto) await UI.talk(d.g, 'angry', `${d.g.name}「${pick(['このままではジリ貧……ならば、この一戦に賭ける！', '退いても先はない。よかろう、受けて立つ！', '大将自ら出るしかあるまい……！'])}」`, G.factions[d.fi] ? G.factions[d.fi].color : '#777', { tag: '総大将出陣' }); addLog(`総大将 ${d.g.name}が、劣勢を覆すべく一騎打ちに応じた`); }
+    if (d._desperate) { d._desperate = false; if (!auto) await UI.talk(d.g, 'angry', `${d.g.name}「${pick(['このままではジリ貧……ならば、この一戦に賭ける！', '退いても先はない。よかろう、受けて立つ！', '大将自ら出るしかあるまい……！'])}」`, G.factions[d.fi] ? fcol(d.fi) : '#777', { tag: '総大将出陣' }); addLog(`総大将 ${d.g.name}が、劣勢を覆すべく一騎打ちに応じた`); }
     const res = auto ? Duel.quick(a.g, d.g) : await Duel.run(a, d, B.watch ? null : a.side === B.playerSide ? 'a' : d.side === B.playerSide ? 'd' : null, B.watch);
     baseBgm();
     if (pair && pair.kind === 'spare') { const wn = (res.winner === 'a' ? a : d).g.name; await pairTalk(pair.winLines ? Object.assign({}, pair, { lines: pair.winLines[wn] || [] }) : pair, a); res.outcome = 'fled'; const loser = res.winner === 'a' ? d : a; if (loser.gi >= 0) { const lg = G.gens[loser.gi]; lg.loyalty = Math.max(0, lg.loyalty - 15); lg.respect = (res.winner === 'a' ? a : d).g.name; } }
@@ -754,6 +900,144 @@ const Battle = (() => {
     for (const r of rows) for (const c of shuffle([0, 1, 2, 3, 4, 5, 6, 7, 8])) { const t = B.tiles[r][c].t; if (!unitAt(r, c) && !['wall', 'water', 'gate'].includes(t) && !B.tiles[r][c].fire) return [r, c]; }
     return null;
   }
+  async function tryNightLure() {
+    B.lures = B.lures || 0;
+    if (B.lures >= 2 || B.day < 3 || (B.lureDay && B.day - B.lureDay < 4)) return;
+    const atkT = troopsOf('atk'), defT = troopsOf('def');
+    if (!(outlook('atk') < -0.15 || atkT < defT * 0.9)) return;   // 逃げ腰（劣勢）のときだけ
+    const atks = B.units.filter(u => u.alive && u.side === 'atk' && !u.ally);
+    const schemer = atks.filter(isWise).sort((a, b) => b.g.int - a.g.int)[0];
+    if (!schemer) return;
+    // 狙う相手：守り手の猛将（猪突・剛勇ほどかかりやすい）か総大将
+    // 君主・総大将は、よほど考えの浅い者（知力50未満で猪突か剛勇）でなければ誘いに乗らない
+    const rash = u => u.g.int < 50 && (Game.has(u.g, '猪突') || Game.has(u.g, '剛勇'));
+    const cands = B.units.filter(u => u.alive && u.side === 'def' && u.gi >= 0 && (isFierce(u) || u.commander || Game.has(u.g, '猪突') || Game.has(u.g, '剛勇')) && (!(u.commander || u.g.isLord) || rash(u)));
+    if (!cands.length) return;
+    const bait = o => (Game.has(o.g, '猪突') ? 3 : 0) + (Game.has(o.g, '剛勇') ? 2 : 0) + (isFierce(o) ? 1.5 : 0) - (o.commander ? 1 : 0) - (Game.has(o.g, '慎重') ? 2 : 0) - o.g.int / 40;
+    const t = cands.sort((a, b) => bait(b) - bait(a))[0];
+    const p = clamp(0.3 + (schemer.g.int - 75) / 80 + (Game.has(schemer.g, '智謀') || Game.has(schemer.g, '神算') ? 0.1 : 0) + bait(t) * 0.05 + (isRain() ? 0.12 : 0), 0.1, isRain() ? 0.8 : 0.7);
+    if (Math.random() > p) return;
+    B.lures++; B.lureDay = B.day;
+    const col = fi => fi === null ? '#777' : G.factions[fi].color;
+    // 見破られることもある（相手の知力が高い・慎重・神算）
+    let seeP = clamp((t.g.int - schemer.g.int + 20) / 100 + (Game.has(t.g, '慎重') ? 0.2 : 0) + (Game.has(t.g, '神算') ? 0.4 : 0), 0, 0.85) * (isRain() ? 0.75 : 1);   // 雨の闇では退く兵の動きが見えにくい
+    // 守り手に知恵者（知力80以上か智謀・神算）がいれば、罠だと止める。守り手に余裕がある（優勢）なら、なおさら城を出ない
+    const adv = B.units.filter(u => u.alive && u.side === 'def' && u !== t && u.gi >= 0 && (u.g.int >= 80 || Game.has(u.g, '智謀') || Game.has(u.g, '神算'))).sort((a, b) => b.g.int - a.g.int)[0];
+    if (adv) seeP = Math.max(seeP, clamp(0.35 + (adv.g.int - schemer.g.int + 10) / 60, 0.3, 0.9));
+    if (outlook('def') > 0.2) seeP = Math.min(0.95, seeP + 0.3);
+    if (!auto && !B.watch && B.playerSide === 'atk') await UI.talk(schemer.g, 'normal', `${schemer.g.name}「敵は我らが逃げ腰と見ております。今宵、偽って退き、${t.g.name}をおびき出しましょう。伏兵で囲めば、勝機はあります」`, col(schemer.fi), { tag: '夜戦の計' });
+    else bubble(schemer, '今宵、偽って退く。伏兵を伏せよ');
+    if (Math.random() < seeP) {
+      if (adv && Math.random() < 0.6) { addLog(`${adv.g.name}が「罠です」と止め、${t.g.name}は城を出なかった`); addFloater(adv.r, adv.c, '罠です', '#aaa'); bubble(adv, pick(['お待ちを。あれは偽りの退却、罠でございます', '追ってはなりませぬ。敵は伏兵を伏せております'])); }
+      else { addLog(`${schemer.g.name}の夜戦の計は、${t.g.name}に見破られた`); addFloater(t.r, t.c, '見破った', '#aaa'); bubble(t, pick(['逃げる敵ほど怪しいものはない。追うな', '見え透いた手だ。城を出るな'])); }
+      await sleep(500); return;
+    }
+    // 吊り出す先：攻め手のそばの、門の外の空いたマス（四方に空きが多い所）
+    const free = (r, c) => inb(r, c) && !unitAt(r, c) && !['wall', 'water', 'gate', 'inner', 'keep'].includes(B.tiles[r][c].t) && !B.tiles[r][c].fire;
+    const cx = atks.reduce((s2, u) => s2 + u.c, 0) / atks.length, cy = atks.reduce((s2, u) => s2 + u.r, 0) / atks.length;
+    let spot = null, best = -1e9;
+    for (let r = 4; r < ROWS - 1; r++) for (let c = 0; c < COLS; c++) {
+      if (!free(r, c)) continue;
+      const open = DIRS.filter(([dr, dc]) => free(r + dr, c + dc)).length;
+      if (open < 3) continue;
+      const sc = open * 3 - Math.abs(r - cy) - Math.abs(c - cx);
+      if (sc > best) { best = sc; spot = [r, c]; }
+    }
+    if (!spot) return;
+    B.night = true;
+    Sound.se('horn');
+    await banner('夜戦！', 1200);
+    addLog(`${schemer.g.name}の計：攻め手は偽って退き、${t.g.name}隊を夜戦におびき出した！`);
+    bubble(t, pick(['逃がすか！ 追え、追えーっ！', '腰抜けどもめ、一人も帰すな！', '今こそ好機！ 我に続け！']));
+    t.r = spot[0]; t.c = spot[1]; t.x = t.c; t.y = t.r;
+    t.ambush = false; t.holdPost = false;
+    t.morale = Math.max(0, t.morale - 15); t.acted = true;   // 闇の中で道を見失い、この日は動けない
+    // 伏兵：近くの攻め手の部隊が四方から取り囲む（総大将は動かない）
+    const amb = atks.filter(u => !u.commander).sort((a, b) => (isWise(b) ? 1 : 0) - (isWise(a) ? 1 : 0) || dist(a, t) - dist(b, t));
+    const slots = DIRS.map(([dr, dc]) => [t.r + dr, t.c + dc]).filter(([r, c]) => free(r, c));
+    amb.slice(0, slots.length).forEach((u, i) => { u.r = slots[i][0]; u.c = slots[i][1]; u.x = u.c; u.y = u.r; u.morale = Math.min(100, u.morale + 15); });
+    Sound.se('warcry');
+    // 伏兵の奇襲：囲んだ部隊の数だけ、闇の中から一斉に斬りかかる（1部隊につき兵の7%、知略の将の隊は10%）
+    const n = Math.min(slots.length, amb.length), wiseN = amb.slice(0, n).filter(isWise).length;
+    const hit = Math.round(t.troops * (0.07 * n + 0.03 * wiseN) * (isRain() ? 1.4 : 1));
+    t.troops = Math.max(0, t.troops - hit); t.morale = Math.max(0, t.morale - 5 * n);
+    addFloater(t.r, t.c, '伏兵！ -' + hit, '#ff6a5a');
+    addLog(isRain() ? `伏兵だ！ ${t.g.name}隊は雨の闇の中で囲まれた` : `伏兵だ！ ${t.g.name}隊は闇の中で囲まれた`);
+    if (!auto && !B.watch) await UI.talk(t.g, 'shock', `${t.g.name}「な、伏兵だと……！？ しまった、謀られたか！」`, col(t.fi), { tag: '夜戦' });
+    else bubble(t, 'しまった、伏兵か！');
+    await sleep(500);
+    await checkRout(t, schemer);
+  }
+  async function tryNightRaid() {
+    B.raids = B.raids || 0;
+    if (B.raids >= 2 || B.day < 2 || (B.raidDay && B.day - B.raidDay < 4)) return;
+    const defs = B.units.filter(u => u.alive && u.side === 'def' && !u.ally && !u.ambush);
+    const schemer = defs.filter(isWise).sort((a, b) => b.g.int - a.g.int)[0];
+    if (!schemer) return;
+    const atks = B.units.filter(u => u.alive && u.side === 'atk');
+    if (!atks.length) return;
+    // 攻め手が勝ちを確信して油断しているとき、守り手が苦しいときほど狙う
+    let p = 0.12 + (schemer.g.int - 75) / 100 + (Game.has(schemer.g, '智謀') || Game.has(schemer.g, '神算') ? 0.08 : 0);
+    if (outlook('atk') > 0.2) p += 0.1;
+    if (outlook('def') < 0) p += 0.1;
+    if (isRain()) p += 0.12;   // 雨の夜は物音も松明も消え、夜襲にうってつけ
+    if (Math.random() > clamp(p, 0.05, isRain() ? 0.6 : 0.45)) return;
+    // 夜襲に出る部隊：総大将以外の、兵の多い順に2〜3部隊（知略の将の隊は必ず。総大将が知略の将なら、策だけ授ける）
+    const raiders = defs.filter(u => !u.commander).sort((a, b) => (b === schemer ? 1e9 : 0) + b.troops - (a === schemer ? 1e9 : 0) - a.troops).slice(0, 3);
+    if (!raiders.length) return;
+    // 狙う陣：油断した大部隊、もしくは総大将（四方の空きが多い所）
+    const free = (r, c) => inb(r, c) && !unitAt(r, c) && !['wall', 'water', 'gate', 'inner', 'keep'].includes(B.tiles[r][c].t) && !B.tiles[r][c].fire;
+    const tScore = o => o.troops / 1000 + (o.commander ? 6 : 0) - (Game.has(o.g, '慎重') ? 4 : 0) + DIRS.filter(([dr, dc]) => free(o.r + dr, o.c + dc)).length * 2;
+    const target = atks.filter(o => DIRS.some(([dr, dc]) => free(o.r + dr, o.c + dc))).sort((a, b) => tScore(b) - tScore(a))[0];
+    if (!target) return;
+    B.raids++; B.raidDay = B.day;
+    const col = fi => fi === null ? '#777' : G.factions[fi].color;
+    if (!auto && !B.watch && B.playerSide === 'def') await UI.talk(schemer.g, 'normal', `${schemer.g.name}「敵は勝ちを急ぎ、夜の備えが甘うございます。今宵、闇に紛れて${target.g.name}の陣を襲い、夜明け前に引き上げましょう」`, col(schemer.fi), { tag: '夜襲の計' });
+    else bubble(schemer, '今宵、敵陣を襲う。松明を消せ');
+    B.night = true;
+    Sound.se('horn');
+    await banner(isRain() ? '雨の夜襲！' : '夜襲！', 1200);
+    // 見破られると、待ち構えられて逆に痛手を負う（攻め手の知力が高い・慎重・神算）
+    const watcher = atks.filter(o => o.gi >= 0).sort((a, b) => b.g.int - a.g.int)[0];
+    const seeP = watcher ? clamp((watcher.g.int - schemer.g.int + 15) / 100 + (Game.has(target.g, '慎重') ? 0.15 : 0) + (Game.has(watcher.g, '神算') ? 0.3 : 0), 0, 0.8) * (isRain() ? 0.6 : 1) : 0;
+    if (Math.random() < seeP) {
+      addLog(`${schemer.g.name}の夜襲は、${watcher.g.name}に見破られていた！`);
+      bubble(watcher, pick(['夜襲は読めておったわ。射よ！', '来ると思うておった。返り討ちにせよ！']));
+      raiders.forEach(u => { const loss = Math.round(u.troops * 0.08); u.troops = Math.max(0, u.troops - loss); u.morale = Math.max(0, u.morale - 10); u.acted = true; addFloater(u.r, u.c, '-' + loss, '#ff6a5a'); });
+      Sound.se('volley'); await sleep(600);
+      for (const u of raiders) await checkRout(u, watcher);
+      return;
+    }
+    addLog(isRain() ? `${schemer.g.name}の夜襲！ 守り手が雨音に紛れて${target.g.name}の陣を襲った` : `${schemer.g.name}の夜襲！ 守り手が闇に紛れて${target.g.name}の陣を襲った`);
+    // 城を出て、狙った陣の四方に忍び寄る
+    const home = raiders.map(u => [u.r, u.c]);
+    const slots = DIRS.map(([dr, dc]) => [target.r + dr, target.c + dc]).filter(([r, c]) => free(r, c));
+    const go = raiders.slice(0, slots.length);
+    go.forEach((u, i) => { u.r = slots[i][0]; u.c = slots[i][1]; u.x = u.c; u.y = u.r; });
+    draw(); await sleep(300);
+    // 不意打ち：寝込みを襲われた陣は反撃できず、士気が大きく落ち、周りの陣も浮き足立つ
+    Sound.se('warcry');
+    addFloater(target.r, target.c, '夜襲！', '#ff6a5a');
+    target.morale = Math.max(0, target.morale - (isRain() ? 22 : 15));
+    atks.filter(o => o !== target && dist(o, target) <= 2).forEach(o => { o.morale = Math.max(0, o.morale - (isRain() ? 9 : 6)); });
+    if (target.gi >= 0 && Math.random() < 0.35 + (schemer.g.int - 80) / 100) { target.confused = 2; addFloater(target.r, target.c, '混乱', '#ffd23a'); }
+    B.raiding = true;
+    try {
+      for (const u of go) {
+        if (!target.alive || !u.alive || B.over) break;
+        const extra = Math.round(target.troops * (isWise(u) ? 0.04 : 0.02) * (isRain() ? 1.6 : 1));   // 闇の中の不意打ちの上乗せ（雨ならなお大きい）
+        target.troops = Math.max(0, target.troops - extra);
+        await doAttack(u, target.r, target.c);
+      }
+    } finally { B.raiding = false; }
+    if (!auto && !B.watch && target.gi >= 0 && target.alive) await UI.talk(target.g, 'shock', `${target.g.name}「な、何事だ！ 夜襲か……！ 慌てるな、陣を立て直せ！」`, col(target.fi), { tag: '夜襲' });
+    else if (target.alive) bubble(target, '夜襲だ！ 慌てるな！');
+    // 夜明け前に城へ引き上げる（戻る場所が空いていれば）
+    go.forEach((u, i) => { if (!u.alive) return; const [r, c] = home[raiders.indexOf(u)]; if (!unitAt(r, c)) { u.r = r; u.c = c; u.x = c; u.y = r; } u.acted = true; });
+    addLog('夜襲の部隊は、夜明け前に城へ引き上げた');
+    draw(); await sleep(400);
+  }
+  const DT = w => { if (typeof window !== 'undefined' && window.__trace) (B.trace = B.trace || []).push(`${B.day}:出来事:${w}`); };
   async function dramaEvents() {
     B.rally = B.rally || { atk: 0, def: 0 };
     B.reinf = B.reinf || { atk: 0, def: 0 };
@@ -771,7 +1055,7 @@ const Battle = (() => {
         Sound.se('warcry');
         await banner(`${fname(sd)}、背水の陣！`, 1300);
         addLog(`${fname(sd)}は追い詰められて奮い立った！（3日間、攻撃力が上がる）`);
-        if (cmd.gi >= 0 && !auto) await UI.talk(cmd.g, 'angry', `${cmd.g.name}「退路はない！ ここで死力を尽くせ！」`, cmd.fi === null ? '#777' : G.factions[cmd.fi].color, { tag: '背水の陣' });
+        if (cmd.gi >= 0 && !auto) await UI.talk(cmd.g, 'angry', `${cmd.g.name}「退路はない！ ここで死力を尽くせ！」`, (G.factions[cmd.fi] ? fcol(cmd.fi) : '#777'), { tag: '背水の陣' });
       }
     }
     // 援軍：開戦時に決めた到着日に駆けつける。守り手が危ないと急報を受けて急ぐ
@@ -780,12 +1064,16 @@ const Battle = (() => {
       if (rf.done) continue;
       if (rf.side === 'def' && defBad && rf.day > B.day && Math.random() < 0.5) { rf.day = B.day; rf.rushed = true; }
       if (rf.day > B.day) continue;
-      await arriveReinf(rf);
+      DT('援軍'); await arriveReinf(rf);
     }
+    // 夜戦への吊り出し：攻め手が劣勢で逃げ腰になったとき、知略の将がいれば、偽って退いて守り手の猛将や総大将を夜戦におびき出し、伏兵で囲む
+    DT('吊り出し'); await tryNightLure();
+    // 夜襲：守り手の知略の将が、闇に紛れて城を出て攻め手の陣を襲い、夜明け前に城へ引き上げる
+    DT('夜襲'); if (!B.night) await tryNightRaid();
     // 守り手が苦しくなると、民が立ち上がることがある
-    if (outlook('def') < -0.3) await tryMilitia('crisis');
+    DT('市民兵'); if (outlook('def') < -0.3) await tryMilitia('crisis');
     // 忠誠の低い武将が、戦の最中に寝返ることがある（1つの合戦で1回まで）
-    if (B.day >= 3 && !B.turned) await tryTurncoat();
+    DT('寝返り'); if (B.day >= 3 && !B.turned) await tryTurncoat(); DT('出来事おわり');
   }
 
   const gateUp = () => B.tiles[2][4].t === 'gate';
@@ -852,10 +1140,10 @@ const Battle = (() => {
     const bad = outlook(rf.side) < -0.15;
     if (bad) B.units.filter(o => o.alive && o.side === rf.side).forEach(o => o.morale = Math.min(100, o.morale + 15));
     if (!auto) {
-      const col = G.factions[rf.fi].color;
+      const col = fcol(rf.fi);
       if (rf.g) await UI.talk(rf.g, 'angry', `${rf.g.name}「${rf.ally ? `${fname}軍の${rf.g.name}、盟約により助太刀いたす！` : rf.rushed ? '急報を受けて駆けつけた！ 持ちこたえよ！' : line(rf.g, 'reinforce')}」`, col, { tag: '援軍' });
       const cmd = B.units.find(o => o.side === rf.side && o.commander && o.alive && o.gi >= 0);
-      if (bad && cmd && rf.side === B.playerSide) await UI.talk(cmd.g, 'happy', `${cmd.g.name}「${line(cmd.g, 'saved')}」`, G.factions[cmd.fi].color, { tag: '援軍' });
+      if (bad && cmd && rf.side === B.playerSide) await UI.talk(cmd.g, 'happy', `${cmd.g.name}「${line(cmd.g, 'saved')}」`, fcol(cmd.fi), { tag: '援軍' });
     }
   }
   // 寝返り：忠誠40未満の武将（総大将・君主・忠義は除く）が、自軍が苦しいほど敵に寝返りやすい
@@ -928,10 +1216,58 @@ const Battle = (() => {
   }
 
   // ---------- 日の流れ ----------
+  // ---------- 合戦が止まらないための見張り ----------
+  // 思わぬ不具合で1部隊の行動が途中で止まっても、合戦全体が固まらないようにする
+  function battleTrouble(e, where) {
+    console.error('battle', where, e);
+    window.__battleErr = (where || '') + ': ' + (e && e.stack || e);
+    try { UI.toast('戦場で問題が起きたため、この行動を飛ばして続けます'); } catch (_) { }
+  }
+  const overlayOpen = () => ['#duel.show', '#talk.show', '#modal.show', '#cutin.show', '#sheet.show'].some(q => document.querySelector(q));
+  // 20秒たっても何も進まず、一騎討ちや会話も出ていなければ、止まったとみなす
+  let unitGuards = 0;
+  function stallGuard(dayLevel) {
+    let iv;
+    const p = new Promise(res => {
+      beat = performance.now();
+      iv = setInterval(() => {
+        if (!B || B.over) { clearInterval(iv); return; }
+        if (dayLevel && unitGuards > 0) { beat = performance.now(); return; }   // 部隊の見張りが働いている間は、そちらに任せる
+        if (document.hidden || overlayOpen() || B.mode !== 'busy') { beat = performance.now(); return; }   // 自分の手番で操作を待っている間は、止まったとはみなさない
+        if (performance.now() - beat > 20000) { clearInterval(iv); res('stall'); }
+      }, 1000);
+    });
+    return { p, stop: () => clearInterval(iv) };
+  }
+  async function runUnit(u, rogue) {
+    const g = stallGuard(false);
+    unitGuards++;
+    try {
+      const r = await Promise.race([aiUnit(u, rogue), g.p]);
+      if (r === 'stall') { u.staleDay = B.day; battleTrouble(new Error('stall'), `${u.g.name}の行動が止まった`); }   // 止まった行動が後で動き出しても、その日はもう何もさせない
+    } catch (e) { battleTrouble(e, `${u.g.name}の行動`); }
+    finally { g.stop(); unitGuards--; }
+    if (u.alive) u.acted = true;
+    if (B && !B.over) B.mode = 'busy';
+  }
+  // 1日の流れ。途中で不具合が出たら、その日の残りを飛ばして次の手番へ進める
+  function runDay(first, resume) {
+    const g = stallGuard(true), day = B.day;
+    Promise.race([resume ? playerPhase() : startDay(first), g.p]).then(r => { if (r === 'stall') throw new Error('stall'); }).finally(() => g.stop()).catch(e => {
+      if (B && B.day !== day && e && e.message === 'stall') return;   // もう次の日に進んでいれば何もしない
+      battleTrouble(e, `${B && B.day}日目`);
+      if (!B || B.over) return;
+      B.gen = (B.gen || 0) + 1;   // 古い流れが後で動き出しても、二重に進まないように
+      B.fails = (B.fails || 0) + 1;
+      // 同じ日に何度も続くなら、その日を終えて次の日へ（勝ち負けは決めない）
+      setTimeout(() => { if (B && !B.over) runDay(false, B.fails <= 3); }, 300);
+    });
+  }
+
   async function startDay(first) {
     if (B.over) return;
     if (!first) {
-      B.day++;
+      B.day++; B.fails = 0;
       // 炎のダメージと消火
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const tl = B.tiles[r][c];
@@ -941,13 +1277,48 @@ const Battle = (() => {
           tl.fire--; if (B.weather === 'rain') tl.fire = 0;
         }
       }
+      // 雨に打たれて兵糧が傷む（野営する攻め手は大きく、城の蔵にある守り手は少し）
+      if (B.weather === 'rain') {
+        const la = Math.round(Math.max(0, B.food) * 0.04), ld = Math.round(Math.max(0, B.defFood) * 0.01);
+        B.food -= la; B.defFood -= ld;
+        if (la > 0 && !B.rotSaid) { B.rotSaid = true; addLog('雨で兵糧が傷んだ（攻め手は野営のため痛手が大きい）'); }
+      }
       B.weather = Math.random() < 0.7 ? B.weather : pickWeather();
       // 兵糧
       const atkTroops = B.units.filter(u => u.alive && u.side === 'atk').reduce((s, u) => s + u.troops, 0);
       B.food -= atkTroops * 0.03;
       if (B.food <= 0) { B.units.filter(u => u.alive && u.side === 'atk').forEach(u => u.morale = Math.max(0, u.morale - 25)); addLog('攻め手の兵糧が尽きた！'); }
+      // 守り手も城の兵糧を食べる。尽きれば士気が落ちる
+      const hadDefFood = B.defFood > 0;
+      B.defFood -= troopsOf('def') * 0.03;
+      if (B.defFood <= 0) { B.defFood = 0; B.units.filter(u => u.alive && u.side === 'def').forEach(u => u.morale = Math.max(0, u.morale - 20)); if (hadDefFood) addLog('城の兵糧が尽きた！'); }
     }
+    if (!first && B.night) { B.night = false; addLog('夜が明けた'); }
     B.units.forEach(u => { if (u.alive) { u.acted = false; if (u.confused > 0) { u.confused--; if (u.confused > 0) u.acted = true; } } });
+    // 名将の采配：統率85以上の将は、毎朝、自分と隣の味方の士気を立て直す（統率が高いほど大きい）
+    if (!first) B.units.filter(u => u.alive && u.gi >= 0 && u.g.lead >= 85 && !u.confused).forEach(u => {
+      const v = Math.round((u.g.lead - 80) / 3);
+      B.units.filter(o => o.alive && o.side === u.side && dist(o, u) <= 1).forEach(o => { o.morale = Math.min(100, o.morale + v); });
+      B.cmdSaid = B.cmdSaid || {};
+      if (!B.cmdSaid[u.gi] && B.units.some(o => o.alive && o !== u && o.side === u.side && dist(o, u) <= 1)) { B.cmdSaid[u.gi] = true; addLog(`${u.g.name}の采配で、隣の味方の陣が引き締まった（毎朝 士気+${v}）`); addFloater(u.r, u.c, '采配', '#9ad0ff'); }
+    });
+    // 統率の上位者（名将、上位5人）は、毎朝、傷ついた兵を戦列に戻す。回復量は統率しだい、本拠の城を守る時は2倍
+    if (!first) B.units.filter(u => u.alive && u.gi >= 0 && Game.top(u.g, 'lead') && u.troops < u.maxTroops).forEach(u => {
+      const home = u.side === 'def' && B.defFi != null && G.factions[B.defFi] && G.factions[B.defFi].capital === B.to.i;
+      const rate = Math.max(0.004, (u.g.lead - 70) / 1400) * (Game.top(u.g, 'lead') === 1 ? 1.3 : 1) * (home ? 2 : 1);
+      const v = Math.min(u.maxTroops - u.troops, Math.round(u.maxTroops * rate));
+      if (v <= 0) return;
+      u.troops += v; addFloater(u.r, u.c, '+' + v, '#7dff9a');
+      if (!B.healSaid) { B.healSaid = {}; }
+      if (!B.healSaid[u.gi]) { B.healSaid[u.gi] = true; addLog(`${u.g.name}の統率で、傷ついた兵が戦列に戻った${home ? '（本拠の城）' : ''}`); }
+    });
+    // 包囲された部隊は士気が落ちる（野戦・知略の将の囲みで大きく）
+    if (!first) B.units.filter(u => u.alive).forEach(u => {
+      const sur = surrounders(u); if (sur.length < 2 || !isField(u)) return;
+      const wise = sur.filter(isWise).length;
+      const drop = Math.round(((sur.length - 1) * 4 + wise * 3) * (B.night ? 1.5 : 1));
+      u.morale = Math.max(0, u.morale - drop); addFloater(u.r, u.c, '包囲', '#ff9a6a');
+    });
     // 包囲：大軍に囲まれた城は、5日目から守り手の士気が落ち、兵が逃げ出す（攻め手が守り手の1.8倍以上のとき）
     if (!first && B.day >= 5) {
       const sum = sd => B.units.filter(u => u.alive && u.side === sd).reduce((s2, u) => s2 + u.troops, 0);
@@ -964,15 +1335,18 @@ const Battle = (() => {
     if (await checkEnd()) return;
     updateHUD();
     baseBgm(); Sound.amb(B.weather === 'rain' ? 'rain' : null);
-    await banner(`${B.day}日目　${WNAME[B.weather]}`, 700);
+    await banner(`${B.day}日目　${B.night ? '夜戦' : WNAME[B.weather]}`, 700);
     // 先手は攻め手
-    if (B.playerSide === 'atk') await playerPhase(); else { await aiPhase('atk'); if (B.over) return; await playerPhase(); }
+    const g0 = B.gen || 0;
+    if (B.playerSide === 'atk') await playerPhase(); else { await aiPhase('atk'); if (B.over || (B.gen || 0) !== g0) return; await playerPhase(); }
   }
 
   async function playerPhase() {
     if (B.over) return;
-    if (auto) { await aiPhase(B.playerSide); return endPlayerPhase(); }
+    const g0 = B.gen || 0;   // この手番の流れの世代。見張りが立て直したあとの古い流れは、ここで止まる
+    if (auto) { await aiPhase(B.playerSide); if ((B.gen || 0) !== g0) return; return endPlayerPhase(g0); }
     if (B.watch) {
+      B.mode = 'busy';   // 観戦中は操作を待たない（見張りが止まりを見つけられるように）
       setActions([{ label: '▶ ここから自分で指揮する', cls: 'primary', fn: () => { B.watch = false; setActions([]); UI.toast('この手番のあとから、自分で指揮できます'); } }]);
       const sg = Auto.strategist();
       if (sg && ((B.day === 1 && B.playerSide === 'atk') || (B.day > 1 && Math.random() < 0.15))) {
@@ -980,9 +1354,8 @@ const Battle = (() => {
         await UI.talk(sg, 'normal', `${Auto.title(sg)}${sg.name}「${Auto.sl(B.playerSide === 'atk' ? 'battle' : 'defend', { foe: foeCmd ? foeCmd.g.name : '' })}」`, facColor(sg), { tag: sg.isLord ? '君主の采配' : '軍師' });
       }
       await aiPhase(B.playerSide);
-      if (B.over) return;
-      if (B.watch) return endPlayerPhase();
-      return endPlayerPhase();
+      if (B.over || (B.gen || 0) !== g0) return;
+      return endPlayerPhase(g0);
     }
     B.mode = 'idle'; B.sel = null; B.reach = null; B.targets = null;
     // 命令無視（猪突・忠誠の低い武将）
@@ -992,7 +1365,7 @@ const Battle = (() => {
       let p = Game.has(g, '猪突') ? 0.15 : 0;
       if (g.loyalty < 50) p += (50 - g.loyalty) / 120;
       if (Math.random() < p && B.units.some(o => o.alive && o.side !== u.side && dist(o, u) <= 6)) {
-        await UI.talk(g, 'angry', `${g.name}「${line(g, 'ignore')}」`, G.factions[u.fi].color, { tag: '命令無視' });
+        await UI.talk(g, 'angry', `${g.name}「${line(g, 'ignore')}」`, fcol(u.fi), { tag: '命令無視' });
         await aiUnit(u, true);
         if (await checkEnd()) return;
       }
@@ -1007,23 +1380,25 @@ const Battle = (() => {
       { label: '撤退', cls: 'danger', fn: async () => { if (await UI.confirm('全軍を退却させますか？')) { B.units.filter(u => u.alive && u.side === B.playerSide).forEach(u => { u.alive = false; u.status = 'retreat'; }); checkEnd(); } } },
     ]);
   }
-  async function endPlayerPhase() {
-    if (B.over) return;
+  async function endPlayerPhase(g0 = B.gen || 0) {
+    if (B.over || (B.gen || 0) !== g0) return;
     B.sel = null; B.reach = null; B.targets = null; B.mode = 'busy'; setActions([]);
     if (await checkEnd()) return;
     // 同盟国の援軍は自分たちで動く
-    for (const u of B.units.filter(o => o.alive && o.ally && o.side === B.playerSide && !o.acted)) { await aiUnit(u, false); updateHUD(); if (await checkEnd()) return; }
+    for (const u of B.units.filter(o => o.alive && o.ally && o.side === B.playerSide && !o.acted)) { await runUnit(u, false); updateHUD(); if (await checkEnd()) return; }
     const enemy = B.playerSide === 'atk' ? 'def' : 'atk';
     if (B.playerSide === 'atk') { await aiPhase(enemy); if (B.over) return; }
-    startDay(false);
+    if ((B.gen || 0) !== g0) return;
+    runDay(false);
   }
 
   async function onTap(ev) {
-    if (!B || B.over || B.mode === 'busy') return;
+    if (!B || B.over || B.mode === 'busy' || B.mode === 'menu') return;   // 行動を選んでいる間は地図に触っても何もしない（動いた部隊がもう一度動けてしまうのを防ぐ）
     const rect = cv.getBoundingClientRect();
     const c = Math.floor((ev.clientX - rect.left) / cell), r = Math.floor((ev.clientY - rect.top) / cell);
     if (!inb(r, c)) return;
-    const u = unitAt(r, c);
+    let u = unitAt(r, c);
+    if (u && u.ambush && u.side !== B.playerSide) u = null;   // 森に伏せた敵は見えない
     if (B.mode === 'target') {
       if (B.targets.some(([tr, tc]) => tr === r && tc === c)) { const fn = B.onTarget; B.targets = null; B.mode = 'busy'; setActions([]); await fn(r, c); afterAct(); }
       else { Sound.se('tap'); }
@@ -1033,6 +1408,7 @@ const Battle = (() => {
       const s = B.sel; B.mode = 'busy'; B.reach = null; setActions([]);
       s.prev = [s.r, s.c];
       await animateMove(s, r, c);
+      if (s.acted || !s.alive) { await afterAct(); return; }   // 伏兵に襲われた
       actMenu(s);
       return;
     }
@@ -1074,10 +1450,11 @@ const Battle = (() => {
     const list = B.units.filter(u => u.alive && u.side === side && !u.acted);
     // 総大将は最後に動く
     list.sort((a, b) => (a.commander ? 1 : 0) - (b.commander ? 1 : 0));
+    const g0 = B.gen || 0;
     for (const u of list) {
-      if (B.over) return;
+      if (B.over || (B.gen || 0) !== g0) return;
       if (!u.alive || u.acted) continue;
-      await aiUnit(u, false);
+      await runUnit(u, false);
       updateHUD();
       if (await checkEnd()) return;
     }
@@ -1112,6 +1489,7 @@ const Battle = (() => {
   async function tryDuel(u, wmine) {
     if (u.gi < 0 || u.acted) return false;
     B.challenged = B.challenged || new Set();
+    if (u.charge) return chargeDuel(u);
     const bold = Game.has(u.g, '剛勇') || Game.has(u.g, '猪突');
     const timid = Game.has(u.g, '臆病') || Game.has(u.g, '慎重');
     const cands = B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && dist(o, u) === 1 && !B.challenged.has(u.gi + '-' + o.gi))
@@ -1131,6 +1509,32 @@ const Battle = (() => {
     B.challenged.add(u.gi + '-' + t.gi);
     await doDuel(u, t);
     return true;
+  }
+  // 兵糧が持たず、再び斬り込む部隊：隣の敵将に片端から一騎討ちを申し込む（1日に同じ相手へは1度）
+  async function chargeDuel(u) {
+    const t = B.units.filter(o => o.alive && o.side !== u.side && o.gi >= 0 && dist(o, u) === 1 && !B.challenged.has(u.gi + '-' + o.gi + '@' + B.day) && u.g.war >= o.g.war - 20)
+      .sort((a, b) => ((b.commander ? 15 : 0) - b.g.war) - ((a.commander ? 15 : 0) - a.g.war))[0];   // 総大将を優先、次に討ちやすい相手
+    if (!t) return false;
+    B.challenged.add(u.gi + '-' + t.gi + '@' + B.day);
+    await doDuel(u, t);
+    return true;
+  }
+  // 一旦退いた部隊のその後：時が味方なら離れたまま逃げ続け、敵より先に兵糧が尽きるなら再び斬り込む
+  async function afterFallback(u, foes) {
+    if (!u.fellBack || u.commander || u.charge) return false;
+    const near = Math.min(...foes.map(f => dist(f, u)));
+    if (B.day - u.fellBack < 2 && near <= 2) return false;   // 退いたばかり・まだ敵が近いうちは、いつもの立て直し
+    if (B.day - u.fellBack < 2) return 'wait';
+    if (timeOnMySide(u.side)) {
+      if (!u.kiteSaid && u.gi >= 0) { u.kiteSaid = true; bubble(u, pick(['敵の兵糧が先に尽きる。無理に戦うな、離れておれ', '待てば勝てる戦だ。距離を取れ', '追ってくるなら退け。飢えるのは向こうだ'])); addLog(`${u.g.name}隊は、敵の兵糧切れを待って距離を取り続ける`); }
+      return 'wait';
+    }
+    // 時がたつほど不利でも、すぐには出ない。兵糧（攻め手は期限も）が残り10日を切るか、離れて5日たったら斬り込む
+    const myEnd = u.side === 'atk' ? Math.min(CONFIG.BATTLE_DAYS - B.day + 1, foodDays('atk')) : foodDays('def');
+    if (myEnd > 10 && B.day - u.fellBack < 5) return 'wait';
+    u.charge = true;
+    if (u.gi >= 0) { bubble(u, pick(['兵糧が持たぬ……ならば今一度斬り込む！', '飢えて退くくらいなら、ここで決着をつける！', '敵将、出てこい！ 一騎討ちで勝負だ！'])); addLog(`${u.g.name}隊は、兵糧が尽きる前に再び斬り込んだ`); }
+    return false;
   }
   // 計略（火計・混乱）を使うか（知力と性格で決める）
   async function tryPlot(u, wmine, foes, after) {
@@ -1162,9 +1566,12 @@ const Battle = (() => {
     return true;
   }
 
+  // 調べ用：window.__trace が真なら、部隊ごとの判断を B.trace に残す
+  const T = (u, why) => { if (typeof window !== 'undefined' && window.__trace) (B.trace = B.trace || []).push(`${B.day}:${u.g.name}${u.side === 'atk' ? '攻' : '守'}(${u.r},${u.c}):${why}`); };
   async function aiUnit(u, rogue) {
-    const foes = B.units.filter(o => o.alive && o.side !== u.side);
+    const foes = B.units.filter(o => o.alive && o.side !== u.side && !o.ambush);   // 森に伏せた敵は見えない
     if (!foes.length) { u.acted = true; return; }
+    T(u, '開始');
     showInfo(u);
     const wmine = B.watch && u.side === B.playerSide;
     // 必殺技（好機なら使う）
@@ -1175,10 +1582,19 @@ const Battle = (() => {
     if (!rogue && await tryPlot(u, wmine, foes)) return;
     // 守り手（総大将）や城内の部隊は、敵が近づくまで動かない
     const nearest = foes.slice().sort((a, b) => dist(a, u) - dist(b, u))[0];
+    // 城外に布陣した守り手：森の伏兵は敵が隣に来るまで動かない。山・川辺は陣を動かず、届く敵を討つ（門が破れるか、守り手が優勢になれば打って出る）
+    if (u.holdPost && (!gateUp() || outlook('def') > 0.35)) { u.holdPost = false; u.ambush = false; }   // 陣を出たら、もう伏兵ではない
+    if (u.holdPost && !rogue) {
+      const t = attackTargets(u).filter(([r, c]) => unitAt(r, c));
+      if (t.length && !u.ambush) { const [r, c] = bestTarget(u, t); await doAttack(u, r, c); return; }
+      u.acted = true; return;
+    }
     if (u.side === 'def' && !rogue && (u.src == null || u.militia)) {
       const keepGuard = u.commander && B.tiles[u.r][u.c].t === 'keep';
       // 門が無事なうちは、城内の部隊は城壁に拠って戦う（よほど優勢なら打って出る）
-      const holdWall = u.r <= 2 && gateUp() && outlook('def') < 0.3;
+      // 部隊の多い同士の戦いでは、少し優勢なだけでも城を出て野戦を挑む
+      const many = B.units.filter(o => o.alive && o.side === 'def').length >= 4 && B.units.filter(o => o.alive && o.side === 'atk').length >= 4;
+      const holdWall = u.r <= 2 && gateUp() && outlook('def') < (many ? 0.15 : 0.3);
       if (keepGuard || holdWall || (dist(nearest, u) > 4 && gateUp())) {
         const weakest = t => t.sort((a, b) => unitAt(a[0], a[1]).troops - unitAt(b[0], b[1]).troops)[0];
         let t = attackTargets(u).filter(([r, c]) => unitAt(r, c));
@@ -1195,17 +1611,27 @@ const Battle = (() => {
         u.acted = true; return;
       }
     }
-    if (!rogue && await woundedFallback(u, foes)) return;
+    // 攻め手は、残りの日が少なくなったら下がらずに総攻撃
+    if (u.side === 'atk' && !u.commander && CONFIG.BATTLE_DAYS - B.day < 6) u.charge = true;
+    if (!rogue) {
+      const af = await afterFallback(u, foes);
+      if (af === 'wait') { if (await woundedFallback(u, foes, true)) { T(u, '離れて待つ'); return; } }
+    }
+    if (!rogue && !u.charge && await woundedFallback(u, foes)) { T(u, '深手で下がる'); return; }
     // 攻めの総大将：味方が残っているうちは最後尾につき、負けそうなら下がる。最後の1部隊になったら自ら攻める
-    if (u.commander && u.side === 'atk' && !rogue) {
+    // 残りの日が少ない（6日を切った）なら、総大将も前に出て攻める
+    const lateAtk = u.side === 'atk' && CONFIG.BATTLE_DAYS - B.day < 6;
+    if (u.commander && u.side === 'atk' && !rogue && !lateAtk) {
       const allies = B.units.filter(o => o.alive && o.side === u.side && o !== u);
-      if (allies.length) { await commanderRear(u, allies, foes); return; }
+      if (allies.length) { await commanderRear(u, allies, foes); T(u, '総大将は後ろ'); return; }
     }
     // 移動先を評価
     const reach = moveRange(u);
     let best = null, bestScore = -1e9;
     const goal = u.side === 'atk' ? (B.tiles[2][4].t === 'gate' ? { r: 3, c: 4 } : { r: 0, c: 4 }) : nearest;
     const field = distField(u, goal);
+    const wise = u.gi >= 0 && (u.g.int >= 75 || Game.has(u.g, '智謀') || Game.has(u.g, '神算'));
+    const gateHitter = wise && u.side === 'atk' && gateUp() ? B.units.filter(o => o.alive && o.side === 'atk' && !o.commander).sort((a, b) => (dist(a, { r: 3, c: 4 }) - dist(b, { r: 3, c: 4 })) || (b.troops - a.troops))[0] : null;
     reach.forEach(k => {
       const [r, c] = k.split(',').map(Number);
       const tg = attackTargets(u, r, c);
@@ -1219,7 +1645,15 @@ const Battle = (() => {
       if (u.g.war >= 85 && !u.commander && tg.length) score += 6 + (Game.has(u.g, '剛勇') || Game.has(u.g, '猪突') ? 6 : 0);
       // 武勇の将は、一騎討ちを挑めそうな敵将の隣を目指す
       if (u.g.war >= 78 && !u.commander && u.gi >= 0 && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0 && o.g.war <= u.g.war + 5 && !isWeakVs(o.g, u.g); })) score += 10;
+      // 囲みに加わる：すでに味方が隣にいる敵の、空いた横を目指す（知略の将や野戦ではなおさら）
+      { let enc = 0; DIRS.forEach(([dr, dc]) => { const o = unitAt(r + dr, c + dc); if (o && o.alive && o.side !== u.side && isField(o)) { const n = surrounders(o).filter(x => x !== u).length; if (n >= 1) enc = Math.max(enc, n * 5 * (isWise(u) ? 1.4 : 1)); } }); score += enc; }
+      if (u.charge && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0; })) score += 14;
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
+      // 知力の高い将（知力75以上か智謀・神算）は、門が無事なうち、門を叩く1部隊でなければ城壁の矢が届かない所で待つ
+      if (gateHitter && u !== gateHitter && !tg.some(([tr, tc]) => unitAt(tr, tc))) {
+        const archers = B.units.filter(o => o.alive && o.side === 'def' && o.r <= 2 && ['inner', 'gate'].includes(B.tiles[o.r][o.c].t) && dist(o, { r, c }) <= 2).length;
+        score -= archers * 12;
+      }
       // 総大将は、味方が戦っている間は敵に囲まれる位置を避ける
       if (u.commander && B.units.some(o => o.alive && o.side === u.side && o !== u)) {
         const adjFoe = DIRS.filter(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side; }).length;
@@ -1229,13 +1663,14 @@ const Battle = (() => {
       if (score > bestScore) { bestScore = score; best = [r, c]; }
     });
     if (best && (best[0] !== u.r || best[1] !== u.c)) await animateMove(u, best[0], best[1]);
+    if (u.acted || !u.alive) return;   // 伏兵に襲われた
     // 着いた先で、必殺技・一騎打ち・計略の好機があれば狙う
     if (!rogue && await aiSkill(u)) return;
     if (await tryDuel(u, wmine)) return;
     if (!rogue && attackTargets(u).filter(([r, c]) => unitAt(r, c)).length === 0 && await tryPlot(u, wmine, foes, true)) return;
     const tg = attackTargets(u);
-    if (tg.length) { const [r, c] = bestTarget(u, tg); await doAttack(u, r, c); }
-    else { u.acted = true; await sleep(150); }
+    if (tg.length) { const [r, c] = bestTarget(u, tg); await doAttack(u, r, c); T(u, '攻撃'); }
+    else { u.acted = true; T(u, '移動のみ'); await sleep(150); }
   }
   // 攻撃の相手選び：討ち取れる相手（とくに総大将）を最優先。次に弱った相手。反撃で大きな損害を受ける相手は避ける
   function bestTarget(u, tg) {
@@ -1256,12 +1691,13 @@ const Battle = (() => {
     return best;
   }
   // 深手を負った部隊（兵が2割5分未満）は、味方がいれば後ろへ下がって立て直す。とどめを刺せる相手が隣にいれば討つ
-  async function woundedFallback(u, foes) {
+  async function woundedFallback(u, foes, keepAway) {
     // 攻め手は城を落とすまで手を緩めにくいので、より深手（1割5分未満）になってから下がる
-    if (u.commander || u.troops >= u.maxTroops * (u.side === 'atk' ? 0.15 : 0.25)) return false;
+    if (u.commander || (!keepAway && u.troops >= u.maxTroops * (u.side === 'atk' ? 0.15 : 0.25))) return false;
     if (u.side === 'def' && u.r <= 2) return false;   // 城内の守り手は城壁に拠って戦う
     const allies = B.units.filter(o => o.alive && o.side === u.side && o !== u);
-    if (!allies.length) return false;
+    if (!allies.length && !keepAway) return false;
+    if (!u.fellBack) u.fellBack = B.day;
     const adjKill = attackTargets(u).map(([r, c]) => unitAt(r, c)).filter(o => o && calcDamage(u, o, dist(u, o) > 1) >= o.troops);
     if (adjKill.length) { await doAttack(u, adjKill[0].r, adjKill[0].c); return true; }
     let best = null, bs = -1e9;
@@ -1294,6 +1730,7 @@ const Battle = (() => {
       if (sc > bs) { bs = sc; best = [r, c]; }
     });
     if (best && (best[0] !== u.r || best[1] !== u.c)) await animateMove(u, best[0], best[1]);
+    if (u.acted || !u.alive) return;   // 伏兵に襲われた
     // 攻撃は最後の番手として、弱った敵か、隣に迫られたときだけ
     const tg = attackTargets(u).filter(([r, c]) => unitAt(r, c));
     const pickT = tg.sort((a, b) => unitAt(a[0], a[1]).troops - unitAt(b[0], b[1]).troops)[0];
@@ -1316,6 +1753,7 @@ const Battle = (() => {
     else if (!atkCmd.alive) { winner = 'def'; reason = `攻めの総大将 ${atkCmd.g.name} が倒れた`; }
     else if (B.day > CONFIG.BATTLE_DAYS) { winner = 'def'; reason = '30日を守り抜いた'; }
     else if (B.food <= 0 && B.day > 3 && atkAlive.every(u => u.morale < 30)) { winner = 'def'; reason = '攻め手の兵糧が尽きた'; }
+    else if (B.defFood <= 0 && B.day > 3 && defAlive.every(u => u.morale < 30)) { winner = 'atk'; reason = '城の兵糧が尽き、城門が開かれた'; }
     if (!winner) return false;
     B.over = true; B.mode = 'busy'; setActions([]); updateHUD();
     const pWin = winner === B.playerSide;
@@ -1329,7 +1767,7 @@ const Battle = (() => {
       defLeft: B.units.filter(u => u.side === 'def' && u.src == null).reduce((s, u) => s + u.troops, 0) + (B.reserve || 0),
       captured: B.units.filter(u => u.gi >= 0 && u.status === 'captured').map(u => u.gi),
       killed: B.units.filter(u => u.gi >= 0 && u.status === 'killed').map(u => u.gi),
-      days: B.day, turncoats: B.turncoats || [],
+      days: B.day, turncoats: B.turncoats || [], defFood: Math.round(Math.max(0, B.defFood)),
     };
     // 市民兵は戦が終われば町へ帰る。守り切ったら、生き残りの半分が兵に志願する
     if (!res.atkWin) res.defLeft += Math.round(B.units.filter(u => u.militia && u.alive).reduce((s, u) => s + u.troops, 0) / 2);
@@ -1352,6 +1790,7 @@ const Battle = (() => {
 //  一騎打ち（演出つき）
 // ============================================================
 const Duel = (() => {
+  const fcol = fi => (fi != null && G.factions[fi]) ? G.factions[fi].color : '#777';   // 勢力の色（勢力がなければ灰色）
   function strike(a, d, mode) {
     // mode: 'atk' 通常 / 'power' 渾身（当たれば大、外れやすい） / 'guard' 守り
     // 戻り値 { dmg, crit（会心）, skill（必殺技） }
@@ -1373,7 +1812,7 @@ const Duel = (() => {
     for (let i = 0; i < 30 && ha > 0 && hd > 0; i++) { hd -= strike(a, d, Math.random() < 0.25 ? 'power' : 'atk').dmg; if (hd > 0) ha -= strike(d, a, Math.random() < 0.25 ? 'power' : 'atk').dmg; }
     const winner = ha > hd ? 'a' : 'd';
     const r = Math.random();
-    return { winner, outcome: r < 0.3 ? 'killed' : r < 0.75 ? 'captured' : 'fled' };
+    return { winner, outcome: r < 0.15 ? 'killed' : r < 0.6 ? 'captured' : 'fled' };
   }
   // pSide: 'a' or 'd' プレイヤーが操作する側（null なら観戦）
   // ---------- 一騎討ちの闘技場（2騎が駆け寄って打ち合う絵） ----------
@@ -1384,13 +1823,16 @@ const Duel = (() => {
     const W = cv.clientWidth, H = cv.clientHeight;
     cv.width = W * dpr; cv.height = H * dpr;
     const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const st = { pa: 0, pd: 0, fa: 0, fd: 0, kbA: 0, kbD: 0, swA: 0, swD: 0, shake: 0, floats: [], sparks: [], t0: performance.now(), raf: 0, flash: 0, dark: 0, banner: null, charging: 0 };
+    const st = { pa: 0, pd: 0, fa: 0, fd: 0, kbA: 0, kbD: 0, swA: 0, swD: 0, shake: 0, floats: [], sparks: [], t0: performance.now(), raf: 0, flash: 0, dark: 0, banner: null, charging: 0, zoom: 1, rings: [], embers: [], slash: null, ko: null, rays: 0, flashCol: '255,245,220' };
     const S = H / 150;   // 画面の高さに合わせた倍率
     const baseA = W * 0.2, baseD = W * 0.8, meet = W * 0.5, ground = H * 0.82;
     const shade = (hex, k) => { const n = parseInt(hex.slice(1), 16); const f = v => Math.max(0, Math.min(255, Math.round(v * k))); return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`; };
     function weapon(type, len) {
       c.strokeStyle = '#6a4a2a'; c.lineWidth = 2.4; c.beginPath(); c.moveTo(-len * 0.25, 0); c.lineTo(len, 0); c.stroke();   // 柄
-      c.fillStyle = '#e8eef4'; c.strokeStyle = '#8a96a0'; c.lineWidth = 0.8;
+      { const bl = c.createLinearGradient(len, -10, len, 8); bl.addColorStop(0, '#ffffff'); bl.addColorStop(0.5, '#cfd8e2'); bl.addColorStop(1, '#7a8794'); c.fillStyle = bl; }
+      c.strokeStyle = '#5a6670'; c.lineWidth = 0.8;
+      // 刃の根もとの紅い房
+      c.save(); c.fillStyle = '#c0281e'; c.beginPath(); c.moveTo(len - 3, -1.5); c.quadraticCurveTo(len - 8, 2, len - 12, 7); c.lineTo(len - 9, 7); c.quadraticCurveTo(len - 6, 3, len - 1, 1.5); c.closePath(); c.fill(); c.restore();
       if (type === 'glaive') { c.beginPath(); c.moveTo(len - 2, -2); c.quadraticCurveTo(len + 10, -14, len + 20, -4); c.lineTo(len + 4, 4); c.closePath(); c.fill(); c.stroke(); c.fillStyle = '#2f8a4e'; c.fillRect(len - 4, -3, 3, 6); }
       else if (type === 'snake') { c.beginPath(); c.moveTo(len, -2); for (let k = 0; k <= 4; k++) c.lineTo(len + k * 4, (k % 2 ? 3 : -3)); c.lineTo(len + 22, 0); c.lineTo(len + 16, 3); for (let k = 4; k >= 0; k--) c.lineTo(len + k * 4, (k % 2 ? 5 : -1)); c.closePath(); c.fill(); c.stroke(); }
       else if (type === 'halberd') { c.beginPath(); c.moveTo(len, -2); c.lineTo(len + 18, 0); c.lineTo(len, 2); c.fill(); [-1, 1].forEach(sg => { c.beginPath(); c.moveTo(len + 4, 0); c.quadraticCurveTo(len + 10, sg * 12, len + 2, sg * 14); c.quadraticCurveTo(len + 6, sg * 6, len + 2, sg * 2); c.fill(); c.stroke(); }); c.fillStyle = '#c0392b'; c.beginPath(); c.arc(len - 2, 0, 2.5, 0, 7); c.fill(); }
@@ -1398,57 +1840,140 @@ const Duel = (() => {
       else if (type === 'twin') { c.beginPath(); c.moveTo(len, -2); c.lineTo(len + 14, 0); c.lineTo(len, 2); c.fill(); c.beginPath(); c.moveTo(len + 2, 0); c.quadraticCurveTo(len + 8, -10, len + 2, -12); c.lineTo(len, -2); c.fill(); c.stroke(); }
       else { c.beginPath(); c.moveTo(len, -2.5); c.lineTo(len + 16, 0); c.lineTo(len, 2.5); c.closePath(); c.fill(); c.stroke(); c.fillStyle = '#c0392b'; c.beginPath(); c.moveTo(len - 2, 0); c.lineTo(len - 8, -5); c.lineTo(len - 6, 0); c.lineTo(len - 8, 5); c.fill(); }
     }
+    // 一騎討ちの騎馬武者。馬は筋肉の陰影・関節のある脚・流れるたてがみと尾、馬鎧と手綱。
+    //  武者は小札の鎧・護心鏡・肩当て・背旗（姓の一字）・紅い房の兜で、武器を両手で構える
     function rider(x, y, col, dir, t, flash, g, swing, speed) {
       const horse = HORSE[g.name] || (g.war >= 90 ? '#3a2416' : '#5a3a22');
-      c.save(); c.translate(x, y); c.scale(dir * S * 1.15, S * 1.15);
-      const gal = t * (8 + speed * 10), bob = Math.sin(gal * 2) * 2;
-      // 影
-      c.fillStyle = 'rgba(0,0,0,0.35)'; c.beginPath(); c.ellipse(2, 21, 34, 5, 0, 0, 7); c.fill();
-      c.translate(0, bob);
-      const hc = flash ? '#ff7060' : horse, hd = shade(hc.startsWith('#') ? hc : '#5a3a22', 0.65);
-      // 後ろ脚・前脚（2関節＋ひづめ）
-      const leg = (bx, ph, near) => { const a1 = Math.sin(gal + ph) * 0.7, a2 = Math.max(0, Math.sin(gal + ph + 1.2)) * 0.9; c.save(); c.translate(bx, 6); c.rotate(a1); c.fillStyle = near ? hc : hd; c.fillRect(-2.5, 0, 5, 9); c.translate(0, 9); c.rotate(a2); c.fillRect(-2, 0, 4, 8); c.fillStyle = '#1a1210'; c.fillRect(-2.5, 7, 5, 3); c.restore(); };
-      leg(-18, 0, false); leg(14, 2.2, false);
-      // 尾
-      c.strokeStyle = shade(hd.startsWith('rgb') ? '#2a1a10' : hd, 1); c.strokeStyle = '#2a1a10'; c.lineWidth = 4; c.lineCap = 'round';
-      c.beginPath(); c.moveTo(-26, -4); c.quadraticCurveTo(-38, -2 + Math.sin(gal) * 3, -44 - speed * 6, 6 + Math.sin(gal + 1) * 4); c.stroke();
-      // 胴
-      const bg = c.createLinearGradient(0, -12, 0, 12); bg.addColorStop(0, shade(hc.startsWith('#') ? hc : '#5a3a22', 1.25)); bg.addColorStop(1, hd);
-      c.fillStyle = bg;
-      c.beginPath(); c.moveTo(-28, -2); c.quadraticCurveTo(-30, -12, -16, -12); c.lineTo(14, -12); c.quadraticCurveTo(26, -12, 26, 0); c.quadraticCurveTo(22, 10, 10, 10); c.lineTo(-18, 10); c.quadraticCurveTo(-30, 10, -28, -2); c.fill();
-      // 首と頭
-      c.beginPath(); c.moveTo(16, -8); c.quadraticCurveTo(22, -26, 30, -30); c.lineTo(42, -24); c.quadraticCurveTo(44, -20, 40, -18); c.lineTo(33, -19); c.quadraticCurveTo(28, -8, 24, 2); c.fill();
-      c.fillStyle = '#fff'; c.beginPath(); c.arc(35, -26, 1.2, 0, 7); c.fill();
-      c.fillStyle = hd; c.beginPath(); c.moveTo(30, -31); c.lineTo(32, -37); c.lineTo(34, -30); c.fill();   // 耳
-      // たてがみ
-      c.strokeStyle = '#1a1210'; c.lineWidth = 2;
-      for (let k = 0; k < 5; k++) { c.beginPath(); c.moveTo(18 + k * 2.6, -12 - k * 3.6); c.quadraticCurveTo(12 + k * 2.6 - speed * 4, -14 - k * 3.6 + Math.sin(gal + k) * 2, 8 + k * 2 - speed * 6, -10 - k * 3); c.stroke(); }
+      c.save(); c.translate(x, y); c.scale(dir * S * 1.05, S * 1.05); c.translate(0, -11);   // ひづめが画面の下で切れないよう少し上げる
+      const gal = t * (8 + speed * 10), bob = Math.sin(gal * 2) * 1.8, pitch = Math.sin(gal * 2 + 0.6) * 0.025;
+      const hc = flash ? '#ff7060' : horse, base = hc.startsWith('#') ? hc : '#5a3a22';
+      const hl = shade(base, 1.45), hm = shade(base, 1.05), hd = shade(base, 0.6), hx = shade(base, 0.38);
+      const gold = '#e2b64a', goldD = '#8a6a1a';
+      // 影と、駆けるときの土煙
+      c.fillStyle = 'rgba(0,0,0,0.38)'; c.beginPath(); c.ellipse(2, 23, 34, 5, 0, 0, 7); c.fill();
+      if (speed > 0.05) for (let k = 0; k < 5; k++) { const ph = (gal * 0.35 + k * 0.2) % 1; c.fillStyle = `rgba(200,170,130,${0.22 * (1 - ph) * speed})`; c.beginPath(); c.arc(-30 - ph * 34 - k * 3, 18 - ph * 10, 4 + ph * 9, 0, 7); c.fill(); }
+      c.translate(0, bob); c.rotate(pitch);
+      // 脚（肩・ひざ・管・球節・ひづめ）。襲歩らしく前後で拍子をずらす
+      const leg = (bx, by, ph, near, front) => {
+        const sw = Math.sin(gal + ph), up = Math.max(0, Math.sin(gal + ph + (front ? 1.3 : -1.0)));
+        const a1 = sw * (front ? 0.75 : 0.6), a2 = (front ? 1 : -0.6) * up * 1.1;
+        c.save(); c.translate(bx, by); c.rotate(a1);
+        const lg = c.createLinearGradient(-4, 0, 4, 0); lg.addColorStop(0, near ? hm : hx); lg.addColorStop(1, near ? hd : hx);
+        c.fillStyle = lg;
+        c.beginPath(); c.moveTo(-3.6, -2); c.quadraticCurveTo(-3.8, 6, -2, 12); c.lineTo(2, 12); c.quadraticCurveTo(3.8, 5, 3.6, -2); c.closePath(); c.fill();   // 上腕・もも
+        c.translate(0, 12); c.rotate(a2);
+        c.fillRect(-1.4, 0, 2.8, 11);                                    // 管（細く長く）
+        c.beginPath(); c.arc(0, 11.5, 1.9, 0, 7); c.fill();              // 球節
+        c.translate(0, 12); c.rotate(-a2 * 0.5);
+        c.fillStyle = near ? '#f2ead8' : '#b8ae98'; c.fillRect(-1.8, -1, 3.6, 2.2);   // 白い毛
+        c.fillStyle = '#16100c'; c.beginPath(); c.moveTo(-2.2, 1.2); c.lineTo(3, 1.2); c.lineTo(2.5, 4); c.lineTo(-2.4, 4); c.closePath(); c.fill();   // ひづめ
+        c.restore();
+      };
+      leg(-20, 4, 0.5, false, false); leg(16, 3, 2.6, false, true);
+      // 尾（何本もの毛の束がなびく）
+      c.lineCap = 'round';
+      for (let k = 0; k < 6; k++) {
+        c.strokeStyle = k % 2 ? hx : '#1a120c'; c.lineWidth = 3.4 - k * 0.35;
+        c.beginPath(); c.moveTo(-28, -6);
+        c.bezierCurveTo(-38, -10 + k, -44 - speed * 8, 0 + Math.sin(gal + k * 0.4) * 3, -50 - speed * 12 - k * 1.5, 8 + k * 1.6 + Math.sin(gal + 1 + k * 0.5) * 4);
+        c.stroke();
+      }
+      // 胴：胸の張り・腹・尻の丸み
+      const body = new Path2D('M -30 -5 C -32 -14 -24 -15 -14 -14 L 12 -14 C 20 -15 27 -13 29.5 -6 C 31 0 27 5 20 6 C 13 7 7 5 -1 6 C -9 7 -15 7 -21 5.5 C -28 4 -30 0 -30 -5 Z');   // 腹を引き締めた細身の胴
+      const bg = c.createLinearGradient(0, -16, 0, 14); bg.addColorStop(0, hl); bg.addColorStop(0.45, hm); bg.addColorStop(1, hd);
+      c.fillStyle = bg; c.fill(body);
+      // 筋肉の照り（肩と尻）
+      [[-19, -6, 9], [20, -5, 8]].forEach(([mx, my, mr]) => { const rg = c.createRadialGradient(mx - 2, my - 3, 1, mx, my, mr); rg.addColorStop(0, 'rgba(255,240,220,0.32)'); rg.addColorStop(1, 'rgba(255,240,220,0)'); c.fillStyle = rg; c.beginPath(); c.arc(mx, my, mr, 0, 7); c.fill(); });
+      // 首と頭（あご・鼻づら・鼻の穴・目）
+      const head = new Path2D('M 18 -10 C 22 -24 28 -32 34 -36 C 37 -38 41 -37 43 -34 L 51 -25 C 53 -22 52 -19 49 -18 L 44 -17 C 41 -17 38 -19 37 -21 C 34 -16 30 -9 26.5 -2 Z');
+      const ng = c.createLinearGradient(20, -36, 40, 0); ng.addColorStop(0, hl); ng.addColorStop(1, hd);
+      c.fillStyle = ng; c.fill(head);
+      c.fillStyle = hx; c.beginPath(); c.ellipse(49.5, -21.5, 1.3, 0.9, 0.5, 0, 7); c.fill();        // 鼻の穴
+      c.fillStyle = '#0c0806'; c.beginPath(); c.ellipse(40, -30.5, 1.8, 1.4, 0.3, 0, 7); c.fill();       // 目
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(40.6, -31, 0.55, 0, 7); c.fill();
+      c.fillStyle = hd; c.beginPath(); c.moveTo(35, -36); c.lineTo(36, -44); c.lineTo(39, -36.5); c.fill(); c.beginPath(); c.moveTo(32.5, -35); c.lineTo(32, -42); c.lineTo(35.5, -35.5); c.fill();   // 耳
+      // たてがみ（首筋に沿った黒い毛並みと、風になびく毛先）
+      c.fillStyle = '#120c08';
+      c.beginPath(); c.moveTo(19, -12); c.bezierCurveTo(22, -24, 27, -31, 33, -36.5); c.lineTo(31, -33);
+      for (let k = 0; k < 6; k++) { const px = 30 - k * 2.2, py = -31 + k * 3.4, fl = Math.sin(gal + k * 0.8) * 1.6; c.lineTo(px - 5 - speed * 4, py + 1 + fl); c.lineTo(px - 1.5, py + 2.6); }
+      c.closePath(); c.fill();
+      c.strokeStyle = '#120c08'; c.lineWidth = 3; c.beginPath(); c.moveTo(34, -37); c.quadraticCurveTo(36, -42, 40, -40); c.stroke();   // 前髪
+      // 轡と面繋（金具つき）、胸繋
+      c.strokeStyle = '#3a1e10'; c.lineWidth = 1.3;
+      c.beginPath(); c.moveTo(36, -36); c.lineTo(46, -21); c.moveTo(38, -26); c.lineTo(48, -23); c.stroke();
+      c.fillStyle = gold; c.beginPath(); c.arc(46, -21, 1.6, 0, 7); c.fill();
+      c.strokeStyle = shade(col, 0.7); c.lineWidth = 2.4; c.beginPath(); c.moveTo(12, -12); c.quadraticCurveTo(24, -2, 28, -10); c.stroke();
+      c.fillStyle = gold; c.beginPath(); c.arc(25, -5, 2.2, 0, 7); c.fill(); c.fillStyle = '#c0281e'; c.beginPath(); c.moveTo(24, -3); c.lineTo(26, -3); c.lineTo(25.5, 3 + Math.sin(gal) * 1); c.lineTo(24.5, 3); c.fill();   // 胸の房
       // 手前の脚
-      leg(-12, 1.1, true); leg(20, 3.3, true);
-      // 鞍の布（勢力の色＋金縁）
-      c.fillStyle = col; c.beginPath(); c.moveTo(-12, -12); c.lineTo(10, -12); c.lineTo(8, 4); c.lineTo(-10, 4); c.closePath(); c.fill();
-      c.strokeStyle = '#d4af37'; c.lineWidth = 1.2; c.stroke();
-      // マント
-      c.fillStyle = shade(col, 0.6);
-      c.beginPath(); c.moveTo(-4, -34); c.quadraticCurveTo(-18 - speed * 8, -30 + Math.sin(gal) * 3, -26 - speed * 14, -18 + Math.sin(gal + 1) * 4); c.lineTo(-10, -16); c.closePath(); c.fill();
-      // 武者：胴・肩当て・脚
-      c.fillStyle = '#3a3a40'; c.fillRect(-4, -16, 6, 12);
-      const ag = c.createLinearGradient(-6, -38, 8, -16); ag.addColorStop(0, shade(col, 1.3)); ag.addColorStop(1, shade(col, 0.6));
-      c.fillStyle = ag; c.beginPath(); c.moveTo(-7, -16); c.lineTo(-6, -36); c.lineTo(7, -36); c.lineTo(8, -16); c.closePath(); c.fill();
-      c.strokeStyle = '#d4af37'; c.lineWidth = 1; c.stroke();
-      c.fillStyle = '#c9a227'; c.beginPath(); c.ellipse(5, -34, 6, 3.5, -0.3, 0, 7); c.fill();
-      // 頭・兜・房
-      c.fillStyle = '#e8c49a'; c.beginPath(); c.arc(1, -41, 5, 0, 7); c.fill();
-      c.fillStyle = '#7a7a84'; c.beginPath(); c.arc(1, -43, 5.6, Math.PI, 0); c.fill(); c.fillRect(-5, -43, 12, 2);
-      c.fillStyle = '#c0281e'; c.beginPath(); c.moveTo(0, -49); c.quadraticCurveTo(-8 - speed * 4, -54, -14 - speed * 6, -48 + Math.sin(gal) * 2); c.quadraticCurveTo(-6, -50, 1, -47); c.fill();
-      // 腕と武器（振り抜き）
-      c.save(); c.translate(6, -30); c.rotate(-0.55 + swing * 1.6);
-      c.fillStyle = shade(col, 0.9); c.fillRect(0, -2, 10, 4);
-      c.translate(8, 0); weapon(WEAPON[g.name] || 'spear', 34);
+      leg(-14, 5, 1.6, true, false); leg(22, 4, 3.7, true, true);
+      // 馬鎧（勢力の色の布と、金の縁・房）
+      const cloth = new Path2D('M -13 -15 L 9 -15 C 11 -9 10 -3 8 2 L 1 4 L -5 2.5 L -11 4 C -14 -2 -14 -9 -13 -15 Z');
+      const cg = c.createLinearGradient(0, -15, 0, 10); cg.addColorStop(0, shade(col, 1.25)); cg.addColorStop(1, shade(col, 0.55));
+      c.fillStyle = cg; c.fill(cloth); c.strokeStyle = gold; c.lineWidth = 1.4; c.stroke(cloth);
+      c.strokeStyle = 'rgba(226,182,74,0.55)'; c.lineWidth = 0.7; for (let k = 0; k < 3; k++) { c.beginPath(); c.moveTo(-9 + k * 7, -12); c.lineTo(-8 + k * 7, 1); c.stroke(); }
+      [-10, -2, 6].forEach((tx, k) => { c.fillStyle = '#c0281e'; c.beginPath(); c.moveTo(tx - 1.1, 3); c.lineTo(tx + 1.1, 3); c.lineTo(tx + 0.7 + Math.sin(gal + k) * 1.2, 8); c.lineTo(tx - 0.7 + Math.sin(gal + k) * 1.2, 8); c.fill(); });
+      // 鞍
+      c.fillStyle = '#4a2410'; c.beginPath(); c.moveTo(-10, -15); c.quadraticCurveTo(-12, -21, -8, -20); c.lineTo(6, -18); c.quadraticCurveTo(10, -22, 11, -16); c.closePath(); c.fill();
+      c.strokeStyle = gold; c.lineWidth = 0.9; c.stroke();
+      // 背旗（背中に差した小旗。勢力の色に姓の一字）
+      c.save(); c.translate(-8, -30);
+      c.strokeStyle = '#2a1a10'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(0, 14); c.lineTo(-4, -34); c.stroke();
+      const fw = Math.sin(gal * 0.9) * 2;
+      c.fillStyle = col; c.beginPath(); c.moveTo(-3.6, -32); c.quadraticCurveTo(-12, -30 + fw, -20 - speed * 4, -29 + fw * 1.4); c.lineTo(-20 - speed * 4, -13 + fw); c.quadraticCurveTo(-12, -14 + fw, -2.2, -14); c.closePath(); c.fill();
+      c.strokeStyle = gold; c.lineWidth = 0.8; c.stroke();
+      c.save(); c.translate(-11, -22 + fw * 0.6); c.scale(dir, 1); c.fillStyle = '#fff6e0'; c.font = `9px 'Yuji Syuku', serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(g.name[0], 0, 0); c.restore();
       c.restore();
+      // マント（裏地は濃い色）
+      c.fillStyle = shade(col, 0.45);
+      c.beginPath(); c.moveTo(-3, -38); c.bezierCurveTo(-14, -36, -22 - speed * 10, -28 + Math.sin(gal) * 3, -30 - speed * 16, -16 + Math.sin(gal + 1) * 4); c.lineTo(-22 - speed * 8, -12); c.quadraticCurveTo(-12, -18, -6, -18); c.closePath(); c.fill();
+      // 脚と鐙
+      c.fillStyle = '#2a2a30'; c.beginPath(); c.moveTo(-3, -18); c.lineTo(3, -18); c.lineTo(4, -6); c.lineTo(0, -4); c.closePath(); c.fill();
+      c.fillStyle = '#1a1a1e'; c.beginPath(); c.moveTo(-1, -6); c.lineTo(6, -6); c.lineTo(7, -3); c.lineTo(-1, -3); c.closePath(); c.fill();   // 長靴
+      c.strokeStyle = gold; c.lineWidth = 1; c.beginPath(); c.moveTo(0, -16); c.lineTo(1, -4); c.stroke(); c.beginPath(); c.arc(2.5, -2.5, 2.2, 0, Math.PI); c.stroke();   // 鐙
+      // 胴：小札の鎧（勢力の色の地に、札の段）
+      const tor = new Path2D('M -7 -18 L -7.5 -36 C -4 -39 6 -39 8 -36 L 9 -18 Z');
+      const ag = c.createLinearGradient(-8, -38, 10, -18); ag.addColorStop(0, shade(col, 1.35)); ag.addColorStop(1, shade(col, 0.55));
+      c.fillStyle = ag; c.fill(tor);
+      c.save(); c.clip(tor); c.strokeStyle = 'rgba(20,10,4,0.45)'; c.lineWidth = 0.6;
+      for (let ry = -35; ry < -18; ry += 2.6) { c.beginPath(); c.moveTo(-9, ry); c.lineTo(10, ry); c.stroke(); for (let rx = -8 + ((ry / 2.6) % 2 ? 1.5 : 0); rx < 10; rx += 3) { c.beginPath(); c.moveTo(rx, ry); c.lineTo(rx, ry + 2.6); c.stroke(); } }
+      c.restore();
+      c.strokeStyle = gold; c.lineWidth = 0.9; c.stroke(tor);
+      c.fillStyle = '#c0281e'; c.fillRect(-7.5, -23, 17, 2.6);                       // 帯
+      const mg = c.createRadialGradient(3, -30, 0.5, 3, -29, 4); mg.addColorStop(0, '#fff8d8'); mg.addColorStop(1, goldD);
+      c.fillStyle = mg; c.beginPath(); c.arc(3, -29, 3.4, 0, 7); c.fill();            // 護心鏡
+      // 肩当て（重ねた札）
+      [0, 1, 2].forEach(k => { c.fillStyle = k % 2 ? shade(col, 0.8) : gold; c.beginPath(); c.ellipse(5 - k * 0.6, -35 + k * 2.2, 6.5 - k, 3 - k * 0.4, -0.35, 0, 7); c.fill(); });
+      // 頭・兜（しころ・前立て・紅い房）
+      const BEARD = { 関羽: ['#a8322a', 'long', '#14100c'], 張飛: ['#d8b088', 'full', '#14100c'], 黄忠: ['#e0bc94', 'long', '#e8e4dc'], 典韋: ['#c89870', 'full', '#14100c'], 許褚: ['#d8b088', 'full', '#14100c'], 孫堅: ['#e8c49a', 'short', '#2a1a10'], 厳顔: ['#e0bc94', 'long', '#e0dcd4'] }[g.name];
+      c.fillStyle = BEARD ? BEARD[0] : '#e8c49a'; c.beginPath(); c.arc(1.5, -42, 4.8, 0, 7); c.fill();
+      c.fillStyle = '#1a100a'; c.fillRect(3.2, -43.6, 3, 0.9); c.fillRect(3.6, -42.2, 1.8, 0.9);   // 眉と目
+      c.fillStyle = 'rgba(0,0,0,0.18)'; c.beginPath(); c.arc(0.5, -40.5, 3.6, 0.3, 2.2); c.fill();      // あごの陰
+      if (BEARD) {   // ひげ（関羽の長いひげ、張飛の濃いひげなど）
+        c.fillStyle = BEARD[2]; c.beginPath();
+        if (BEARD[1] === 'long') { c.moveTo(0, -40); c.quadraticCurveTo(5, -38, 6, -40); c.quadraticCurveTo(6, -32, 2 - speed * 2, -26 + Math.sin(gal) * 0.8); c.quadraticCurveTo(-1, -33, 0, -40); }
+        else if (BEARD[1] === 'full') { c.moveTo(-1.5, -41); c.quadraticCurveTo(3, -39, 6.5, -41); c.quadraticCurveTo(6.5, -35.5, 2.5, -35); c.quadraticCurveTo(-1, -36, -1.5, -41); }
+        else { c.moveTo(1, -39.5); c.quadraticCurveTo(4, -38.5, 6, -39.8); c.quadraticCurveTo(5, -37, 3, -37); c.closePath(); }
+        c.fill();
+      }
+      const hg = c.createLinearGradient(-5, -50, 7, -42); hg.addColorStop(0, '#c8ccd6'); hg.addColorStop(1, '#4a4e5a');
+      c.fillStyle = hg; c.beginPath(); c.arc(1.5, -44, 5.8, Math.PI, 0); c.fill();
+      c.beginPath(); c.moveTo(-4.5, -44); c.lineTo(-6, -38); c.lineTo(-1, -39); c.closePath(); c.fill();   // しころ
+      c.fillStyle = gold; c.fillRect(-4.6, -44.4, 12.4, 1.6);
+      c.beginPath(); c.moveTo(1.5, -50); c.lineTo(-1, -55); c.lineTo(1.5, -53); c.lineTo(4, -55); c.closePath(); c.fill();   // 前立て
+      c.fillStyle = '#c0281e';
+      c.beginPath(); c.moveTo(1, -50); c.bezierCurveTo(-6, -56, -12 - speed * 6, -52 + Math.sin(gal) * 2, -18 - speed * 9, -46 + Math.sin(gal + 0.8) * 3); c.bezierCurveTo(-10, -48, -5, -48, 1.5, -48); c.fill();
+      // 腕と武器：両手で構え、振り抜く
+      c.save(); c.translate(5, -31); c.rotate(-0.55 + swing * 1.6);
+      c.fillStyle = shade(col, 0.85); c.fillRect(-1, -2.4, 11, 4.8);
+      c.fillStyle = gold; c.fillRect(7, -2.6, 2, 5.2);                                 // 籠手
+      c.fillStyle = '#e8c49a'; c.beginPath(); c.arc(10.5, 0, 2.2, 0, 7); c.fill(); c.beginPath(); c.arc(2, 0, 2.1, 0, 7); c.fill();   // 両手
+      c.translate(8, 0); weapon(WEAPON[g.name] || 'spear', 36);
+      c.restore();
+      // 夕日を背にした縁の光
+      c.globalCompositeOperation = 'lighter'; c.strokeStyle = 'rgba(255,170,90,0.35)'; c.lineWidth = 1; c.beginPath(); c.moveTo(-30, -6); c.bezierCurveTo(-30, -16, -20, -16, -14, -15.5); c.stroke(); c.globalCompositeOperation = 'source-over';
       c.restore();
       // 名前（大きな文字の演出中は隠す）
-      if (!st.banner) { c.save(); c.font = `bold ${Math.round(12 * S)}px 'Shippori Mincho B1', serif`; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.8)'; c.strokeText(g.name, x, y - 66 * S); c.fillStyle = '#fff'; c.fillText(g.name, x, y - 66 * S); c.restore(); }
+      if (!st.banner) { c.save(); c.font = `bold ${Math.round(12 * S)}px 'Shippori Mincho B1', serif`; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.8)'; c.strokeText(g.name, x, y - 72 * S); c.fillStyle = '#fff'; c.fillText(g.name, x, y - 72 * S); c.restore(); }
     }
     function armyRow(x0, x1, y, col, t, dir) {
       for (let x = x0, i = 0; x < x1; x += 9, i++) { const b = Math.sin(t * 5 + i) * 1.2; c.fillStyle = '#140a06'; c.fillRect(x, y - 8 + b, 4, 8); c.beginPath(); c.arc(x + 2, y - 10 + b, 2.2, 0, 7); c.fill(); if (i % 4 === 0) { c.strokeStyle = '#140a06'; c.lineWidth = 1; c.beginPath(); c.moveTo(x + 2, y - 8 + b); c.lineTo(x + 2, y - 26 + b); c.stroke(); c.fillStyle = col; c.beginPath(); c.moveTo(x + 2, y - 26 + b); c.lineTo(x + 2 + dir * 9, y - 23 + Math.sin(t * 4 + i) * 1.5 + b); c.lineTo(x + 2, y - 19 + b); c.fill(); } }
@@ -1458,6 +1983,7 @@ const Duel = (() => {
       const sh = st.shake > 0.3 ? (Math.random() - 0.5) * st.shake : 0;
       st.shake *= 0.86;
       c.save(); c.translate(sh, sh * 0.5);
+      if (st.zoom !== 1) { c.translate(meet, ground - 40 * S); c.scale(st.zoom, st.zoom); c.translate(-meet, -(ground - 40 * S)); }
       // 空・夕日・山
       const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#1a0806'); g.addColorStop(0.45, '#7a2a12'); g.addColorStop(0.62, '#d07a3a'); g.addColorStop(0.63, '#4a2a18'); g.addColorStop(1, '#22140c');
       c.fillStyle = g; c.fillRect(-10, -10, W + 20, H + 20);
@@ -1475,13 +2001,39 @@ const Duel = (() => {
       // 駆けるときの残像の線
       if (st.charging > 0.05) { c.strokeStyle = `rgba(255,240,220,${0.35 * st.charging})`; c.lineWidth = 1.5; for (let k = 0; k < 6; k++) { const y = ground - (10 + k * 9) * S; c.beginPath(); c.moveTo(xa - 50 * S - k * 6, y); c.lineTo(xa - 90 * S - k * 10, y); c.stroke(); c.beginPath(); c.moveTo(xd + 50 * S + k * 6, y); c.lineTo(xd + 90 * S + k * 10, y); c.stroke(); } }
       if (st.dark > 0) { c.fillStyle = `rgba(0,0,0,${Math.min(0.65, st.dark / 30)})`; c.fillRect(0, 0, W, H); }
-      rider(xa, ground, ca, 1, t, st.fa > 0, a, st.swA, st.charging);
-      rider(xd, ground, cd, -1, t + 0.37, st.fd > 0, d, st.swD, st.charging);
+      // とどめを受けた側は、宙に舞って倒れる
+      const koDraw = (side, x, fn) => {
+        if (!st.ko || st.ko.side !== side) return fn(x);
+        const k = (performance.now() - st.ko.t0) / 900, dir = side === 'a' ? -1 : 1;
+        const kk = Math.min(1, k), lift = Math.sin(kk * Math.PI) * 46 * S * (st.ko.big ? 1.4 : 1), slide = kk * (st.ko.big ? 150 : 100) * S;
+        c.save(); c.globalAlpha = k > 1.2 ? Math.max(0.35, 1 - (k - 1.2)) : 1;
+        c.translate(x + dir * slide, ground - lift); c.rotate(dir * Math.min(1.45, kk * 2.4)); c.translate(-(x + dir * slide), -ground);
+        fn(x + dir * slide); c.restore();
+      };
+      koDraw('a', xa, x => rider(x, ground, ca, 1, t, st.fa > 0, a, st.swA, st.charging));
+      koDraw('d', xd, x => rider(x, ground, cd, -1, t + 0.37, st.fd > 0, d, st.swD, st.charging));
       if (st.fa > 0) st.fa--; if (st.fd > 0) st.fd--;
       // 火花
       st.sparks = st.sparks.filter(p => p.life > 0);
       st.sparks.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.14; p.life--; c.strokeStyle = `rgba(255,${210 + Math.random() * 45 | 0},140,${p.life / 30})`; c.lineWidth = p.big ? 2.5 : 1.6; c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(p.x - p.vx * 2, p.y - p.vy * 2); c.stroke(); });
-      if (st.flash > 0) { c.fillStyle = `rgba(255,245,220,${st.flash / 16})`; c.fillRect(0, 0, W, H); st.flash--; }
+      // 衝撃の輪
+      st.rings = st.rings.filter(r => r.life > 0);
+      st.rings.forEach(r => { r.r += r.v; r.v *= 0.95; r.life--; c.strokeStyle = `rgba(${r.col},${r.life / r.max})`; c.lineWidth = r.w * (r.life / r.max) + 1; c.beginPath(); c.ellipse(r.x, r.y, r.r, r.r * 0.55, 0, 0, 7); c.stroke(); });
+      // 斬撃の光（画面を斜めに走る一閃）
+      if (st.slash) { const k = (performance.now() - st.slash.t0) / 420; if (k > 1) st.slash = null; else {
+        const x0 = -20, y0 = H * 0.15, x1 = W + 20, y1 = H * 0.72, e = Math.min(1, k * 3);
+        c.save(); c.globalAlpha = 1 - Math.max(0, k - 0.35) / 0.65; c.shadowColor = st.slash.col; c.shadowBlur = 24;
+        c.strokeStyle = '#fff'; c.lineWidth = (st.slash.big ? 9 : 6) * S * (1 - k * 0.6); c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 + (x1 - x0) * e, y0 + (y1 - y0) * e); c.stroke();
+        c.strokeStyle = st.slash.col; c.lineWidth = 2 * S; c.beginPath(); c.moveTo(x0, y0 + 6); c.lineTo(x0 + (x1 - x0) * e, y0 + 6 + (y1 - y0) * e); c.stroke(); c.restore(); } }
+      // 集中線
+      if (st.rays > 0) { c.save(); c.globalAlpha = Math.min(1, st.rays / 20) * 0.75; c.fillStyle = '#fff'; const cx = meet, cy = ground - 46 * S, R = Math.max(W, H);
+        for (let i = 0; i < 44; i++) { const an = (i / 44) * Math.PI * 2 + (i % 3) * 0.03, w = 0.012 + (i % 4) * 0.006, r0 = R * (0.32 + ((i * 37) % 10) / 40);
+          c.beginPath(); c.moveTo(cx + Math.cos(an - w) * R, cy + Math.sin(an - w) * R); c.lineTo(cx + Math.cos(an) * r0, cy + Math.sin(an) * r0); c.lineTo(cx + Math.cos(an + w) * R, cy + Math.sin(an + w) * R); c.fill(); }
+        c.restore(); st.rays--; }
+      // 舞い上がる金の火の粉
+      st.embers = st.embers.filter(p => p.life > 0);
+      st.embers.forEach(p => { p.x += p.vx + Math.sin(p.life * 0.15) * 0.4; p.y += p.vy; p.vy *= 0.99; p.life--; c.fillStyle = `rgba(255,${190 + (p.life % 50)},90,${Math.min(1, p.life / 40)})`; c.beginPath(); c.arc(p.x, p.y, p.r, 0, 7); c.fill(); });
+      if (st.flash > 0) { c.fillStyle = `rgba(${st.flashCol},${Math.min(1, st.flash / 16)})`; c.fillRect(0, 0, W, H); st.flash--; if (!st.flash) st.flashCol = '255,245,220'; }
       // 必殺技・会心の大きな文字
       if (st.banner) { const k = (performance.now() - st.banner.t0) / 1400; if (k > 1) st.banner = null; else { c.save(); c.globalAlpha = k < 0.15 ? k / 0.15 : k > 0.8 ? (1 - k) / 0.2 : 1; const sc = 1 + (1 - Math.min(1, k * 5)) * 0.6; c.translate(W / 2, H * 0.3); c.scale(sc, sc); c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `${Math.round(st.banner.size * S)}px 'Yuji Syuku', serif`; c.lineWidth = 6; c.strokeStyle = '#000'; c.strokeText(st.banner.text, 0, 0); c.fillStyle = st.banner.col; c.shadowColor = st.banner.glow; c.shadowBlur = 18; c.fillText(st.banner.text, 0, 0); c.restore(); } }
       // 数字・文字
@@ -1493,7 +2045,7 @@ const Duel = (() => {
       st.raf = requestAnimationFrame(frame);
     }
     st.raf = requestAnimationFrame(frame);
-    const anim = (key, to, ms) => new Promise(res => { const from = st[key], t0 = performance.now(); const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); st[key] = from + (to - from) * (k * (2 - k)); if (k < 1) requestAnimationFrame(step); else res(); }; step(); });
+    const anim = (key, to, ms) => new Promise(res => { const from = st[key], t0 = performance.now(); let done = false; const fin = () => { if (done) return; done = true; st[key] = to; res(); }; const step = () => { if (done) return; const k = Math.min(1, (performance.now() - t0) / ms); st[key] = from + (to - from) * (k * (2 - k)); if (k < 1) requestAnimationFrame(step); else fin(); }; step(); setTimeout(fin, ms + 400); });   // 描き替えが止まっても、時間がたてば終える
     const swing = side => { const key = side === 'a' ? 'swA' : 'swD'; anim(key, 1, 120).then(() => anim(key, 0, 260)); };
     return {
       stop() { cancelAnimationFrame(st.raf); },
@@ -1510,7 +2062,23 @@ const Duel = (() => {
       },
       crit() { st.banner = { text: '会心の一撃！', col: '#ffe066', glow: '#ff9a2a', size: 30, t0: performance.now() }; st.flash = 14; st.shake = 16; for (let i = 0; i < 70; i++) st.sparks.push({ x: meet, y: ground - 46 * S, vx: (Math.random() - 0.5) * 12, vy: -Math.random() * 7, life: 36, big: true }); },
       skill(name, col) { st.dark = 34; st.banner = { text: name, col: '#fff', glow: col, size: 32, t0: performance.now() }; st.flash = 18; st.shake = 20; for (let i = 0; i < 90; i++) st.sparks.push({ x: meet, y: ground - 46 * S, vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 8, life: 40, big: true }); },
+      dropFloat() { const f = st.floats[st.floats.length - 1]; if (f) { f.y = H * 0.68; f.size = 32; } },   // とどめの数字は、大きな文字と重ならないよう下に
       text(t, col) { st.floats.push({ x: meet, y: H * 0.22, text: t, col: col || '#fff', size: 18, t0: performance.now() }); },
+      // とどめの前の溜め：暗くなり、ぐっと寄る
+      async preKo(big) { st.dark = big ? 40 : 26; await anim('zoom', big ? 1.22 : 1.12, big ? 380 : 260); },
+      // とどめ：side が討たれた側。big は会心・必殺技
+      ko(side, big, col, label) {
+        const now = performance.now(), cx = side === 'a' ? meet - 30 * S : meet + 30 * S, cy = ground - 46 * S;
+        st.ko = { side, t0: now, big };
+        st.slash = { t0: now, col: col || '#ffd23a', big };
+        st.flash = big ? 26 : 18; st.flashCol = big ? '255,250,235' : '255,240,210'; st.shake = big ? 32 : 22; st.rays = big ? 46 : 26;
+        [0, 6, 12].slice(0, big ? 3 : 2).forEach((dl, i) => setTimeout(() => st.rings.push({ x: cx, y: cy, r: 10, v: (big ? 16 : 12) * S - i * 2, life: 40, max: 40, w: big ? 10 : 7, col: i === 0 ? '255,255,255' : '255,200,90' }), dl * 16));
+        for (let i = 0; i < (big ? 180 : 110); i++) { const an = Math.random() * Math.PI * 2, sp = Math.random() * (big ? 16 : 12); st.sparks.push({ x: cx, y: cy, vx: Math.cos(an) * sp, vy: Math.sin(an) * sp - 2, life: 30 + Math.random() * 20, big: true }); }
+        for (let i = 0; i < (big ? 70 : 36); i++) st.embers.push({ x: cx + (Math.random() - 0.5) * 120 * S, y: ground - Math.random() * 30 * S, vx: (Math.random() - 0.5) * 0.8, vy: -1 - Math.random() * 2.2, r: 1 + Math.random() * 2.2, life: 60 + Math.random() * 70 });
+        if (side === 'a') { st.fa = 18; } else { st.fd = 18; }
+        st.banner = { text: label, col: big ? '#fff' : '#ffe066', glow: big ? (col || '#ff6a2a') : '#ff9a2a', size: big ? 38 : 34, t0: now };
+        anim('zoom', 1, 700); st.dark = 0;
+      },
     };
   }
 
@@ -1518,7 +2086,7 @@ const Duel = (() => {
     return new Promise(resolve => {
       Sound.bgm('duel'); Sound.se('gong');
       const a = ua.g, d = ud.g;
-      const ca = G.factions[ua.fi] ? G.factions[ua.fi].color : '#777', cd = ud.fi !== null && G.factions[ud.fi] ? G.factions[ud.fi].color : '#777';
+      const ca = G.factions[ua.fi] ? fcol(ua.fi) : '#777', cd = ud.fi !== null && G.factions[ud.fi] ? fcol(ud.fi) : '#777';
       const el = document.getElementById('duel');
       el.innerHTML = `
         <div class="d-head">
@@ -1548,13 +2116,16 @@ const Duel = (() => {
       let exprA = 'angry', exprD = 'angry';
       const setFace = (side, e) => { if (side === 'a') exprA = e; else exprD = e; el.querySelector(side === 'a' ? '#dA img' : '#dD img').src = Portrait.get(side === 'a' ? a : d, e, side === 'a' ? ca : cd); };
       const setHp = () => { hpA.style.width = Math.max(0, ha) + '%'; hpD.style.width = Math.max(0, hd) + '%'; hpAt.textContent = Math.max(0, ha); hpDt.textContent = Math.max(0, hd); };
-      const close = res => { arena.stop(); el.classList.remove('show'); resolve(res); };
+      let closed = false;
+      const close = res => { if (closed) return; closed = true; arena.stop(); el.classList.remove('show'); const cvs = el.querySelector('.d-arena'); if (cvs) cvs.width = cvs.height = 0; resolve(res); };
       say('a', line(a, 'duelChallenge', { foe: d.name }));
       setTimeout(() => say('d', line(d, 'duelAccept', { foe: a.name })), 500);
+      let ended = false;
       const finish = (winner) => {
+        if (ended) return; ended = true;
         const w = winner === 'a' ? a : d, l = winner === 'a' ? d : a, ws = winner, ls = winner === 'a' ? 'd' : 'a';
         const r = Math.random();
-        const outcome = r < 0.3 ? 'killed' : r < 0.75 ? 'captured' : 'fled';
+        const outcome = r < 0.15 ? 'killed' : r < 0.6 ? 'captured' : 'fled';   // 討ち取られるのは15%（前は30%）
         setFace(ws, 'happy'); setFace(ls, 'sad');
         say(ls, line(l, 'duelLose'));
         say(ws, `<b>${line(w, 'duelWin', { foe: l.name })}</b>`);
@@ -1563,15 +2134,23 @@ const Duel = (() => {
         Sound.se('win');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
         btns.querySelector('button').onclick = () => close({ winner, outcome });
-        if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2400 / Auto.speed);
+        if (autoEnd || Auto.running) setTimeout(() => { if (closed) return; const b = btns.querySelector('button'); if (b) b.click(); }, 2400 / Auto.speed);
       };
       const finishFlee = winner => {
+        if (ended) return; ended = true;
         Sound.se('ng');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
         btns.querySelector('button').onclick = () => close({ winner, outcome: 'fled' });
-        if (autoEnd || Auto.running) setTimeout(() => { const b = btns.querySelector('button'); if (b) b.click(); }, 2000 / Auto.speed);
+        if (autoEnd || Auto.running) setTimeout(() => { if (closed) return; const b = btns.querySelector('button'); if (b) b.click(); }, 2000 / Auto.speed);
       };
-      const exchange = async (modeP) => {
+      // 打ち合いの途中で思わぬ不具合が出ても、一騎討ちの画面が閉じないままにならないようにする
+      const exchange = modeP => exchange0(modeP).catch(e => {
+        console.error('duel', e); window.__battleErr = 'duel: ' + (e && e.stack || e);
+        if (ended) return;   // すでに決着がついていれば何もしない
+        busy = false; btns.innerHTML = ''; say(null, '決着つかず――両者、馬を返した');
+        setTimeout(() => finishFlee(ha >= hd ? 'a' : 'd'), 500);   // 討ち取りや捕縛は起こさない
+      });
+      const exchange0 = async (modeP) => {
         if (busy) return; busy = true;
         btns.querySelectorAll('button').forEach(b => b.disabled = true);
         round++; roundEl.textContent = `第${round}合`;
@@ -1583,6 +2162,23 @@ const Duel = (() => {
           const A = atkSide === 'a' ? a : d, D = atkSide === 'a' ? d : a, col = atkSide === 'a' ? ca : cd;
           const r = strike(A, D, mode);
           let x = r.dmg; if (defMode === 'guard' && !r.skill) x = Math.round(x * 0.4);
+          // とどめの一撃：派手な演出と効果音
+          const lethal = x > 0 && (defSide === 'a' ? ha : hd) - x <= 0;
+          if (lethal) {
+            const big = !!(r.skill || r.crit);
+            await arena.preKo(big);
+            if (r.skill) { Sound.se('skill'); say(atkSide, `<b>${r.skill.line}</b>`); await pace(350); }
+            else if (r.crit) say(atkSide, line(A, 'critical'));
+            arena.swing(atkSide); Sound.se(big ? 'koBig' : 'ko');
+            if (big) await pace(380);   // 溜めの音が上がりきったところで斬る
+            arena.ko(defSide, big, col, r.skill ? `${r.skill.name}！` : r.crit ? '会心の一撃！' : '討ち取ったり！');
+            arena.hit(defSide, x, r.skill ? 'skill' : r.crit ? 'crit' : 'power'); arena.dropFloat();
+            const label = r.skill ? `必殺「${r.skill.name}」！` : r.crit ? '会心の一撃！' : 'とどめの一撃！';
+            say(atkSide, `${label} ${D.name}に <b>${x}</b>`, 'act');
+            { const keep = defSide === 'a' ? ha : hd; if (defSide === 'a') ha -= x; else hd -= x; setHp(); if (defSide === 'a') ha = keep; else hd = keep; }   // 体力の表示はすぐ0に
+            await pace(big ? 1300 : 900);
+            return x;
+          }
           arena.swing(atkSide); Sound.se('whoosh');
           if (r.skill) { arena.skill(r.skill.name, col); Sound.se('skill'); say(atkSide, `<b>${r.skill.line}</b>`); await pace(500); }
           else if (r.crit && x > 0) { arena.crit(); Sound.se('crit'); say(atkSide, line(A, 'critical')); }

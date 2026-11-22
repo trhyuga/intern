@@ -10,13 +10,17 @@ const Auto = (() => {
   const SPEED_NAME = sp => sp >= 4 ? '超速' : sp >= 2 ? '速い' : '普通';
   const nextSpeed = sp => sp >= 4 ? 1 : sp >= 2 ? 4 : 2;
   try { S.speed = +(localStorage.getItem('internT_autoSpeed') || 1); } catch (e) {}
-  const wait = ms => new Promise(r => setTimeout(r, ms / S.speed));
+  // 超速では、配下が増えるほど内政の手順を速く流す（15人から上は速まり、40人で2倍）
+  const boost = () => { if (S.speed < 4 || typeof G === 'undefined' || !G || !G.gens) return 1; const n = G.gens.filter(g => g.state === 'serve' && g.faction === G.player).length; return 1 + Math.max(0, Math.min(1, (n - 15) / 25)); };
+  const wait = ms => new Promise(r => setTimeout(r, ms / (S.speed * boost())));
 
   // ---------- 軍師 ----------
   function strategist() {
     let g = G.strategist != null ? G.gens[G.strategist] : null;
     if (!g || g.state !== 'serve' || g.faction !== G.player) {
-      const list = Game.gensOf(G.player).sort((a, b) => (b.int + (b.isLord ? -15 : 0)) - (a.int + (a.isLord ? -15 : 0)));
+      // 自動で選ぶときは、知力が近ければ戦の軍師を優先する（内政型は「軍師を替える」で選べる）
+      const civ = x => !(x.int >= 90 && x.pol >= 90) && Game.has(x, '治世') && x.pol >= 85 && x.pol >= x.int && !Game.has(x, '智謀') && !Game.has(x, '神算') && !x.isLord;
+      const list = Game.gensOf(G.player).sort((a, b) => (b.int + (b.isLord ? -15 : 0) - (civ(b) ? 8 : 0)) - (a.int + (a.isLord ? -15 : 0) - (civ(a) ? 8 : 0)));
       g = list[0] || null;
       G.strategist = g ? g.i : null;
     }
@@ -28,7 +32,12 @@ const Auto = (() => {
     if (Game.has(g, '神算')) q = Math.min(1, q + 0.1);
     if (Game.has(g, '智謀')) q = Math.min(1, q + 0.05);
     const H = t => Game.has(g, t);
-    return {
+    // 内政タイプ：治世を持ち、政治85以上で知力以上に政治が高い者（智謀・神算の者と君主は除く）
+    // 万能型：知力・政治ともに90以上（曹操・荀彧・司馬懿・魯粛・諸葛亮）。富国強兵の独自の采配をする
+    const master = g.int >= 90 && g.pol >= 90;
+    const civil = !master && H('治世') && g.pol >= 85 && g.pol >= g.int && !H('智謀') && !H('神算') && !g.isLord;
+    const b = {
+      style: master ? 'master' : civil ? 'civil' : 'mil',
       q, tier: q >= 0.75 ? 'smart' : q >= 0.45 ? 'mid' : 'dumb',
       noise: (1 - q) * 0.6,
       // 求める力の比（1.0を超えれば勝ち。普通1.15、慎重なら大きな差、猪突なら小さな差で攻める）
@@ -38,23 +47,30 @@ const Auto = (() => {
       diplo: q >= 0.6 || H('仁徳'),
       maxAttacks: q >= 0.75 ? 2 : 1,
       // 出陣に求める力の比（見積もり。1.0で互角）。優秀な軍師ほど確かな勝ち目がある時だけ攻める。慎重・猪突などの癖で上下する
-      want: (q >= 0.75 ? 1.3 : q >= 0.45 ? 1.15 : 0.95) * (1.15 + (H('慎重') ? 0.2 : 0) + (H('仁徳') ? 0.05 : 0) - (H('野心') ? 0.05 : 0) - (H('猪突') ? 0.1 : 0) - (H('剛勇') ? 0.03 : 0)) / 1.15,
+      want: (q >= 0.75 ? 1.2 : q >= 0.45 ? 1.08 : 0.95) * (1.15 + (H('慎重') ? 0.2 : 0) + (H('仁徳') ? 0.05 : 0) - (H('野心') ? 0.05 : 0) - (H('猪突') ? 0.1 : 0) - (H('剛勇') ? 0.03 : 0)) / 1.15,
       // 兵5万以上の大軍でも、これを下回る相手には攻めない（知力の低い軍師は構わず攻める）
       bigWant: q >= 0.75 ? 1.0 : q >= 0.45 ? 0.85 : 0,
       // 消耗戦（一度で落とせない相手を削る攻め）に求める力の比
       attrWant: q >= 0.75 ? 0.9 : q >= 0.45 ? 0.75 : 0,
     };
+    // 内政タイプは、あまり戦をしない：確かな勝ち目がある時だけ攻め、消耗戦はしない。出陣は1季節に1つまで
+    if (civil) { b.want *= 1.25; b.bigWant = Math.max(b.bigWant, 1.1); b.attrWant = 99; b.maxAttacks = 1; }
+    // 万能型は、内を固めた力で外を討つ：見立てが確かなぶん基準はやや低く、同時に攻める数も多い
+    if (master) { b.want *= 0.95; b.maxAttacks += 1; b.diplo = true; }
+    return b;
   }
   function grade(g) {
     const b = brain(g);
     const t = b.tier === 'smart' ? '天下に名だたる知略。判断は正確で、計略や外交も駆使する' : b.tier === 'mid' ? 'そこそこの見立て。ときどき判断を誤る' : '采配はかなり大ざっぱ。勢いまかせになりがち';
     const s = [];
+    const style = b.style === 'master' ? '【万能型】富国強兵。内地は内政で富ませ、前線は兵を集めて鍛え、好機には同時に何か所も攻める。計略・外交・修行も欠かさない。'
+      : b.style === 'civil' ? '【内政型】前線は敵と同じくらいの兵で守り、戦は控えめ。内地に文官を置き、内政・訓練・修行で国を富ませる。' : '';
     if (Game.has(g, '慎重')) s.push('守りを固め、勝ち目の高い戦しかしない');
     if (Game.has(g, '野心') || Game.has(g, '猪突')) s.push('攻め気が強い');
     if (Game.has(g, '仁徳')) s.push('民と人材を大事にする');
     if (Game.has(g, '治世')) s.push('内政に力を入れる');
     if (Game.has(g, '智謀') || Game.has(g, '神算')) s.push('計略を好む');
-    return t + (s.length ? '。' + s.join('、') : '');
+    return t + '。' + style + (s.length ? '性格：' + s.join('、') + '。' : '');
   }
 
   // ---------- 軍師の台詞 ----------
@@ -67,6 +83,7 @@ const Auto = (() => {
       plot: ['{foe}は主君に不満を抱いている様子。揺さぶってみましょう', '戦わずして敵を崩す。これも兵法です'],
       rumor: ['{target}に流言を放ち、民と兵の心を乱しましょう。攻める前の下ごしらえです', '{target}の守りを内から崩します'],
       diplo: ['{target}と手を結び、背後の憂いを断ちましょう', '敵を一度に相手にするのは愚策。{target}とは和を'],
+      weakAlly: ['今は背中を守ることが先決。{target}と手を結びましょう', '小国が生き残る道は、強国と争わぬこと。{target}に使者を'],
       surr: ['{target}はもはや袋の鼠。降伏を勧めれば、無駄な血を流さずに済みます', '{target}に使者を。戦わずして勝つのが上策です'],
       reward: ['{gen}殿の心が離れかけています。褒美を'],
       recruit: ['{gen}殿、在野の賢者を探してきてください'],
@@ -92,7 +109,7 @@ const Auto = (() => {
       dom: ['{city}で{need}をやりましょう。{gen}殿、頼みます', '{gen}殿に{need}をお願いします'],
       attack: ['{target}が手薄です。{gen}殿、兵{m}でお願いします', '{target}を攻めましょう。{gen}殿、兵{m}で出陣を。城には{k}を残します', 'そろそろ{target}を取りに行きましょう。兵は{m}です'],
       hold: ['今季は無理をせず、力を蓄えましょう', '今季は様子を見ましょう'],
-      plot: ['{foe}に揺さぶりをかけてみます'], rumor: ['{target}に噂を流してみます'], diplo: ['{target}に使者を出してみましょう'], surr: ['{target}に降伏を勧めてみましょう'],
+      plot: ['{foe}に揺さぶりをかけてみます'], rumor: ['{target}に噂を流してみます'], diplo: ['{target}に使者を出してみましょう'], weakAlly: ['{target}とは仲良くしておきましょう。今は戦えません'], surr: ['{target}に降伏を勧めてみましょう'],
       reward: ['{gen}殿に褒美を与えておきましょう'], recruit: ['人材を探してみましょう'],
       battle: ['敵の城を落とすぞ！'], defend: ['なんとか守り抜きましょう'],
       win: ['{city}を取りました！', 'やりましたね！ 次もこの調子で', '勝ちました！'], lose: ['{city}は落とせませんでした……', 'うーん、今回は分が悪かったようです', '負けてしまいました……'],
@@ -128,7 +145,7 @@ const Auto = (() => {
     dom: ['{gen}、{city}の{need}を頼む', '{city}は{need}が足りぬ。{gen}、任せたぞ'],
     attack: ['{target}を攻める。{gen}、兵{m}を率いて行け。{city}には{k}を残す', '{target}を取る。総大将は{gen}だ。兵{m}、存分に働け'],
     hold: ['今は動く時ではない。力を蓄えよ', '焦りは禁物だ。今季は国を固める'],
-    plot: ['{foe}の心は揺れておる。揺さぶってやれ'], rumor: ['{target}に噂を流せ。攻める前の下ごしらえだ'], diplo: ['{target}と手を結ぶ。使者を出せ'], surr: ['{target}に降伏を勧めよ。無駄な血は流したくない'],
+    plot: ['{foe}の心は揺れておる。揺さぶってやれ'], rumor: ['{target}に噂を流せ。攻める前の下ごしらえだ'], diplo: ['{target}と手を結ぶ。使者を出せ'], weakAlly: ['今は{target}と争う時ではない。手を結べ'], surr: ['{target}に降伏を勧めよ。無駄な血は流したくない'],
     reward: ['{gen}には苦労をかけておる。褒美を取らせよ'], recruit: ['在野の賢者を探してまいれ'],
     battle: ['敵の総大将は{foe}。そこを突け！', '{I}の采配に従え。城門を集中して攻めよ！'], defend: ['この城は渡さぬ。皆、持ち場を守れ！'],
     win: ['皆、よくやってくれた！', '{city}を取ったか。よくやった'], lose: ['……{I}の采配の誤りだ。立て直すぞ', '{city}は手強いな。次は必ず'],
@@ -237,15 +254,30 @@ const Auto = (() => {
     const canAlms = c.food - 1500 > Game.foodReserve(c) && c.loyal < 95;
     if (canAlms && c.loyal < 40) { n.alms = 3 + (40 - c.loyal) / 10; must.alms = true; }
     else n.alms = canAlms && c.loyal < 70 ? (70 - c.loyal) / 30 : 0;
+    // 魅力の高い将（70以上）がいる都市は、その将が納得する民忠（30＋魅力×0.6：魅力80で78、100で90）まで、施しを重く見る（最優先の項目には譲る）
+    { const ch = Game.gensIn(c.i, G.player).filter(g => !g.acted && g.cha >= 70).sort((a, b) => b.cha - a.cha)[0];
+      if (ch && canAlms) { const want = Math.round(30 + ch.cha * 0.6); if (c.loyal < want) n.alms = Math.max(n.alms, 1.1 + (want - c.loyal) / 25); } }
     // 徴兵：民忠を下げるので、民忠50未満ではしない
     const canDraft = c.gold >= CONFIG.RECRUIT_COST + 50 && c.loyal >= 50 && c.food > Game.foodReserve(c, c.troops + 3500);
     if (canDraft && front && c.troops < threat * 0.9) { n.draft = 2 + Math.min(1, (threat * 0.9 - c.troops) / 10000); must.draft = true; }
     else if (canDraft && G.stage && G.stage.c === c.i && c.troops < G.stage.troops) n.draft = 1.5;   // 攻撃の拠点では兵を集める
     else n.draft = canDraft ? (front ? (c.troops < threat * 1.2 ? 0.8 : 0.3) : (c.troops < 12000 ? 0.45 : 0.1)) : 0;
-    // 内地は兵を鍛える場所（鍛えた兵を前線へ送る）
-    n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? 1.0 : 1.4) : 0;
-    const hidden = Game.roninIn(c.i).filter(r => !r.known);
-    n.search = hidden.length ? 1.0 + Math.min(1, Math.max(...hidden.map(r => r.lead + r.war + r.int + r.pol + r.cha)) / 400) : 0.1;
+    // 内地は兵を鍛える場所（鍛えた兵を前線へ送る）。前線も、徴兵で下がった訓練（50未満）は取り戻す
+    n.train = c.troops >= 2000 && c.train < 95 ? (95 - c.train) / 95 * (front ? (c.train < 50 ? 1.5 : 1.0) : 1.4) : 0;
+    // 兵が、この都市の将の率いられる上限を超えている：これ以上の徴兵は出陣に使えないので、訓練を優先する
+    { const capC = Game.gensIn(c.i, G.player).filter(g => !g.isLord).sort((a, b) => Game.troopCap(b) - Game.troopCap(a)).slice(0, 5).reduce((s2, g) => s2 + Game.troopCap(g), 0);
+      if (c.troops - Math.max(5000, c.troops * 0.25) > capC && capC > 0) { if (n.train) n.train = n.train * 2 + 0.5; if (!must.draft) n.draft *= 0.2; } }
+    // 出陣を1季節見送って鍛えている都市は、訓練を最優先
+    if (G.trainWait && G.trainWait[c.i] === G.turn && c.train < 95 && c.troops >= 2000) { n.train = 3 + (95 - c.train) / 50; must.train = true; }
+    // 武将が1〜2人の都市は、隣の都市の在野まで探しに行けるので、人材探しを重く見る
+    const few = Game.gensIn(c.i, G.player).length;
+    const hidden = Game.roninIn(c.i).filter(r => !r.known).concat(few <= 2 ? G.gens.filter(r => r.state === 'ronin' && c.adj.includes(r.city) && r.name !== '諸葛亮') : []);
+    n.search = hidden.length ? 1.0 + Math.min(1, Math.max(...hidden.map(r => r.lead + r.war + r.int + r.pol + r.cha)) / 400) + (few <= 1 ? 0.5 : few === 2 ? 0.25 : 0) : 0;   // 探す相手がいなければ探さない
+    // 探して見つからなかった都市は、新しい人物が来るか、3季節たつまで探さない（ほかの役に立つ命令に回す）
+    const memo = G.searchMemo && G.searchMemo[c.i];
+    if (memo && G.turn - memo.turn < 3 && hidden.every(r => memo.seen.includes(r.i))) n.search = 0;
+    // 勝ち目がなくて出陣を見送った都市は、人材探し・訓練・内政（開墾・商業・修築）を重く見る
+    if (G.buildUp && G.buildUp[c.i] === G.turn) { if (n.search) n.search = n.search * 1.6 + 0.4; if (n.train) n.train = n.train * 2 + 0.6; ['farm', 'comm', 'wall'].forEach(k => { if (n[k]) n[k] *= 1.4; }); if (!must.draft) n.draft *= 0.5; }
     if (c.gold < CONFIG.CMD_COST) n.farm = n.comm = n.wall = 0;
     return { n, must };
   }
@@ -257,6 +289,13 @@ const Auto = (() => {
     const stage = n * 2 >= G.cities.length || n >= 16 ? 'late' : n <= 4 && (G.turn || 0) < 12 ? 'early' : 'mid';
     const perCity = gens / Math.max(1, n);
     return { stage, staff: perCity < 2 ? 'few' : perCity >= 4 ? 'many' : 'ok' };
+  }
+  // 弱小勢力か：都市3以下、または隣国のいちばん強い勢力の6割に満たない力しかない
+  function weak() {
+    const my = Game.power(G.player), n = Game.citiesOf(G.player).length;
+    const neigh = new Set(); Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player) neigh.add(o); }));
+    const top = Math.max(0, ...[...neigh].map(fi => Game.power(fi)));
+    return n <= 3 || my < top * 0.6;
   }
   // 局面ごとの内政の重み（掛け算。「最優先」の項目にはかけない）
   //  序盤：金と兵糧を増やして国の土台を作り、人材を集める。城壁は後回し
@@ -272,6 +311,14 @@ const Auto = (() => {
     const w = Object.assign({}, W);
     if (ph.staff === 'few') w.search *= 1.6;      // 人手不足なら人材探しを急ぐ
     if (ph.staff === 'many') w.search *= 0.5;     // 人材が豊富なら探すより働かせる
+    // 万能型：内地は開墾・商業、前線は徴兵・訓練・修築を重く（富国強兵）
+    { const g0 = strategist(); if (g0 && brain(g0).style === 'master') { if (front) { w.draft *= 1.2; w.train *= 1.25; w.wall *= 1.1; } else { w.farm *= 1.2; w.comm *= 1.2; w.train *= 1.15; } w.search *= 1.1; } }
+    // 内政型：都市の開発・訓練・人材を重く。前線で敵より兵が少なければ徴兵も
+    if (civilNow()) { w.farm *= 1.25; w.comm *= 1.25; w.wall *= 1.2; w.train *= 1.3; w.search *= 1.2; if (front && c.troops < maxAdjEnemy(c)) w.draft *= 1.3; }
+    // 攻めの拠点（兵を集めている都市）では、訓練と徴兵を重く：強い軍を作ってから攻める
+    if (G.stage && G.stage.c === c.i) { w.train *= 1.5; w.draft *= 1.3; }
+    // 弱小勢力：前線は兵を集め、強い隣国に脅かされている城は守りを固める（まず生き残る）
+    if (weak() && front) { w.draft *= 1.25; if (AI.threat(c, G.player) > c.troops) w.wall *= 1.3; }
     return w;
   }
   function planCity(c, br) {
@@ -318,6 +365,8 @@ const Auto = (() => {
     // 城の守りは兵1人あたり約1.4倍強いので、隣の敵の兵力の4〜6割を残せば持ちこたえられる
     let k = Game.has(g, '慎重') ? 0.55 : (Game.has(g, '野心') || Game.has(g, '猪突')) ? 0.3 : 0.4;
     if (br.tier === 'dumb') k *= 0.6;            // 知力が低いと敵の脅威を甘く見る（それでも最低限は残す）
+    if (br.style === 'civil') k = 1.0;            // 内政型は、隣の敵と同じくらいの兵を残す
+    if (br.style === 'master') k = Math.max(k, 0.55);   // 万能型は攻めながらも守りを薄くしない
     return Math.round(Math.max(base, c.troops * 0.25, maxEnemy * k));
   }
   const avg = (arr, k) => arr.length ? arr.reduce((s, g) => s + g[k], 0) / arr.length : 40;
@@ -351,12 +400,13 @@ const Auto = (() => {
     // 敵の強さの見積もり（知力が低いほどぶれる）
     const defEst = defPower(t) * (1 + (Math.random() - 0.5) * br.noise * 0.6) * (t.owner === null ? 0.9 : 1);
     // 勝つために欲しい力の比：性格で変わる（慎重なら大きな差、猪突なら小さな差で攻める）
-    const want = br.want;   // 軍師の優秀さと癖で決まる、求める力の比
+    const want = wantNow(br);   // 軍師の優秀さと癖で決まる、求める力の比（攻めない季節が続くと下がる）
     // 余裕を持たせすぎると必ず勝ってしまい面白くない。勝ち目はあるが、負けることもある程度に
     const margin = (br.tier === 'smart' ? 1.12 : br.tier === 'mid' ? 1.06 : 1.0) + (Game.has(strategist(), '慎重') ? 0.08 : 0);
     // 候補の武将（君主は他に武将がいれば残す。前線では最低1人は城に残す）
     let cands = br.tier === 'dumb' ? shuffle(idle.slice()) : idle.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
-    if (cands.length > 1) cands = cands.filter(g => !g.isLord || br.tier === 'dumb');
+    // 君主は、ほかに将が3人以上いれば残す。将が足りず、君主が戦える（統率＋武力140以上）なら自ら出る
+    if (cands.length > 1) cands = cands.filter(g => !g.isLord || br.tier === 'dumb' || (cands.length < 4 && g.lead + g.war >= 140));
     const allInCity = Game.gensIn(c.i, G.player);
     if (Game.isFront(c) && cands.length >= allInCity.length && cands.length > 1) {
       // 一番守りに向いた武将（統率が高い者）を残す
@@ -374,7 +424,8 @@ const Auto = (() => {
       const f = atkFactor(c, army);
       const need = defEst * want / f;
       const cap = army.reduce((s, g) => s + Game.troopCap(g), 0);
-      const send = Math.floor(Math.min(avail, cap, Math.max(need * margin, 3000)) / 100) * 100;
+      // 出せる兵はすべて連れていく（守備兵は残したうえで）。兵が多いほど勝ち目は上がり、生き残った兵は戻ってくる
+      const send = Math.floor(Math.min(avail, cap) / 100) * 100;
       if (send >= need && send >= 3000) {
         addPairGens(army, c, t); orderArmy(army, br);
         return { c, t, army, troops: send, keep, ratio: send * f / defEst, need: Math.round(need) };
@@ -392,6 +443,7 @@ const Auto = (() => {
       let need0 = defEst * want / atkFactor(c, army);
       if (army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < need0 * margin && army.length < 5) {
         Game.citiesOf(G.player).filter(d => d !== c && r.has(d.i)).forEach(d => {
+          if (d.troops >= 20000) return;   // 大軍のいる都市の将は、その都市の出陣に残す
           const idleD = Game.gensIn(d.i, G.player).filter(g => !g.acted && !g.isLord);
           const allD = Game.gensIn(d.i, G.player).length;
           const canGive = Game.isFront(d) ? Math.max(0, Math.min(idleD.length, allD - 1)) : idleD.length;
@@ -401,7 +453,7 @@ const Auto = (() => {
         while (army.length < 5 && extraGens.length && army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < need0 * margin) army.push(extraGens.shift());
       }
       const f = atkFactor(c, army), need = defEst * want / f, cap = army.reduce((s2, g) => s2 + Game.troopCap(g), 0);
-      const send = Math.min(cap, Math.max(need * margin, 3000));
+      const send = Math.min(cap, Math.max(need * margin * 1.3, 3000));   // 合流させる兵は、勝ち目に余裕が出るくらいまで
       let have = Math.max(0, avail);
       const reinforce = [];
       for (const h of helpers) { if (have >= send) break; const take = Math.min(h.amt, Math.ceil((send - have) / 100) * 100); reinforce.push({ d: h.d, amt: take }); have += take; }
@@ -456,7 +508,8 @@ const Auto = (() => {
     const want = Math.round(t.troops * mult);
     // 率いる武将（君主は他に武将がいれば残す。前線は1人残す）
     let cands = idle.slice().sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
-    if (cands.length > 1) cands = cands.filter(g => !g.isLord || br.tier === 'dumb');
+    // 君主は、ほかに将が3人以上いれば残す。将が足りず、君主が戦える（統率＋武力140以上）なら自ら出る
+    if (cands.length > 1) cands = cands.filter(g => !g.isLord || br.tier === 'dumb' || (cands.length < 4 && g.lead + g.war >= 140));
     if (Game.isFront(c) && cands.length >= Game.gensIn(c.i, G.player).length && cands.length > 1) cands = cands.slice(0, -1).length ? cands.filter(g => g !== cands.slice().sort((a, b) => b.lead - a.lead)[0]) : cands;
     const army = cands.slice(0, 5);
     if (!army.length) return null;
@@ -477,33 +530,69 @@ const Auto = (() => {
   function planMass(br) {
     const out = [];
     const usedT = new Set();
+    const pulled = new Map();   // 都市ごとに、ほかの出陣へ回した将の数（どの都市にも1人は残す）
+    const leftIn = ci => Game.gensIn(ci, G.player).length - (pulled.get(ci) || 0);
     Game.citiesOf(G.player).forEach(c => {
-      if (c.troops < massLine()) return;
+      if (c.troops < 5000) return;
       const targets = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && !usedT.has(o.i) && (o.owner === null || !Game.isAlly(G.player, o.owner)));
       if (!targets.length) return;
       const keep = Math.max(5000, Math.round(c.troops * 0.25));
       const sendable = Math.floor((c.troops - keep) / 100) * 100;
+      if (sendable < 3000) return;
       // 率いる武将：この都市の待機武将（君主は他にいれば残す）。足りなければ周りの都市から呼ぶ
       let army = Game.gensIn(c.i, G.player).filter(g => !g.acted && !g.isLord).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+      { const lord = Game.gensIn(c.i, G.player).find(g => g.isLord && !g.acted); if (lord && army.length < 3 && lord.lead + lord.war >= 140) army.push(lord); }   // 将が足りなければ君主も出る
+      // この都市に将を1人は残す（全員が出ると、武将のいない都市になってしまう）
+      if (army.length && leftIn(c.i) - army.length < 1) { army.sort((a, b) => milScore(b) - milScore(a)); army.pop(); }
       const moved = [];
       const big = c.troops >= BIG_ARMY;
-      if (army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < sendable && army.length < 5) {
+      const cap = () => army.reduce((s2, g) => s2 + Game.troopCap(g), 0);
+      if (cap() < sendable && army.length < 5) {
         const r = reach(c);
-        // 地続きの都市から将を呼ぶ（その都市に1人は残す。5万以上の大軍なら前線・後方を問わず呼ぶ）
-        const extra = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord && g.city !== c.i && r.has(g.city) && Game.gensIn(g.city, G.player).length > 1).sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
-        while (army.length < 5 && extra.length && army.reduce((s2, g) => s2 + Game.troopCap(g), 0) < sendable) { const g = extra.shift(); army.push(g); moved.push(g); }
+        // 地続きの都市から将を呼ぶ（呼ばれた都市にも1人は残す。大軍のいる都市の将は、その都市のために残す）
+        const extra = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord && g.city !== c.i && r.has(g.city) && (G.cities[g.city].troops < 20000 || G.cities[g.city].troops < c.troops)).sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
+        for (const g of extra) {
+          if (army.length >= 5 || cap() >= sendable) break;
+          if (leftIn(g.city) <= 1) continue;
+          army.push(g); moved.push(g); pulled.set(g.city, (pulled.get(g.city) || 0) + 1);
+        }
       }
-      if (!army.length) { const lord = Game.gensIn(c.i, G.player).find(g => g.isLord && !g.acted); if (lord) army = [lord]; else return; }
-      const troops = Math.floor(Math.min(sendable, army.reduce((s2, g) => s2 + Game.troopCap(g), 0)) / 100) * 100;
-      if (troops < 5000) return;
-      // 一番落としやすい攻め先（明らかに敵が上回るときだけ見送る）
+      if (!army.length) return;
+      const troops = Math.floor(Math.min(sendable, cap()) / 100) * 100;
+      if (troops < 3000) return;
+      // 将が率いられる最大まで兵が揃った（兵の方が多い）なら、勝ち目に関係なく必ず攻める
+      const full = sendable >= cap();
+      if (!full && c.troops < massLine()) return;
       const f = atkFactor(c, army);
       // 見積もりは軍師の知力しだいでぶれる
       const best = targets.map(o => ({ o, ratio: troops * f / Math.max(1, defPower(o) * (1 + (Math.random() - 0.5) * br.noise * 0.6)) })).sort((a, b) => b.ratio - a.ratio)[0];
-      if (best.ratio < (big ? br.bigWant : br.want)) return;   // 兵が揃っていても、勝ち目が足りなければ攻めない（5万以上の大軍は基準を下げる）
+      if (!full && best.ratio < (big ? br.bigWant : wantNow(br))) { moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1)); return; }   // 兵が揃いきっていなければ、勝ち目も見る
       orderArmy(army, br);
-      usedT.add(best.o.i);
-      out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, moved });
+      // 兵が揃っていても、勝ち目（力の比）が基準に届かなければ攻めず、人材登用・訓練・内政で力をつける。
+      //  基準は1.0（委任の合戦で勝率およそ50%）、訓練が70以上なら0.9。
+      //  ただし、登用できる在野がおらず（ほかの都市の将も呼び尽くし）、内政（農業・商業・城壁）がどれも上限の8割以上、訓練も80以上なら、基準に関係なく必ず攻める
+      if (full) {
+        const want = c.train >= 70 ? 0.9 : 1.0;
+        const ronin = G.gens.some(x => x.state === 'ronin' && x.name !== '諸葛亮' && (x.city === c.i || c.adj.includes(x.city)));
+        const dev = c.farm >= c.farmMax * 0.8 && c.comm >= c.commMax * 0.8 && c.def >= c.defMax * 0.8;
+        const maxed = !ronin && dev && c.train >= 80;
+        if (best.ratio < want && !maxed) {
+          G.buildUp = G.buildUp || {}; G.buildUp[c.i] = G.turn;
+          moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1));
+          return;
+        }
+      }
+      // ただし訓練が低い（40未満）時は、敵が迫っていなければ1季節だけ鍛えてから出る（2季節続けては待たない）
+      G.trainWait = G.trainWait || {};
+      if (c.train < 40 && G.trainWait[c.i] !== G.turn - 1 && AI.threat(c, G.player) < c.troops * 0.8) {
+        G.trainWait[c.i] = G.turn;
+        moved.forEach(g => pulled.set(g.city, pulled.get(g.city) - 1));
+        return;
+      }
+      if (typeof window !== 'undefined' && window.__dbg) window.__dbg.push({ from: c.name, to: best.o.name, ratio: +best.ratio.toFixed(2), full });   // 調べ用
+      usedT.add(best.o.i);   // 攻めると決まってから、攻め先と将を押さえる（見送った都市の分は押さえない）
+      pulled.set(c.i, (pulled.get(c.i) || 0) + army.filter(g => g.city === c.i).length);
+      out.push({ c, t: best.o, army, troops, keep, ratio: best.ratio, mass: true, big, full, moved });
     });
     return out;
   }
@@ -513,20 +602,46 @@ const Auto = (() => {
   function strategicValue(t, e, br) {
     const w = br.tier === 'smart' ? 1 : br.tier === 'mid' ? 0.5 : 0;
     if (!w || t.owner === null) return 0;
-    const last = Game.citiesOf(t.owner).length === 1 ? 0.8 : 0;
-    const cap = G.factions[t.owner].capital === t.i ? 0.3 : 0;
+    const lateK = phase().stage === 'late' ? 1.5 : 1;   // 終盤は勢力ごと崩すことを重く見る
+    const last = (Game.citiesOf(t.owner).length === 1 ? 0.8 : 0) * lateK;
+    const cap = (G.factions[t.owner].capital === t.i ? 0.3 : 0) * lateK;
     const surround = t.adj.filter(a => G.cities[a].owner === G.player).length * 0.1;
     const exposed = t.adj.map(a => G.cities[a]).filter(o => o.owner !== null && o.owner !== G.player && o.owner !== t.owner && !Game.isAlly(G.player, o.owner)).reduce((s2, o) => s2 + o.troops, 0);
     const risk = Math.min(0.5, exposed / Math.max(1, (e.troops || 1) * 3));
     return w * (last + cap + surround - risk);
   }
+  // 中盤以降の「主敵」：接している（同盟していない）勢力のうち、いちばん倒しやすい所（力が小さく、こちらと接する城が多い）
+  // 敵を一つずつ減らせば、守るべき前線も減る
+  function focusFaction() {
+    const ns = new Map();
+    Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player && !Game.isAlly(G.player, o)) ns.set(o, (ns.get(o) || 0) + 1); }));
+    let best = null, bs = 1e18;
+    ns.forEach((touch, fi) => { const sc = Game.power(fi) / (1 + touch * 0.5); if (sc < bs) { bs = sc; best = fi; } });
+    return best;
+  }
+  function focusValue(t, br) {
+    if (br.tier === 'dumb' || t.owner === null || phase().stage === 'early' || weak()) return 0;
+    return t.owner === G.autoFocus ? (br.tier === 'smart' ? 0.2 : 0.1) : 0;
+  }
+  // 弱小勢力の攻め先：空き城と、前の季節から兵が大きく減った城（他と戦って消耗した隙）を狙い、大国の城には手を出さない
+  function weakValue(t, br) {
+    if (br.tier === 'dumb' || !weak()) return 0;
+    let v = 0;
+    if (t.owner === null) v += 0.5;
+    const prev = G.autoPrev && G.autoPrev[t.i];
+    if (prev && t.troops < prev * 0.7) v += 0.5;
+    if (t.owner !== null && Game.power(t.owner) > Game.power(G.player) * 2) v -= 0.4;
+    return v * (br.tier === 'smart' ? 1 : 0.6);
+  }
+  // 攻めない季節が続くと、勝ち目の基準を少しずつ下げる（1季節5%、最大20%）。出陣できたら元に戻る
+  function wantNow(br) { return br.style === 'civil' ? br.want : br.want * (1 - Math.min(0.2, 0.05 * (G.autoIdle || 0))); }   // 内政型は焦らない
   function planAttacks(br) {
     const plans = [];
     Game.citiesOf(G.player).forEach(c => {
       c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner))).forEach(t => {
         const e = evalAttack(c, t, br) || evalAttrition(c, t, br);
         const pairBonus = pairWishes().some(w => w.me.city === c.i && w.foe.city === t.i) ? 0.5 : 0;   // 名場面が起きそうな攻め先
-        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus + strategicValue(t, e, br) }));
+        if (e) plans.push(Object.assign(e, { score: (e.attrition ? 0.5 : 0) + e.ratio * (t.owner === null ? 1.2 : 1) + (t.pop / 1e6) + pairBonus + strategicValue(t, e, br) + weakValue(t, br) + focusValue(t, br) }));
       });
     });
     plans.sort((a, b) => b.score - a.score);
@@ -566,7 +681,7 @@ const Auto = (() => {
       const selfView = t.ratio * (1 + (60 - Math.min(60, brave.int)) / 100);
       if (selfView < 0.95) return;                         // さすがに勝ち目がないと本人も思う
       // 君主が猛将なら、誰の許しも要らない（軍師は止められない）
-      out.push({ c, t: t.o, army, troops, keep, ratio: t.ratio, brave, lordSelf: brave.isLord, restrain: !brave.isLord && br.tier === 'smart' && t.ratio < 0.8 });
+      out.push({ c, t: t.o, army, troops, keep, ratio: t.ratio, brave, lordSelf: brave.isLord, restrain: !brave.isLord && br.tier !== 'dumb' && t.ratio < br.want * (br.tier === 'smart' ? 0.85 : 0.7) });   // 軍師が止める基準は、軍師の優秀さしだい
       usedC.add(c.i); usedT.add(t.o.i);
     });
     return out;
@@ -603,7 +718,7 @@ const Auto = (() => {
   async function doRewards(br) {
     if (br.tier === 'dumb') return;
     // 終盤は太守の独立（忠誠60未満）に備えて、褒美の目安を上げる
-    const lim = phase().stage === 'late' ? (br.tier === 'smart' ? 65 : 60) : br.tier === 'smart' ? 60 : 45;
+    const lim = br.style === 'master' ? 65 : phase().stage === 'late' ? (br.tier === 'smart' ? 65 : 60) : br.tier === 'smart' ? 60 : 45;   // 万能型はいつも家臣の心を離さない
     for (const g of Game.gensOf(G.player)) {
       if (stopReq) return;
       if (g.isLord || Game.has(g, '忠義') || g.loyalty >= lim) continue;
@@ -640,10 +755,29 @@ const Auto = (() => {
     Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a].owner; if (o !== null && o !== G.player) neigh.add(o); }));
     let list = [...neigh].filter(fi => !Game.isAlly(G.player, fi));
     if (list.length) { await doSurrender(br, list, reserved); list = list.filter(fi => G.factions[fi].alive && Game.citiesOf(fi).length); }
-    if (stopReq || !br.diplo) return;
+    if (stopReq) return;
+    // 弱小勢力の外交：強い隣国とは手を結んで背後を固め、空き城や弱い相手へ伸びる（ふつう以上の軍師）
+    if (weak() && br.tier !== 'dumb') {
+      const vacantNear = Game.citiesOf(G.player).some(c => c.adj.some(a => G.cities[a].owner === null));
+      const cand = list.filter(fi => Game.power(fi) > myPow * 1.1 && (leavesEnemy(fi) || vacantNear)).sort((a, b) => Game.power(b) - Game.power(a))[0];
+      if (cand != null && Math.random() < 0.85) {
+        const env = Game.gensOf(G.player).filter(g => !g.acted && !reserved.has(g.i)).sort((a, b) => (b.cha + b.int) - (a.cha + a.int))[0];
+        if (env) {
+          await press(env.city, 'dip', '[data-cmd=ally]');
+          await say('weakAlly', { target: G.factions[cand].name + '軍' });
+          env.acted = true;
+          const r = Game.diploAlly(env, cand);
+          Sound.se(r.ok ? 'ally' : 'ng');
+          await UI.talk(Game.lordOf(cand), r.ok ? 'happy' : 'angry', r.msg, G.factions[cand].color, { tag: '外交' });
+          if (r.ok) Game.log(r.msg);
+          return;
+        }
+      }
+    }
+    if (!br.diplo) return;
     if (list.length < 2 && br.tier !== 'smart') return;
-    // 一番強い隣国と手を結ぶ
-    const strong = list.sort((a, b) => Game.power(b) - Game.power(a))[0];
+    // 一番強い隣国と手を結ぶ（主敵とは結ばない）
+    const strong = list.filter(fi => fi !== G.autoFocus).sort((a, b) => Game.power(b) - Game.power(a))[0];
     if (strong != null && Game.power(strong) > myPow * 0.7 && list.length >= 2 && leavesEnemy(strong) && Math.random() < 0.6) {
       const env = Game.gensOf(G.player).filter(g => !g.acted).sort((a, b) => (b.cha + b.int) - (a.cha + a.int))[0];
       if (!env) return;
@@ -662,6 +796,7 @@ const Auto = (() => {
     const wise = Game.has(sg, '智謀') || Game.has(sg, '神算');
     let times = br.tier === 'smart' ? 2 : br.tier === 'mid' ? 1 : (Math.random() < 0.6 ? 1 : 0);
     if (wise) times++;
+    if (br.style === 'master') times++;
     const front = new Set();
     Game.citiesOf(G.player).forEach(c => c.adj.forEach(a => { const o = G.cities[a]; if (o.owner !== null && o.owner !== G.player && !Game.isAlly(G.player, o.owner)) front.add(a); }));
     if (!front.size) return;
@@ -680,8 +815,10 @@ const Auto = (() => {
       G.gens.forEach(t => {
         if (t.state !== 'serve' || !front.has(t.city) || t.isLord || Game.has(t, '忠義') || used.has('g' + t.i)) return;
         const worth = (t.lead + t.war + t.int + t.pol) / 40;
-        if (t.loyalty < 45 && home.gold >= 400) opts.push({ kind: 'lure', t, city: t.city, v: worth + (45 - t.loyalty) / 5 + (Game.has(t, '野心') ? 2 : 0) });
-        else if (t.loyalty < 85 && home.gold >= 50) opts.push({ kind: 'sow', t, city: t.city, v: worth * 0.5 + (Game.has(t, '野心') ? 4 : 0) + (85 - t.loyalty) / 10 });
+        // 次に攻める都市の将を崩しておくと、合戦で内応・寝返りが起きやすい（賢い軍師ほど重く見る）
+        const nextT = attackTargets.includes(t.city) || (G.stage && G.stage.t === t.city) ? (br.tier === 'smart' ? 3 : 1.5) : 0;
+        if (t.loyalty < 45 && home.gold >= 400) opts.push({ kind: 'lure', t, city: t.city, v: worth + (45 - t.loyalty) / 5 + (Game.has(t, '野心') ? 2 : 0) + nextT });
+        else if (t.loyalty < 85 && home.gold >= 50) opts.push({ kind: 'sow', t, city: t.city, v: worth * 0.5 + (Game.has(t, '野心') ? 4 : 0) + (85 - t.loyalty) / 10 + nextT });
       });
       if (home.gold >= 100) front.forEach(ci => {
         const c = G.cities[ci];
@@ -726,6 +863,8 @@ const Auto = (() => {
       const c = G.cities[t.city];
       if (c.owner !== G.player) continue;
       const fails = G.recFail[t.i] || 0;
+      if (G.recGo && G.recGo[t.i] === G.turn) continue;   // この季節、すでに誘いの使者を向かわせた
+      if (G.recTry && G.recTry[t.i] === G.turn) continue;  // この季節、すでに誘った（断られた）人物には、もう一度は行かない
       // 三顧の礼：君主自身が訪ねる
       if (t.name === '諸葛亮') {
         if (lord.acted || reserved.has(lord.i)) continue;
@@ -750,13 +889,12 @@ const Auto = (() => {
         .sort((a, b) => b.cha - a.cha)[0];
       const env = here[0];
       const wantBetter = best && (!env || (br.tier !== 'dumb' && best.cha >= env.cha + (fails ? 8 : 20) && worth(t) >= 300));
-      if (wantBetter) {
-        if (moves >= (br.tier === 'smart' ? 3 : 2)) continue;
+      if (wantBetter && moves < (br.tier === 'smart' ? 3 : 2)) {
         const from = G.cities[best.city];
         await press(from.i, 'per', '[data-cmd=move]');
         await say('recruitGo', { gen: t.name, envoy: best.name, city: c.name });
         await MapView.march(from.i, c.i, G.factions[G.player].color);
-        Game.move(best, c.i); moves++;
+        Game.move(best, c.i); moves++; (G.recGo = G.recGo || {})[t.i] = G.turn;
         UI.toast(`${best.name}（魅力${best.cha}）が${t.name}を誘いに ${from.name} → ${c.name} へ`, 2400);
         continue;   // 移動で今季の行動は終わり。次の季節に誘う
       }
@@ -765,6 +903,7 @@ const Auto = (() => {
       await say('rec', { gen: t.name });
       env.acted = true;
       const before = t.state;
+      (G.recTry = G.recTry || {})[t.i] = G.turn;
       await App.doRecruit(env, t);
       if (t.state === before) G.recFail[t.i] = fails + 1; else delete G.recFail[t.i];
     }
@@ -776,6 +915,10 @@ const Auto = (() => {
     while (q.length) { const x = q.shift(); G.cities[x].adj.forEach(a => { if (!seen.has(a) && G.cities[a].owner === G.player) { seen.add(a); q.push(a); } }); }
     return seen;
   }
+  // 今の軍師が内政型か
+  function civilNow() { const g = strategist(); return !!g && brain(g).style === 'civil'; }
+  // 隣の敵の都市のうち、いちばん兵の多い所の兵数
+  function maxAdjEnemy(c) { return c.adj.reduce((m, a) => { const o = G.cities[a]; return (o.owner !== null && o.owner !== G.player && !Game.isAlly(G.player, o.owner)) ? Math.max(m, o.troops) : m; }, 0); }
   function wants(c) {
     const front = Game.isFront(c);
     const threat = AI.threat(c, G.player);
@@ -783,7 +926,7 @@ const Auto = (() => {
       front, threat,
       food: Game.foodReserve(c) + (front ? 3000 : 1000),               // これだけは置いておきたい
       gold: front ? 800 : 400,
-      troops: Math.max(front ? Math.max(6000, Math.round(threat * 0.8)) : 2500, G.stage && G.stage.c === c.i ? G.stage.troops : 0),
+      troops: Math.max(front ? Math.max(6000, Math.round(threat * 0.8), civilNow() ? maxAdjEnemy(c) : 0) : 2500, G.stage && G.stage.c === c.i ? G.stage.troops : 0),
     };
   }
   // ---------- 武将の配置換え：強い武将は前線へ、文官は内地へ ----------
@@ -841,6 +984,88 @@ const Auto = (() => {
       UI.toast(`${civ.name}が ${f.name} → ${dest.name} へ（内政）`, 2200);
       App.refresh();
       n++;
+    }
+  }
+
+  // 季節の最後に、武将のいない自分の都市をなくす（将が2人以上いる、近い都市から1人回す。前線を優先）
+  async function ensureGovernors() {
+    const cities = Game.citiesOf(G.player);
+    const empty = cities.filter(c => Game.gensIn(c.i, G.player).length === 0).sort((a, b) => (Game.isFront(b) ? 1 : 0) - (Game.isFront(a) ? 1 : 0) || b.troops - a.troops);
+    for (const c of empty) {
+      const r = reach(c);
+      const dist = d => { const seen = { [c.i]: 0 }, q = [c.i]; while (q.length) { const x = q.shift(); if (x === d.i) return seen[x]; G.cities[x].adj.forEach(a => { if (seen[a] == null && G.cities[a].owner === G.player) { seen[a] = seen[x] + 1; q.push(a); } }); } return 99; };
+      const donor = cities.filter(d => d !== c && r.has(d.i) && Game.gensIn(d.i, G.player).length >= 2).sort((a, b) => dist(a) - dist(b) || Game.gensIn(b.i, G.player).length - Game.gensIn(a.i, G.player).length)[0];
+      if (!donor) continue;
+      // 守りに向いた（統率の高い）将を、君主以外から
+      const g = Game.gensIn(donor.i, G.player).filter(x => !x.isLord).sort((a, b) => b.lead - a.lead)[Game.isFront(c) ? 0 : Game.gensIn(donor.i, G.player).filter(x => !x.isLord).length - 1];
+      if (!g) continue;
+      g.city = c.i;
+      UI.toast(`${g.name}が ${donor.name} → ${c.name} へ（武将のいない城を守るため）`, 2200);
+    }
+    App.refresh();
+  }
+  // 将の多すぎる都市から、戦略上の重みのわりに将の少ない都市（前線・交通の要・大都市・本拠・大軍のいる都市）へ回す（季節に4人まで）
+  async function spreadGenerals() {
+    const moves = Game.spreadPlan(G.player, 4);
+    for (const m of moves) {
+      m.g.city = m.to.i;
+      const why = Game.isFront(m.to) ? '前線を固めるため' : m.to.adj.length >= 5 ? '交通の要を押さえるため' : m.to.pop >= 400000 ? '大きな町を治めるため' : '手薄な城を補うため';
+      UI.toast(`${m.g.name}が ${m.from.name} → ${m.to.name} へ（${why}）`, 2200);
+    }
+    if (moves.length) App.refresh();
+  }
+  // 兵の多い前線の都市に、率いる将が足りなければ、将に余裕のある都市（兵に比べて将が多い所）から回す（季節に3人まで）
+  async function balanceCommanders(br) {
+    if (br.tier === 'dumb') return;
+    const cities = Game.citiesOf(G.player);
+    const capOf = c => Game.gensIn(c.i, G.player).filter(g => !g.isLord).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5).reduce((s2, g) => s2 + Game.troopCap(g), 0);
+    let moves = 0;
+    for (const c of cities.filter(x => Game.isFront(x)).sort((a, b) => b.troops - a.troops)) {
+      if (stopReq || moves >= 3) return;
+      const usable = c.troops - garrison(c, br);
+      const nGen = Game.gensIn(c.i, G.player).filter(g => !g.isLord).length;
+      if (usable < 15000 || nGen >= 5 || capOf(c) >= usable * 0.9) continue;
+      // 将を出せる都市：武の将がいて、その都市では将が兵に比べて余っている（または内地）
+      const donors = cities.filter(d => d !== c && Game.gensIn(d.i, G.player).length >= 2).map(d => {
+        const gs = Game.gensIn(d.i, G.player).filter(g => !g.isLord && !g.acted && milScore(g) >= 120).sort((a, b) => milScore(b) - milScore(a));
+        const need = Game.isFront(d) ? Math.ceil(Math.max(0, d.troops - garrison(d, br)) / 9000) + 1 : 1;
+        return { d, gs, spare: Math.min(gs.length, Game.gensIn(d.i, G.player).length - need) };
+      }).filter(x => x.spare > 0).sort((a, b) => b.spare - a.spare);
+      for (const dn of donors) {
+        if (moves >= 3 || nGen + moves >= 5 || capOf(c) >= usable * 0.9) break;
+        const g = dn.gs[0];
+        await press(g.city, 'per', '[data-cmd=move]');
+        await say('deploy', { gen: g.name, to: c.name });
+        Game.move(g, c.i); g.acted = false;   // 移っただけなので、この季節もまだ働ける
+        UI.toast(`${g.name}が ${dn.d.name} → ${c.name} へ（兵を率いるため）`, 2200);
+        App.refresh(); moves++;
+      }
+    }
+  }
+  // 内政型の軍師：内地の都市に、都市の大きさ（人口15万人ごとに1人、1〜3人）に応じて文官を置く
+  async function placeCivil(br, reserved) {
+    if (br.style === 'mil') return;   // 内政型と万能型が、内地に文官を置く
+    const cities = Game.citiesOf(G.player);
+    const isCiv = g => civScore(g) >= milScore(g) * 0.8 && !g.isLord;
+    let moves = 0;
+    for (const c of cities.filter(x => !Game.isFront(x)).sort((a, b) => b.pop - a.pop)) {
+      if (stopReq || moves >= 3) return;
+      const want = clamp(Math.round(c.pop / 150000), 1, 3);
+      const have = Game.gensIn(c.i, G.player).filter(isCiv).length;
+      if (have >= want) continue;
+      // 文官の多すぎる都市（前線は、ほかに将がいれば文官は全員、内地はその都市の必要数を超える分）から呼ぶ
+      const donor = cities.filter(d => d !== c).map(d => {
+        const civs = Game.gensIn(d.i, G.player).filter(g => isCiv(g) && !g.acted && !reserved.has(g.i));
+        const need = Game.isFront(d) ? 0 : clamp(Math.round(d.pop / 150000), 1, 3);
+        return { d, civs, extra: Game.gensIn(d.i, G.player).length > 1 ? civs.length - need : 0 };
+      }).filter(x => x.extra > 0).sort((a, b) => b.extra - a.extra)[0];
+      if (!donor) continue;
+      const g = donor.civs.sort((a, b) => civScore(b) - civScore(a))[0];
+      await press(g.city, 'per', '[data-cmd=move]');
+      await say('deployCivil', { gen: g.name, to: c.name });
+      Game.move(g, c.i);
+      UI.toast(`${g.name}が ${donor.d.name} → ${c.name} へ（内政）`, 2200);
+      App.refresh(); moves++;
     }
   }
 
@@ -946,7 +1171,7 @@ const Auto = (() => {
   async function forwardBig(br) {
     for (const c of Game.citiesOf(G.player)) {
       if (stopReq) return;
-      if (c.troops < BIG_ARMY || Game.isFront(c)) continue;
+      if (c.troops < (br.style === 'civil' ? 40000 : 30000) || Game.isFront(c)) continue;   // 兵3万（内政型は4万）以上の後方の都市は、前線へ回す
       // 地続きで、いちばん近い前線の都市
       const dist = { [c.i]: 0 }, q = [c.i]; let to = null;
       while (q.length && !to) { const x = q.shift(); for (const a of G.cities[x].adj) { if (dist[a] != null || G.cities[a].owner !== G.player) continue; dist[a] = dist[x] + 1; if (Game.isFront(G.cities[a])) { to = G.cities[a]; break; } q.push(a); } }
@@ -961,6 +1186,81 @@ const Auto = (() => {
       UI.toast(`${c.name} → ${to.name}　兵${fmt(amt)}・兵糧${fmt(food)} を前線へ`, 2400);
       App.refresh();
     }
+  }
+  // 手の空いた将に修行をさせる（武の将は統率・武力、文の将は政治・知力の低い方を伸ばす）
+  // 中盤からは、君主は毎季節修行する。魅力を85まで上げ、そのあとは一番低い能力を上げる（出陣・三顧の礼のあとに）
+  async function lordStudy() {
+    const lord = Game.lordOf(G.player);
+    if (!lord || lord.acted || lord.state !== 'serve') return;
+    if ((typeof Sound !== 'undefined' && Sound.mapStage ? Sound.mapStage() : (G.bgmStage || 0)) < 1) return;
+    const KS = ['lead', 'war', 'int', 'pol', 'cha'];
+    const k = lord.cha < 85 ? 'cha' : KS.filter(x => lord[x] < 99).sort((a, b) => lord[a] - lord[b])[0];
+    if (!k) return;
+    const NM = { lead: '統率', war: '武力', int: '知力', pol: '政治', cha: '魅力' };
+    await press(lord.city, 'per', '[data-cmd=study]');
+    const before = lord[k], gain = Game.study(lord, k);
+    lord.acted = true;
+    Sound.se(gain ? 'train' : 'ng');
+    await UI.talk(lord, gain ? 'happy' : 'normal', `${lord.name}「${gain ? line(lord, 'study_' + k) : line(lord, 'study_fail')}」\n<b>君主の修行：${NM[k]} ${before} → ${lord[k]}${gain ? `（+${gain}）` : '（変わらず）'}</b>`, facColor(lord), { tag: '君主の修行' });
+    App.refresh();
+  }
+  async function idleStudy(br) {
+    if (br.tier === 'dumb') return;
+    const idle = Game.gensOf(G.player).filter(g => !g.acted && !g.isLord);
+    let shown = 0;
+    for (const g of idle) {
+      if (stopReq) return;
+      if (br.tier === 'mid' && br.style === 'mil' && Math.random() < 0.5) continue;   // 内政型・万能型は修行も欠かさない
+      const keys = milScore(g) >= civScore(g) * 1.1 ? ['lead', 'war'] : ['pol', 'int'];
+      const k = keys.filter(x => g[x] < 95).sort((a, b) => g[a] - g[b])[0];
+      if (!k) continue;
+      const before = g[k], gain = Game.study(g, k);
+      g.acted = true;
+      const NM = { lead: '統率', war: '武力', int: '知力', pol: '政治' };
+      if (shown < 2) {   // 全員分の会話は長くなるので、2人まで見せて残りは知らせだけ
+        await press(g.city, 'per', '[data-cmd=study]');
+        await UI.talk(g, gain ? 'happy' : 'normal', `${g.name}「${gain ? line(g, 'study_' + k) : line(g, 'study_fail')}」\n<b>修行：${NM[k]} ${before} → ${g[k]}</b>`);
+        shown++;
+      } else if (gain) UI.toast(`${g.name} 修行で${NM[k]} +${gain}`, 1600);
+    }
+  }
+  // 兵が多いのに攻めない季節は、その理由を軍師が言う（いちばん兵の多い都市で考える）
+  function holdReason(br, done = new Set()) {
+    const c = Game.citiesOf(G.player).filter(x => !done.has(x.i)).sort((a, b) => b.troops - a.troops)[0];
+    if (!c || c.troops < 20000) return null;
+    const L = strategist().isLord;
+    const n = fmt(c.troops);
+    if (!Game.isFront(c)) return L ? `${c.name}の兵${n}は敵と接しておらぬ。季節の終わりに前線へ送れ。` : `${c.name}の兵${n}は敵と接していません。季節の終わりに前線へ送ります。`;
+    const ts = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner)));
+    if (!ts.length) return L ? `${c.name}の隣は同盟国ばかりで、攻める相手がおらぬ。` : `${c.name}の隣は同盟国ばかりで、攻める相手がおりません。`;
+    const army = Game.gensIn(c.i, G.player).filter(g => !g.acted && (!g.isLord || g.lead + g.war >= 140)).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+    if (!army.length) return L ? `${c.name}の兵${n}を率いる将がおらぬ。将を回せ。` : `${c.name}の兵${n}を率いる将がおりません（ほかの出陣や仕事に回っています）。将を回します。`;
+    const best = ts.map(t => { const keep = garrison(c, br, t.i), send = Math.max(0, Math.min(c.troops - keep, army.reduce((s2, g) => s2 + Game.troopCap(g), 0))); return { t, keep, send, ratio: send * atkFactor(c, army) / Math.max(1, defPower(t)) }; }).sort((a, b) => b.ratio - a.ratio)[0];
+    const cap = army.reduce((s2, g) => s2 + Game.troopCap(g), 0);
+    const keepNote = best.keep > c.troops * 0.4 ? `隣の大軍に備えて${fmt(best.keep)}を守りに残すと、出せるのは${fmt(best.send)}。`
+      : cap < c.troops - best.keep ? `${c.name}の将は${army.length}人で、率いられるのは${fmt(cap)}まで（兵${n}を活かすには将が足りません）。` : '';
+    const slim = best.ratio < wantNow(br) * 0.7;   // 勝ち目の大きさは数字ではなく言葉で伝える
+    return L ? `${keepNote}${best.t.name}を攻めても、${slim ? '勝ち目はほとんどない' : 'まだ勝ち目が薄い'}。兵を鍛えて機を待て。`
+             : `${keepNote}いちばん取りやすい${best.t.name}でも、${slim ? '勝ち目はほとんどありません' : 'まだ勝ち目が薄うございます'}。兵を鍛えて機を待ちます。`;
+  }
+  // 攻めない季節の、軍師のひと言に添える短い言い訳（数字は出さない。超速では読み飛ばされる）
+  function holdShort(br) {
+    const c = Game.citiesOf(G.player).sort((a, b) => b.troops - a.troops)[0];
+    if (!c) return '';
+    const L = strategist().isLord;
+    if (!Game.isFront(c)) return L ? `${c.name}の兵は前線へ回しておけ` : `${c.name}の兵は、前線へ回しておきます`;
+    const ts = c.adj.map(a => G.cities[a]).filter(o => o.owner !== G.player && (o.owner === null || !Game.isAlly(G.player, o.owner)));
+    if (!ts.length) return '';
+    const army = Game.gensIn(c.i, G.player).filter(g => !g.isLord || g.lead + g.war >= 140).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
+    if (!army.length) return L ? `${c.name}には兵を率いる将が足りぬ` : `${c.name}には、兵を率いる将が足りません`;
+    const best = ts.map(t => { const keep = garrison(c, br, t.i), send = Math.max(0, Math.min(c.troops - keep, army.reduce((s2, g) => s2 + Game.troopCap(g), 0))); return { t, ratio: send * atkFactor(c, army) / Math.max(1, defPower(t)) }; }).sort((a, b) => b.ratio - a.ratio)[0];
+    const near = best.ratio >= wantNow(br) * 0.8;
+    return L ? (near ? `${best.t.name}を落とすまで、あと一息だ` : `${best.t.name}を落とすには、まだ力が足りぬ`)
+             : (near ? `${best.t.name}を落とすまで、あと一息です` : `${best.t.name}を落とすには、まだ力が足りません`);
+  }
+  async function sayText(text) {
+    const g = strategist(); if (!g) return;
+    await UI.talk(g, 'normal', `${title(g)}${g.name}「${text}」`, facColor(g), { tag: g.isLord ? '君主の采配' : '軍師' });
   }
   async function doLogistics(br) {
     const cities = Game.citiesOf(G.player);
@@ -1025,6 +1325,7 @@ const Auto = (() => {
     if (!g) { UI.toast('軍師がいない'); return false; }
     const br = brain(g);
     setBar(`${g.isLord ? "君主" : "軍師"} <b>${g.name}</b> が${g.isLord ? "自ら" : ""}采配中（${G.year}年${SEASONS[G.season]}）`);
+    G.autoFocus = focusFaction();
     const mass = planMass(br);
     const attacks = [...mass, ...planAttacks(br).filter(p => !mass.some(m => m.c === p.c || m.t === p.t))];
     const stage = attacks.length < br.maxAttacks ? planStage(br, attacks) : (G.stage = null);
@@ -1033,7 +1334,9 @@ const Auto = (() => {
     // 局面の見立てを一言添える（知力の低い軍師は言わない）
     const ph = phase();
     const PN = { early: L ? '今は国の土台を作る時だ。' : '今は国の土台を作る時です。', mid: L ? '攻めの力を蓄え、前へ出る時だ。' : '攻めの力を蓄え、前へ出る時です。', late: L ? '天下は目前。民と家臣の心を離さぬようにせよ。' : '天下は目前。民と家臣の心を離さぬように。' };
-    const note = br.tier === 'dumb' ? '' : PN[ph.stage] + (ph.staff === 'few' ? (L ? '人手が足りぬ。人材を探せ。' : '人手が足りません。人材を探しましょう。') : '');
+    const civilNote = br.style === 'civil' ? (L ? '' : '国を富ませ、兵を養い、守りを固めます。') : br.style === 'master' ? (L ? '富国強兵。内を固め、外を討つ。' : '富国強兵。内を固め、外を討ちます。') : '';
+    const focusNote = civilNote ? civilNote : br.tier !== 'dumb' && ph.stage !== 'early' && !weak() && G.autoFocus != null ? (L ? `まずは${G.factions[G.autoFocus].name}軍を討ち、敵を一つずつ減らす。` : `まずは${G.factions[G.autoFocus].name}軍を討ち、敵を一つずつ減らします。`) : '';
+    const note = focusNote + (br.tier === 'dumb' ? '' : (ph.stage === 'early' && weak() ? (L ? '今は小国だ。強国とは争わず、空き城と隙を狙え。' : '今は小国。強国とは争わず、空き城と隙を狙います。') : PN[ph.stage]) + (ph.staff === 'few' ? (L ? '人手が足りぬ。人材を探せ。' : '人手が足りません。人材を探しましょう。') : ''));
     await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan: note + plan }, attacks.length ? 'angry' : 'normal');
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
@@ -1068,10 +1371,16 @@ const Auto = (() => {
       bp.army.forEach(x => reserved.add(x.i));
     }
     // 出陣
-    if (!armies.length) await say('hold');
+    let sorties = 0;
+    const triedC = new Set(), sortiedC = new Set();
+    if (!armies.length) {   // 攻めない季節：いつものひと言に、短い言い訳を添える
+      const g = strategist();
+      if (g) { const base = sl('hold'), why = holdShort(br); await UI.talk(g, 'normal', `${title(g)}${g.name}「${base}${why ? (/[。！？…]$/.test(base) ? '' : '。') + why : ''}」`, facColor(g), { tag: g.isLord ? '君主の采配' : '軍師' }); }
+    }
     for (const a of armies) {
       if (stopReq) return false;
       const { p } = a;
+      triedC.add(p.c.i);
       if (p.c.owner !== G.player || p.t.owner === G.player || (p.t.owner !== null && Game.isAlly(G.player, p.t.owner))) continue;
       // 出陣は季節の最初に行うので、計画したときの見積もりのまま進める（見積もり直すと、他の出陣に充てた将を取り合ってしまう）
       const e = p;
@@ -1083,8 +1392,16 @@ const Auto = (() => {
         e.moved.forEach(g => { if (g.state === 'serve' && g.faction === G.player && !g.acted) g.city = p.c.i; });
         UI.toast(`${names} が${p.c.name}に合流`, 2200);
       }
-      const army = e.army.filter(x => x.state === 'serve' && x.faction === G.player && x.city === p.c.i && !x.acted);
-      if (!army.length) continue;
+      let army = e.army.filter(x => x.state === 'serve' && x.faction === G.player && x.city === p.c.i && !x.acted);
+      // 寝返りに備える：忠誠40未満の将は、褒美で引き締める。それでも足りなければ連れていかない（知力の低い軍師は気づかない）
+      if (br.tier !== 'dumb') {
+        for (const g of army.filter(x => !x.isLord && !Game.has(x, '忠義') && x.loyalty < 40)) {
+          for (let k = 0; k < 3 && g.loyalty < 40 && p.c.gold >= 150; k++) Game.reward(g, p.c);
+          if (g.loyalty < 40) { army = army.filter(x => x !== g); UI.toast(`${g.name}は忠誠が低く、寝返りのおそれがあるので留守番`, 2200); }
+          else UI.toast(`${g.name}に褒美を与え、出陣前に引き締めた（忠誠${Math.round(g.loyalty)}）`, 2200);
+        }
+      }
+      if (!army.length) { await sayText(`${p.t.name}を攻めるはずの将が、ほかの出陣に回ってしまいました。${p.c.name}からの出陣は見送ります。`); continue; }
       // 兵の合流
       if (e.reinforce) {
         for (const rf of e.reinforce) {
@@ -1103,9 +1420,10 @@ const Auto = (() => {
       // 実際に集まった将が率いられる分までに抑える
       const troops = Math.min(e.troops, Math.floor((p.c.troops - e.keep) / 100) * 100, Math.floor(army.reduce((s2, g) => s2 + Game.troopCap(g), 0) / 100) * 100);
       // 予定の将が他の出陣に回って減ったときは、勝ち目を確かめ直す（足りなければ見送る）
-      if (army.length < e.army.length && !e.big) {
+      // 将が減った時だけでなく、合流する兵が見込みより大きく減った時（ほかの出陣と同じ都市をあてにしていた等）も勝ち目を見直す
+      if ((army.length < e.army.length || troops < e.troops * 0.9) && !e.big && !e.full) {
         const ratio = troops * atkFactor(p.c, army) / Math.max(1, defPower(p.t));
-        if (ratio < (e.attrition ? br.attrWant : br.want)) { await say('hold'); continue; }
+        if (ratio < (e.attrition ? br.attrWant : wantNow(br))) { await say('hold'); continue; }
       }
       if (troops < 3000) { await say('hold'); continue; }
       // 兵糧：通常は次の秋までの分を残し20日分。兵が揃った攻め・猛将は、残る兵の1季節分だけ残して10日分あればよい
@@ -1129,27 +1447,37 @@ const Auto = (() => {
       }
       const spare = p.c.food - (loose ? Math.round((p.c.troops - troops) * 0.12 + 1000) : Game.foodReserve(p.c, p.c.troops - troops));
       const food = Math.min(Math.round(troops * 0.03 * 30), Math.floor(spare));
-      if (food < troops * 0.03 * (loose ? 10 : 20)) { await say('hold'); continue; }
+      if (food < troops * 0.03 * (loose ? 10 : 20)) { await sayText(`${p.c.name}の兵糧が足りず、${p.t.name}への出陣は見送ります（${loose ? 10 : 20}日分に届きません）。`); continue; }
       await press(p.c.i, 'mil', '[data-cmd=attack]');
       MapView.setHighlight([p.t.i]); await wait(500); MapView.setHighlight(null);
+      if (e.full) await sayText(`${p.c.name}の兵は、将が率いられる最大まで揃いました。勝ち負けは天に任せ、${p.t.name}へ攻め込みます。`);
       await say(e.mass ? 'mass' : e.attrition ? 'attrition' : 'attack', { target: p.t.name, n: fmt(p.t.troops), gen: army[0].name, m: fmt(troops), k: fmt(p.c.troops - troops), city: p.c.name }, 'angry');
       UI.closeSheet();
       const cmdr = army[0];
       Sound.se('march');
       await UI.talk(cmdr, 'angry', `${cmdr.name}「${line(cmdr, 'sortie')}」`, facColor(cmdr), { tag: '出陣' });
       army.forEach(x => x.acted = true);
+      sorties++; sortiedC.add(p.c.i);
       const r = await App.executeBattle({ atkFi: G.player, from: p.c.i, to: p.t.i, gens: army.map(x => x.i), troops, food }, 'watch');
       if (r === 'end') return false;
     }
     UI.closeSheet();
+    G.autoIdle = sorties ? 0 : (G.autoIdle || 0) + 1;
+    // 兵2万以上いて出陣しなかった都市があれば、その理由を言う（いちばん兵の多い都市）
+    // 出陣しなかった理由の説明（勝ち目が足りない等）は出さない
     // 出陣が済んだら、出陣した将は行動済み。取りやめになった出陣の将は、このあとの外交・内政などで働ける
     reserved.clear();
     const armies0 = [];
+    // 見つけてある在野の人物の登用は、外交・計略・配置換えより先に行う（魅力の高い将が先に他の仕事へ回ってしまわないように）
+    await doRecruit(br, new Set()); if (stopReq) return false;
+    await lordStudy(); if (stopReq) return false;
     await doDiplo(br, new Set()); if (stopReq) return false;
-    await doPlots(br, new Set(armies0.map(x => x.i)), attacks.map(p => p.t.i)); if (stopReq) return false;
+    await doPlots(br, new Set(armies0.map(x => x.i)), [...new Set([...attacks.filter(p => p.t.owner !== G.player).map(p => p.t.i), ...(G.stage ? [G.stage.t] : [])])]); if (stopReq) return false;
     await deploy(br, new Set(armies0.map(x => x.i)), attacks); if (stopReq) return false;
+    await placeCivil(br, new Set()); if (stopReq) return false;
+    await balanceCommanders(br); if (stopReq) return false;
     await eventSeek(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
-    await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;
+    await doRecruit(br, new Set(armies0.map(x => x.i))); if (stopReq) return false;   // 配置換えのあとで手の空いた将がいれば、もう一度
     await doLogistics(br); if (stopReq) return false;
     // 内政
     for (const c of Game.citiesOf(G.player)) {
@@ -1169,6 +1497,11 @@ const Auto = (() => {
         if (first || Math.random() < 0.35) { await say('dom', { city: c.name, need: NEED_NAME[cmd], gen: gen.name }); first = false; }
         const r = Game.doCommand(cmd, gen, c);
         gen.acted = true;
+        if (cmd === 'search') {   // 見つからなかったら、その時の顔ぶれを覚えておく
+          G.searchMemo = G.searchMemo || {};
+          if (r.found) delete G.searchMemo[c.i];
+          else G.searchMemo[c.i] = { turn: G.turn, seen: G.gens.filter(x => x.state === 'ronin' && (x.city === c.i || c.adj.includes(x.city))).map(x => x.i) };
+        }
         if (r.found) {
           r.found.known = true;
           await UI.talk(gen, 'happy', `${gen.name}「在野に${r.found.name}という人物がおりました」`);
@@ -1182,9 +1515,13 @@ const Auto = (() => {
         App.refresh();
       }
     }
+    await idleStudy(br); if (stopReq) return false;
+    G.autoPrev = {}; G.cities.forEach(c => { G.autoPrev[c.i] = c.troops; });   // 次の季節に「兵が減った城」を見つけるため
     await sendTrained(br); if (stopReq) return false;
     await doLogistics(br); if (stopReq) return false;
     await forwardBig(br); if (stopReq) return false;
+    await ensureGovernors();
+    await spreadGenerals();
     UI.closeSheet();
     return true;
   }
@@ -1192,6 +1529,7 @@ const Auto = (() => {
   async function loop() {
     while (running && !stopReq) {
       const ok = await playSeason();
+      if (!ok && !G.gameOver) await ensureGovernors();   // 途中で止めても、武将のいない都市を残さない
       if (!ok || stopReq || G.gameOver) break;
       setBar(`季節を進めています…`);
       await App.endTurn(true);
@@ -1226,7 +1564,7 @@ const Auto = (() => {
     running = true; stopReq = false; seasonsLeft = n || 0;
     App.busy = true; keepAwake(true);
     document.getElementById('autobar').classList.add('show'); document.getElementById('app').classList.add('auto-on'); place();
-    loop().finally(() => { App.busy = false; });
+    loop().catch(e => console.error('auto', e)).finally(() => { App.busy = false; stop(true); });   // 途中でエラーが出ても、オートが止まったままにならないように
   }
   function stop(done) {
     if (!running) return;
@@ -1269,8 +1607,16 @@ const Auto = (() => {
   }
 
   // 会話の表示時間：文字数に応じて長く（1文字50ms、最大7秒）。「速い」でも長い文は読めるよう、速さの効きを弱める
-  function talkMs(text) { if (S.speed >= 4) return 280;   // 超速：会話は一瞬だけ見せて流す
-    const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length; return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6); }
+  // 超速でも読ませる知らせ（敵襲・外交・捕虜・処断・寝返り・出陣願い・仕官・援軍・方針・計略・内政の結果は読み飛ばしてよい）
+  const IMPORTANT = new Set(['天下の動き', '即位', '独立', '人物紹介', '生還', '忠義', '君主出陣', '三顧の礼', '市民兵', '天下統一目前', '再起を誓う']);
+  function talkMs(text, opts) {
+    const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
+    // 季節の変わり目の出来事は、どの速さでもじっくり読めるように（長い文ほど長く出す）
+    if (opts && opts.ev) return Math.min(16000, 1600 + n * 90);
+    // 超速：ふだんの会話は一瞬だけ見せて流す。ただし重要な知らせの長い文は「速い」と同じ時間だけ読ませる
+    if (S.speed >= 4) return n >= 40 && opts && IMPORTANT.has(opts.tag) ? Math.min(7000, 900 + n * 50) / Math.pow(2, 0.6) : 280 / boost();
+    return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6);
+  }
 
   function init() {
     const bar = document.getElementById('autobar');
@@ -1299,11 +1645,11 @@ const Auto = (() => {
     if (v === 'speed') { S.speed = nextSpeed(S.speed); if (G) G.opts.aiSpeed = S.speed; try { localStorage.setItem('internT_autoSpeed', S.speed); } catch (e) {} return openMenu(); }
     if (v === 'change') {
       const list = Game.gensOf(G.player);
-      const gi = await UI.pickGenerals('軍師に任命する武将（知力が高いほど采配が正確）', list, { stat: 'int', keys: ['int', 'lead', 'pol', 'cha'], extra: x => x.i === G.strategist ? '現軍師' : '' });
+      const gi = await UI.pickGenerals('軍師に任命する武将（知力が高いほど采配が正確）', list, { stat: 'int', keys: ['int', 'lead', 'pol', 'cha'], extra: x => (x.i === G.strategist ? '現軍師 ' : '') + (brain(x).style === 'civil' ? '内政型' : brain(x).style === 'master' ? '万能型' : '') });
       if (gi != null) {
         G.strategist = gi;
         const ng = G.gens[gi];
-        await UI.talk(ng, 'happy', `${ng.name}「${brain(ng).tier === 'dumb' ? '軍師？ お、俺がですか！ やってやりますよ！' : brain(ng).tier === 'mid' ? '大役、謹んでお受けします' : '{you}の天下のため、この知略を尽くしましょう'.replace('{you}', '殿')}」\n<b>${ng.name}を軍師に任命した</b>`);
+        await UI.talk(ng, 'happy', `${ng.name}「${brain(ng).style === 'civil' ? '戦は最後の手段。まずは国を富ませ、民と兵を養いましょう' : brain(ng).tier === 'dumb' ? '軍師？ お、俺がですか！ やってやりますよ！' : brain(ng).tier === 'mid' ? '大役、謹んでお受けします' : '{you}の天下のため、この知略を尽くしましょう'.replace('{you}', '殿')}」\n<b>${ng.name}を軍師に任命した</b>`);
       }
       return openMenu();
     }

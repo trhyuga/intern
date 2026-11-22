@@ -5,6 +5,7 @@
 // ============================================================
 const Portrait = (() => {
   const cache = new Map();
+  let pcv = null;
   function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   const SKINS = ['#f2d2b0', '#ecc6a0', '#e6bc94', '#f0ccaa', '#e0b48a', '#eac29c'];
@@ -525,13 +526,18 @@ const Portrait = (() => {
 
   function get(g, expr = 'normal', color) {
     const key = g.name + '|' + expr + '|' + (color || '');
-    if (cache.has(key)) return cache.get(key);
-    const cv = document.createElement('canvas');
-    cv.width = 240; cv.height = 300;
-    const c = cv.getContext('2d'); c.scale(2, 2);
-    draw(c, g, expr, color);
-    const url = cv.toDataURL('image/png');
+    if (cache.has(key)) { const v = cache.get(key); cache.delete(key); cache.set(key, v); return v; }   // 最近使った順に並べ直す
+    // 描く台は1枚を使い回す（iPhone は描く台を作り捨てると、使える量の上限に達して絵が描けなくなり、合戦などが止まる）
+    if (!pcv) { pcv = document.createElement('canvas'); pcv.width = 240; pcv.height = 300; }
+    const c = pcv.getContext('2d');
+    if (!c) return '';
+    c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, 240, 300); c.scale(2, 2);
+    c.save(); draw(c, g, expr, color); c.restore();
+    const url = pcv.toDataURL('image/png');
     cache.set(key, url);
+    // 顔の絵は1枚およそ150KB。ためこみすぎるとスマホのブラウザがメモリ不足でページを読み込み直してしまう（タイトルに戻る）ので、
+    //  最近使った160枚（およそ24MB）までにする。古いものは、また必要になった時に描き直す
+    while (cache.size > 160) cache.delete(cache.keys().next().value);
     return url;
   }
   // 守備隊長（無名）

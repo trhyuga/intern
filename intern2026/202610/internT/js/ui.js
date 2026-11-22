@@ -22,7 +22,7 @@ const UI = {
   talk(g, expr, text, color, opts = {}) {
     return new Promise(res => {
       const el = $('#talk');
-      const autoMs = (typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text) : 0;
+      const autoMs = (typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text, opts) : 0;
       el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/<b>[\s\S]*?<\/b>/g, m => m.replace(/\n/g, '<br>')).split('\n').map(t => `<span class="tl">${t}</span>`).join('<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div>` : '<div class="talk-next">▼</div>'}</div></div>`;
       el.classList.add('show');
       UI.fixOrphans(el);
@@ -60,7 +60,7 @@ const UI = {
   },
   modal({ title, body, buttons, wide, auto }) {
     return new Promise(res => {
-      if (auto !== undefined && typeof Auto !== 'undefined' && Auto.running) setTimeout(() => { if (m.classList.contains('show') && UI._modalRes === myRes) UI.closeModal(auto); }, 2600 / Auto.speed);
+      if (auto !== undefined && typeof Auto !== 'undefined' && Auto.running) setTimeout(() => { if (m.classList.contains('show') && UI._modalRes === myRes) UI.closeModal(auto); }, Auto.speed >= 4 ? 2200 : 2600 / Auto.speed);   // 合戦の結果などは、超速でも読めるだけ出す
       const m = $('#modal');
       m.innerHTML = `<div class="modal-box">${title ? `<div class="modal-hd">${title}</div>` : ''}<div class="modal-bd">${body || ''}</div>${buttons && buttons.length ? `<div class="modal-ft"></div>` : ''}</div>`;
       const ft = $('.modal-ft', m);
@@ -133,6 +133,10 @@ const App = {
   busy: false,
   init() {
     $('#tap').onclick = () => { Sound.init(); App.opening(); };
+    // iPhone はほかのアプリから戻ると音が止まったままになるので、画面に戻った時・画面に触れた時に音を起こし直す
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') try { Sound.init(); } catch (e) {} });
+    document.addEventListener('touchend', () => { try { Sound.init(true); } catch (e) {} }, { passive: true });
+    document.addEventListener('click', () => { try { Sound.init(true); } catch (e) {} }, true);
     $$('#title [data-act]').forEach(b => b.onclick = () => { Sound.se('tap'); App.titleAction(b.dataset.act); });
     $$('.back').forEach(b => b.onclick = () => { Sound.se('tap'); UI.show(b.closest('#lord') ? 'scen' : 'title'); if (b.closest('#scen')) App.title(); });
     $$('.bottombar [data-nav]').forEach(b => b.onclick = () => { Sound.se('tap'); App.nav(b.dataset.nav); });
@@ -151,28 +155,34 @@ const App = {
     UI.show('title');
     Sound.bgm('title');
     Cinema.titleBG($('#titlecv'));
+    // ゲームの途中でページが読み込み直された（スマホのメモリ不足など）時は、自動セーブから続けるか聞く
+    let mid = false; try { mid = localStorage.getItem('internT_inGame') === '1'; localStorage.removeItem('internT_inGame'); } catch (e) {}
+    if (mid && !App._askedResume && Game.hasSave()) {
+      App._askedResume = true;
+      setTimeout(async () => {
+        const inf = Game.slotInfo('auto');
+        if (await UI.confirm(`ゲームの途中で画面が閉じられたようです。自動セーブ（${inf && inf.year ? `${inf.year}年${SEASONS[inf.season]}・${inf.fac}軍` : '最後の季節の終わり'}）から続けますか？`, '続ける', 'やめる') && Game.loadSlot('auto')) App.enterMain();
+      }, 300);
+    }
   },
   async titleAction(a) {
     if (a === 'new') return App.scenList();
     if (a === 'load') {
-      if (!Game.hasSave() || !Game.load()) return UI.alert('セーブデータがありません');
-      return App.enterMain();
+      if (!Game.anySave()) return UI.alert('セーブデータがありません');
+      return App.loadMenu();
     }
     if (a === 'howto') return App.howto();
     if (a === 'opening') return App.opening();
   },
   howto() {
     return UI.modal({ title: '遊び方', body: `<div class="howto">
-      <h4>目的</h4><p>他の勢力をすべて滅ぼし、天下を統一する。自分の君主が倒れ、跡継ぎもいなければ敗北。</p>
-      <h4>季節ごとに</h4><p>都市をタップして命令を出す。命令はすべて<b>武将が1人1回</b>行う。誰に任せるかで結果が変わる（政治の高い者は内政、魅力の高い者は徴兵や登用、知力の高い者は計略）。終わったら「季節を進める」。</p>
-      <h4>武将の個性</h4><ul>
-      <li><b>猪突</b>の武将は戦場で命令を無視して突撃することがある</li>
-      <li><b>野心</b>の武将は離間が倍効き、忠誠が下がると謀反を起こす</li>
-      <li><b>忠義</b>の武将は寝返らない。<b>臆病</b>な武将は兵が減ると勝手に退く</li>
-      <li>特定の武将が同じ戦場にそろうと<b>絆</b>の力で強くなる</li></ul>
-      <h4>戦争</h4><p>攻める側は城の<b>本丸</b>を占領するか、敵の<b>総大将★</b>を倒せば勝ち。守る側は30日守るか、攻めの総大将を倒せば勝ち。城門は攻撃で壊せる。隣の敵将とは<b>一騎討ち</b>ができる。</p>
-      <h4>操作</h4><p>地図はドラッグで移動、2本指で拡大縮小。戦場では自分の部隊をタップ → 青いマスへ移動 → 行動を選ぶ。</p>
-      <h4>秋</h4><p>秋に収穫があり、兵糧が増える。兵は季節ごとに兵糧を食べる。</p></div>`, buttons: [{ label: '閉じる', cls: 'primary', value: true }] });
+      <h4>目的</h4><p>他の勢力をすべて滅ぼすと天下統一となります。君主が死亡しても跡継ぎがいればゲームは続きますが、跡継ぎがいない場合はゲームオーバーです。</p>
+      <h4>内政</h4><p>都市を選び、武将に命令を与えます。命令は武将1人につき1季節に1回です。開発には政治、徴兵や登用には魅力、計略には知力が影響します。命令を終えたら「季節を進める」で次の季節に移ります。</p>
+      <p>秋に収穫があり、兵糧が増えます。兵は季節ごとに兵糧を消費します。</p>
+      <h4>武将の特性</h4><p>「猪突」の武将は、合戦で命令を無視して突撃することがあります。「野心」の武将は離間の計にかかりやすく、忠誠が下がると謀反を起こします。「忠義」の武将は寝返りません。「臆病」の武将は兵が減ると独断で退却します。縁のある武将が同じ戦場にそろうと、絆の効果で部隊の攻撃力が上がります。</p>
+      <h4>合戦</h4><p>攻撃側は本丸を占領するか、敵の総大将（★）を倒すと勝利です。守備側は30日間守り抜くか、攻撃側の総大将を倒すと勝利です。城門は攻撃で破壊できます。隣接する敵将には一騎討ちを挑めます。</p>
+      <h4>軍師</h4><p>画面下の「軍師」から、内政と合戦を軍師に任せられます。観戦中の合戦は、途中から自分で指揮することもできます。</p>
+      <h4>操作</h4><p>地図はドラッグで移動、ピンチで拡大・縮小します。合戦では自分の部隊を選び、青いマスへ移動させてから行動を選びます。</p></div>`, buttons: [{ label: '閉じる', cls: 'primary', value: true }] });
   },
   scenList() {
     UI.show('scen');
@@ -211,6 +221,7 @@ const App = {
 
   // ---------------- メイン画面 ----------------
   async enterMain(isNew) {
+    try { localStorage.setItem('internT_inGame', '1'); } catch (e) {}   // ゲーム中の印（読み込み直された時に続きを聞くため）
     UI.show('main');
     Sound.bgm('map');
     MapView.resize();
@@ -220,6 +231,9 @@ const App = {
     if (isNew) {
       const lord = Game.lordOf(G.player);
       const sc = SCENARIOS.find(s => s.id === G.scen);
+      // 君主の人物紹介
+      Sound.se('gong');
+      await UI.talk(lord, 'normal', `<b>君主　${lord.name}</b>\n${Flavor.lordIntro(lord)}`, f.color, { tag: '人物紹介' });
       await UI.talk(lord, 'normal', `${sc.title}――${sc.dream ? '' : sc.year + '年。'}\n${lord.name}「いよいよだ。この乱世、我らの手で終わらせよう」`, f.color);
       await UI.talk(null, '', '都市をタップして命令を出そう。\n武将は季節ごとに1回ずつ働ける。\n終わったら右下の「季節を進める」。');
       // 軍師から、オートの説明
@@ -574,7 +588,9 @@ const App = {
     await UI.talk(cmdr, 'angry', `${cmdr.name}「${line(cmdr, 'sortie')}」`, facColor(cmdr), { tag: '出陣' });
     sel.forEach(gi => G.gens[gi].acted = true);
     const plan = { atkFi: G.player, from: c.i, to: t.i, gens: sel, troops, food };
-    await App.executeBattle(plan, how === 'manual' ? true : how === 'watch' ? 'watch' : false);
+    // 合戦の間は、季節を進める・メニューなどを受け付けない
+    const wasBusy = App.busy; App.busy = true;
+    try { await App.executeBattle(plan, how === 'manual' ? true : how === 'watch' ? 'watch' : false); } finally { App.busy = wasBusy; }
   },
 
   // 戦いを実行して結果を反映
@@ -610,7 +626,7 @@ const App = {
     let caps = [...new Set(res.captured)].filter(gi => G.gens[gi].state === 'serve' && !res.killed.includes(gi));
     if (res.atkWin) {
       to.owner = atkFi; to.troops = Math.max(100, res.atkLeft); to.loyal = Math.max(10, to.loyal - 12); to.train = from.train;
-      to.food = Math.round(to.food * 0.5) + Math.round(plan.food * 0.4); to.gold = Math.round(to.gold * 0.6);
+      to.food = Math.round((res.defFood ?? to.food) * 0.5) + Math.round(plan.food * 0.4); to.gold = Math.round(to.gold * 0.6);
       atkGens.forEach(g => { if (!caps.includes(g.i) && !deaths.includes(g)) { g.city = to.i; if (pAtk) g.wins++; } });
       if (defFi !== null) {
         const df = G.factions[defFi];
@@ -625,8 +641,20 @@ const App = {
     } else {
       to.troops = Math.max(0, res.defLeft);
       from.troops += res.atkLeft;
+      if (res.defFood != null) to.food = res.defFood;   // 籠城で食べた兵糧
       if (pDef) Game.gensIn(to.i, G.player).forEach(g => g.wins++);
       Game.log(`${to.name}の${defFi === null ? '守備隊' : G.factions[defFi].name + '軍'}が${G.factions[atkFi].name}軍を退けた。`);
+    }
+    // 武将の少ないうちは、負けても将を失いにくい（プレイヤーだけ）。討死・捕縛を、ある確率で「逃げ延びた」に変える
+    const saved = [];
+    {
+      const k = Game.lossK(G.player);
+      if (k < 1) {
+        const home = () => { const own = Game.citiesOf(G.player); const near = own.find(c => to.adj.includes(c.i)) || (own.includes(from) ? from : null); return (near || G.cities[G.factions[G.player].capital]).i; };
+        const spare = g => g.faction === G.player && g.state === 'serve' && Math.random() >= k;
+        deaths.filter(spare).forEach(g => { deaths.splice(deaths.indexOf(g), 1); g.city = home(); saved.push(g); });
+        caps.filter(gi => spare(G.gens[gi]) && !saved.includes(G.gens[gi])).forEach(gi => { caps.splice(caps.indexOf(gi), 1); G.gens[gi].city = home(); saved.push(G.gens[gi]); });
+      }
     }
     // 結果表示
     if (show) {
@@ -638,10 +666,15 @@ const App = {
         <p>攻 ${atkName}軍　残兵 ${fmt(res.atkLeft)}<br>守 ${defName}　残兵 ${fmt(res.defLeft)}</p>
         ${res.atkWin ? `<p><b>${to.name}は${atkName}軍のものとなった。</b></p>` : ''}
         ${deaths.length ? `<p>討死：${deaths.map(g => g.name).join('、')}</p>` : ''}
-        ${caps.length ? `<p>捕虜：${caps.map(i => G.gens[i].name).join('、')}</p>` : ''}`, buttons: [{ label: '次へ', cls: 'primary', value: 1 }], auto: 1 });
+        ${caps.length ? `<p>捕虜：${caps.map(i => G.gens[i].name).join('、')}</p>` : ''}
+        ${saved.length ? `<p>逃げ延びた：${saved.map(g => g.name).join('、')}</p>` : ''}`, buttons: [{ label: '次へ', cls: 'primary', value: 1 }], auto: 1 });
       if (Auto.running && Auto.strategist()) await Auto.say(playerWon ? (pAtk ? 'win' : 'held') : (pAtk ? 'lose' : 'lost'), { city: to.name }, playerWon ? 'happy' : 'sad');
       if (playerWon && hero) await UI.talk(hero, 'happy', `${hero.name}「${line(hero, 'victory')}」`);
       if (!playerWon && pAtk) { const lg = atkGens.find(g => g.state === 'serve' && !caps.includes(g.i) && !deaths.includes(g)); if (lg) await UI.talk(lg, 'sad', `${lg.name}「${line(lg, 'defeat')}」`); }
+    }
+    for (const g of saved) {
+      Game.log(`${g.name}、${to.name}の戦いから逃げ延びる。`);
+      if (show || pDef || pAtk) await UI.talk(g, 'shock', `${g.name}「${pick(['はぁ、はぁ……殿、面目ございませぬ。何とか、囲みを斬り破ってまいりました', '危ういところでした……この命、まだ殿にお返しできておりませぬゆえ', '兵に担がれて、どうにか逃げ延びました……次こそは！', '首を取られるわけにはいかぬと、夜陰に紛れて抜け出してまいりました'])}」\n<b>${g.name}は深手を負いながらも逃げ延びた</b>`, G.factions[G.player].color, { tag: '生還' });
     }
     // 討死の処理
     for (const g of deaths) {
@@ -684,7 +717,32 @@ const App = {
 
   // 節目の言葉：天下統一まで敵の都市が残り1つ（労い）／5都市以上に広げたあと残り1都市に追い込まれた（励まし）
   // 軍師と、功績（戦功＋一騎討ちの勝ち）がいちばん多い武将が声をかける。それぞれ1回まで（立て直して3都市に戻れば、また励ます）
+  // 君主の死：オート中でも、いったん止めて知らせる。8秒たってもタップがなければ、そのまま自動で続ける。画面をタップすると待ち続ける
+  async lordDeathNotice() {
+    const list = (G && G._lordDied) || [];
+    if (!list.length) return;
+    G._lordDied = [];
+    const RS = { '病': '病でこの世を去った', '戦死': '戦場で討ち死にした', '処断': '敵に捕らえられ、処断された' };
+    for (const d of list) {
+      const g = G.gens[d.gi], h = d.heir != null ? G.gens[d.heir] : null, f = G.factions[G.player];
+      Sound.se('death');
+      const body = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><img src="${Portrait.get(g, 'sad', f.color)}" style="width:72px;height:72px;border-radius:6px;filter:grayscale(.6)"><div><b style="font-size:18px">君主　${g.name}</b><br>${d.year}年${SEASONS[d.season]}、${RS[d.reason] || 'この世を去った'}。</div></div>`
+        + (h ? `<div style="display:flex;gap:10px;align-items:center"><img src="${Portrait.get(h, 'normal', f.color)}" style="width:72px;height:72px;border-radius:6px"><div>跡を継いだのは<br><b style="font-size:18px">${h.name}</b>（統${h.lead} 武${h.war} 知${h.int} 政${h.pol} 魅${h.cha}）<br><small>${Game.succNote(h) || ''}</small></div></div>` : '<p>跡を継ぐ者はいなかった……</p>')
+        + `<p id="ldCount" style="margin-top:10px;font-size:13px;color:var(--muted)"></p>`;
+      const p = UI.modal({ title: '君主、逝く', body, buttons: [{ label: '確認した', cls: 'primary', value: 1 }] });
+      if (Auto.running) {
+        let left = 8, timer = null, stopped = false;
+        const el = $('#ldCount');
+        const tick = () => { if (stopped) return; if (left <= 0) { UI.closeModal(1); return; } if (el) el.textContent = `${left}秒後に自動で続けます（画面をタップすると止まります）`; left--; timer = setTimeout(tick, 1000); };
+        tick();
+        const bd = $('#modal .modal-bd'); if (bd) bd.onclick = () => { if (stopped) return; stopped = true; clearTimeout(timer); if (el) el.textContent = '止めました。確かめたら「確認した」を押してください'; };
+        p.then(() => { stopped = true; clearTimeout(timer); });   // 先に「確認した」を押したら、数えるのをやめる（あとの画面を勝手に閉じないように）
+      }
+      await p;
+    }
+  },
   async milestones() {
+    await App.lordDeathNotice();
     if (!G || G.gameOver || !G.factions[G.player].alive) return;
     const ms = G.events.ms = G.events.ms || {};
     const mine = Game.citiesOf(G.player).length;
@@ -704,8 +762,8 @@ const App = {
     const ctx = { foe, city: foeCities[0] ? foeCities[0].name : '' };
     const fill = t => t.replace(/\{city\}/g, ctx.city);
     Sound.se(kind === 'final' ? 'bell' : 'horn');
-    if (sg) await UI.talk(sg, kind === 'final' ? 'happy' : 'normal', `軍師 ${sg.name}「${fill(line(sg, kind + 'Sg', ctx))}」`, facColor(sg), { tag: kind === 'final' ? '天下統一目前' : '再起を誓う' });
-    if (hero) await UI.talk(hero, kind === 'final' ? 'happy' : 'angry', `${hero.name}「${fill(line(hero, kind + 'Hero', ctx))}」${merit(hero) ? `\n<small>戦功 ${hero.wins}・一騎討ち ${hero.duels}勝</small>` : ''}`, facColor(hero), { tag: kind === 'final' ? '功臣の言葉' : '忠臣の言葉' });
+    if (sg) await UI.talk(sg, kind === 'final' ? 'happy' : 'normal', `軍師 ${sg.name}「${fill(line(sg, kind + 'Sg', ctx))}」`, facColor(sg), { tag: kind === 'final' ? '天下統一目前' : '再起を誓う', ev: true });
+    if (hero) await UI.talk(hero, kind === 'final' ? 'happy' : 'angry', `${hero.name}「${fill(line(hero, kind + 'Hero', ctx))}」${merit(hero) ? `\n<small>戦功 ${hero.wins}・一騎討ち ${hero.duels}勝</small>` : ''}`, facColor(hero), { tag: kind === 'final' ? '功臣の言葉' : '忠臣の言葉', ev: true });
   },
 
   async handleCaptive(g, captor, city) {
@@ -741,11 +799,12 @@ const App = {
     // AI が捕らえた場合
     const mine = g.faction === G.player;
     let outcome;
-    if (g.isLord) outcome = Math.random() < 0.4 ? 'kill' : 'rel';
+    if (g.isLord) outcome = Math.random() < 0.2 ? 'kill' : 'rel';   // 捕らえた君主を処断するのは20%（前は40%）
     else {
       let p = (100 - g.loyalty) / 100 * 0.7 + (ownerAlive ? 0 : 0.4);
       if (Game.has(g, '忠義') && ownerAlive) p = 0.03;
-      outcome = Math.random() < p ? 'rec' : (Game.has(Game.lordOf(captor), '野心') && Math.random() < 0.25 ? 'kill' : 'rel');
+      const k = mine && ownerAlive ? Game.lossK(G.player) : 1;   // 武将の少ないうちは、寝返り・処断も起きにくい
+      outcome = Math.random() < p * k ? 'rec' : (Game.has(Game.lordOf(captor), '野心') && Math.random() < 0.12 * k ? 'kill' : 'rel');
     }
     if (outcome === 'rec') { Game.joinFaction(g, captor, G.factions[captor].capital); Game.log(`${g.name}が${G.factions[captor].name}軍に降った。`); }
     else if (outcome === 'kill') { const fi = g.faction; const heir = Game.killGeneral(g, '処断'); Game.log(`${g.name}、${G.factions[captor].name}軍に処断される。`); if (fi === G.player && !heir && !G.factions[G.player].alive) return; }
@@ -829,8 +888,8 @@ const App = {
         if (e.quiet) continue;
         const eg = e.gen != null ? G.gens[e.gen] : null;
         const ecol = eg ? (G.factions[eg.faction] ? G.factions[eg.faction].color : '#6a5a4a') : undefined;
-        if (e.hist) { Sound.se(e.se || 'gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag }); }
-        else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag } : {}); }
+        if (e.hist) { Sound.se(e.se || 'gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag, ev: true }); }
+        else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag, ev: true } : { ev: true }); }
         else UI.toast(e.msg, 2600), await new Promise(r => setTimeout(r, 900));
       }
       await App.milestones();
@@ -844,7 +903,10 @@ const App = {
   },
 
   // ---------------- 各種一覧 ----------------
+  // 地図で都市を選んでいる途中なら、取り消す
+  cancelPick() { if (App._pickRes) { const r = App._pickRes; App._pickRes = null; App.endPick(); r(null); } },
   nav(k) {
+    App.cancelPick();
     if (App.busy) return;
     if (k === 'end') return App.endTurn();
     if (k === 'auto') return Auto.openMenu();
@@ -861,7 +923,7 @@ const App = {
       const fs = G.factions.filter(f => f.alive).sort((a, b) => Game.citiesOf(b.i).length - Game.citiesOf(a.i).length);
       const el = UI.sheet(`<div class="city-hd"><h3>勢力</h3><button class="x">×</button></div>` + fs.map(f => { const l = Game.lordOf(f.i); return `
         <div class="fac-row" data-f="${f.i}"><img src="${Portrait.get(l, 'normal', f.color)}"><div class="fr-body"><div class="fr-name"><i style="background:${f.color}"></i>${f.name}軍 ${f.i === G.player ? '<small>（自軍）</small>' : Game.isAlly(G.player, f.i) ? `<span class="ally">同盟 残り${G.factions[G.player].allies[f.i]}季</span>` : ''}</div>
-        <div class="fr-st">都市 ${Game.citiesOf(f.i).length}　武将 ${Game.gensOf(f.i).length}　兵 ${fmt(Game.power(f.i))}</div></div></div>`; }).join(''));
+        <div class="fr-st">都市 ${Game.citiesOf(f.i).length}　武将 ${Game.gensOf(f.i).length}　兵 ${fmt(Game.power(f.i))}</div>${(() => { const n = Game.boostNotes(f.i); return n.length ? `<div class="fr-st" style="font-size:12px;line-height:1.5">${n.join('<br>')}</div>` : ''; })()}</div></div>`; }).join(''));
       $('.x', el).onclick = () => UI.closeSheet();
       $$('[data-f]', el).forEach(r => r.onclick = () => { const f = G.factions[+r.dataset.f]; MapView.centerOn(f.capital); App.openCity(f.capital); });
     }
@@ -909,20 +971,69 @@ const App = {
   },
 
   async menu() {
+    App.cancelPick();
+    // 季節の処理中・軍師オートの最中は、セーブ・ロード・タイトルへ戻るを使えない（途中の状態を保存したり、古い処理が読み込んだゲームを動かしたりしないように）
+    const busy = App.busy || Auto.running;
+    const bsub = '季節の処理中・オートの最中は使えません（オートを止めてから）';
     const v = await UI.choose('メニュー', [
-      { label: 'セーブ', sub: '季節の終わりにも自動で保存されます', value: 'save' },
-      { label: 'ロード', value: 'load' },
+      { label: 'セーブ', sub: busy ? bsub : `記録の枠（${Game.SLOTS}つ）を選んで保存。自動セーブとは別です`, value: 'save', disabled: busy },
+      { label: 'ロード', sub: busy ? bsub : '自動セーブか、記録の枠から選んで読み込む', value: 'load', disabled: busy },
       { label: Sound.muted ? '音を出す' : '音を消す', value: 'mute' },
       { label: `戦闘の速さ：${G.opts.aiSpeed >= 2 ? '速い' : '普通'}`, value: 'speed' },
       { label: '遊び方', value: 'howto' },
-      { label: 'タイトルへ戻る', value: 'title', cls: 'danger' },
+      { label: 'タイトルへ戻る', sub: busy ? bsub : '', value: 'title', cls: 'danger', disabled: busy },
     ]);
-    if (v === 'save') { Game.save() ? UI.toast('保存しました') : UI.toast('保存できませんでした'); }
-    if (v === 'load') { if (Game.load()) { App.enterMain(); UI.toast('読み込みました'); } else UI.toast('セーブデータがありません'); }
+    if ((v === 'save' || v === 'load' || v === 'title') && (App.busy || Auto.running)) return UI.toast(Auto.running ? '軍師のオートを止めてから使ってください' : '合戦などが終わってから使ってください');
+    if (v === 'save') return App.saveMenu();
+    if (v === 'load') return App.loadMenu(true);
     if (v === 'mute') { Sound.toggleMute(); UI.toast(Sound.muted ? '音を消しました' : '音を出します'); }
     if (v === 'speed') { G.opts.aiSpeed = G.opts.aiSpeed >= 2 ? 1 : 2; UI.toast('戦闘の速さを変えました'); }
     if (v === 'howto') App.howto();
-    if (v === 'title') { if (await UI.confirm('タイトルへ戻りますか？（保存していない進行は失われます）')) App.title(); }
+    if (v === 'title') { if (await UI.confirm('タイトルへ戻りますか？（保存していない進行は失われます）')) { try { localStorage.removeItem('internT_inGame'); } catch (e) {} App.title(); } }
+  },
+
+  // セーブ・ロードの枠の見出し
+  slotText(n) {
+    const inf = Game.slotInfo(n);
+    const name = n === 'auto' ? '自動セーブ' : `記録${n}`;
+    if (!inf) return { label: `${name}　―― 空き ――`, sub: '', empty: true };
+    if (!inf.year) return { label: name, sub: '（以前の形式のデータ）', empty: false };
+    return { label: `${name}　<span style="color:${inf.color}">■</span> ${inf.fac}軍（${inf.lord}）`, sub: `${inf.year}年${SEASONS[inf.season]}　都市${inf.cities}　保存 ${inf.at}`, empty: false };
+  },
+  async saveMenu() {
+    const opts = [];
+    for (let n = 1; n <= Game.SLOTS; n++) { const t = App.slotText(n); opts.push({ label: t.label, sub: t.sub || 'ここに保存する', value: n }); }
+    if (App.usedSlots().length) opts.push({ label: '記録を消す', sub: 'いらなくなった記録の枠を空ける', value: 'del', cls: 'danger' });
+    const n = await UI.choose('どの枠に保存しますか', opts);
+    if (n == null) return;
+    if (n === 'del') { await App.deleteMenu(); return App.saveMenu(); }
+    if (Game.slotInfo(n) && !await UI.confirm(`記録${n}に上書きしますか？<br><small>${App.slotText(n).sub}</small>`)) return App.saveMenu();
+    if (Game.saveSlot(n)) UI.toast(`記録${n}に保存しました`);
+    else UI.alert('保存できませんでした（端末の保存容量が足りないか、プライベートブラウズでは保存できないことがあります）');
+  },
+  usedSlots() { const a = []; for (let n = 1; n <= Game.SLOTS; n++) if (Game.slotInfo(n)) a.push(n); return a; },
+  // 記録の枠を消す（自動セーブは消さない）
+  async deleteMenu() {
+    const used = App.usedSlots();
+    if (!used.length) return UI.toast('消せる記録はありません');
+    const n = await UI.choose('どの記録を消しますか', used.map(k => { const t = App.slotText(k); return { label: t.label, sub: t.sub, value: k }; }));
+    if (n == null) return;
+    if (!await UI.confirm(`記録${n}を消しますか？<br>消した記録は元に戻せません。<br><small>${App.slotText(n).sub}</small>`, '消す', 'やめる')) return;
+    Game.deleteSlot(n);
+    UI.toast(`記録${n}を消しました`);
+  },
+  async loadMenu(inGame) {
+    const opts = ['auto'];
+    for (let n = 1; n <= Game.SLOTS; n++) opts.push(n);
+    const list = opts.map(k => { const t = App.slotText(k); return { label: t.label, sub: t.sub, value: k, disabled: t.empty }; });
+    if (App.usedSlots().length) list.push({ label: '記録を消す', sub: 'いらなくなった記録の枠を空ける', value: 'del', cls: 'danger' });
+    const n = await UI.choose('どの記録を読み込みますか', list);
+    if (n == null) return;
+    if (n === 'del') { await App.deleteMenu(); if (!inGame && !Game.anySave()) return; return App.loadMenu(inGame); }
+    if (inGame && !await UI.confirm('今の進行は失われます（保存していない分）。読み込みますか？')) return;
+    if (!Game.loadSlot(n)) return UI.alert('読み込めませんでした');
+    if (Auto.running) Auto.stop(true);
+    App.enterMain(); UI.toast(n === 'auto' ? '自動セーブを読み込みました' : `記録${n}を読み込みました`);
   },
 
   async finish(kind) {
@@ -932,6 +1043,7 @@ const App = {
     UI.closeSheet();
     UI.show('ending');
     await Cinema.ending($('#endcv'), $('#endRoll'), $('#ending .skip'), kind);
+    try { localStorage.removeItem('internT_inGame'); } catch (e) {}
     App.title();
   },
 };

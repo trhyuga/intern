@@ -36,7 +36,7 @@ const Game = {
     const gens = GENERAL_SRC.trim().split('\n').map((line, i) => {
       const p = line.split(',');
       return { i, name: p[0], lead: +p[1], war: +p[2], int: +p[3], pol: +p[4], cha: +p[5],
-        traits: p[6] === '-' ? [] : p[6].split(' '), home: cityIndex[p[7]], appear: +p[8], die: +p[9], female: p[10] === 'F',
+        traits: p[6] === '-' ? [] : p[6].split(' '), home: p[7] === '*' ? -1 : cityIndex[p[7]], anywhere: p[7] === '*', appear: +p[8], die: +p[9], female: p[10] === 'F',
         city: -1, faction: -1, state: 'future', loyalty: 80, acted: false, isLord: false, wins: 0, duels: 0, kills: 0, joined: 0 };
     });
     const byName = {}; gens.forEach(g => byName[g.name] = g);
@@ -82,9 +82,14 @@ const Game = {
     const year = sc.year;
     gens.forEach(g => {
       if (g.state !== 'future') return;
-      if (sc.dream) { g.state = 'ronin'; g.city = g.home; return; }
+      if (sc.dream) { g.state = 'ronin'; g.city = g.home >= 0 ? g.home : irnd(0, cities.length - 1); return; }
       if (g.die <= year) g.state = 'dead';
-      else if (g.appear <= year) { g.state = 'ronin'; g.city = g.home; }
+      else if (g.appear <= year) {
+        // 武将の子：父が仕えていれば、父の勢力に仕える（父のいる都市へ）
+        const fa = typeof GEN_FATHER !== 'undefined' && GEN_FATHER[g.name] && byName[GEN_FATHER[g.name]];
+        if (fa && fa.state === 'serve' && fa.faction >= 0) { g.state = 'serve'; g.faction = fa.faction; g.city = fa.city; g.loyalty = irnd(80, 95); }
+        else { g.state = 'ronin'; g.city = g.home >= 0 ? g.home : irnd(0, cities.length - 1); }   // 出身の決まっていない者は、どこかの都市に現れる
+      }
     });
     if (sc.dream) gens.forEach(g => g.die = 9999);
 
@@ -94,6 +99,7 @@ const Game = {
       log: [], stats: { battles: 0, wins: 0, captured: 0, recruited: 0, duelsWon: 0 }, events: {}, gameOver: false };
     gens.forEach(g => { if (g.state === 'serve') g.joined = year; });
     Game.log(`${year}年 春、${factions[pf].name}軍、天下に名乗りを上げる。`);
+    if (typeof Events !== 'undefined' && Events.initProg) Events.initProg();
     return G;
   },
 
@@ -221,9 +227,21 @@ const Game = {
       }
       case 'search': {
         const ronin = Game.roninIn(c.i);
-        if (ronin.length && Math.random() < 0.45 + g.cha / 250 + (Game.top(g, 'cha') ? 0.2 : 0)) {
+        // 武将の少ない都市ほど、人を求めて熱心に探す（1人の都市 +35%、2人の都市 +20%）
+        const few = Game.gensIn(c.i, g.faction).length;
+        const fewK = few <= 1 ? 0.35 : few === 2 ? 0.2 : 0;
+        if (ronin.length && Math.random() < 0.45 + g.cha / 250 + (Game.top(g, 'cha') ? 0.2 : 0) + fewK) {
           const t = pick(ronin);
           return { ok: true, found: t, msg: `在野の人物「${t.name}」を見つけた！`, expr: 'happy' };
+        }
+        // さらに、隣の都市にいる在野の人物まで探しに行き、この都市へ招く（1人の都市 65%、2人の都市 40%）
+        if (fewK) {
+          const near = G.gens.filter(x => x.state === 'ronin' && c.adj.includes(x.city) && x.name !== '諸葛亮');
+          if (near.length && Math.random() < (few <= 1 ? 0.65 : 0.4) + g.cha / 400) {
+            const t = pick(near), from = G.cities[t.city];
+            t.city = c.i;
+            return { ok: true, found: t, msg: `人手の足りぬ${c.name}のため、隣の${from.name}まで足を延ばし、在野の人物「${t.name}」を見つけて招いた！`, expr: 'happy' };
+          }
         }
         if (Math.random() < 0.35) {
           const gold = irnd(50, 200); c.gold += gold;
@@ -270,6 +288,70 @@ const Game = {
       return { ok: true };
     }
     return { ok: false };
+  },
+  // ---------------- 武将の配置：戦略上の重み ----------------
+  // 都市の重み：前線（隣の敵の兵が多いほど）＞交通の要（つながる都市の数）＞大都市（人口）＞本拠。兵の多い都市も将が要る
+  cityWeight(c, fi) {
+    const adj = c.adj.map(a => G.cities[a]);
+    const foes = adj.filter(o => o.owner !== null && o.owner !== fi && !Game.isAlly(fi, o.owner));
+    const foeTroops = foes.reduce((s2, o) => s2 + o.troops, 0);
+    let w = 1;
+    if (foes.length) w += 3 + Math.min(3, foeTroops / 20000) + foes.length * 0.5;   // 接敵：敵の兵が多いほど重い
+    w += Math.max(0, c.adj.length - 2) * 0.6;                                         // 交通の要（ハブ）
+    w += Math.min(2.5, c.pop / 250000);                                               // 大都市
+    if (G.factions[fi] && G.factions[fi].capital === c.i) w += 1.5;                    // 本拠
+    w += Math.min(2, c.troops / 30000);                                               // 大軍がいる
+    return w;
+  },
+  // 将の配置換えの案：将の多すぎる都市から、重みのわりに将の少ない都市へ（季節に max 人まで）。都市には必ず1人は残す。地続きの都市の間だけ
+  spreadPlan(fi, max = 4, fixed) {
+    const cities = Game.citiesOf(fi);
+    if (cities.length < 2) return [];
+    const gensIn = c => Game.gensIn(c.i, fi).filter(g => !g.isLord && !(fixed && fixed.has(g.i)));
+    const total = Game.gensOf(fi).filter(g => !g.isLord).length;
+    const w = new Map(cities.map(c => [c.i, Game.cityWeight(c, fi)]));
+    const sumW = [...w.values()].reduce((a, b) => a + b, 0);
+    const target = new Map(cities.map(c => [c.i, Math.max(1, Math.round(total * w.get(c.i) / sumW))]));
+    const count = new Map(cities.map(c => [c.i, Game.gensIn(c.i, fi).length]));
+    // 地続き（自分の都市だけを通って行ける）の組
+    const comp = new Map(); let k = 0;
+    cities.forEach(c => { if (comp.has(c.i)) return; const q = [c.i]; comp.set(c.i, k); while (q.length) { const x = q.shift(); G.cities[x].adj.forEach(a => { if (G.cities[a].owner === fi && !comp.has(a)) { comp.set(a, k); q.push(a); } }); } k++; });
+    const moves = [];
+    for (let n = 0; n < max; n++) {
+      const need = cities.filter(c => count.get(c.i) < target.get(c.i)).sort((a, b) => (target.get(b.i) - count.get(b.i)) * w.get(b.i) - (target.get(a.i) - count.get(a.i)) * w.get(a.i))[0];
+      if (!need) break;
+      const donor = cities.filter(d => d !== need && comp.get(d.i) === comp.get(need.i) && count.get(d.i) - target.get(d.i) >= 1 && count.get(d.i) >= 2 && gensIn(d).filter(g => !moves.some(m => m.g === g)).length)
+        .sort((a, b) => (count.get(b.i) - target.get(b.i)) - (count.get(a.i) - target.get(a.i)) || w.get(a.i) - w.get(b.i))[0];
+      if (!donor) { target.set(need.i, count.get(need.i)); continue; }
+      // 前線には戦の将（統率・武力）、内地の大都市には政の将（政治）を
+      const front = c => c.adj.some(a => { const o = G.cities[a].owner; return o !== null && o !== fi && !Game.isAlly(fi, o); });
+      const score = g => front(need) ? g.lead + g.war : g.pol + g.int * 0.5;
+      const pool = gensIn(donor).filter(x => !moves.some(m => m.g === x)).sort((a, b) => score(b) - score(a));
+      const g = pool[front(donor) && !front(need) ? pool.length - 1 : 0];   // 前線から内地へは、戦の将を残して弱い将を
+      if (!g) break;
+      moves.push({ g, from: donor, to: need });
+      count.set(donor.i, count.get(donor.i) - 1); count.set(need.i, count.get(need.i) + 1);
+    }
+    return moves;
+  },
+
+  // 負け戦で将を失う確率の倍率（プレイヤーだけ。武将が少ないほど小さい）
+  //  3人まで0.25 / 6人まで0.4 / 10人まで0.65 / 14人まで0.85 / それより多いと1（今まで通り）
+  lossK(fi) {
+    if (fi !== G.player) return 1;
+    const n = Game.gensOf(fi).length;
+    return n <= 3 ? 0.25 : n <= 6 ? 0.4 : n <= 10 ? 0.65 : n <= 14 ? 0.85 : 1;
+  },
+  // 敵（コンピュータ）の在野登用の倍率。プレイヤーはいつも1
+  //  都市の武将：2人まで1倍、3人0.6倍、4人0.45倍、5人以上0.3倍
+  //  勢力の総武将数：8人まで1倍、それより多いと 8÷人数（16人0.5倍、32人0.25倍、下限0.2倍）
+  aiRecruitK(fi, ci) {
+    if (fi === G.player) return 1;
+    const n = Game.gensIn(ci, fi).length;
+    const cityK = n <= 2 ? 1 : n === 3 ? 0.6 : n === 4 ? 0.45 : 0.3;
+    const tot = Game.gensOf(fi).length;
+    const facK = tot <= 8 ? 1 : Math.max(0.2, 8 / tot);
+    return cityK * facK;
   },
   joinFaction(t, fi, ci) {
     t.faction = fi; t.state = 'serve'; t.city = ci; t.isLord = false; t.loyalty = Game.has(t, '忠義') ? 90 : irnd(60, 80); t.joined = G.year;
@@ -443,8 +525,35 @@ const Game = {
   killGeneral(g, reason) {
     const wasLord = g.isLord, fi = g.faction;
     g.state = 'dead'; g.isLord = false; g.deathReason = reason;
-    if (wasLord && fi >= 0) return Game.succession(fi, g);
+    if (wasLord && fi >= 0) {
+      const heir = Game.succession(fi, g);
+      // プレイヤーの君主が亡くなったら、オート中でも止めて知らせる（画面側で表示）
+      if (fi === G.player) (G._lordDied = G._lordDied || []).push({ gi: g.i, heir: heir ? heir.i : null, reason, year: G.year, season: G.season });
+      return heir;
+    }
     return null;
+  },
+
+  // ---------------- 君主・軍師の能力による全体の補正 ----------------
+  // 能力70までは何もなし（低くても罰はない）。70を超えた分だけ、100で最大になる（0〜1）
+  hiK(v) { return clamp(((v || 0) - 70) / 30, 0, 1); },
+  lordK(fi, k) { if (fi == null || fi < 0 || !G.factions[fi] || !G.factions[fi].alive) return 0; const l = Game.lordOf(fi); return l && l.state === 'serve' ? Game.hiK(l[k]) : 0; },
+  // 軍師（プレイヤーの勢力だけ。知力と政治）
+  sgK(fi, k) { if (fi !== G.player || G.strategist == null) return 0; const g = G.gens[G.strategist]; return g && g.state === 'serve' && g.faction === G.player ? Game.hiK(g[k]) : 0; },
+  // 収入・収穫の倍率：君主の政治（最大+6%）＋軍師の政治（最大+4%）
+  incomeK(fi) { return 1 + 0.06 * Game.lordK(fi, 'pol') + 0.04 * Game.sgK(fi, 'pol'); },
+  // 一覧（画面の説明用）
+  boostNotes(fi) {
+    const out = [], pct = v => (Math.round(v * 1000) / 10).toFixed(1).replace(/\.0$/, '');
+    const L = k => Game.lordK(fi, k), S = k => Game.sgK(fi, k);
+    if (L('lead')) out.push(`君主の統率：合戦の士気 +${Math.round(6 * L('lead'))}・毎季節の訓練 +${Math.round(2 * L('lead'))}`);
+    if (L('war')) out.push(`君主の武力：全軍の攻撃 +${pct(0.05 * L('war'))}%`);
+    if (L('int')) out.push(`君主の知力：合戦の計略の成功 +${pct(0.08 * L('int'))}%`);
+    if (L('pol')) out.push(`君主の政治：収入・収穫 +${pct(0.06 * L('pol'))}%`);
+    if (L('cha')) out.push(`君主の魅力：毎季節の民忠 +${(1.5 * L('cha')).toFixed(1)}`);
+    if (S('int')) out.push(`軍師の知力：全軍の攻撃 +${pct(0.03 * S('int'))}%・計略の成功 +${pct(0.06 * S('int'))}%`);
+    if (S('pol')) out.push(`軍師の政治：収入・収穫 +${pct(0.04 * S('pol'))}%`);
+    return out;
   },
 
   // ---------------- 季節の進行 ----------------
@@ -455,11 +564,15 @@ const Game = {
     G.cities.forEach(c => {
       if (c.owner === null) { c.troops = Math.min(c.troops + 200, 6000); return; }
       const loyK = 0.5 + c.loyal / 200;
-      c.gold += Math.round((c.comm * 0.9 + c.pop / 4000) * loyK * 0.6);
+      const incK = Game.incomeK(c.owner);
+      c.gold += Math.round((c.comm * 0.9 + c.pop / 4000) * loyK * 0.6 * incK);
+      // 君主の統率：兵がよく鍛えられる。君主の魅力：民がよく懐く
+      c.train = Math.min(100, c.train + Math.round(2 * Game.lordK(c.owner, 'lead')));
+      c.loyal = Math.min(100, c.loyal + 1.5 * Game.lordK(c.owner, 'cha'));
       // 兵糧消費
       c.food -= Math.round(c.troops * 0.12);
       if (G.season === 2) { // 秋の収穫
-        const h = Math.round((c.farm * 30 + c.pop / 30) * loyK * (c.harvestK || 1));
+        const h = Math.round((c.farm * 30 + c.pop / 30) * loyK * (c.harvestK || 1) * incK);
         c.food += h;
         if (c.owner === G.player) ev.push({ type: 'info', msg: `${c.name}で収穫。兵糧 +${h}` , city: c.i, quiet: true});
       }
@@ -497,6 +610,7 @@ const Game = {
       const drift = (lord.cha - 70) / 60 - (Game.has(g, '野心') ? 1.2 : 0.3);
       g.loyalty = clamp(g.loyalty + drift, 0, 100);
     });
+    ev.push(...Game.checkDesertion());
     ev.push(...Game.checkRebellion());
     ev.push(...Game.checkIndependence());
 
@@ -504,11 +618,27 @@ const Game = {
     G.season++; G.turn++;
     if (G.season > 3) { G.season = 0; G.year++; ev.push(...Game.newYear()); }
     G.gens.forEach(g => g.acted = false);
+    ev.push(...Game.wanderRonin());
     // 不定期イベントと史実イベント
     if (typeof Events !== 'undefined') ev.push(...Events.run());
     return ev;
   },
 
+  // 出奔：コンピュータの勢力で忠誠が30を切った武将（君主・忠義を除く）は、季節ごとに (30−忠誠)÷60＋5% の確率で主のもとを去り、在野に下る。
+  //  在野の武将はあちこちの都市をさまよう（wanderRonin）。プレイヤーの武将には起きない。顔を知っている武将が隣国から出た時は知らせる
+  checkDesertion() {
+    const ev = [];
+    G.gens.forEach(g => {
+      if (g.state !== 'serve' || g.isLord || g.faction === G.player || g.faction < 0 || Game.has(g, '忠義') || g.loyalty >= 30) return;
+      if (Math.random() > (30 - g.loyalty) / 60 + 0.05) return;
+      const fname = G.factions[g.faction] ? G.factions[g.faction].name : '';
+      g.state = 'ronin'; g.faction = -1; g.isLord = false; g.stay = 0; g.stayMax = irnd(2, 4);
+      Game.log(`${g.name}が${fname}軍を去り、在野に下った。`);
+      const c = G.cities[g.city];
+      if (c && c.adj.some(a => G.cities[a].owner === G.player) && ev.length < 2) ev.push({ type: 'info', msg: `${fname}軍の${g.name}が主のもとを去り、在野に下った（${c.name}）` });
+    });
+    return ev;
+  },
   checkRebellion() {
     const ev = [];
     G.gens.forEach(g => {
@@ -521,6 +651,7 @@ const Game = {
       if (Game.lordOf(oldF).city === c.i || G.factions[oldF].capital === c.i) return;
       // 独立：新勢力を作る
       const nf = { i: G.factions.length, name: g.name, color: '#' + (0x404040 + Math.floor(Math.random() * 0x9f9f9f)).toString(16).padStart(6, '0'), lord: g.i, alive: true, capital: c.i, allies: {}, isPlayer: false, hostility: {} };
+      const say = line(g, 'rebel');   // 主君の名が入るので、勢力を移る前に
       G.factions.push(nf);
       g.faction = nf.i; g.isLord = true; g.loyalty = 100;
       c.owner = nf.i;
@@ -529,7 +660,7 @@ const Game = {
       // ついていかない武将は本拠へ
       Game.gensIn(c.i, oldF).forEach(h => { h.city = G.factions[oldF].capital; });
       Game.log(`${g.name}が${c.name}で謀反を起こし、独立した！`);
-      ev.push({ type: oldF === G.player ? 'warn' : 'info', msg: `${g.name}が${G.factions[oldF].name}に背き、${c.name}で独立した！`, gen: g.i, expr: 'angry', city: c.i, line: line(g, 'rebel') });
+      ev.push({ type: oldF === G.player ? 'warn' : 'info', msg: `${g.name}が${G.factions[oldF].name}に背き、${c.name}で独立した！`, gen: g.i, expr: 'angry', city: c.i, line: say });
     });
     return ev;
   },
@@ -577,6 +708,22 @@ const Game = {
     return ev;
   },
 
+  // 在野武将の放浪：同じ都市に3〜5季節（人ごとに決まる）とどまると、隣の都市へ移る
+  //  諸葛亮は三顧の礼のため動かない。顔を知っている在野がプレイヤーの都市を去る時は知らせる
+  wanderRonin() {
+    const ev = [];
+    G.gens.forEach(g => {
+      if (g.state !== 'ronin' || g.name === '諸葛亮') return;
+      if (g.stayMax == null) { g.stayMax = irnd(3, 5); g.stay = irnd(0, g.stayMax - 1); }   // はじめは、滞在の途中から数える
+      g.stay = (g.stay || 0) + 1;
+      if (g.stay < g.stayMax) return;
+      const from = G.cities[g.city], to = G.cities[pick(from.adj)];
+      g.city = to.i; g.stay = 0; g.stayMax = irnd(3, 5);
+      if (g.known && from.owner === G.player && to.owner !== G.player && ev.length < 2) ev.push({ type: 'info', msg: `在野の${g.name}が${from.name}を去り、${to.name}へ旅立った` });
+    });
+    return ev;
+  },
+
   newYear() {
     const ev = [];
     // 寿命
@@ -593,15 +740,26 @@ const Game = {
     }
     // 新しい人物の登場
     G.gens.forEach(g => {
-      if (g.state === 'future' && g.appear <= G.year && g.die > G.year) { g.state = 'ronin'; g.city = g.home; }
+      if (g.state === 'future' && g.appear <= G.year && g.die > G.year) {
+        // 武将の子が大人になった：父が仕えていれば、父の勢力に仕官する
+        const fn = typeof GEN_FATHER !== 'undefined' && GEN_FATHER[g.name];
+        const fa = fn && G.gens.find(x => x.name === fn);
+        if (fa && fa.state === 'serve' && fa.faction >= 0 && G.factions[fa.faction].alive) {
+          Game.joinFaction(g, fa.faction, fa.city); g.loyalty = irnd(80, 95);
+          if (fa.faction === G.player) ev.push({ type: 'good', msg: `${fa.name}の子・${g.name}が一人前となり、父のもとで仕官した`, gen: g.i, expr: 'happy', line: '父上に恥じぬ働きをいたします！', tag: '仕官' });
+          return;
+        }
+        g.state = 'ronin';
+        // 出身の決まっていない者は、どこかの都市にふらりと現れる（武将の少ない勢力の都市に現れやすい）
+        if (g.home >= 0) g.city = g.home;
+        else { const few = G.cities.filter(c => c.owner !== null && Game.gensOf(c.owner).length <= 6); g.city = (few.length && Math.random() < 0.5 ? pick(few) : pick(G.cities)).i; }
+      }
     });
-    // 在野武将の放浪
-    G.gens.forEach(g => { if (g.state === 'ronin' && Math.random() < 0.15) g.city = pick(G.cities[g.city].adj); });
     // AI の勧誘（在野）
     G.gens.forEach(g => {
       if (g.state !== 'ronin') return;
       const c = G.cities[g.city];
-      if (c.owner !== null && c.owner !== G.player && g.name !== '諸葛亮' && Math.random() < 0.25) Game.joinFaction(g, c.owner, c.i);   // 諸葛亮は三顧の礼でしか仕えない
+      if (c.owner !== null && c.owner !== G.player && g.name !== '諸葛亮' && Math.random() < 0.25 * Game.aiRecruitK(c.owner, c.i)) Game.joinFaction(g, c.owner, c.i);   // 諸葛亮は三顧の礼でしか仕えない
     });
     return ev;
   },
@@ -615,10 +773,38 @@ const Game = {
   },
 
   // ---------------- 保存 ----------------
-  save() { try { localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(G)); return true; } catch (e) { return false; } },
+  save() { try { localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(G)); try { localStorage.setItem(CONFIG.SAVE_KEY + '_info', JSON.stringify(Game.saveInfo())); } catch (e2) {} return true; } catch (e) { return false; } },
   load() { try { const s = localStorage.getItem(CONFIG.SAVE_KEY); if (!s) return false; G = JSON.parse(s); return true; } catch (e) { return false; } },
   hasSave() { try { return !!localStorage.getItem(CONFIG.SAVE_KEY); } catch (e) { return false; } },
-  clearSave() { try { localStorage.removeItem(CONFIG.SAVE_KEY); } catch (e) {} },
+  clearSave() { try { localStorage.removeItem(CONFIG.SAVE_KEY); localStorage.removeItem(CONFIG.SAVE_KEY + '_info'); } catch (e) {} },
+  // 任意セーブの枠（自動セーブとは別。自分で選んで保存した時だけ書き換わる）
+  SLOTS: 5,
+  slotKey(n) { return `${CONFIG.SAVE_KEY}_slot${n}`; },
+  saveInfo() {
+    const lord = Game.lordOf(G.player), f = G.factions[G.player];
+    const d = new Date(), z = x => String(x).padStart(2, '0');
+    return { lord: lord ? lord.name : '', fac: f ? f.name : '', color: f ? f.color : '#777', year: G.year, season: G.season,
+      cities: Game.citiesOf(G.player).length, at: `${d.getFullYear()}/${z(d.getMonth() + 1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}` };
+  },
+  saveSlot(n) {
+    try { localStorage.setItem(Game.slotKey(n), JSON.stringify(G)); localStorage.setItem(Game.slotKey(n) + '_info', JSON.stringify(Game.saveInfo())); return true; } catch (e) { return false; }
+  },
+  loadSlot(n) {
+    try { const s = localStorage.getItem(n === 'auto' ? CONFIG.SAVE_KEY : Game.slotKey(n)); if (!s) return false; G = JSON.parse(s); return true; } catch (e) { return false; }
+  },
+  slotInfo(n) {
+    try {
+      const key = n === 'auto' ? CONFIG.SAVE_KEY : Game.slotKey(n);
+      if (!localStorage.getItem(key)) return null;
+      const inf = localStorage.getItem(key + '_info');
+      if (inf) return JSON.parse(inf);
+      // 以前の形式（見出しなし）のデータは、中身から見出しを作る
+      const g = JSON.parse(localStorage.getItem(key)), f = g.factions[g.player], lord = g.gens.find(x => x.isLord && x.faction === g.player && x.state === 'serve');
+      return { lord: lord ? lord.name : '', fac: f ? f.name : '', color: f ? f.color : '#777', year: g.year, season: g.season, cities: g.cities.filter(c => c.owner === g.player).length, at: '―' };
+    } catch (e) { return null; }
+  },
+  deleteSlot(n) { try { localStorage.removeItem(Game.slotKey(n)); localStorage.removeItem(Game.slotKey(n) + '_info'); } catch (e) {} },
+  anySave() { if (Game.hasSave()) return true; for (let n = 1; n <= Game.SLOTS; n++) if (Game.slotInfo(n)) return true; return false; },
 };
 
 // ============================================================
@@ -631,6 +817,8 @@ const AI = {
     if (!f.alive) return [];
     const battles = [];
     const myCities = Game.citiesOf(fi);
+    // 将の多すぎる都市から、前線・交通の要・大都市へ回す（季節に3人まで）
+    Game.spreadPlan(fi, 3).forEach(m => { m.g.city = m.to.i; });
     myCities.forEach(c => AI.develop(c, fi));
     // 褒美で忠誠維持
     Game.gensOf(fi).forEach(g => {
@@ -639,7 +827,7 @@ const AI = {
     // 在野登用
     myCities.forEach(c => {
       const r = Game.roninIn(c.i);
-      if (r.length && Math.random() < 0.3) { const t = r[0]; if (t.name !== '諸葛亮') Game.joinFaction(t, fi, c.i); }
+      if (r.length && Math.random() < 0.3 * Game.aiRecruitK(fi, c.i)) { const t = r[0]; if (t.name !== '諸葛亮') Game.joinFaction(t, fi, c.i); }
     });
     // 計略（プレイヤーの武将に離間・引き抜き）を時々
     if (Math.random() < 0.25) AI.plot(fi);
@@ -684,6 +872,8 @@ const AI = {
       const foodOk = add => c.food - Game.foodReserve(c, c.troops + add) > 0;
       if (c.loyal < 40 && c.food - 1500 > Game.foodReserve(c)) cmd = 'alms';
       else if (threat > c.troops * 0.8 && c.gold >= CONFIG.RECRUIT_COST && c.loyal >= 50 && foodOk(3000)) cmd = 'draft';
+      // 魅力の高い将（70以上）は、自分が納得する民忠（30＋魅力×0.6）に届くまで施しをする（上の急ぎの用には譲る）
+      else if (g.cha >= 70 && c.loyal < 30 + g.cha * 0.6 && c.food - 1500 > Game.foodReserve(c)) cmd = 'alms';
       else if (c.train < 60 && c.troops > 3000) cmd = 'train';
       else if (c.farm < c.farmMax * 0.8 && g.pol >= 50 && Math.random() < 0.5) cmd = 'farm';
       else if (c.comm < c.commMax * 0.8 && g.pol >= 50) cmd = 'comm';
