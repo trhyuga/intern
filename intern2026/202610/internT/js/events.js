@@ -978,7 +978,7 @@ const Events = (() => {
   // 蜀・呉の建国と南蛮王の再起（ゲームに一度ずつ、季節に一つまで）
   //  蜀・呉：天下の形が固まってきた頃（残る勢力が3〜5）、劉備（劉禅と諸葛亮も存命）や孫権（周瑜も存命）が他の君主に仕えていれば、
   //   その勢力から都市の五分の一を地続きで持って独立し、ゆかりの将が集う（同じ勢力の将は五分の一まで、在野は3人まで）
-  //  南蛮（anyTime・gatherAll）：残る勢力が3以上ならいつでも季節に5%。南蛮の将は、どこにいても戦功に関係なく皆集まる
+  //  南蛮（anyTime・gatherAll）：残る勢力が3以上ならいつでも、天下二分のあとも二分から1年たてば、季節に5%。南蛮の将は、どこにいても戦功に関係なく皆集まる
   const NATIONS = {
     // 南蛮王の再起：時期を問わず、他家に仕える孟獲が季節に5%で南中に戻って立つ
     nanban: { title: '南蛮王の再起', nation: '南蛮', lord: '孟獲', need: ['孟獲'], core: ['孟獲', '祝融'], roster: ['孟獲'], color: '#7a5233', anyTime: true, chance: 0.05, gatherAll: true,   // 南蛮の将は、どこに仕えていても戦功に関係なく皆集まる
@@ -1004,7 +1004,8 @@ const Events = (() => {
     G.events.nation = G.events.nation || {};
     if (G.events.nation[key]) return null;
     const alive = G.factions.filter(f => f.alive && Game.citiesOf(f.i).length > 0);   // 天下の形の数え方と同じ（都市を持つ勢力）
-    if (spec.anyTime) { if (alive.length < 3 || Math.random() >= spec.chance) return null; }   // 時期を問わず、確率で（天下二分のあとは起こさない）
+    // 時期を問わず、確率で。天下二分のあとは、二分から1年（4季節）たってから
+    if (spec.anyTime) { const two = alive.length === 2 && G.events.twoAt != null && G.turn - G.events.twoAt >= 4; if ((alive.length < 3 && !two) || Math.random() >= spec.chance) return null; }
     else if (alive.length < 3 || alive.length > 5) return null;
     const head = serving(spec.lord);
     if (!head || head.isLord || head.faction < 0 || !G.factions[head.faction] || !G.factions[head.faction].alive) return null;
@@ -1066,7 +1067,8 @@ const Events = (() => {
     stay.sort((a, b) => a.city - b.city).forEach((g, k) => { g.city = pool[k % pool.length].i; });
     Game.log(`${head.name}が${f.name}軍から独立し、${spec.nation}を建てた。`);
     const names = followers.filter(g => g !== head).concat(ronin).slice(0, 5).map(g => g.name);
-    return { type: 'hist', hist: true, title: spec.title, msg: spec.text(head, f, take.size) + (names.length ? `\n${names.join('、')}らが${head.name}のもとに集った。` : '') + (fi === G.player ? `\n<small>自軍から${take.size}の城と${lostMine.length}人の将（${lostMine.slice(0, 6).map(g => g.name).join('・')}${lostMine.length > 6 ? 'ほか' : ''}）が離れた</small>` : lostMine.length ? `\n<small>自軍からも${lostMine.map(g => g.name).join('・')}が${head.name}のもとへ去った</small>` : ''), gen: head.i, expr: 'angry', tag: '天下の形', se: 'gong' };
+    const splitNote = alive.length === 2 ? '\n天下は再び三つに割れた。' : '';   // 天下二分のあとに起きた時
+    return { type: 'hist', hist: true, title: spec.title, msg: spec.text(head, f, take.size) + splitNote + (names.length ? `\n${names.join('、')}らが${head.name}のもとに集った。` : '') + (fi === G.player ? `\n<small>自軍から${take.size}の城と${lostMine.length}人の将（${lostMine.slice(0, 6).map(g => g.name).join('・')}${lostMine.length > 6 ? 'ほか' : ''}）が離れた</small>` : lostMine.length ? `\n<small>自軍からも${lostMine.map(g => g.name).join('・')}が${head.name}のもとへ去った</small>` : ''), gen: head.i, expr: 'angry', tag: '天下の形', se: 'gong' };
   }
   function nationEvents() { for (const k of ['shu', 'wu', 'nanban']) { const e = foundNation(k); if (e) return [e]; } return []; }   // 一つの季節に一つまで（起きたら、ほかは次の季節以降）
 
@@ -1127,6 +1129,7 @@ const Events = (() => {
     const staged = !!(stage && !P.fac[stage]);   // この季節に天下の形の知らせ（五雄・三国鼎立・天下二分・政変）が出たか
     if (stage && !P.fac[stage]) {
       [5, 3, 2].forEach(k => { if (k >= stage) P.fac[k] = true; });
+      if (stage === 2) G.events.twoAt = G.turn;   // 天下二分になった季節（南蛮王の再起は、ここから1年あける）
       if (stage === 5) {
         loyAll(5); cityAll('train', 5);
         push('五雄並び立つ', `天下に残る勢力は五つとなった。\n${names}\n群雄割拠の時代は終わり、覇を競う五雄の時代が始まる。\n${lord.name}「${voice(lord, 'big')}」\n<small>家臣の忠誠 +5、全都市の訓練 +5</small>`, lord, '天下の形');
