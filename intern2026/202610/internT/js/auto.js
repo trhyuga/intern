@@ -10,6 +10,9 @@ const Auto = (() => {
   const SPEED_NAME = sp => sp >= 4 ? '超速' : sp >= 2 ? '速い' : '普通';
   const nextSpeed = sp => sp >= 4 ? 1 : sp >= 2 ? 4 : 2;
   try { S.speed = +(localStorage.getItem('internT_autoSpeed') || 1); } catch (e) {}
+  // 速い・超速の時に、季節の出来事も読み飛ばすか（普通の時は常にじっくり読む）
+  try { S.skipEv = localStorage.getItem('internT_skipEv') === '1'; } catch (e) { S.skipEv = false; }
+  const setSkip = v => { S.skipEv = v; try { localStorage.setItem('internT_skipEv', v ? '1' : '0'); } catch (e) {} };
   // 超速では、配下が増えるほど内政の手順を速く流す（15人から上は速まり、40人で2倍）
   const boost = () => { if (S.speed < 4 || typeof G === 'undefined' || !G || !G.gens) return 1; const n = G.gens.filter(g => g.state === 'serve' && g.faction === G.player).length; return 1 + Math.max(0, Math.min(1, (n - 15) / 25)); };
   const wait = ms => new Promise(r => setTimeout(r, ms / (S.speed * boost())));
@@ -222,6 +225,7 @@ const Auto = (() => {
     bar.querySelector('img').src = g ? Portrait.get(g, 'normal', facColor(g)) : '';
     bar.querySelector('.ab-text').innerHTML = text;
     bar.querySelector('[data-a=speed]').textContent = SPEED_NAME(S.speed);
+    const sk = bar.querySelector('[data-a=skip]'); sk.innerHTML = S.skipEv ? '出来事<br>飛ばす' : '出来事<br>読む'; sk.style.display = S.speed >= 2 ? '' : 'none';   // 普通の速さでは関係ないので隠す
   }
 
   // ---------- 内政の判断 ----------
@@ -1612,7 +1616,7 @@ const Auto = (() => {
   function talkMs(text, opts) {
     const n = text.replace(/<[^>]+>/g, '').replace(/\s/g, '').length;
     // 季節の変わり目の出来事は、どの速さでもじっくり読めるように（長い文ほど長く出す）
-    if (opts && opts.ev) return Math.min(16000, 1600 + n * 90);
+    if (opts && opts.ev && !(S.skipEv && S.speed >= 2)) return Math.min(16000, 1600 + n * 90);
     // 超速：ふだんの会話は一瞬だけ見せて流す。ただし重要な知らせの長い文は「速い」と同じ時間だけ読ませる
     if (S.speed >= 4) return n >= 40 && opts && IMPORTANT.has(opts.tag) ? Math.min(7000, 900 + n * 50) / Math.pow(2, 0.6) : 280 / boost();
     return Math.min(7000, 900 + n * 50) / Math.pow(S.speed, 0.6);
@@ -1621,6 +1625,10 @@ const Auto = (() => {
   function init() {
     const bar = document.getElementById('autobar');
     bar.querySelector('[data-a=stop]').onclick = e => { e.stopPropagation(); Sound.se('tap'); stop(false); };
+    bar.querySelector('[data-a=skip]').onclick = e => {
+      e.stopPropagation(); Sound.se('tap'); setSkip(!S.skipEv); setBar(bar.querySelector('.ab-text').innerHTML);
+      UI.toast(S.skipEv ? '速い・超速の時は、季節の出来事も読み飛ばします' : '季節の出来事は、じっくり読めるように出します');
+    };
     bar.querySelector('[data-a=speed]').onclick = e => {
       e.stopPropagation(); S.speed = nextSpeed(S.speed);
       try { localStorage.setItem('internT_autoSpeed', S.speed); } catch (er) {}
@@ -1638,10 +1646,12 @@ const Auto = (() => {
       { label: '▶ この季節だけ任せる', sub: '終わったら自分の操作に戻る', value: 'one' },
       { label: '軍師を替える', sub: grade(g), value: 'change' },
       { label: `見る速さ：${SPEED_NAME(S.speed)}`, sub: '普通→速い→超速（会話を読み飛ばす）', value: 'speed' },
+      { label: `季節の出来事の読み飛ばし：${S.skipEv ? 'オン' : 'オフ'}`, sub: '速い・超速の時に、季節の出来事も読み飛ばす（普通の時はいつもじっくり読む）', value: 'skip' },
     ]);
     if (v === 'run') start(0);
     if (v === 'year') start(4);
     if (v === 'one') start(1);
+    if (v === 'skip') { setSkip(!S.skipEv); return openMenu(); }
     if (v === 'speed') { S.speed = nextSpeed(S.speed); if (G) G.opts.aiSpeed = S.speed; try { localStorage.setItem('internT_autoSpeed', S.speed); } catch (e) {} return openMenu(); }
     if (v === 'change') {
       const list = Game.gensOf(G.player);
