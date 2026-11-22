@@ -170,12 +170,28 @@ const Secret = (() => {
     }
     return ev;
   }
+  // 隠し部屋のヒント：一度統一したあとのプレイで、まだ隠し部屋を見つけていなければ、
+  //  3季節目に一度、そのあとは12季節ごとに、軍師（いなければ君主）がはっきり教えてくれる
+  function omakeHint() {
+    const m = M();
+    if (!cleared() || m.ach.omake || G.turn < 3) return [];
+    G.events.omakeHintAt = G.events.omakeHintAt == null ? -99 : G.events.omakeHintAt;
+    if (G.turn - G.events.omakeHintAt < 12) return [];
+    G.events.omakeHintAt = G.turn;
+    const st = G.strategist != null && G.gens[G.strategist] && G.gens[G.strategist].state === 'serve' && G.gens[G.strategist].faction === G.player ? G.gens[G.strategist] : null;
+    const sg = st && !st.isLord ? st : (Game.gensOf(G.player).filter(g => !g.isLord).sort((a, b) => b.int - a.int)[0] || Game.lordOf(G.player));
+    if (!sg) return [];
+    const body = sg.isLord
+      ? `${sg.name}「妙な噂を耳にした。\nはじめの画面の『群雄天下』の題字を、すばやく5回たたくと、隠し部屋の扉が開くという。音楽や効果音を、好きなだけ楽しめるそうだ」`
+      : `${sg.name}「殿、妙な噂を耳にしました。\nはじめの画面の『群雄天下』の題字を、すばやく5回たたくと、隠し部屋の扉が開くそうです。音楽や効果音を、好きなだけ楽しめるとか」`;
+    return [{ type: 'hist', hist: true, title: '隠し部屋の噂', msg: `${body}\n<small>タイトル画面で「群雄天下」の文字を素早く5回タップ</small>`, gen: sg.i, expr: 'happy', tag: 'ひみつ', se: 'bell' }];
+  }
   // 季節の終わりに呼ぶ（events.js の Events.run から）
   function seasonEvents() {
     if (!G || !G.factions[G.player] || !G.factions[G.player].alive) return [];
     recordMet();
     checkHiddenJoined();
-    return [...hiddenEvents(), ...rareEvents()];
+    return [...hiddenEvents(), ...rareEvents(), ...omakeHint()];
   }
 
   // ---------- 武将図鑑 ----------
