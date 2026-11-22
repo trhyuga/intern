@@ -978,16 +978,21 @@ const Events = (() => {
   // 蜀・呉の建国：天下の形が固まってきた頃（残る勢力が3〜5）、劉備（劉禅と諸葛亮も存命）や孫権（周瑜も存命）が
   //  他の君主に仕えていれば、その勢力から都市の五分の一を地続きで持って独立し、ゆかりの将が集う（ゲームに一度ずつ）
   const NATIONS = {
-    shu: { title: '蜀漢の興り', lord: '劉備', need: ['劉備', '劉禅', '諸葛亮'], core: ['劉備', '劉禅', '諸葛亮'], roster: ['劉備', '劉禅'], color: '#2f8a4e',
+    // 南蛮王の再起：時期を問わず、他家に仕える孟獲が季節に5%で南中に戻って立つ
+    nanban: { title: '南蛮王の再起', nation: '南蛮', lord: '孟獲', need: ['孟獲'], core: ['孟獲', '祝融'], roster: ['孟獲'], color: '#7a5233', anyTime: true, chance: 0.05,
+      extra: ['兀突骨', '木鹿大王', '帯来洞主', '朶思大王', '金環三結', '阿会喃', '董荼那'],
+      region: ['yunnan', 'jianning'],
+      text: (h, f, n) => `南中の山々から、太鼓の音が響いてきた。\n孟獲「やはり俺は、南の王として生きる！ 象も虎も、みな俺のもとへ戻ってこい！」\n${h.name}は${n}の城とともに${f.name}のもとを去り、南蛮の王として再び立った。` },
+    shu: { title: '蜀漢の興り', nation: '蜀漢', lord: '劉備', need: ['劉備', '劉禅', '諸葛亮'], core: ['劉備', '劉禅', '諸葛亮'], roster: ['劉備', '劉禅'], color: '#2f8a4e',
       region: ['chengdu', 'jiangzhou', 'zitong', 'hanzhong', 'yongan', 'jianning', 'yunnan', 'jiangling', 'xiangyang', 'xinye', 'changsha', 'lingling', 'guiyang', 'wuling'],
       text: (h, f, n) => `${h.name}は、漢の血を引く者として、${f.name}のもとを去る時が来たと悟った。\n「漢室を再び興す。それが、わしの生涯の志だ」\n${h.name}は${n}の城とともに独立し、国を蜀と号した。` },
-    wu: { title: '呉の興り', lord: '孫権', need: ['孫権', '周瑜'], core: ['孫権', '周瑜'], roster: ['孫堅', '孫策', '孫権'], color: '#c0392b',
+    wu: { title: '呉の興り', nation: '呉', lord: '孫権', need: ['孫権', '周瑜'], core: ['孫権', '周瑜'], roster: ['孫堅', '孫策', '孫権'], color: '#c0392b',
       family: ['孫堅', '孫策', '孫権', '孫尚香', '孫翊', '孫匡', '孫韶', '孫桓', '孫瑜', '孫皎', '孫静', '孫賁', '孫登', '孫慮', '孫和', '孫覇', '孫亮', '孫休', '孫魯班', '孫魯育', '孫峻', '孫綝'],   // 孫家の人（孫乾は劉備の臣なので入れない）
       region: ['jianye', 'wu', 'kuaiji', 'lujiang', 'chaisang', 'jiangxia', 'guangling', 'shouchun'],
       text: (h, f, n) => `父と兄が築いた江東の地を、いつまでも他人に預けてはおけぬ。\n孫権「江東の主は、孫家だ」\n${h.name}は${n}の城とともに${f.name}のもとを離れ、国を呉と号した。` },
   };
   function nationSet(spec) {
-    const w = new Set(spec.core);
+    const w = new Set([...spec.core, ...(spec.extra || [])]);
     SCENARIOS.forEach(sc => sc.lords.forEach(L => { if (spec.roster.includes(L[0])) { w.add(L[0]); L[3].forEach(n => w.add(n)); } }));
     if (typeof GEN_FATHER !== 'undefined') Object.entries(GEN_FATHER).forEach(([ch, fa]) => { if (w.has(fa)) w.add(ch); });
     return w;
@@ -997,7 +1002,8 @@ const Events = (() => {
     G.events.nation = G.events.nation || {};
     if (G.events.nation[key]) return null;
     const alive = G.factions.filter(f => f.alive && Game.citiesOf(f.i).length > 0);   // 天下の形の数え方と同じ（都市を持つ勢力）
-    if (alive.length < 3 || alive.length > 5) return null;
+    if (spec.anyTime) { if (alive.length < 2 || Math.random() >= spec.chance) return null; }   // 時期を問わず、確率で
+    else if (alive.length < 3 || alive.length > 5) return null;
     const head = serving(spec.lord);
     if (!head || head.isLord || head.faction < 0 || !G.factions[head.faction] || !G.factions[head.faction].alive) return null;
     if (!spec.need.every(n => { const g = G_(n); return g && (g.state === 'serve' || g.state === 'ronin'); })) return null;
@@ -1047,11 +1053,11 @@ const Events = (() => {
     const dest = Game.citiesOf(fi).filter(c => c.adj.some(a => take.has(a)));
     const pool = dest.length ? dest : [G.cities[f.capital]];
     stay.sort((a, b) => a.city - b.city).forEach((g, k) => { g.city = pool[k % pool.length].i; });
-    Game.log(`${head.name}が${f.name}軍から独立し、${spec.title.slice(0, spec.title.indexOf('の'))}を建てた。`);
+    Game.log(`${head.name}が${f.name}軍から独立し、${spec.nation}を建てた。`);
     const names = followers.filter(g => g !== head).concat(ronin).slice(0, 5).map(g => g.name);
     return { type: 'hist', hist: true, title: spec.title, msg: spec.text(head, f, take.size) + (names.length ? `\n${names.join('、')}らが${head.name}のもとに集った。` : '') + (fi === G.player ? `\n<small>自軍から${take.size}の城と${followers.length}人の将が離れた</small>` : ''), gen: head.i, expr: 'angry', tag: '天下の形', se: 'gong' };
   }
-  function nationEvents() { for (const k of ['shu', 'wu']) { const e = foundNation(k); if (e) return [e]; } return []; }   // 一つの季節に一つまで（起きたら、もう一方は次の季節以降）
+  function nationEvents() { for (const k of ['shu', 'wu', 'nanban']) { const e = foundNation(k); if (e) return [e]; } return []; }   // 一つの季節に一つまで（起きたら、もう一方は次の季節以降）
 
   // 初めて：ゲーム開始時点ですでに満たしている節目は、起きたことにしておく（「得た時」だけ起こす）
   function initProg() {
