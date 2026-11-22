@@ -44,7 +44,7 @@
 | 元手 | 10,000円 | `CONFIG.START_MONEY` |
 | 頭数 | 8頭（1枠1頭） | `CONFIG.FIELD` |
 | 年間G1 | JRA平地G1 24戦 | `CALENDAR` |
-| 出走馬 | 歴代の名馬（約55頭）から8頭 | `LEGENDS` / `makeField()` |
+| 出走馬 | 歴代の名馬（約55頭）＋架空の馬1頭（シュンノスケ）から8頭 | `LEGENDS` / `makeField()` |
 | 控除率（仮） | 単勝 20% / 複勝 20% / 馬連 22.5% / ワイド 22.5% / 3連複 25% / 3連単 27.5% | `CONFIG.TAKEOUT_*`（3連単の見積もりは `SIM_TRI`） |
 | レース演出の長さ | 約36秒（スキップ可） | `CONFIG.RACE_SECONDS` |
 | セーブ | localStorage `internS_g1predictor_save_v1` | `Save` |
