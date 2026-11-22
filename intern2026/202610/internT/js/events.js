@@ -950,10 +950,11 @@ const Events = (() => {
     const all = Game.gensOf(fi).filter(g => !g.isLord);
     const rank = g => SIMA.includes(g.name) ? 0 : SIMA_CLOSE.includes(g.name) ? 1 : 2;
     let followers = all.filter(g => SIMA.includes(g.name) || (W.has(g.name) && !isCaoClan(g.name))).sort((a, b) => rank(a) - rank(b) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
-    if (fi === G.player) followers = followers.slice(0, Math.max(sima.length, Math.round(all.length / 3)));   // 自軍からは多くても将の三分の一まで
-    else if (followers.length < take.size) {   // 敵軍の政変：魏ゆかりの将は皆つく。城の数に足りなければ、離反する城にいた将（曹・夏侯の一族と忠義の者は除く）が加わる
+    const cap = Math.max(sima.length, Math.round(all.length / 3));   // どちらの勢力でも、ついていくのは多くても将の三分の一まで
+    followers = followers.slice(0, cap);
+    if (fi !== G.player && followers.length < Math.min(cap, take.size)) {   // 敵軍の政変：魏ゆかりの将が城の数に足りなければ、離反する城にいた将（曹・夏侯の一族と忠義の者は除く）が加わる
       const extra = all.filter(g => !followers.includes(g) && take.has(g.city) && !isCaoClan(g.name) && !Game.has(g, '忠義')).sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
-      followers = followers.concat(extra.slice(0, take.size - followers.length));
+      followers = followers.concat(extra.slice(0, Math.min(cap, take.size) - followers.length));
     }
     take.forEach(ci => { G.cities[ci].owner = nf.i; });
     const takeArr = [...take];
