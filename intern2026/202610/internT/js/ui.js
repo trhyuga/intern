@@ -138,6 +138,7 @@ const App = {
     document.addEventListener('touchend', () => { try { Sound.init(true); } catch (e) {} }, { passive: true });
     document.addEventListener('click', () => { try { Sound.init(true); } catch (e) {} }, true);
     $$('#title [data-act]').forEach(b => b.onclick = () => { Sound.se('tap'); App.titleAction(b.dataset.act); });
+    { const lg = $('#title .logo'); if (lg) lg.onclick = () => Secret.logoTap(); }   // 隠しコマンド：タイトルの文字を素早く5回
     $$('.back').forEach(b => b.onclick = () => { Sound.se('tap'); UI.show(b.closest('#lord') ? 'scen' : 'title'); if (b.closest('#scen')) App.title(); });
     $$('.bottombar [data-nav]').forEach(b => b.onclick = () => { Sound.se('tap'); App.nav(b.dataset.nav); });
     $('#btnMenu').onclick = () => { Sound.se('tap'); App.menu(); };
@@ -173,6 +174,7 @@ const App = {
     }
     if (a === 'howto') return App.howto();
     if (a === 'opening') return App.opening();
+    if (a === 'records') return Secret.openRecords();
   },
   howto() {
     return UI.modal({ title: '遊び方', body: `<div class="howto">
@@ -186,9 +188,9 @@ const App = {
   },
   scenList() {
     UI.show('scen');
-    $('#scenList').innerHTML = SCENARIOS.map(s => `
+    $('#scenList').innerHTML = SCENARIOS.filter(s => Secret.scenUnlocked(s)).map(s => `
       <div class="scen-card" data-id="${s.id}">
-        <div class="yr">${s.dream ? '仮想' : s.year + '年'}</div>
+        <div class="yr">${s.hidden ? '隠し' : s.dream ? '仮想' : s.year + '年'}</div>
         <h3>${s.title}</h3><div class="sub">${s.sub}</div>
         <p>${s.desc}</p>
         <div class="mini">${s.lords.map(L => `<span class="chip"><i style="background:${L[1]}"></i>${L[0]}</span>`).join('')}</div>
@@ -210,6 +212,14 @@ const App = {
         <div class="lc-sub">都市 ${n}　武将 ${g + 1}人　本拠 ${CITY_DATA.find(c => c[0] === L[2][0])[1]}</div>
         <div class="lc-sub">統${lord.lead} 武${lord.war} 知${lord.int} 政${lord.pol} 魅${lord.cha}　${lord.traits.map(t => `<span class="trait">${t}</span>`).join('')}</div>
         <div class="diff">難易度：${diff}</div></div></div>`;
+    }).join('') + Secret.usurpers().map(n => {
+      // 下剋上：統一で解き放たれた重臣が、このシナリオで家臣として仕えていれば、主君に代わって立てる
+      const L = sc.lords.find(L2 => L2[3].includes(n)); if (!L) return '';
+      const g = gmap[n]; if (!g) return '';
+      return `<div class="lord-card usurp" data-n="${n}"><img src="${Portrait.get(g, 'angry', L[1])}">
+        <div class="lc-body"><div class="lc-name"><i style="background:${L[1]}"></i>${n}<span class="trait" style="margin-left:6px">下剋上</span></div>
+        <div class="lc-sub">${L[0]}に代わって立つ（${L[0]}は家臣になる）</div>
+        <div class="lc-sub">統${g.lead} 武${g.war} 知${g.int} 政${g.pol} 魅${g.cha}</div></div></div>`;
     }).join('');
     $$('#lordList .lord-card').forEach(el => el.onclick = async () => {
       Sound.se('tap');
@@ -791,6 +801,7 @@ const App = {
         await UI.talk(g, 'sad', `${g.name}「${line(g, 'execute')}」`, facColor(g), { tag: '処断' });
         const fi = g.faction, wasLord = g.isLord;
         const heir = Game.killGeneral(g, '処断');
+        G.stats.executed = (G.stats.executed || 0) + 1;
         Game.log(`${g.name}、処断される。`);
         Game.gensOf(G.player).forEach(h => { if (Game.has(h, '仁徳') && !h.isLord) h.loyalty = Math.max(0, h.loyalty - 5); });
         if (wasLord) await UI.alert(heir ? `${heir.name}が跡を継いだ。${Game.succNote(heir)}` : `${g.name}の勢力は滅んだ。`);
@@ -960,6 +971,7 @@ const App = {
       <div style="font-size:13px;margin-top:8px;color:var(--muted)">${g.state === 'serve' ? `${G.factions[g.faction].name}軍　${G.cities[g.city].name}` : g.state === 'ronin' ? `在野　${G.cities[g.city].name}` : ''}　年齢 およそ${age}歳　戦功 ${g.wins}　一騎討ち勝利 ${g.duels}</div>
       ${Game.titles(g).map(t => `<div class="tr-desc"><span class="trait title">${t.name}</span>${STAT_NAME[t.k]}で天下${t.rank}位。${({ lead: '訓練・修築が大きく伸び、戦場で与える被害↑・受ける被害↓', war: '戦場の攻撃と一騎討ちが強い', int: '計略が成功しやすく、敵の計略を見破りやすい。外交↑', pol: '開墾・商業が大きく伸び、ときどき大成功', cha: '徴兵・施し・登用・外交が効きやすく、率いる軍の士気が高い' })[t.k]}。専用のイベントも起きる</div>`).join('')}
       ${g.traits.length ? g.traits.map(t => `<div class="tr-desc"><span class="trait">${t}</span>${TRAIT_INFO[t]}</div>`).join('') : '<div class="tr-desc">特筆すべき性格はない</div>'}
+      ${Secret.itemsOf(g).map(id => `<div class="tr-desc"><span class="trait" style="background:#8a6a1a">宝物</span>${Secret.ITEMS[id].name}：${Secret.ITEMS[id].desc}</div>`).join('')}
       ${bonds.map(b => `<div class="tr-desc"><span class="trait" style="background:var(--red)">絆</span>${b.name}（${b.members.join('・')}）同じ戦場で力が増す</div>`).join('')}`;
     const canChat = g.state === 'serve' && g.faction === G.player;
     const p = UI.modal({ title: '列伝', body, buttons: (canChat ? [{ label: '話を聞く', value: 'chat' }] : []).concat([{ label: '閉じる', cls: 'primary', value: 1 }]) });
@@ -1041,6 +1053,7 @@ const App = {
 
   async finish(kind) {
     G.gameOver = true;
+    try { Secret.onFinish(kind); } catch (e) { console.error('secret', e); }
     if (Auto.running) Auto.stop(true);
     Game.clearSave();
     UI.closeSheet();

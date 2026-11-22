@@ -352,3 +352,21 @@ button { font-family: inherit; }
 
 .tb-rank { display: inline-block; font-size: 11px; color: #2a1608; background: linear-gradient(#ffe9a0, #d4a82a); border-radius: 3px; padding: 0 5px; margin-right: 4px; vertical-align: 1px; }
 .autobar button[data-a=skip] { font-size: 11px; padding: 4px 8px; line-height: 1.2; white-space: nowrap; }
+/* 記録（実績・武将図鑑・宝物）と隠し部屋 */
+.rec-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.rec-tabs button { flex: 1; padding: 8px 0; border-radius: 8px; border: 1px solid #c9a22780; background: #0001; font-weight: 800; color: inherit; }
+.rec-tabs button.on { background: var(--red); color: #fff; border-color: var(--red); }
+.rec-body { max-height: 60vh; overflow: auto; }
+.rec-sum { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+.rec-row { padding: 8px 6px; border-bottom: 1px dashed #c9a22760; opacity: .5; }
+.rec-row.on { opacity: 1; }
+.rec-row b { display: block; font-size: 15px; }
+.rec-row small { font-size: 12px; color: var(--muted); }
+.zukan { display: flex; flex-wrap: wrap; gap: 4px; }
+.zk { font-size: 12px; padding: 4px 6px; border-radius: 6px; background: #0001; color: #9a8a70; border: 1px solid transparent; }
+button.zk.on { color: inherit; border-color: #c9a22780; background: #fff6; }
+.zk-face { display: flex; gap: 10px; align-items: center; padding: 8px; margin-bottom: 8px; border: 1px solid #c9a22780; border-radius: 8px; background: #fff8; font-size: 13px; }
+.zk-face img { width: 72px; height: 90px; border-radius: 6px; }
+.om-h { margin: 12px 0 6px; font-size: 14px; }
+.lord-card.usurp { border-color: #8a1c12; box-shadow: 0 0 0 1px #8a1c1260 inset; }
+#title .logo { cursor: default; -webkit-tap-highlight-color: transparent; }

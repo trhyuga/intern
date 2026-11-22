@@ -641,6 +641,15 @@ const Battle = (() => {
       addFloater(d.r, d.c, '火-' + dmg, '#ffb02a'); addLog(`${a.g.name}の火計！ ${d.g.name}隊が炎に包まれた`);
       // 延焼
       DIRS.forEach(([dr, dc]) => { const r = d.r + dr, c = d.c + dc; if (inb(r, c) && ['forest', 'plain', 'road'].includes(B.tiles[r][c].t) && Math.random() < (B.tiles[r][c].t === 'forest' ? 0.5 : 0.2)) B.tiles[r][c].fire = 2; });
+      // 東南の風：川のある戦場で、まれに風が吹き、炎が敵陣に燃え広がる（1つの合戦で1回まで）
+      if (!B.windDone && B.to.terrain === 'river' && Math.random() < 0.1) {
+        B.windDone = true;
+        Sound.se('fire'); await banner('東南の風！', 1400);
+        addLog('にわかに東南の風が吹き、炎は敵陣を飲み込んだ！');
+        for (let r = d.r - 2; r <= d.r + 2; r++) for (let c = d.c - 2; c <= d.c + 2; c++) if (inb(r, c) && ['forest', 'plain', 'road'].includes(B.tiles[r][c].t)) B.tiles[r][c].fire = 2;
+        for (const o of B.units.filter(o => o.alive && o.side === d.side && o !== d && dist(o, d) <= 2)) { const v = Math.round(o.troops * 0.12 + 150); o.troops = Math.max(0, o.troops - v); o.morale = Math.max(0, o.morale - 10); addFloater(o.r, o.c, '火-' + v, '#ffb02a'); await checkRout(o, a); }
+        if (a.fi === G.player && typeof Secret !== 'undefined') Secret.unlock('wind');
+      }
     } else {
       d.confused = 2; addFloater(d.r, d.c, '混乱', '#ffd23a'); addLog(`${d.g.name}隊は混乱した！`); Sound.se('confuse');
     }
@@ -885,6 +894,17 @@ const Battle = (() => {
     win.morale = Math.min(100, win.morale + 20);
     B.units.filter(u => u.alive && u.side === lose.side).forEach(u => u.morale = Math.max(0, u.morale - 10));
     if (win.gi >= 0 && win.fi === G.player) { G.gens[win.gi].duels++; G.stats.duelsWon++; }
+    if (typeof Secret !== 'undefined') {
+      Secret.duelWon(win.fi === G.player);
+      // 討ち取る・捕らえると、相手の名剣・名馬を奪う
+      if (win.gi >= 0 && lose.gi >= 0 && (res.outcome === 'killed' || res.outcome === 'captured')) { const got = Secret.duelSpoils(G.gens[win.gi], G.gens[lose.gi]); if (got.length) { addLog(`${win.g.name}は${lose.g.name}の${got.join('・')}を手に入れた！`); bubble(win, `${got[0]}、もらい受けた！`); } }
+      // 名勝負：武力85以上の互角の豪傑が、長く打ち合った（互いに認め合い、のちに登用しやすい）
+      if (res.rounds >= 8 && win.gi >= 0 && lose.gi >= 0 && win.g.war >= 85 && lose.g.war >= 85 && Math.abs(win.g.war - lose.g.war) <= 5) {
+        G.gens[win.gi].respect = lose.g.name; G.gens[lose.gi].respect = win.g.name;
+        addLog(`${win.g.name}と${lose.g.name}の一騎討ちは、後世に語られる名勝負となった`);
+        if (win.fi === G.player || lose.fi === G.player) Secret.unlock('meisho');
+      }
+    }
     lose.alive = false; lose.status = res.outcome; // killed / captured / fled
     addLog(`一騎打ち：${win.g.name}の勝利！ ${lose.g.name}は${res.outcome === 'killed' ? '討ち取られた' : res.outcome === 'captured' ? '捕らえられた' : '逃げ去った'}`);
     // 負けた部隊の兵は散る（半分は自軍に吸収されない）
@@ -1073,7 +1093,41 @@ const Battle = (() => {
     // 守り手が苦しくなると、民が立ち上がることがある
     DT('市民兵'); if (outlook('def') < -0.3) await tryMilitia('crisis');
     // 忠誠の低い武将が、戦の最中に寝返ることがある（1つの合戦で1回まで）
-    DT('寝返り'); if (B.day >= 3 && !B.turned) await tryTurncoat(); DT('出来事おわり');
+    DT('寝返り'); if (B.day >= 3 && !B.turned) await tryTurncoat();
+    DT('長坂'); await legendScenes(); DT('出来事おわり');
+  }
+  // ---------- 伝説の名場面（1つの合戦で1回まで、ゲームを通してもめったに起きない） ----------
+  async function legendScenes() {
+    if (B.legendDone || B.day < 3) return;
+    G.events.legend = G.events.legend || {};
+    // 長坂の単騎駆け：劣勢の側に趙雲がいて、兵が減っていると、敵中を駆け抜けて周りの敵を斬り散らす
+    const zy = B.units.find(u => u.alive && u.gi >= 0 && u.g.name === '趙雲');
+    if (zy && !G.events.legend.tanki && outlook(zy.side) < -0.2 && zy.troops < zy.maxTroops * 0.6 && Math.random() < 0.25) {
+      B.legendDone = true; G.events.legend.tanki = true;
+      const foes = B.units.filter(o => o.alive && o.side !== zy.side && dist(o, zy) <= 3);
+      Sound.se('warcry'); await banner('長坂の単騎駆け！', 1500);
+      addLog('趙雲が単騎で敵中を駆け抜けた！ 行く手の敵はなぎ倒され、味方は奮い立った');
+      bubble(zy, pick(['我こそは常山の趙子龍！ 道をあけよ！', '一騎でも、退きはせぬ！']));
+      for (const o of foes) { const v = Math.round(o.troops * 0.12 + 150); o.troops = Math.max(0, o.troops - v); o.morale = Math.max(0, o.morale - 12); addFloater(o.r, o.c, '-' + v, '#ff6a5a'); slash(o.r, o.c); }
+      B.units.filter(u => u.alive && u.side === zy.side).forEach(u => u.morale = Math.min(100, u.morale + 20));
+      zy.morale = 100;
+      if (zy.fi === G.player || B.watch || !auto) { if (typeof Secret !== 'undefined') { Secret.seen('tanki'); Secret.unlock('legend'); } }
+      await sleep(600); for (const o of foes) await checkRout(o, zy);
+      return;
+    }
+    // 長坂橋の大喝：川（浅瀬）のそばに陣取る張飛の前に敵が迫ると、ひと声で敵を震え上がらせる
+    const zf = B.units.find(u => u.alive && u.gi >= 0 && u.g.name === '張飛');
+    const nearWater = u => DIRS.some(([dr, dc]) => inb(u.r + dr, u.c + dc) && ['water', 'ford'].includes(B.tiles[u.r + dr][u.c + dc].t));
+    if (zf && !G.events.legend.daikatsu && nearWater(zf) && B.units.some(o => o.alive && o.side !== zf.side && dist(o, zf) <= 2) && Math.random() < 0.3) {
+      B.legendDone = true; G.events.legend.daikatsu = true;
+      Sound.se('warcry'); await banner('長坂橋の大喝！', 1500);
+      bubble(zf, '我こそは燕人張翼徳！ 死にたい奴からかかってこい！');
+      addLog('張飛の大喝に、敵兵は震え上がった！');
+      B.units.filter(o => o.alive && o.side !== zf.side && dist(o, zf) <= 3).forEach(o => { o.morale = Math.max(0, o.morale - 25); if (!o.commander && Math.random() < 0.35) { o.confused = 2; addFloater(o.r, o.c, '震え上がる', '#ffd23a'); } });
+      if (typeof Secret !== 'undefined') { Secret.seen('daikatsu'); Secret.unlock('legend'); }
+      await sleep(600);
+      for (const o of B.units.filter(o => o.alive && o.side !== zf.side)) await checkRout(o, zf);
+    }
   }
 
   const gateUp = () => B.tiles[2][4].t === 'gate';
@@ -1783,7 +1837,7 @@ const Battle = (() => {
 
   // 観戦中にオートを止めたとき：次の手番から自分で指揮する
   function takeOver() { if (!B || !B.watch || B.over) return; B.watch = false; setActions([]); UI.toast('合戦は、次の手番から自分で指揮できます'); }
-  return { start, takeOver, get watching() { return !!(B && B.watch && !B.over); }, get _B() { return B; }, _duel: (a, d) => doDuel(a, d), _attack: (a, r, c) => doAttack(a, r, c) };
+  return { start, takeOver, get watching() { return !!(B && B.watch && !B.over); }, get _B() { return B; }, _duel: (a, d) => doDuel(a, d), _attack: (a, r, c) => doAttack(a, r, c), _legend: () => legendScenes(), _plot: (a, k, d) => doPlot(a, k, d) };
 })();
 
 // ============================================================
@@ -1794,8 +1848,10 @@ const Duel = (() => {
   function strike(a, d, mode) {
     // mode: 'atk' 通常 / 'power' 渾身（当たれば大、外れやすい） / 'guard' 守り
     // 戻り値 { dmg, crit（会心）, skill（必殺技） }
-    let hit = 0.65 + (a.war - d.war) / 120;
-    let dmg = rnd(8, 16) * Math.pow(a.war / Math.max(30, d.war), 1.4);
+    let hit = 0.65 + (a.war - d.war) / 120 + (typeof Secret !== 'undefined' ? Secret.duelHitK(d) : 0);   // 名馬に乗る相手には当たりにくい
+    let dmg = rnd(8, 16) * Math.pow(a.war / Math.max(30, d.war), 1.4) * (typeof Secret !== 'undefined' ? Secret.duelDmgK(a) : 1);   // 名剣の一撃は重い
+    // 天下無双：武力97以上の豪傑が、ごくまれに放つ一撃必殺
+    if (a.war >= 97 && mode !== 'guard' && Math.random() < 0.025) return { dmg: 999, crit: true, ult: true };
     if (mode === 'power') { hit -= 0.25; dmg *= 2; }
     if (Game.has(a, '剛勇')) dmg *= 1.1;
     dmg *= Game.topK(a, 'war', 1.1, 1.18);   // 豪傑
@@ -2133,7 +2189,7 @@ const Duel = (() => {
         arena.text(`${w.name} の勝利！`, '#ffd23a');
         Sound.se('win');
         btns.innerHTML = '<button class="btn primary">戦場へ戻る</button>';
-        btns.querySelector('button').onclick = () => close({ winner, outcome });
+        btns.querySelector('button').onclick = () => close({ winner, outcome, rounds: round });
         if (autoEnd || Auto.running) setTimeout(() => { if (closed) return; const b = btns.querySelector('button'); if (b) b.click(); }, 2400 / Auto.speed);
       };
       const finishFlee = winner => {
@@ -2171,9 +2227,10 @@ const Duel = (() => {
             else if (r.crit) say(atkSide, line(A, 'critical'));
             arena.swing(atkSide); Sound.se(big ? 'koBig' : 'ko');
             if (big) await pace(380);   // 溜めの音が上がりきったところで斬る
-            arena.ko(defSide, big, col, r.skill ? `${r.skill.name}！` : r.crit ? '会心の一撃！' : '討ち取ったり！');
+            if (r.ult) { say(atkSide, `<b>${A.name}「我こそ天下無双！」</b>`); if (typeof Secret !== 'undefined') Secret.unlock('ultimate'); await pace(300); }
+            arena.ko(defSide, big, col, r.ult ? '天下無双！' : r.skill ? `${r.skill.name}！` : r.crit ? '会心の一撃！' : '討ち取ったり！');
             arena.hit(defSide, x, r.skill ? 'skill' : r.crit ? 'crit' : 'power'); arena.dropFloat();
-            const label = r.skill ? `必殺「${r.skill.name}」！` : r.crit ? '会心の一撃！' : 'とどめの一撃！';
+            const label = r.ult ? '天下無双の一撃！' : r.skill ? `必殺「${r.skill.name}」！` : r.crit ? '会心の一撃！' : 'とどめの一撃！';
             say(atkSide, `${label} ${D.name}に <b>${x}</b>`, 'act');
             { const keep = defSide === 'a' ? ha : hd; if (defSide === 'a') ha -= x; else hd -= x; setHp(); if (defSide === 'a') ha = keep; else hd = keep; }   // 体力の表示はすぐ0に
             await pace(big ? 1300 : 900);

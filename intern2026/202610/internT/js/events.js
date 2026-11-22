@@ -1055,7 +1055,7 @@ const Events = (() => {
   }
 
   return {
-    run(unified) { return unified ? progEvents() : [...crownEvents(), ...histEvents(), ...progEvents(), ...topEvents(), ...randomEvents(), ...bigEvents()]; },
+    run(unified) { return unified ? progEvents() : [...crownEvents(), ...histEvents(), ...progEvents(), ...topEvents(), ...randomEvents(), ...bigEvents(), ...(typeof Secret !== 'undefined' ? Secret.seasonEvents() : [])]; },
     bigK, initProg,
     rankName,
     counts: () => ({ city: CITY.length, gen: GEN.length, hist: HIST.length }),

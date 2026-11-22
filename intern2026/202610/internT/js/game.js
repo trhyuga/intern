@@ -93,11 +93,15 @@ const Game = {
     });
     if (sc.dream) gens.forEach(g => g.die = 9999);
 
-    const pf = factions.findIndex(f => f.isPlayer);
+    let pf = factions.findIndex(f => f.isPlayer);
+    // 下剋上：君主ではない人物を選んだ時は、その人が仕える勢力で遊ぶ（あとで君主に立てる）
+    const usurper = pf < 0 && byName[lordName] && byName[lordName].state === 'serve' ? byName[lordName] : null;
+    if (usurper) { pf = usurper.faction; factions[pf].isPlayer = true; }
     G = { v: 1, scen: scenId, year, season: 0, turn: 0, player: pf, cities, gens, factions,
       opts: Object.assign({ lifespan: !sc.dream, aiSpeed: 1 }, opts || {}),
-      log: [], stats: { battles: 0, wins: 0, captured: 0, recruited: 0, duelsWon: 0 }, events: {}, gameOver: false };
+      log: [], stats: { battles: 0, wins: 0, captured: 0, recruited: 0, duelsWon: 0, executed: 0 }, events: {}, gameOver: false, startLord: lordName };
     gens.forEach(g => { if (g.state === 'serve') g.joined = year; });
+    if (typeof Secret !== 'undefined') { Secret.hideNew(); Secret.initItems(); if (usurper) Secret.usurpStart(usurper); }
     Game.log(`${year}年 春、${factions[pf].name}軍、天下に名乗りを上げる。`);
     if (typeof Events !== 'undefined' && Events.initProg) Events.initProg();
     return G;
@@ -243,6 +247,7 @@ const Game = {
             return { ok: true, found: t, msg: `人手の足りぬ${c.name}のため、隣の${from.name}まで足を延ばし、在野の人物「${t.name}」を見つけて招いた！`, expr: 'happy' };
           }
         }
+        if (typeof Secret !== 'undefined') { const tr = Secret.findTreasure(g, c); if (tr) return { ok: true, msg: tr.msg, expr: 'happy', grade: 'great', say: 'これは……とんでもない宝物を見つけました！' }; }   // ごくまれに宝物
         if (Math.random() < 0.35) {
           const gold = irnd(50, 200); c.gold += gold;
           return { ok: true, msg: `人材は見つからなかったが、金${gold}を得た`, expr: 'normal' };
@@ -733,7 +738,7 @@ const Game = {
     // 寿命
     if (G.opts.lifespan) {
       G.gens.forEach(g => {
-        if ((g.state === 'serve' || g.state === 'ronin') && G.year >= g.die && Math.random() < 0.55) {
+        if ((g.state === 'serve' || g.state === 'ronin') && G.year >= g.die && Math.random() < (g.faction === G.player && typeof Secret !== 'undefined' && Secret.healer() ? 0.25 : 0.55)) {   // 華佗が仕えていれば、自軍の者は病に倒れにくい
           const fi = g.faction, wasLord = g.isLord, mine = g.state === 'serve' && fi === G.player;
           const deathLine = mine ? line(g, 'death') : null;
           const heir = Game.killGeneral(g, '病');
