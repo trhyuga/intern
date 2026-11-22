@@ -630,6 +630,18 @@ const App = {
     const pAtk = atkFi === G.player, pDef = defFi === G.player;
     const playerWon = (pAtk && res.atkWin) || (pDef && !res.atkWin);
     if (pAtk || pDef) { G.stats.battles++; if (playerWon) G.stats.wins++; }
+    // 戦功：合戦の中の働き（敵部隊を崩す・一騎討ち。自軍が崩れれば減る）と、総大将の勝ち負け（勝てば +1、負ければ −1）
+    {
+      const addW = (g, v) => { if (g && g.faction === G.player && g.state !== 'dead') g.wins = Math.max(0, (g.wins || 0) + v); };
+      Object.entries(res.merit || {}).forEach(([gi, v]) => addW(G.gens[gi], v));
+      if (pAtk || pDef) {
+        let cmd = pAtk ? res.cmdAtk : res.cmdDef;
+        if (cmd == null) {   // 委任の合戦：攻めは先頭の将、守りは城の筆頭（君主→統率と武力）
+          cmd = pAtk ? plan.gens[0] : (Game.gensIn(to.i, G.player).sort((a, b) => (b.isLord ? 1000 : 0) + b.lead + b.war - (a.isLord ? 1000 : 0) - a.lead - a.war)[0] || {}).i;
+        }
+        if (cmd != null && cmd >= 0) addW(G.gens[cmd], playerWon ? 1 : -1);
+      }
+    }
     const msgs = [];
     // 討死
     const deaths = [];

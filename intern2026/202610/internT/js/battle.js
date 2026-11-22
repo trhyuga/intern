@@ -586,10 +586,14 @@ const Battle = (() => {
     await checkRout(d, a); await checkRout(a, d);
   }
 
+  // ---------- 戦功（自軍の武将だけ。合戦が終わったら applyBattle で足す） ----------
+  //  敵の部隊を壊滅・退却させた +1（敵の総大将なら +2）、自分の部隊が壊滅・退却した −1
+  function credit(u, v) { if (!u || u.gi < 0 || u.fi !== G.player || u.ally) return; B.merit = B.merit || {}; B.merit[u.gi] = (B.merit[u.gi] || 0) + v; }
+  function creditRout(u, by) { credit(u, -1); if (by && by.side !== u.side) credit(by, u.commander ? 2 : 1); }
   async function checkRout(u, by) {
     if (!u.alive) return;
     if (u.troops <= 0) {
-      u.alive = false;
+      u.alive = false; creditRout(u, by);
       const r = Math.random();
       if (u.gi >= 0) {
         // 部隊が全滅しても、将が討ち死にするのは3%（前は6%）
@@ -603,7 +607,7 @@ const Battle = (() => {
     // 臆病・士気崩壊による退却
     // 統率85以上の将の部隊は、士気が落ちても崩れにくい
     if ((Game.has(u.g, '臆病') && u.troops < u.maxTroops * 0.3) || u.morale < (u.gi >= 0 && u.g.lead >= 85 ? 9 : 12)) {
-      u.alive = false; u.status = 'retreat';
+      u.alive = false; u.status = 'retreat'; creditRout(u, by);
       addLog(`${u.g.name}隊が退却した`);
       if (u.gi >= 0) await say(u, 'shock', `${u.g.name}「${line(u.g, 'flee')}」`);
     }
@@ -906,6 +910,8 @@ const Battle = (() => {
       }
     }
     lose.alive = false; lose.status = res.outcome; // killed / captured / fled
+    // 戦功：一騎討ちに勝った +1（敵の総大将を討ち取る・捕らえたら +2。重ねない）、負けた −1
+    credit(win, lose.commander && (res.outcome === 'killed' || res.outcome === 'captured') ? 2 : 1); credit(lose, -1);
     addLog(`一騎打ち：${win.g.name}の勝利！ ${lose.g.name}は${res.outcome === 'killed' ? '討ち取られた' : res.outcome === 'captured' ? '捕らえられた' : '逃げ去った'}`);
     // 負けた部隊の兵は散る（半分は自軍に吸収されない）
     lose.troops = Math.round(lose.troops * 0.5);
@@ -1823,6 +1829,8 @@ const Battle = (() => {
       captured: B.units.filter(u => u.gi >= 0 && u.status === 'captured').map(u => u.gi),
       killed: B.units.filter(u => u.gi >= 0 && u.status === 'killed').map(u => u.gi),
       days: B.day, turncoats: B.turncoats || [], defFood: Math.round(Math.max(0, B.defFood)),
+      merit: B.merit || {},
+      cmdAtk: (B.units.find(u => u.side === 'atk' && u.commander) || {}).gi, cmdDef: (B.units.find(u => u.side === 'def' && u.commander) || {}).gi,
     };
     // 市民兵は戦が終われば町へ帰る。守り切ったら、生き残りの半分が兵に志願する
     if (!res.atkWin) res.defLeft += Math.round(B.units.filter(u => u.militia && u.alive).reduce((s, u) => s + u.troops, 0) / 2);
