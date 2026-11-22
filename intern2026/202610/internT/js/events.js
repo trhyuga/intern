@@ -948,9 +948,13 @@ const Events = (() => {
     // 従う者：司馬一族 → 司馬氏に近い魏の重臣 → ほかの魏の人々（曹・夏侯の一族と君主は除く）。多くても勢力の将の三分の一まで
     const W = weiSet();
     const all = Game.gensOf(fi).filter(g => !g.isLord);
-    const cap = Math.max(sima.length, Math.round(all.length / 3));
     const rank = g => SIMA.includes(g.name) ? 0 : SIMA_CLOSE.includes(g.name) ? 1 : 2;
-    const followers = all.filter(g => SIMA.includes(g.name) || (W.has(g.name) && !isCaoClan(g.name))).sort((a, b) => rank(a) - rank(b) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, cap);
+    let followers = all.filter(g => SIMA.includes(g.name) || (W.has(g.name) && !isCaoClan(g.name))).sort((a, b) => rank(a) - rank(b) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
+    if (fi === G.player) followers = followers.slice(0, Math.max(sima.length, Math.round(all.length / 3)));   // 自軍からは多くても将の三分の一まで
+    else if (followers.length < take.size) {   // 敵軍の政変：魏ゆかりの将は皆つく。城の数に足りなければ、離反する城にいた将（曹・夏侯の一族と忠義の者は除く）が加わる
+      const extra = all.filter(g => !followers.includes(g) && take.has(g.city) && !isCaoClan(g.name) && !Game.has(g, '忠義')).sort((a, b) => (b.lead + b.war) - (a.lead + a.war));
+      followers = followers.concat(extra.slice(0, take.size - followers.length));
+    }
     take.forEach(ci => { G.cities[ci].owner = nf.i; });
     const takeArr = [...take];
     followers.forEach((g, k) => {
@@ -964,7 +968,7 @@ const Events = (() => {
     const pool = dest.length ? dest : [G.cities[f.capital]];
     stay.sort((a, b) => a.city - b.city).forEach((g, k) => { g.city = pool[k % pool.length].i; });
     // もう一方の勢力と同盟を結ぶ
-    nf.allies[other.i] = CONFIG.ALLY_TURNS; other.allies[nf.i] = CONFIG.ALLY_TURNS;
+    nf.allies[other.i] = CONFIG.ALLY_TURNS; other.allies[nf.i] = CONFIG.ALLY_TURNS;   // 残る勢力と同盟（ふつうの同盟と同じく2年）
     Game.log(`${head.name}が政変を起こし、${take.size}の城とともに${f.name}軍から独立した。${other.name}軍と同盟を結んだ。`);
     return { head, f, other, n: take.size, followers, moved: stay.length, mine: fi === G.player };
   }
