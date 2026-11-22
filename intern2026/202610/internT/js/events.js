@@ -1125,11 +1125,14 @@ const Events = (() => {
     // 天下の形：残りの勢力の数
     const alive = G.factions.filter(f => f.alive && Game.citiesOf(f.i).length > 0);
     const names = alive.map(f => `${f.name}（${Game.citiesOf(f.i).length}城）`).join('・');
+    // 二つの勢力になった季節を覚える（南蛮王の再起は、ここから1年あける）。一度三つ以上に戻ってから再び二つになったら、そこから数え直す。
+    //  古いセーブなどで記録がなければ、今の季節から数える
+    if (alive.length === 2) { if (G.events.lastAlive !== 2 || G.events.twoAt == null) G.events.twoAt = G.turn; } else G.events.twoAt = null;
+    G.events.lastAlive = alive.length;
     const stage = alive.length <= 2 ? 2 : alive.length <= 3 ? 3 : alive.length <= 5 ? 5 : 0;
     const staged = !!(stage && !P.fac[stage]);   // この季節に天下の形の知らせ（五雄・三国鼎立・天下二分・政変）が出たか
     if (stage && !P.fac[stage]) {
       [5, 3, 2].forEach(k => { if (k >= stage) P.fac[k] = true; });
-      if (stage === 2) G.events.twoAt = G.turn;   // 天下二分になった季節（南蛮王の再起は、ここから1年あける）
       if (stage === 5) {
         loyAll(5); cityAll('train', 5);
         push('五雄並び立つ', `天下に残る勢力は五つとなった。\n${names}\n群雄割拠の時代は終わり、覇を競う五雄の時代が始まる。\n${lord.name}「${voice(lord, 'big')}」\n<small>家臣の忠誠 +5、全都市の訓練 +5</small>`, lord, '天下の形');
