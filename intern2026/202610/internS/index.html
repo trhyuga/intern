@@ -69,6 +69,7 @@
   .seg{ display:flex; gap:6px; }
   .seg button{ flex:1; padding:10px; border-radius:10px; border:1px solid var(--line); background:transparent; color:var(--ink); font-weight:800; cursor:pointer; }
   .seg button.on{ background:var(--gold); color:#111; border-color:var(--gold); }
+  #betType{ display:grid; grid-template-columns:repeat(3,1fr); }
   .picks{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:10px; }
   .picks button{ padding:8px 2px; border-radius:8px; border:2px solid transparent; font-weight:800; cursor:pointer; font-size:12px; }
   .picks button.on{ border-color:var(--gold); box-shadow:0 0 0 2px var(--gold); }
@@ -220,6 +221,7 @@
         <button data-t="win" class="on">単勝</button>
         <button data-t="place">複勝</button>
         <button data-t="quin">馬連</button>
+        <button data-t="wide">ワイド</button>
         <button data-t="trio">3連複</button>
         <button data-t="tri">3連単</button>
       </div>
@@ -316,6 +318,7 @@ const CONFIG = {
   FIELD: 8,                // 頭数
   TAKEOUT_WIN: 0.20,       // 単勝の控除率（仮の値）
   TAKEOUT_QUIN: 0.225,     // 馬連の控除率（仮の値）
+  TAKEOUT_WIDE: 0.225,     // ワイドの控除率（仮の値）
   TAKEOUT_PLACE: 0.2,      // 複勝の控除率（仮の値）
   TAKEOUT_TRI: 0.275,      // 3連単の控除率（仮の値）
   TAKEOUT_TRIO: 0.25,      // 3連複の控除率（仮の値）
@@ -613,7 +616,7 @@ function computeOdds(field){
   const rnd = mulberry32(Math.floor(Math.random()*1e9));
   const winC = new Array(n).fill(0);
   const placeC = new Array(n).fill(0);
-  const quinC = {};
+  const quinC = {}, wideC = {};
   // 世間（オッズ）は調子を知らない → useCond:false
   for(let s=0;s<CONFIG.ODDS_SIMS;s++){
     const { order } = simulate(field, rnd, { useCond:false, record:false });
@@ -621,6 +624,8 @@ function computeOdds(field){
     for(let r=0;r<3;r++) placeC[order[r]]++;   // 複勝: 3着以内
     const k = quinKey(order[0]+1, order[1]+1);
     quinC[k] = (quinC[k]||0) + 1;
+    // ワイド: 3着以内の3頭のうちの2頭の組（1回のレースで3組が当たり）
+    [[0,1],[0,2],[1,2]].forEach(([x,y]) => { const w = quinKey(order[x]+1, order[y]+1); wideC[w] = (wideC[w]||0) + 1; });
   }
   const S = CONFIG.ODDS_SIMS;
   const win = winC.map(c => toOdds((c+0.5)/(S+n*0.5), CONFIG.TAKEOUT_WIN));
@@ -628,6 +633,11 @@ function computeOdds(field){
   for(let a=1;a<=n;a++) for(let b=a+1;b<=n;b++){
     const k = quinKey(a,b);
     quin[k] = toOdds(((quinC[k]||0)+0.3)/(S+0.3*n*(n-1)/2), CONFIG.TAKEOUT_QUIN);
+  }
+  const wide = {};
+  for(let a=1;a<=n;a++) for(let b=a+1;b<=n;b++){
+    const k = quinKey(a,b);
+    wide[k] = toOdds(((wideC[k]||0)+0.3)/(S+0.3*n*(n-1)/2/3), CONFIG.TAKEOUT_WIDE);
   }
   // 複勝のオッズ（3着以内に入る確率から。単勝と同じく控除率を引く）
   const place = placeC.map(c => toOdds((c+0.5)/(S+n*0.5), CONFIG.TAKEOUT_PLACE));
@@ -648,7 +658,7 @@ function computeOdds(field){
   }
   const trio = {};
   Object.keys(trioP).forEach(k => trio[k] = Math.min(99999, toOdds(trioP[k] / SIM_TRI.CAL_TRIO, CONFIG.TAKEOUT_TRIO)));
-  return { win, quin, place, tri, trio };
+  return { win, quin, wide, place, tri, trio };
 }
 function toOdds(p, takeout){ return Math.max(1.1, Math.floor((1-takeout)/p*10)/10); }
 // 3連単オッズの見積もりの調整（E2/E3: 2着・3着の確率のならし具合、CAL: 全体の配当水準の補正）
@@ -659,7 +669,7 @@ function triKey(a,b,c){ return `${a}-${b}-${c}`; }
 // ボックス買い: 選んだ馬のすべての組み合わせ（3連単は並び順も全部）
 function boxCombos(type, sel){
   const out = [], s = [...sel].sort((a,b)=>a-b);
-  if(type === 'quin'){ for(let i=0;i<s.length;i++) for(let j=i+1;j<s.length;j++) out.push([s[i], s[j]]); }
+  if(type === 'quin' || type === 'wide'){ for(let i=0;i<s.length;i++) for(let j=i+1;j<s.length;j++) out.push([s[i], s[j]]); }
   if(type === 'trio'){ for(let i=0;i<s.length;i++) for(let j=i+1;j<s.length;j++) for(let k=j+1;k<s.length;k++) out.push([s[i], s[j], s[k]]); }
   if(type === 'tri'){ for(const a of s) for(const b of s) for(const c of s) if(a!==b && b!==c && a!==c) out.push([a, b, c]); }
   return out;
@@ -669,15 +679,17 @@ function oddsOf(type, sel){
   if(type === 'place') return Game.odds.place[sel[0]-1];
   if(type === 'tri') return Game.odds.tri[triKey(sel[0], sel[1], sel[2])];
   if(type === 'trio') return Game.odds.trio[trioKey(sel[0], sel[1], sel[2])];
+  if(type === 'wide') return Game.odds.wide[quinKey(sel[0], sel[1])];
   return Game.odds.quin[quinKey(sel[0], sel[1])];
 }
 // 馬券の購入金額（ボックスは 1点の金額 × 点数）
 function ticketCost(t){ return t.box ? t.amount * t.combos.length : t.amount; }
 // 当たったか、当たったならそのオッズ（ボックスは当たった組み合わせのオッズ）
+// hits = 当たった組み合わせ（ワイドのボックスは最大3組が同時に当たる）、back = 払い戻し（10円単位）
 function ticketResult(t, o){
-  if(!t.box) return ticketHit(t, o) ? { hit: true, odds: t.odds, sel: t.sel } : { hit: false };
-  const c = t.combos.find(c => ticketHit({ type: t.type, sel: c.sel }, o));
-  return c ? { hit: true, odds: c.odds, sel: c.sel } : { hit: false };
+  const hits = t.box ? t.combos.filter(c => ticketHit({ type: t.type, sel: c.sel }, o)) : (ticketHit(t, o) ? [{ sel: t.sel, odds: t.odds }] : []);
+  const back = hits.reduce((a,c) => a + Math.floor(t.amount * c.odds / 10) * 10, 0);
+  return { hit: hits.length > 0, hits, back, odds: hits.reduce((m,c) => Math.max(m, c.odds), 0) };
 }
 function ticketLabel(t){
   const join = sel => sel.join(t.type === 'tri' ? '→' : '-');
@@ -688,6 +700,7 @@ function ticketHit(t, o){
   if(t.type === 'place') return o.slice(0,3).includes(t.sel[0]);
   if(t.type === 'tri') return t.sel[0] === o[0] && t.sel[1] === o[1] && t.sel[2] === o[2];
   if(t.type === 'trio') return trioKey(t.sel[0], t.sel[1], t.sel[2]) === trioKey(o[0], o[1], o[2]);
+  if(t.type === 'wide') return o.slice(0,3).includes(t.sel[0]) && o.slice(0,3).includes(t.sel[1]);
   return quinKey(t.sel[0], t.sel[1]) === quinKey(o[0], o[1]);
 }
 function quinKey(a,b){ return a<b ? a+'-'+b : b+'-'+a; }
@@ -1170,13 +1183,13 @@ function fitCanvas(cv, w, h){
 // ---------- 馬券 ----------
 function renderBet(){
   document.querySelectorAll('#betType button').forEach(b => b.classList.toggle('on', b.dataset.t === Game.betType));
-  const canBox = ['quin','trio','tri'].includes(Game.betType);
+  const canBox = ['quin','wide','trio','tri'].includes(Game.betType);
   if(!canBox) Game.box = false;
   $('btnBox').style.display = canBox ? '' : 'none';
   $('btnBox').textContent = `ボックス買い：${Game.box ? 'ON' : 'OFF'}`;
   $('btnBox').style.background = Game.box ? 'var(--gold)' : 'transparent';
   $('btnBox').style.color = Game.box ? '#111' : 'var(--ink)';
-  $('betHint').textContent = { win:'1着になる馬を1頭選ぶ', place:'3着以内に入る馬を1頭選ぶ（当たりやすいが配当は低め）', quin:'1着・2着になる2頭を選ぶ（順不同。「2連複」と同じ賭け方です）', trio:'1着・2着・3着になる3頭を選ぶ（順不同。3連単より当たりやすく配当は低め）', tri:'1着→2着→3着の順に3頭選ぶ（着順どおりに当てる。難しいぶん高配当）' }[Game.betType];
+  $('betHint').textContent = { win:'1着になる馬を1頭選ぶ', place:'3着以内に入る馬を1頭選ぶ（当たりやすいが配当は低め）', quin:'1着・2着になる2頭を選ぶ（順不同。「2連複」と同じ賭け方です）', wide:'3着以内に入る2頭を選ぶ（順不同。1着と3着、2着と3着でも当たり）', trio:'1着・2着・3着になる3頭を選ぶ（順不同。3連単より当たりやすく配当は低め）', tri:'1着→2着→3着の順に3頭選ぶ（着順どおりに当てる。難しいぶん高配当）' }[Game.betType];
   const p = $('picks'); p.innerHTML = '';
   Game.field.horses.forEach(x => {
     const b = document.createElement('button');
@@ -1189,7 +1202,7 @@ function renderBet(){
     p.appendChild(b);
   });
   $('amtView').textContent = yen(Game.amount);
-  const need = { quin:2, tri:3, trio:3 }[Game.betType] || 1;
+  const need = { quin:2, wide:2, tri:3, trio:3 }[Game.betType] || 1;
   let o = '', cost = Game.amount, ok = Game.sel.length === need;
   if(Game.box){
     ok = Game.sel.length >= need;
@@ -1215,16 +1228,17 @@ function renderBet(){
   $('ticketSum').textContent = Game.tickets.length ? `合計 ${yen(sum)}（残り ${yen(remaining())}）` : '馬券なし（見送りで発走もできます）';
 }
 function remaining(){ return Save.data.money - Game.tickets.reduce((a,t)=>a+ticketCost(t),0); }
-const BET_LABEL = { win:'単勝', place:'複勝', quin:'馬連', trio:'3連複', tri:'3連単' };
+const BET_LABEL = { win:'単勝', place:'複勝', quin:'馬連', wide:'ワイド', trio:'3連複', tri:'3連単' };
 function currentOdds(){
   if(Game.betType === 'win') return Game.odds.win[Game.sel[0]-1];
   if(Game.betType === 'place') return Game.odds.place[Game.sel[0]-1];
   if(Game.betType === 'tri') return Game.odds.tri[triKey(Game.sel[0], Game.sel[1], Game.sel[2])];
   if(Game.betType === 'trio') return Game.odds.trio[trioKey(Game.sel[0], Game.sel[1], Game.sel[2])];
+  if(Game.betType === 'wide') return Game.odds.wide[quinKey(Game.sel[0], Game.sel[1])];
   return Game.odds.quin[quinKey(Game.sel[0], Game.sel[1])];
 }
 function togglePick(no){
-  const need = { quin:2, tri:3, trio:3 }[Game.betType] || 1;
+  const need = { quin:2, wide:2, tri:3, trio:3 }[Game.betType] || 1;
   const k = Game.sel.indexOf(no);
   if(k >= 0) Game.sel.splice(k,1);
   else { Game.sel.push(no); if(!Game.box && Game.sel.length > need) Game.sel.shift(); }
@@ -1477,7 +1491,7 @@ function commentEvents(prog, st, fi){
     Race.said.post = 1;
     const wNo = H(o[0]).no, w2No = H(o[1]).no;
     const oNo = o.map(i => H(i).no);
-    const hit = Game.tickets.some(t => ticketResult(t, oNo).hit && (t.type !== 'place' || t.sel[0] === wNo));
+    const hit = Game.tickets.some(t => ticketResult(t, oNo).hit && (!['place','wide'].includes(t.type) || t.sel.includes(wNo)));
     if(hit) say(praiseLine(o[0], Race.story), true);
     const fv = favIndex(), fNo = H(fv).no, fPos = o.indexOf(fv) + 1;
     const betOnFav = Game.tickets.some(t => t.sel.includes(fNo));
@@ -1866,10 +1880,9 @@ function showResult(){
   const d = Save.data;
   let pay = 0, html = '';
   Game.tickets.forEach(t => {
-    const res = ticketResult(t, o), hit = res.hit;
-    const back = hit ? Math.floor(t.amount * res.odds / 10) * 10 : 0; // 10円単位
+    const res = ticketResult(t, o), hit = res.hit, back = res.back;
     pay += back;
-    html += `<div class="${hit?'win':'lose'}">${ticketLabel(t)} ${yen(ticketCost(t))} → ${hit ? `的中！${t.box ? `（${res.sel.join(t.type === 'tri' ? '→' : '-')} ${res.odds.toFixed(1)}倍）` : ''} ${yen(back)}` : 'はずれ'}</div>`;
+    html += `<div class="${hit?'win':'lose'}">${ticketLabel(t)} ${yen(ticketCost(t))} → ${hit ? `的中！${t.box ? `（${res.hits.map(c => `${c.sel.join(t.type === 'tri' ? '→' : '-')} ${c.odds.toFixed(1)}倍`).join('・')}）` : ''} ${yen(back)}` : 'はずれ'}</div>`;
   });
   if(!Game.tickets.length) html = '<div class="lose">今回は見送り</div>';
   const before = d.money;
@@ -1881,7 +1894,7 @@ function showResult(){
   d.best = Math.max(d.best, d.money);
   if(Race.story) html = `<div class="sub" style="margin-bottom:6px">着差 <b>${Race.story.margin}</b> ／ <b>${Race.story.kimarite}</b></div>` + html;
   html += `<div style="margin-top:8px">払戻 ${yen(pay)} ／ 所持金 <b>${yen(d.money)}</b></div>`;
-  html += `<div class="sub" style="margin-top:4px">単勝 ${o[0]} ${Game.odds.win[o[0]-1].toFixed(1)}倍 ／ 複勝 ${o.slice(0,3).map(x => `${x} ${Game.odds.place[x-1].toFixed(1)}`).join('・')}倍 ／ 馬連 ${quinKey(o[0],o[1])} ${Game.odds.quin[quinKey(o[0],o[1])].toFixed(1)}倍 ／ 3連複 ${trioKey(o[0],o[1],o[2])} ${Game.odds.trio[trioKey(o[0],o[1],o[2])].toFixed(1)}倍 ／ 3連単 ${o[0]}→${o[1]}→${o[2]} ${Game.odds.tri[triKey(o[0],o[1],o[2])].toFixed(1)}倍</div>`;
+  html += `<div class="sub" style="margin-top:4px">単勝 ${o[0]} ${Game.odds.win[o[0]-1].toFixed(1)}倍 ／ 複勝 ${o.slice(0,3).map(x => `${x} ${Game.odds.place[x-1].toFixed(1)}`).join('・')}倍 ／ 馬連 ${quinKey(o[0],o[1])} ${Game.odds.quin[quinKey(o[0],o[1])].toFixed(1)}倍 ／ ワイド ${[[0,1],[0,2],[1,2]].map(([x,y]) => `${quinKey(o[x],o[y])} ${Game.odds.wide[quinKey(o[x],o[y])].toFixed(1)}`).join('・')}倍 ／ 3連複 ${trioKey(o[0],o[1],o[2])} ${Game.odds.trio[trioKey(o[0],o[1],o[2])].toFixed(1)}倍 ／ 3連単 ${o[0]}→${o[1]}→${o[2]} ${Game.odds.tri[triKey(o[0],o[1],o[2])].toFixed(1)}倍</div>`;
   $('payout').innerHTML = html;
   $('resTitle').textContent = `${Game.field.race.name} 確定`;
   $('podium').innerHTML = o.slice(0,3).map((no,k) => `<div><span class="pos">${k+1}着</span>${wakuBadge(no)} ${Game.field.horses[no-1].name}</div>`).join('');
