@@ -406,7 +406,9 @@ const Cinema = (() => {
       const { c, W, H } = fit(cv);
       const f = G.factions[G.player], lord = Game.lordOf(G.player) || G.gens[f.lord];
       const myGens = G.gens.filter(g => g.state === 'serve' && g.faction === G.player).sort((a, b) => (b.wins * 3 + b.duels * 5 + b.lead + b.war + b.int) - (a.wins * 3 + a.duels * 5 + a.lead + a.war + a.int));
-      const fallen = G.gens.filter(g => g.state === 'dead' && g.deathReason === '戦死' && g.faction === G.player);
+      // エンディングに名を残すのは、自軍で一定の戦功（5以上）をあげて亡くなった者だけ（戦死・処断・病のいずれも）
+      const FALLEN_MIN = 5;
+      const fallen = G.gens.filter(g => g.state === 'dead' && g.faction === G.player && (g.wins || 0) >= FALLEN_MIN).sort((a, b) => b.wins - a.wins);
       const sc = SCENARIOS.find(s => s.id === G.scen);
       const H_ = Game.has;
       // ---- 結びの言葉：君主ごとの一文と、功臣・軍師・散った将の名を織り込む ----
