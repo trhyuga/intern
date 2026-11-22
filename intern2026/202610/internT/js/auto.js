@@ -193,9 +193,9 @@ const Auto = (() => {
     const I = (typeof VOICE !== 'undefined' && VOICE[g.name] && VOICE[g.name].I) || '我';
     return pick(pool).replace(/\{(\w+)\}/g, (m, k) => k === 'I' ? I : ctx[k] != null ? ctx[k] : '');
   }
-  async function say(kind, ctx, expr = 'normal') {
+  async function say(kind, ctx, expr = 'normal', ev = false) {
     const g = strategist(); if (!g) return;
-    await UI.talk(g, expr, `${title(g)}${g.name}「${sl(kind, ctx)}」`, facColor(g), { tag: g.isLord ? '君主の采配' : '軍師' });
+    await UI.talk(g, expr, `${title(g)}${g.name}「${sl(kind, ctx)}」`, facColor(g), { tag: g.isLord ? '君主の采配' : '軍師', ev });
   }
   // 名前の前の肩書き（君主が兼ねるときは付けない）
   function title(g) { return g && g.isLord ? '' : '軍師 ';
@@ -1341,7 +1341,7 @@ const Auto = (() => {
     const civilNote = br.style === 'civil' ? (L ? '' : '国を富ませ、兵を養い、守りを固めます。') : br.style === 'master' ? (L ? '富国強兵。内を固め、外を討つ。' : '富国強兵。内を固め、外を討ちます。') : '';
     const focusNote = civilNote ? civilNote : br.tier !== 'dumb' && ph.stage !== 'early' && !weak() && G.autoFocus != null ? (L ? `まずは${G.factions[G.autoFocus].name}軍を討ち、敵を一つずつ減らす。` : `まずは${G.factions[G.autoFocus].name}軍を討ち、敵を一つずつ減らします。`) : '';
     const note = focusNote + (br.tier === 'dumb' ? '' : (ph.stage === 'early' && weak() ? (L ? '今は小国だ。強国とは争わず、空き城と隙を狙え。' : '今は小国。強国とは争わず、空き城と隙を狙います。') : PN[ph.stage]) + (ph.staff === 'few' ? (L ? '人手が足りぬ。人材を探せ。' : '人手が足りません。人材を探しましょう。') : ''));
-    await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan: note + plan }, attacks.length ? 'angry' : 'normal');
+    await say('intro', { season: `${G.year}年${SEASONS[G.season]}`, plan: note + plan }, attacks.length ? 'angry' : 'normal', true);   // 期初の所信方針は、季節の出来事と同じく読める長さで出す
     if (stopReq) return false;
     await doRewards(br); if (stopReq) return false;
     // 出陣は季節の最初に（将・兵・兵糧を寄せてから攻める。内政や輸送はそのあと）
