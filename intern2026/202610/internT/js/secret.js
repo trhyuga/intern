@@ -15,6 +15,8 @@ const Secret = (() => {
     meta = Object.assign({ met: {}, ach: {}, wonBy: {}, unify: 0, duelWins: 0, items: {}, legend: {}, days: {} }, meta || {});
     return meta;
   }
+  // 遊んでいる場所の日付（UTCではなく端末の暦）
+  const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
   function saveMeta() { try { localStorage.setItem(META_KEY, JSON.stringify(M())); } catch (e) { } }
 
   // ---------- 実績 ----------
@@ -42,7 +44,7 @@ const Secret = (() => {
   ];
   function unlock(id) {
     const m = M(); if (m.ach[id]) return;
-    m.ach[id] = new Date().toISOString().slice(0, 10); saveMeta();
+    m.ach[id] = localDay(); saveMeta();
     const a = ACH.find(x => x[0] === id);
     if (a && typeof UI !== 'undefined') { UI.toast(`実績「${a[1]}」を達成！`, 2600); try { Sound.se('great'); } catch (e) { } }
   }
@@ -66,8 +68,11 @@ const Secret = (() => {
   function itemsOf(g) { if (!G || !G.items || !g) return []; return Object.keys(G.items).filter(id => G.items[id] === g.i); }
   function giveItem(g, id, quiet) {
     const it = ITEMS[id]; if (!it || !g) return null;
-    G.items = G.items || {};
-    G.items[id] = g.i;
+    G.items = G.items || {}; G.itemBonus = G.itemBonus || {};
+    // 前の持ち主が宝物で上がった分は返す（初めから持っていた者は、もともとの能力なので減らさない）
+    const prev = G.itemBonus[id] != null ? G.gens[G.itemBonus[id]] : null;
+    if (prev && prev !== g) Object.entries(it.k).forEach(([k, v]) => { prev[k] = Math.max(1, prev[k] - v); });
+    G.items[id] = g.i; G.itemBonus[id] = g.i;
     Object.entries(it.k).forEach(([k, v]) => up99(g, k, v));
     if (it.kind === 'seal' && g.faction >= 0) Game.gensOf(g.faction).forEach(x => { if (!x.isLord) x.loyalty = Math.min(100, x.loyalty + 10); });
     if (g.faction === G.player) {
@@ -155,12 +160,12 @@ const Secret = (() => {
       ev.push({ type: 'hist', hist: true, title: `名馬・${it.name}`, msg: `遠い西の国の商人が、一頭の名馬を献上した。${it.desc}。\n${best.name}「なんと見事な……。この馬となら、どこまでも駆けられそうだ」\n<small>${best.name}が乗る（一騎討ちで攻撃をかわしやすくなる）</small>`, gen: best.i, expr: 'happy', tag: '名馬', se: 'bell' });
     }
     // 暦の祝い（遊んでいる日の日付。1日1回まで）
-    const d = new Date(), md = (d.getMonth() + 1) * 100 + d.getDate(), key = d.toISOString().slice(0, 10);
+    const d = new Date(), md = (d.getMonth() + 1) * 100 + d.getDate(), key = localDay();
     const FEST = md >= 101 && md <= 107 ? ['新春の祝い', '年が改まった。国中で爆竹が鳴り、人々が新しい年を祝っている。', 'loyal', 6]
       : md === 505 ? ['端午の節句', '川では竜舟の競漕が行われ、人々は粽を食べて邪気をはらった。', 'loyal', 5]
       : md === 707 ? ['七夕', '天の川に、牽牛と織女の星が並んだ。娘たちは針仕事の上達を願っている。', 'loyal', 5]
       : md === 909 ? ['重陽の節句', '人々は高い丘に登り、菊の酒を酌み交わして長寿を願った。', 'loyal', 5]
-      : md >= 1231 || md <= 100 ? null : null;
+      : null;
     const m = M();
     if (FEST && !m.days[key]) {
       m.days[key] = true; saveMeta();
@@ -266,7 +271,6 @@ const Secret = (() => {
     recordMet(); checkHiddenJoined();
     m.unify = (m.unify || 0) + 1;
     const sc = SCENARIOS.find(s => s.id === G.scen);
-    const startLord = sc && sc.lords.find(L => L[0] === (G.usurp ? null : G.factions[G.player].name)) ? G.factions[G.player].name : null;
     if (lord) m.wonBy[G.startLord || lord.name] = true;
     saveMeta();
     unlock('unify1');
@@ -277,7 +281,6 @@ const Secret = (() => {
     const won = Object.keys(m.wonBy).filter(n => lordsAll.has(n)).length;
     if (won >= 5) unlock('unify_lords5');
     if (won >= lordsAll.size) unlock('unify_all');
-    return startLord;
   }
   // エンディングの語りに添える一文（統一の仕方で変わる）
   function endingNote() {
@@ -360,7 +363,12 @@ const Secret = (() => {
     HIDDEN, hideNew, healer, seasonEvents, recordMet, initScenarios, scenUnlocked, usurpers, usurpStart, onFinish, endingNote,
     openRecords, logoTap, duelWon, seen, START_OWNER, cleared,
     // 開始時の宝物の持ち主
-    initItems() { G.items = {}; Object.entries(START_OWNER).forEach(([id, n]) => { const g = G.gens.find(x => x.name === n && x.state === 'serve'); if (g) G.items[id] = g.i; }); },
+    initItems() {
+      G.items = {}; G.itemBonus = {};
+      const m = M(); let rec = false;
+      Object.entries(START_OWNER).forEach(([id, n]) => { const g = G.gens.find(x => x.name === n && x.state === 'serve'); if (g) { G.items[id] = g.i; if (g.faction === G.player) { m.items[id] = true; rec = true; } } });
+      if (rec) saveMeta();
+    },
   };
 })();
 Secret.initScenarios();

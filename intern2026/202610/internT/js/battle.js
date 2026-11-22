@@ -646,7 +646,7 @@ const Battle = (() => {
         B.windDone = true;
         Sound.se('fire'); await banner('東南の風！', 1400);
         addLog('にわかに東南の風が吹き、炎は敵陣を飲み込んだ！');
-        for (let r = d.r - 2; r <= d.r + 2; r++) for (let c = d.c - 2; c <= d.c + 2; c++) if (inb(r, c) && ['forest', 'plain', 'road'].includes(B.tiles[r][c].t)) B.tiles[r][c].fire = 2;
+        for (let r = d.r - 2; r <= d.r + 2; r++) for (let c = d.c - 2; c <= d.c + 2; c++) { const o = inb(r, c) && unitAt(r, c); if (inb(r, c) && ['forest', 'plain', 'road'].includes(B.tiles[r][c].t) && !(o && o.side === a.side)) B.tiles[r][c].fire = 2; }   // 火をかけた側の陣には燃え移らない
         for (const o of B.units.filter(o => o.alive && o.side === d.side && o !== d && dist(o, d) <= 2)) { const v = Math.round(o.troops * 0.12 + 150); o.troops = Math.max(0, o.troops - v); o.morale = Math.max(0, o.morale - 10); addFloater(o.r, o.c, '火-' + v, '#ffb02a'); await checkRout(o, a); }
         if (a.fi === G.player && typeof Secret !== 'undefined') Secret.unlock('wind');
       }
@@ -1099,6 +1099,7 @@ const Battle = (() => {
   // ---------- 伝説の名場面（1つの合戦で1回まで、ゲームを通してもめったに起きない） ----------
   async function legendScenes() {
     if (B.legendDone || B.day < 3) return;
+    if (auto && !B.watch) return;   // 名場面は、目の前の合戦（自ら指揮・観戦）でだけ起こす。委任の合戦では使い切らない
     G.events.legend = G.events.legend || {};
     // 長坂の単騎駆け：劣勢の側に趙雲がいて、兵が減っていると、敵中を駆け抜けて周りの敵を斬り散らす
     const zy = B.units.find(u => u.alive && u.gi >= 0 && u.g.name === '趙雲');
@@ -1111,7 +1112,7 @@ const Battle = (() => {
       for (const o of foes) { const v = Math.round(o.troops * 0.12 + 150); o.troops = Math.max(0, o.troops - v); o.morale = Math.max(0, o.morale - 12); addFloater(o.r, o.c, '-' + v, '#ff6a5a'); slash(o.r, o.c); }
       B.units.filter(u => u.alive && u.side === zy.side).forEach(u => u.morale = Math.min(100, u.morale + 20));
       zy.morale = 100;
-      if (zy.fi === G.player || B.watch || !auto) { if (typeof Secret !== 'undefined') { Secret.seen('tanki'); Secret.unlock('legend'); } }
+      if (typeof Secret !== 'undefined') { Secret.seen('tanki'); Secret.unlock('legend'); }
       await sleep(600); for (const o of foes) await checkRout(o, zy);
       return;
     }
@@ -1864,11 +1865,11 @@ const Duel = (() => {
     return { dmg: Math.round(dmg) };
   }
   function quick(a, d) {
-    let ha = 100, hd = 100;
-    for (let i = 0; i < 30 && ha > 0 && hd > 0; i++) { hd -= strike(a, d, Math.random() < 0.25 ? 'power' : 'atk').dmg; if (hd > 0) ha -= strike(d, a, Math.random() < 0.25 ? 'power' : 'atk').dmg; }
+    let ha = 100, hd = 100, rounds = 0;
+    for (let i = 0; i < 30 && ha > 0 && hd > 0; i++) { rounds++; hd -= strike(a, d, Math.random() < 0.25 ? 'power' : 'atk').dmg; if (hd > 0) ha -= strike(d, a, Math.random() < 0.25 ? 'power' : 'atk').dmg; }
     const winner = ha > hd ? 'a' : 'd';
     const r = Math.random();
-    return { winner, outcome: r < 0.15 ? 'killed' : r < 0.6 ? 'captured' : 'fled' };
+    return { winner, outcome: r < 0.15 ? 'killed' : r < 0.6 ? 'captured' : 'fled', rounds };
   }
   // pSide: 'a' or 'd' プレイヤーが操作する側（null なら観戦）
   // ---------- 一騎討ちの闘技場（2騎が駆け寄って打ち合う絵） ----------

@@ -898,7 +898,7 @@ const App = {
       // 季節の終わり
       let ev = Game.endSeason();
       // この季節のうちに天下が定まった（最後の敵が滅んだ）なら、ほかの勢力の跡継ぎや出来事は流さず、滅亡の知らせだけ見せてエンディングへ
-      if (Game.checkEnd()) ev = ev.filter(e => (e.title && /巨星墜つ/.test(e.title)) || /滅/.test(e.msg || ''));
+      if (Game.checkEnd() === 'win') ev = ev.filter(e => (e.title && /巨星墜つ/.test(e.title)) || /滅/.test(e.msg || ''));
       for (const e of ev) {
         if (e.quiet) continue;
         const eg = e.gen != null ? G.gens[e.gen] : null;
