@@ -154,6 +154,7 @@ const App = {
   },
   title() {
     UI.show('title');
+    { const rb = $('#title [data-act=records]'); if (rb) rb.style.display = Secret.cleared() ? '' : 'none'; }   // 記録は、一度天下を統一してから
     Sound.bgm('title');
     Cinema.titleBG($('#titlecv'));
     // ゲームの途中でページが読み込み直された（スマホのメモリ不足など）時は、自動セーブから続けるか聞く
@@ -174,7 +175,7 @@ const App = {
     }
     if (a === 'howto') return App.howto();
     if (a === 'opening') return App.opening();
-    if (a === 'records') return Secret.openRecords();
+    if (a === 'records') return Secret.cleared() ? Secret.openRecords() : null;
   },
   howto() {
     return UI.modal({ title: '遊び方', body: `<div class="howto">

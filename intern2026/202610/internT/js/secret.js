@@ -284,7 +284,7 @@ const Secret = (() => {
     let body = '';
     if (tab === 'ach') {
       const n = ACH.filter(a => m.ach[a[0]]).length;
-      body = `<p class="rec-sum">達成 ${n} / ${ACH.length}　天下統一 ${m.unify || 0}回　一騎討ち通算 ${m.duelWins || 0}勝</p>` + ACH.map(([id, nm, ds]) => m.ach[id] ? `<div class="rec-row on"><b>${nm}</b><small>${ds}</small></div>` : `<div class="rec-row"><b>？？？</b><small>${id === 'omake' || id.startsWith('hidden') || id === 'legend' || id === 'wind' || id === 'ultimate' ? 'まだ見ぬ何か' : ds}</small></div>`).join('');
+      body = `<p class="rec-sum">達成 ${n} / ${ACH.length}　天下統一 ${m.unify || 0}回　一騎討ち通算 ${m.duelWins || 0}勝</p>` + ACH.map(([id, nm, ds]) => m.ach[id] ? `<div class="rec-row on"><b>${nm}</b><small>${ds}</small></div>` : `<div class="rec-row"><b>？？？</b><small>${id === 'omake' ? 'タイトルの題字に、秘密があるらしい' : id.startsWith('hidden') || id === 'legend' || id === 'wind' || id === 'ultimate' ? 'まだ見ぬ何か' : ds}</small></div>`).join('');
     } else if (tab === 'zukan') {
       const all = GENERAL_SRC.trim().split('\n').map(l => l.split(','));
       const n = all.filter(p => m.met[p[0]]).length;
@@ -311,7 +311,10 @@ const Secret = (() => {
 
   // ---------- おまけ（タイトルの文字「群雄天下」を素早く5回タップ） ----------
   let taps = [];
+  // 一度でも天下を統一したか（記録と隠し部屋は、統一したあとに開く）
+  const cleared = () => (M().unify || 0) >= 1;
   function logoTap() {
+    if (!cleared()) return;
     const now = Date.now(); taps = taps.filter(t => now - t < 2500); taps.push(now);
     if (taps.length >= 5) { taps = []; openOmake(); }
   }
@@ -339,7 +342,7 @@ const Secret = (() => {
   return {
     M, saveMeta, unlock, ACH, ITEMS, itemsOf, giveItem, findTreasure, duelHitK, duelDmgK, duelSpoils,
     HIDDEN, hideNew, healer, seasonEvents, recordMet, initScenarios, scenUnlocked, usurpers, usurpStart, onFinish, endingNote,
-    openRecords, logoTap, duelWon, seen, START_OWNER,
+    openRecords, logoTap, duelWon, seen, START_OWNER, cleared,
     // 開始時の宝物の持ち主
     initItems() { G.items = {}; Object.entries(START_OWNER).forEach(([id, n]) => { const g = G.gens.find(x => x.name === n && x.state === 'serve'); if (g) G.items[id] = g.i; }); },
   };

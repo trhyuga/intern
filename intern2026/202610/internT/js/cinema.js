@@ -488,7 +488,7 @@ const Cinema = (() => {
         (fallen.length ? `<h3><span>散っていった者たち</span></h3><p class="fallen">${fallen.map(g => `<span class="sg">${g.name}</span>`).join('')}</p>` : '') +
         `<h3><span>戦 績</span></h3><div class="rstats">` +
         [['シナリオ', sc.title], ['年月', `<span class="sg">${sc.dream ? '' : `${sc.year}年〜`}${G.year}年</span>`], ['戦い', `<span class="sg">${G.stats.battles}回</span><span class="sg">（勝利 ${G.stats.wins}回）</span>`], ['捕らえた武将', `${G.stats.captured}人`], ['登用した武将', `${G.stats.recruited}人`], ['一騎討ちの勝利', `${G.stats.duelsWon}回`]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('') + '</div>' +
-        `<h3><span>制 作</span></h3><p class="staff">群雄天下 ― 三国英傑伝 ―<br>intern2026 / internT</p><p class="staff">絵・音・物語　Claude</p><p class="staff">Produced by Triumph</p>` +
+        `<h3><span>制 作</span></h3><p class="staff">群雄天下 ― 三国英傑伝 ―<br>intern2026 / internT</p><p class="staff">絵・音・物語　Claude</p><p class="staff">Produced by Triumph</p>` + (win ? `<p class="staff hint">― 題字に五たび触れる者に、<br>隠し部屋の扉は開かれん ―</p>` : '') +
         `<div class="fin"><span>完</span></div>`;
       rollEl.innerHTML = ''; rollEl.appendChild(roll);
       const t0 = performance.now();
