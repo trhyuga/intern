@@ -744,6 +744,7 @@ const App = {
   async milestones() {
     await App.lordDeathNotice();
     if (!G || G.gameOver || !G.factions[G.player].alive) return;
+    if (Game.checkEnd()) return;   // 天下が定まったなら「残るは◯◯のみ」などの節目の言葉は出さない
     const ms = G.events.ms = G.events.ms || {};
     const mine = Game.citiesOf(G.player).length;
     G.events.maxCities = Math.max(G.events.maxCities || 0, mine);

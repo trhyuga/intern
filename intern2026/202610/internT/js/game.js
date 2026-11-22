@@ -611,16 +611,20 @@ const Game = {
       g.loyalty = clamp(g.loyalty + drift, 0, 100);
     });
     ev.push(...Game.checkDesertion());
-    ev.push(...Game.checkRebellion());
-    ev.push(...Game.checkIndependence());
 
-    // 季節を進める
+    // 季節を進める（年が明ければ、寿命で亡くなる者が出る）
     G.season++; G.turn++;
     if (G.season > 3) { G.season = 0; G.year++; ev.push(...Game.newYear()); }
+    // 最後の敵が滅んで天下が定まったなら、謀反・独立や季節の出来事は起こさない（滅亡の知らせだけ）
+    const unified = Game.checkEnd() === 'win';
+    if (!unified) {
+      ev.push(...Game.checkRebellion());
+      ev.push(...Game.checkIndependence());
+    }
     G.gens.forEach(g => g.acted = false);
     ev.push(...Game.wanderRonin());
-    // 不定期イベントと史実イベント
-    if (typeof Events !== 'undefined') ev.push(...Events.run());
+    // 不定期イベントと史実イベント（天下統一の季節は、天下の歩みの知らせだけ）
+    if (typeof Events !== 'undefined') ev.push(...Events.run(unified));
     return ev;
   },
 
