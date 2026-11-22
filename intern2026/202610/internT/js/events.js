@@ -950,6 +950,8 @@ const Events = (() => {
     const all = Game.gensOf(fi).filter(g => !g.isLord);
     const rank = g => SIMA.includes(g.name) ? 0 : SIMA_CLOSE.includes(g.name) ? 1 : 2;
     let followers = all.filter(g => SIMA.includes(g.name) || (W.has(g.name) && !isCaoClan(g.name))).sort((a, b) => rank(a) - rank(b) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
+    // 自軍の政変：司馬一族と司馬氏に近い重臣のほかは、戦功5以上の将はついていかない（忠誠が60未満なら加わることもある）
+    if (fi === G.player) followers = followers.filter(g => rank(g) < 2 || (g.wins || 0) < 5 || g.loyalty < 60);
     const cap = Math.max(sima.length, Math.round(all.length / 3));   // どちらの勢力でも、ついていくのは多くても将の三分の一まで
     followers = followers.slice(0, cap);
     if (fi !== G.player && followers.length < Math.min(cap, take.size)) {   // 敵軍の政変：魏ゆかりの将が城の数に足りなければ、離反する城にいた将（曹・夏侯の一族と忠義の者は除く）が加わる
