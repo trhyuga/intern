@@ -975,6 +975,79 @@ const Events = (() => {
     Game.log(`${head.name}が政変を起こし、${take.size}の城とともに${f.name}軍から独立した。${other.name}軍と同盟を結んだ。`);
     return { head, f, other, n: take.size, followers, moved: stay.length, mine: fi === G.player };
   }
+  // 蜀・呉の建国：天下の形が固まってきた頃（残る勢力が3〜5）、劉備（劉禅と諸葛亮も存命）や孫権（周瑜も存命）が
+  //  他の君主に仕えていれば、その勢力から都市の五分の一を地続きで持って独立し、ゆかりの将が集う（ゲームに一度ずつ）
+  const NATIONS = {
+    shu: { title: '蜀漢の興り', lord: '劉備', need: ['劉備', '劉禅', '諸葛亮'], core: ['劉備', '劉禅', '諸葛亮'], roster: ['劉備', '劉禅'], color: '#2f8a4e',
+      region: ['chengdu', 'jiangzhou', 'zitong', 'hanzhong', 'yongan', 'jianning', 'yunnan', 'jiangling', 'xiangyang', 'xinye', 'changsha', 'lingling', 'guiyang', 'wuling'],
+      text: (h, f, n) => `${h.name}は、漢の血を引く者として、${f.name}のもとを去る時が来たと悟った。\n「漢室を再び興す。それが、わしの生涯の志だ」\n${h.name}は${n}の城とともに独立し、国を蜀と号した。` },
+    wu: { title: '呉の興り', lord: '孫権', need: ['孫権', '周瑜'], core: ['孫権', '周瑜'], roster: ['孫堅', '孫策', '孫権'], color: '#c0392b', family: '孫',
+      region: ['jianye', 'wu', 'kuaiji', 'lujiang', 'chaisang', 'jiangxia', 'guangling', 'shouchun'],
+      text: (h, f, n) => `父と兄が築いた江東の地を、いつまでも他人に預けてはおけぬ。\n孫権「江東の主は、孫家だ」\n${h.name}は${n}の城とともに${f.name}のもとを離れ、国を呉と号した。` },
+  };
+  function nationSet(spec) {
+    const w = new Set(spec.core);
+    SCENARIOS.forEach(sc => sc.lords.forEach(L => { if (spec.roster.includes(L[0])) { w.add(L[0]); L[3].forEach(n => w.add(n)); } }));
+    if (typeof GEN_FATHER !== 'undefined') Object.entries(GEN_FATHER).forEach(([ch, fa]) => { if (w.has(fa)) w.add(ch); });
+    return w;
+  }
+  function foundNation(key) {
+    const spec = NATIONS[key];
+    G.events.nation = G.events.nation || {};
+    if (G.events.nation[key]) return null;
+    const alive = G.factions.filter(f => f.alive);
+    if (alive.length < 3 || alive.length > 5) return null;
+    const head = serving(spec.lord);
+    if (!head || head.isLord || head.faction < 0 || !G.factions[head.faction] || !G.factions[head.faction].alive) return null;
+    if (!spec.need.every(n => { const g = G_(n); return g && (g.state === 'serve' || g.state === 'ronin'); })) return null;
+    const fi = head.faction, f = G.factions[fi], mine = Game.citiesOf(fi);
+    if (mine.length < 3) return null;
+    const want = Math.max(1, Math.round(mine.length / 5));
+    const cand = mine.filter(c => c.i !== f.capital);
+    if (!cand.length) return null;
+    // 起点：ゆかりの地にある城（なければ、ゆかりの地にいちばん近い城）
+    const R = spec.region.map(id => G.cities.find(c => c.id === id)).filter(Boolean);
+    const near = c => Math.min(...R.map(r => Math.hypot(r.x - c.x, r.y - c.y)));
+    const start = cand.slice().sort((a, b) => near(a) - near(b))[0];
+    const take = new Set([start.i]);
+    while (take.size < want) {
+      const front = [];
+      take.forEach(ci => G.cities[ci].adj.forEach(a => { const o = G.cities[a]; if (o.owner === fi && o.i !== f.capital && !take.has(o.i) && !front.includes(o)) front.push(o); }));
+      if (!front.length) break;
+      front.sort((a, b) => near(a) - near(b));
+      take.add(front[0].i);
+    }
+    G.events.nation[key] = true;
+    const nf = { i: G.factions.length, name: head.name, color: spec.color, lord: head.i, alive: true, capital: start.i, allies: {}, isPlayer: false, hostility: {} };
+    G.factions.push(nf);
+    // ついていく将：中心の人物（と呉は孫家）は必ず。ほかのゆかりの将は、多くても将の五分の一まで。
+    //  自軍からは、戦功5以上の将はついていかない（忠誠60未満なら加わることもある）
+    const W = nationSet(spec);
+    const isCore = g => spec.core.includes(g.name) || (spec.family && g.name.startsWith(spec.family));
+    const all = Game.gensOf(fi).filter(g => !g.isLord);
+    let followers = all.filter(g => W.has(g.name) || isCore(g)).sort((a, b) => (isCore(b) ? 1 : 0) - (isCore(a) ? 1 : 0) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
+    if (fi === G.player) followers = followers.filter(g => isCore(g) || (g.wins || 0) < 5 || g.loyalty < 60);
+    const cap = Math.max(all.filter(isCore).length, Math.round(all.length / 5));
+    followers = followers.slice(0, cap);
+    take.forEach(ci => { G.cities[ci].owner = nf.i; });
+    const takeArr = [...take];
+    followers.forEach((g, k) => { g.faction = nf.i; g.isLord = false; g.loyalty = isCore(g) ? 100 : irnd(75, 92); if (!take.has(g.city)) g.city = takeArr[k % takeArr.length]; });
+    head.isLord = true; head.loyalty = 100; head.city = start.i;
+    // 在野にいるゆかりの将も、噂を聞いて馳せ参じる（3人まで）
+    const ronin = G.gens.filter(g => g.state === 'ronin' && W.has(g.name) && g.name !== '諸葛亮').slice(0, 3);
+    const zhuge = G_('諸葛亮'); if (key === 'shu' && zhuge && zhuge.state === 'ronin') ronin.unshift(zhuge);   // 臥龍は劉備のもとへ
+    ronin.forEach(g => { Game.joinFaction(g, nf.i, start.i); g.loyalty = irnd(80, 95); });
+    // 離反した城に残った元の勢力の将は、隣の自領へ均等に移る
+    const stay = Game.gensOf(fi).filter(g => take.has(g.city));
+    const dest = Game.citiesOf(fi).filter(c => c.adj.some(a => take.has(a)));
+    const pool = dest.length ? dest : [G.cities[f.capital]];
+    stay.sort((a, b) => a.city - b.city).forEach((g, k) => { g.city = pool[k % pool.length].i; });
+    Game.log(`${head.name}が${f.name}軍から独立し、${spec.title.slice(0, spec.title.indexOf('の'))}を建てた。`);
+    const names = followers.filter(g => g !== head).concat(ronin).slice(0, 5).map(g => g.name);
+    return { type: 'hist', hist: true, title: spec.title, msg: spec.text(head, f, take.size) + (names.length ? `\n${names.join('、')}らが${head.name}のもとに集った。` : '') + (fi === G.player ? `\n<small>自軍から${take.size}の城と${followers.length}人の将が離れた</small>` : ''), gen: head.i, expr: 'angry', tag: '天下の形', se: 'gong' };
+  }
+  function nationEvents() { return ['shu', 'wu'].map(foundNation).filter(Boolean).slice(0, 1); }   // 一つの季節に一つまで
+
   // 初めて：ゲーム開始時点ですでに満たしている節目は、起きたことにしておく（「得た時」だけ起こす）
   function initProg() {
     const P0 = G.events.prog = { cities: {}, region: {}, fac: {}, fell: {} };
@@ -1053,6 +1126,8 @@ const Events = (() => {
         }
       }
     }
+    // 蜀・呉の建国（天下の形が固まってきた頃。ゲームに一度ずつ）
+    ev.push(...nationEvents());
     return ev;
   }
 
