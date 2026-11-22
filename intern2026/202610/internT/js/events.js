@@ -975,8 +975,10 @@ const Events = (() => {
     Game.log(`${head.name}が政変を起こし、${take.size}の城とともに${f.name}軍から独立した。${other.name}軍と同盟を結んだ。`);
     return { head, f, other, n: take.size, followers, moved: stay.length, mine: fi === G.player };
   }
-  // 蜀・呉の建国：天下の形が固まってきた頃（残る勢力が3〜5）、劉備（劉禅と諸葛亮も存命）や孫権（周瑜も存命）が
-  //  他の君主に仕えていれば、その勢力から都市の五分の一を地続きで持って独立し、ゆかりの将が集う（ゲームに一度ずつ）
+  // 蜀・呉の建国と南蛮王の再起（ゲームに一度ずつ、季節に一つまで）
+  //  蜀・呉：天下の形が固まってきた頃（残る勢力が3〜5）、劉備（劉禅と諸葛亮も存命）や孫権（周瑜も存命）が他の君主に仕えていれば、
+  //   その勢力から都市の五分の一を地続きで持って独立し、ゆかりの将が集う（同じ勢力の将は五分の一まで、在野は3人まで）
+  //  南蛮（anyTime・gatherAll）：残る勢力が3以上ならいつでも季節に5%。南蛮の将は、どこにいても戦功に関係なく皆集まる
   const NATIONS = {
     // 南蛮王の再起：時期を問わず、他家に仕える孟獲が季節に5%で南中に戻って立つ
     nanban: { title: '南蛮王の再起', nation: '南蛮', lord: '孟獲', need: ['孟獲'], core: ['孟獲', '祝融'], roster: ['孟獲'], color: '#7a5233', anyTime: true, chance: 0.05, gatherAll: true,   // 南蛮の将は、どこに仕えていても戦功に関係なく皆集まる
@@ -1002,7 +1004,7 @@ const Events = (() => {
     G.events.nation = G.events.nation || {};
     if (G.events.nation[key]) return null;
     const alive = G.factions.filter(f => f.alive && Game.citiesOf(f.i).length > 0);   // 天下の形の数え方と同じ（都市を持つ勢力）
-    if (spec.anyTime) { if (alive.length < 2 || Math.random() >= spec.chance) return null; }   // 時期を問わず、確率で
+    if (spec.anyTime) { if (alive.length < 3 || Math.random() >= spec.chance) return null; }   // 時期を問わず、確率で（天下二分のあとは起こさない）
     else if (alive.length < 3 || alive.length > 5) return null;
     const head = serving(spec.lord);
     if (!head || head.isLord || head.faction < 0 || !G.factions[head.faction] || !G.factions[head.faction].alive) return null;
@@ -1010,7 +1012,9 @@ const Events = (() => {
     const fi = head.faction, f = G.factions[fi], mine = Game.citiesOf(fi);
     // 仕える君主が身内（呉なら孫家、蜀なら劉備・劉禅）なら、独立はしない
     const hostLord = Game.lordOf(fi);
-    if (hostLord && (spec.roster.includes(hostLord.name) || (spec.family && spec.family.includes(hostLord.name)))) return null;
+    if (hostLord && (spec.roster.includes(hostLord.name) || (spec.family && spec.family.includes(hostLord.name)) || (spec.gatherAll && nationSet(spec).has(hostLord.name)))) return null;   // 南蛮は、南蛮の将が君主なら身内
+    // 七縦七擒で心から降った孟獲は、諸葛亮のいる勢力からは離れない
+    if (key === 'nanban' && ((G.events.hist && G.events.hist.qizong) || Game.gensOf(head.faction).some(g => g.name === '諸葛亮'))) return null;
     if (mine.length < 3) return null;
     const want = Math.max(1, Math.round(mine.length / 5));
     const cand = mine.filter(c => c.i !== f.capital);
@@ -1044,9 +1048,11 @@ const Events = (() => {
       // 他の勢力に仕える者も、在野の者も、ゆかりの将は皆集まる（君主は除く）
       G.gens.forEach(g => { if (g !== head && !g.isLord && W.has(g.name) && (g.state === 'serve' || g.state === 'ronin') && !followers.includes(g)) followers.push(g); });
     }
+    const lostMine = followers.filter(g => g.state === 'serve' && g.faction === G.player);   // 自軍から離れる将（知らせに使う）
+    const wasRonin = new Set(followers.filter(g => g.state === 'ronin'));
     take.forEach(ci => { G.cities[ci].owner = nf.i; });
     const takeArr = [...take];
-    followers.forEach((g, k) => { g.state = 'serve'; g.faction = nf.i; g.isLord = false; g.loyalty = isCore(g) ? 100 : irnd(75, 92); if (!take.has(g.city)) g.city = takeArr[k % takeArr.length]; });
+    followers.forEach((g, k) => { if (wasRonin.has(g)) Game.joinFaction(g, nf.i, g.city); g.state = 'serve'; g.faction = nf.i; g.isLord = false; g.loyalty = isCore(g) ? 100 : irnd(75, 92); if (!take.has(g.city)) g.city = takeArr[k % takeArr.length]; });
     head.isLord = true; head.loyalty = 100; head.city = start.i;
     // 在野にいるゆかりの将も、噂を聞いて馳せ参じる（3人まで）
     const dist0 = g => g.city >= 0 && G.cities[g.city] ? Math.hypot(G.cities[g.city].x - start.x, G.cities[g.city].y - start.y) : 9999;
@@ -1060,9 +1066,9 @@ const Events = (() => {
     stay.sort((a, b) => a.city - b.city).forEach((g, k) => { g.city = pool[k % pool.length].i; });
     Game.log(`${head.name}が${f.name}軍から独立し、${spec.nation}を建てた。`);
     const names = followers.filter(g => g !== head).concat(ronin).slice(0, 5).map(g => g.name);
-    return { type: 'hist', hist: true, title: spec.title, msg: spec.text(head, f, take.size) + (names.length ? `\n${names.join('、')}らが${head.name}のもとに集った。` : '') + (fi === G.player ? `\n<small>自軍から${take.size}の城と${followers.length}人の将が離れた</small>` : ''), gen: head.i, expr: 'angry', tag: '天下の形', se: 'gong' };
+    return { type: 'hist', hist: true, title: spec.title, msg: spec.text(head, f, take.size) + (names.length ? `\n${names.join('、')}らが${head.name}のもとに集った。` : '') + (fi === G.player ? `\n<small>自軍から${take.size}の城と${lostMine.length}人の将（${lostMine.slice(0, 6).map(g => g.name).join('・')}${lostMine.length > 6 ? 'ほか' : ''}）が離れた</small>` : lostMine.length ? `\n<small>自軍からも${lostMine.map(g => g.name).join('・')}が${head.name}のもとへ去った</small>` : ''), gen: head.i, expr: 'angry', tag: '天下の形', se: 'gong' };
   }
-  function nationEvents() { for (const k of ['shu', 'wu', 'nanban']) { const e = foundNation(k); if (e) return [e]; } return []; }   // 一つの季節に一つまで（起きたら、もう一方は次の季節以降）
+  function nationEvents() { for (const k of ['shu', 'wu', 'nanban']) { const e = foundNation(k); if (e) return [e]; } return []; }   // 一つの季節に一つまで（起きたら、ほかは次の季節以降）
 
   // 初めて：ゲーム開始時点ですでに満たしている節目は、起きたことにしておく（「得た時」だけ起こす）
   function initProg() {
