@@ -979,7 +979,7 @@ const Events = (() => {
   //  他の君主に仕えていれば、その勢力から都市の五分の一を地続きで持って独立し、ゆかりの将が集う（ゲームに一度ずつ）
   const NATIONS = {
     // 南蛮王の再起：時期を問わず、他家に仕える孟獲が季節に5%で南中に戻って立つ
-    nanban: { title: '南蛮王の再起', nation: '南蛮', lord: '孟獲', need: ['孟獲'], core: ['孟獲', '祝融'], roster: ['孟獲'], color: '#7a5233', anyTime: true, chance: 0.05,
+    nanban: { title: '南蛮王の再起', nation: '南蛮', lord: '孟獲', need: ['孟獲'], core: ['孟獲', '祝融'], roster: ['孟獲'], color: '#7a5233', anyTime: true, chance: 0.05, gatherAll: true,   // 南蛮の将は、どこに仕えていても戦功に関係なく皆集まる
       extra: ['兀突骨', '木鹿大王', '帯来洞主', '朶思大王', '金環三結', '阿会喃', '董荼那'],
       region: ['yunnan', 'jianning'],
       text: (h, f, n) => `南中の山々から、太鼓の音が響いてきた。\n孟獲「やはり俺は、南の王として生きる！ 象も虎も、みな俺のもとへ戻ってこい！」\n${h.name}は${n}の城とともに${f.name}のもとを去り、南蛮の王として再び立った。` },
@@ -1036,16 +1036,21 @@ const Events = (() => {
     const isCore = g => spec.core.includes(g.name) || (spec.family && spec.family.includes(g.name));
     const all = Game.gensOf(fi).filter(g => !g.isLord);
     let followers = all.filter(g => W.has(g.name) || isCore(g)).sort((a, b) => (isCore(b) ? 1 : 0) - (isCore(a) ? 1 : 0) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int));
-    if (fi === G.player) followers = followers.filter(g => isCore(g) || (g.wins || 0) < 5 || g.loyalty < 60);
-    const cap = Math.max(all.filter(isCore).length, Math.round(all.length / 5));
-    followers = followers.slice(0, cap);
+    if (!spec.gatherAll) {
+      if (fi === G.player) followers = followers.filter(g => isCore(g) || (g.wins || 0) < 5 || g.loyalty < 60);
+      const cap = Math.max(all.filter(isCore).length, Math.round(all.length / 5));
+      followers = followers.slice(0, cap);
+    } else {
+      // 他の勢力に仕える者も、在野の者も、ゆかりの将は皆集まる（君主は除く）
+      G.gens.forEach(g => { if (g !== head && !g.isLord && W.has(g.name) && (g.state === 'serve' || g.state === 'ronin') && !followers.includes(g)) followers.push(g); });
+    }
     take.forEach(ci => { G.cities[ci].owner = nf.i; });
     const takeArr = [...take];
-    followers.forEach((g, k) => { g.faction = nf.i; g.isLord = false; g.loyalty = isCore(g) ? 100 : irnd(75, 92); if (!take.has(g.city)) g.city = takeArr[k % takeArr.length]; });
+    followers.forEach((g, k) => { g.state = 'serve'; g.faction = nf.i; g.isLord = false; g.loyalty = isCore(g) ? 100 : irnd(75, 92); if (!take.has(g.city)) g.city = takeArr[k % takeArr.length]; });
     head.isLord = true; head.loyalty = 100; head.city = start.i;
     // 在野にいるゆかりの将も、噂を聞いて馳せ参じる（3人まで）
     const dist0 = g => g.city >= 0 && G.cities[g.city] ? Math.hypot(G.cities[g.city].x - start.x, G.cities[g.city].y - start.y) : 9999;
-    const ronin = G.gens.filter(g => g.state === 'ronin' && W.has(g.name) && g.name !== '諸葛亮').sort((a, b) => dist0(a) - dist0(b) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, 3);   // 近くにいる者から、腕の立つ者を先に
+    const ronin = spec.gatherAll ? [] : G.gens.filter(g => g.state === 'ronin' && W.has(g.name) && g.name !== '諸葛亮').sort((a, b) => dist0(a) - dist0(b) || (b.lead + b.war + b.int) - (a.lead + a.war + a.int)).slice(0, 3);   // 近くにいる者から、腕の立つ者を先に
     const zhuge = G_('諸葛亮'); if (key === 'shu' && zhuge && zhuge.state === 'ronin') ronin.unshift(zhuge);   // 臥龍は劉備のもとへ
     ronin.forEach(g => { Game.joinFaction(g, nf.i, start.i); g.loyalty = irnd(80, 95); });
     // 離反した城に残った元の勢力の将は、隣の自領へ均等に移る
