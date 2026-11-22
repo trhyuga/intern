@@ -468,7 +468,7 @@ const Cinema = (() => {
         `${lname}の旗のもと、｜天下はついに｜一つとなる。`,
         lordLine,
         (sg && sg !== lord ? `帷幄にあっては｜${sg.name}が策を巡らせ、｜` : '') + (heroes.length ? `戦場にあっては｜${heroes.join('、')}らが｜武名を轟かせた。` : '君臣は心を一つにして｜戦い抜いた。'),
-        fallen.length ? `志半ばに倒れた｜${fallen.slice(0, 4).map(g => g.name).join('、')}${fallen.length > 4 ? 'ら' : ''}の名もまた、｜勝鬨の中に刻まれる。` : '',
+        fallen.length ? `この日を見ずに世を去った｜${fallen.slice(0, 4).map(g => g.name).join('、')}${fallen.length > 4 ? 'ら' : ''}の名もまた、｜勝鬨の中に刻まれる。` : '',
         (typeof Secret !== 'undefined' ? Secret.endingNote() : ''),   // 統一の仕方（電光石火・仁政・恐怖・下剋上・玉璽）で変わる一文
         '荒れ果てた田畑には｜再び麦が実り、｜街道には｜商人の声が戻る。',
         'この日の勝鬨は、｜のちの世まで｜長く語り継がれていく。',

@@ -631,16 +631,12 @@ const App = {
     const playerWon = (pAtk && res.atkWin) || (pDef && !res.atkWin);
     if (pAtk || pDef) { G.stats.battles++; if (playerWon) G.stats.wins++; }
     // 戦功：合戦の中の働き（敵部隊を崩す・一騎討ち。自軍が崩れれば減る）と、総大将の勝ち負け（勝てば +1、負ければ −1）
+    // （合戦に出て勝った +1 は、このあと城の受け渡しの所で足す。0未満にしないのは、この合戦の合計を足し終えてから一度だけ）
+    const meritSum = {};
     {
-      const addW = (g, v) => { if (g && g.faction === G.player && g.state !== 'dead') g.wins = Math.max(0, (g.wins || 0) + v); };
-      Object.entries(res.merit || {}).forEach(([gi, v]) => addW(G.gens[gi], v));
-      if (pAtk || pDef) {
-        let cmd = pAtk ? res.cmdAtk : res.cmdDef;
-        if (cmd == null) {   // 委任の合戦：攻めは先頭の将、守りは城の筆頭（君主→統率と武力）
-          cmd = pAtk ? plan.gens[0] : (Game.gensIn(to.i, G.player).sort((a, b) => (b.isLord ? 1000 : 0) + b.lead + b.war - (a.isLord ? 1000 : 0) - a.lead - a.war)[0] || {}).i;
-        }
-        if (cmd != null && cmd >= 0) addW(G.gens[cmd], playerWon ? 1 : -1);
-      }
+      const addM = (gi, v) => { if (gi != null && gi >= 0) meritSum[gi] = (meritSum[gi] || 0) + v; };
+      Object.entries(res.merit || {}).forEach(([gi, v]) => addM(+gi, v));
+      if (pAtk || pDef) addM(pAtk ? res.cmdAtk : res.cmdDef, playerWon ? 1 : -1);   // 総大将の勝ち負け（委任の合戦も、そこで総大将になった将）
     }
     const msgs = [];
     // 討死
@@ -650,7 +646,7 @@ const App = {
     if (res.atkWin) {
       to.owner = atkFi; to.troops = Math.max(100, res.atkLeft); to.loyal = Math.max(10, to.loyal - 12); to.train = from.train;
       to.food = Math.round((res.defFood ?? to.food) * 0.5) + Math.round(plan.food * 0.4); to.gold = Math.round(to.gold * 0.6);
-      atkGens.forEach(g => { if (!caps.includes(g.i) && !deaths.includes(g)) { g.city = to.i; if (pAtk) g.wins++; } });
+      atkGens.forEach(g => { if (!caps.includes(g.i) && !deaths.includes(g)) { g.city = to.i; if (pAtk) meritSum[g.i] = (meritSum[g.i] || 0) + 1; } });
       if (defFi !== null) {
         const df = G.factions[defFi];
         const remain = Game.citiesOf(defFi);
@@ -665,9 +661,11 @@ const App = {
       to.troops = Math.max(0, res.defLeft);
       from.troops += res.atkLeft;
       if (res.defFood != null) to.food = res.defFood;   // 籠城で食べた兵糧
-      if (pDef) Game.gensIn(to.i, G.player).forEach(g => g.wins++);
+      if (pDef) Game.gensIn(to.i, G.player).forEach(g => { meritSum[g.i] = (meritSum[g.i] || 0) + 1; });
       Game.log(`${to.name}の${defFi === null ? '守備隊' : G.factions[defFi].name + '軍'}が${G.factions[atkFi].name}軍を退けた。`);
     }
+    // 戦功をまとめて足す（自軍の将だけ。0未満にはしない）
+    Object.entries(meritSum).forEach(([gi, v]) => { const g = G.gens[gi]; if (g && g.faction === G.player) g.wins = Math.max(0, (g.wins || 0) + v); });
     // 武将の少ないうちは、負けても将を失いにくい（プレイヤーだけ）。討死・捕縛を、ある確率で「逃げ延びた」に変える
     const saved = [];
     {

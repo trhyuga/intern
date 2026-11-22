@@ -1045,7 +1045,7 @@ const AI = {
     else { defLoss = Math.round(to.troops * ratio * 0.5); atkLoss = Math.round(b.troops * (0.5 + 0.3 * (1 - ratio))); }
     // 援軍の損害
     helpers.forEach(h => { h.c.troops = Math.max(0, h.c.troops - Math.round(h.amt * (atkWin ? 0.5 : ratio * 0.4))); });
-    const result = { atkWin, atkLeft: Math.max(0, b.troops - atkLoss), defLeft: Math.max(0, to.troops - defLoss), captured: [], killed: [], reason: atkWin ? '攻め手が押し切った' : '守り手が持ちこたえた' };
+    const result = { cmdAtk: atk[0] ? atk[0].i : null, cmdDef: def[0] ? def[0].i : null, atkWin, atkLeft: Math.max(0, b.troops - atkLoss), defLeft: Math.max(0, to.troops - defLoss), captured: [], killed: [], reason: atkWin ? '攻め手が押し切った' : '守り手が持ちこたえた' };
     if (atkWin) {
       // 守備側の武将：一部捕縛、残りは逃走
       def.concat(Game.gensIn(to.i).filter(g => !def.includes(g))).forEach(g => {

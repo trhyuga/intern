@@ -866,7 +866,7 @@ const Battle = (() => {
           await UI.talk(lu.g, 'shock', '呂布「三人がかりとは……！ ちっ、ここは退く！」', G.factions[lu.fi] ? fcol(lu.fi) : '#777', { tag: '三英戦呂布' });
         }
         lu.alive = false; lu.status = 'fled'; lu.troops = Math.round(lu.troops * 0.7);
-        trio.forEach(x => { x.morale = Math.min(100, x.morale + 25); if (x.gi >= 0 && x.fi === G.player) G.gens[x.gi].duels++; });
+        trio.forEach(x => { x.morale = Math.min(100, x.morale + 25); if (x.gi >= 0 && x.fi === G.player) G.gens[x.gi].duels++; credit(x, lu.commander ? 2 : 1); }); credit(lu, -1);   // 戦功：三人で呂布を退けた
         B.units.filter(x => x.alive && x.side === lu.side).forEach(x => x.morale = Math.max(0, x.morale - 15));
         addLog('三英戦呂布！ 呂布は三人の猛攻に退いた');
         return;
@@ -911,7 +911,7 @@ const Battle = (() => {
     }
     lose.alive = false; lose.status = res.outcome; // killed / captured / fled
     // 戦功：一騎討ちに勝った +1（敵の総大将を討ち取る・捕らえたら +2。重ねない）、負けた −1
-    credit(win, lose.commander && (res.outcome === 'killed' || res.outcome === 'captured') ? 2 : 1); credit(lose, -1);
+    credit(win, lose.commander ? 2 : 1); credit(lose, -1);   // 敵の総大将を一騎討ちで破れば（討つ・捕らえる・逃がすを問わず）+2。部隊を崩した時と同じ
     addLog(`一騎打ち：${win.g.name}の勝利！ ${lose.g.name}は${res.outcome === 'killed' ? '討ち取られた' : res.outcome === 'captured' ? '捕らえられた' : '逃げ去った'}`);
     // 負けた部隊の兵は散る（半分は自軍に吸収されない）
     lose.troops = Math.round(lose.troops * 0.5);
