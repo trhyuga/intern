@@ -617,6 +617,9 @@ const Game = {
     });
     ev.push(...Game.checkDesertion());
 
+    // 軍師の在任：4季節（1年）務めるごとに戦功 +1（君主が軍師を兼ねていても）
+    { const sg = G.strategist != null ? G.gens[G.strategist] : null;
+      if (sg && sg.state === 'serve' && sg.faction === G.player) { sg.sgSeasons = (sg.sgSeasons || 0) + 1; if (sg.sgSeasons % 4 === 0) { sg.wins = (sg.wins || 0) + 1; Game.log(`軍師${sg.name}、在任${sg.sgSeasons / 4}年。その采配が戦功に数えられた。`); } } }
     // 季節を進める（年が明ければ、寿命で亡くなる者が出る）
     G.season++; G.turn++;
     if (G.season > 3) { G.season = 0; G.year++; ev.push(...Game.newYear()); }
