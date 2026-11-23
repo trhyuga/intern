@@ -1067,10 +1067,11 @@ const App = {
     // エンディングの前に、最後に何が起きたかを数秒見せる（オートの降伏などで、いきなり終わらないように）
     try {
       const lord = Game.lordOf(G.player) || G.gens[G.factions[G.player].lord];
-      const last = G.log.slice(0, 3).reverse().map(l => `・${l.msg}`).join('\n');
+      const lines = G.log.slice(0, 8).reverse();
+      const last = lines.map(l => `・<small>${l.t}</small> ${l.msg}`).join('\n');
       UI.closeSheet();
       Sound.se(kind === 'win' ? 'coronation' : 'gong');
-      await UI.talk(lord, kind === 'win' ? 'happy' : 'sad', `<b>${kind === 'win' ? `天下は、${G.factions[G.player].name}軍のもとに一つとなった。` : `${G.factions[G.player].name}軍は、ここに潰えた。`}</b>\n${last}`, G.factions[G.player].color, { tag: kind === 'win' ? '天下統一' : '覇業ならず', wait: 6000 });
+      await UI.talk(lord, kind === 'win' ? 'happy' : 'sad', `<b>${kind === 'win' ? `天下は、${G.factions[G.player].name}軍のもとに一つとなった。` : `${G.factions[G.player].name}軍は、ここに潰えた。`}</b>\n${last}`, G.factions[G.player].color, { tag: kind === 'win' ? '天下統一' : '覇業ならず', wait: Math.min(20000, 5000 + lines.length * 1500) });   // 件数に合わせて長く（タップで先へ）
     } catch (e) { console.error('finish', e); }
     try { Secret.onFinish(kind); } catch (e) { console.error('secret', e); }
     if (Auto.running) Auto.stop(true);

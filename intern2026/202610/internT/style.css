@@ -371,3 +371,4 @@ button.zk.on { color: inherit; border-color: #c9a22780; background: #fff6; }
 .lord-card.usurp { border-color: #8a1c12; box-shadow: 0 0 0 1px #8a1c1260 inset; }
 #title .logo { cursor: default; -webkit-tap-highlight-color: transparent; }
 .roll .staff.hint { margin-top: 28px; font-size: 12px; color: #b89a5a; letter-spacing: .1em; font-family: var(--brush); }
+.talk-text { max-height: 72vh; overflow-y: auto; }
