@@ -545,7 +545,7 @@ const Auto = (() => {
       if (sendable < 3000) return;
       // 率いる武将：この都市の待機武将（君主は他にいれば残す）。足りなければ周りの都市から呼ぶ
       let army = Game.gensIn(c.i, G.player).filter(g => !g.acted && !g.isLord).sort((a, b) => (b.lead + b.war) - (a.lead + a.war)).slice(0, 5);
-      { const lord = Game.gensIn(c.i, G.player).find(g => g.isLord && !g.acted); if (lord && army.length < 3 && lord.lead + lord.war >= 140) army.push(lord); }   // 将が足りなければ君主も出る
+      { const lord = Game.gensIn(c.i, G.player).find(g => g.isLord && !g.acted); if (lord && !kongmingHere() && army.length < 3 && lord.lead + lord.war >= 140) army.push(lord); }   // 三顧の礼の最中は、君主は出陣しない   // 将が足りなければ君主も出る
       // この都市に将を1人は残す（全員が出ると、武将のいない都市になってしまう）
       if (army.length && leftIn(c.i) - army.length < 1) { army.sort((a, b) => milScore(b) - milScore(a)); army.pop(); }
       const moved = [];
@@ -854,13 +854,17 @@ const Auto = (() => {
   }
   // ---------- 登用：見つけた在野の人物は、適任者を向かわせてでも採る ----------
   const worth = g => g.lead + g.war + g.int + g.pol + g.cha;
+  // 三顧の礼：自領に在野の諸葛亮がいれば、君主は出陣させず、自ら迎えに行く
+  const kongmingHere = () => G.gens.find(g => g.name === '諸葛亮' && g.state === 'ronin' && g.city >= 0 && G.cities[g.city] && G.cities[g.city].owner === G.player);
   async function doRecruit(br, reserved) {
     G.recFail = G.recFail || {};
     const lord = Game.lordOf(G.player);
-    // 自領にいて、すでに見つけてある在野の人物（価値の高い順）
+    // 自領にいて、すでに見つけてある在野の人物（価値の高い順）。臥龍の名は知れ渡っているので、諸葛亮は探さなくても分かる
+    const kh = kongmingHere(); if (kh) kh.known = true;
     const known = [];
     Game.citiesOf(G.player).forEach(c => Game.roninIn(c.i).filter(r => r.known).forEach(r => known.push(r)));
     if (br.tier !== 'dumb') known.sort((a, b) => worth(b) - worth(a)); else shuffle(known);
+    known.sort((a, b) => (b.name === '諸葛亮' ? 1 : 0) - (a.name === '諸葛亮' ? 1 : 0));   // 三顧の礼を何より先に
     let moves = 0;
     for (const t of known) {
       if (stopReq) return;
@@ -873,11 +877,10 @@ const Auto = (() => {
       // 三顧の礼：君主自身が訪ねる
       if (t.name === '諸葛亮') {
         if (lord.acted || reserved.has(lord.i)) continue;
-        if (lord.city !== c.i) {
-          if (moves >= 2) continue;
+        if (lord.city !== c.i) {   // 君主の移動は、ほかの使者の数に数えない
           await press(lord.city, 'per', '[data-cmd=move]');
           await say('kongming', { gen: t.name, city: c.name, lord: lord.name });
-          Game.move(lord, c.i); moves++;
+          Game.move(lord, c.i);
           UI.toast(`${lord.name}が${c.name}へ（${t.name}を訪ねるため）`, 2200);
           continue;
         }
@@ -1510,8 +1513,8 @@ const Auto = (() => {
         if (r.found) {
           r.found.known = true;
           await UI.talk(gen, 'happy', `${gen.name}「在野に${r.found.name}という人物がおりました」`);
-          await say('rec', { gen: r.found.name });
-          await App.doRecruit(gen, r.found);
+          if (r.found.name === '諸葛亮' && !gen.isLord) { await say('kongming', { gen: r.found.name, city: c.name, lord: Game.lordOf(G.player).name }); }   // 臥龍は君主自ら迎えに行く（家臣が誘っても会えない）
+          else { await say('rec', { gen: r.found.name }); await App.doRecruit(gen, r.found); }
         } else {
           Sound.se(r.ok ? ({ farm: 'farm', comm: 'coin', wall: 'build', alms: 'alms', draft: 'draft', train: 'train' }[cmd] || 'ok') : 'ng');
           if (r.ok && r.grade === 'great') setTimeout(() => Sound.se('great'), 380);
