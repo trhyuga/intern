@@ -59,7 +59,9 @@ const Turn = (() => {
         const mine = attF.some(f => f.fac === G.player) ? 'A' : (defF.some(f => f.fac === G.player) || p.owner === G.player) ? 'D' : null;
         let res;
         const shipsIn = [...attF, ...defF].reduce((a, f) => a + f.ships.length, 0) + p.dock.length;
-        if (mine && Staff.active() && !(G.staff.bigManual && shipsIn >= 20)) res = Battle.simulate(setup);
+        const watchMode = Staff.active() ? (G.staff.watch || (G.staff.bigManual ? 'bigcmd' : 'watch')) : null;
+        if (mine && watchMode === 'none') res = Battle.simulate(setup);
+        else if (mine && watchMode && !(watchMode === 'bigcmd' && shipsIn >= 20)) res = await UI.watchBattle(setup, mine);
         else if (mine) res = await UI.battlePrompt(setup, mine);
         else res = Battle.simulate(setup);
         // 後始末

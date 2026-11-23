@@ -579,8 +579,9 @@ const UI = (() => {
       <div class="x">VS</div>
       <div style="--c:${Game.ownerCol(enF.fac)}"><b>${enF.fac === 'E' ? '蝕の群れ' : Game.ownerShort(enF.fac)}</b><small>${enF.fleets.map(f => f.fac === 'E' ? '蝕の群れ' : Game.fleetName(f)).join('・') || (side === 'A' ? `防衛衛星 ${p.def}基${p.dock.length ? `・駐留艦${p.dock.length}` : ''}` : '')}</small><span>戦力 ${num(ep)}</span></div></div>
       <p class="note">自分で指揮すると、陣形・突撃・後退・奥の手を使い分けられます。</p></div>`,
-      [{ t: '自動で解決', v: 'auto' }, { t: '指揮する', v: 'cmd', cls: 'primary' }], { cls: 'wide' });
+      [{ t: '自動で解決', v: 'auto' }, { t: '観戦する', v: 'watch' }, { t: '指揮する', v: 'cmd', cls: 'primary' }], { cls: 'wide' });
     let res;
+    if (v === 'watch') return watchBattle(setup, side);
     if (v === 'cmd') {
       res = await Battle.run(setup, side);
       show('main');
@@ -590,6 +591,14 @@ const UI = (() => {
       const won = res.winner === side;
       await modal(`<div class="bp"><h2 class="${won ? 'win' : 'lose'}">${won ? '勝利' : '敗北'}</h2><p>${p.name}の戦い</p><p>撃沈 ${side === 'A' ? res.lostD : res.lostA}隻 ／ 喪失 ${side === 'A' ? res.lostA : res.lostD}隻</p></div>`);
     }
+    return res;
+  }
+
+  // 観戦（参謀や司令が指揮し、簡単な指示だけ出す）
+  async function watchBattle(setup, side) {
+    const res = await Battle.run(setup, side, { watch: true });
+    show('main');
+    Sound.bgm(G.eclipse.arrived && !G.eclipse.defeated ? 'crisis' : 'strategy');
     return res;
   }
 
@@ -636,7 +645,7 @@ const UI = (() => {
       const s = G.staff, P = Staff.POLICIES[s.policy], g = Staff.gradeOf(s.score);
       const cur = s.policy === 'balanced' && s.cur ? `<small>いまの重点：${Staff.POLICIES[s.cur].icon}${Staff.POLICIES[s.cur].name}（${s.curWhy || ''}・得意${Staff.gradeOf(s.curScore)}）</small>` : '';
       body.innerHTML = `<div class="st-now">${ofcCard(s.key)}<div class="st-pol"><b>${P.icon} ${P.name}</b> ${gradeBadge(g)}<small>${P.desc}</small>${cur}<small>効き目：${P.effect}</small>
-        <small>期間：${s.until ? `${Game.dateStr(s.until)}まで（あと${Math.max(0, s.until - G.turn)}か月）` : '止めるまで'}・${s.bigManual ? '大きな戦いは自分で指揮' : '戦いも参謀に任せる'}</small></div></div>
+        <small>期間：${s.until ? `${Game.dateStr(s.until)}まで（あと${Math.max(0, s.until - G.turn)}か月）` : '止めるまで'}・艦隊戦：${({ watch: '見る（簡単な指示）', bigcmd: '大きな戦いは自分で指揮', none: '見ない' })[s.watch || (s.bigManual ? 'bigcmd' : 'watch')]}</small></div></div>
         ${(s.lines || []).length ? `<h3>${s.linesDate || ''}の報告</h3><div class="rep">${s.lines.map(x => typeof x === 'string' ? { cls: 'staff', t: x } : x).map(x => `<div class="lg ${x.cls}">${esc(x.t)}</div>`).join('')}</div>` : ''}
         <h3>ここまでの成果</h3><div class="kv">${Staff.summary().map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
         <div class="row"><button class="btn primary" data-a="resume">続けて任せる</button><button class="btn danger" data-a="stop">任せるのをやめる</button></div>`;
@@ -665,7 +674,7 @@ const UI = (() => {
         const dis = P.needEclipse && G.eclipse.defeated;
         return `<button class="pol ${d.policy === k ? 'on' : ''}" data-p="${k}" ${dis ? 'disabled' : ''}><b>${P.icon} ${P.name}</b>${gradeBadge(grs[k])}<small>${dis ? '蝕が来てから選べる' : P.desc}</small></button>`; }).join('')}</div>
       <h3>期間</h3><div class="chips">${[[6, '半年'], [12, '1年'], [24, '2年'], [0, '止めるまで']].map(([m, n]) => `<button class="chip ${d.months === m ? 'on' : ''}" data-m="${m}">${n}</button>`).join('')}</div>
-      <label class="tgl"><input type="checkbox" ${d.big ? 'checked' : ''} data-a="big"> 艦が20隻以上の大きな戦いは、自分で指揮する</label>
+      <h3>艦隊戦</h3><div class="chips">${[['watch', '見る', '参謀が指揮。簡単な指示が出せる'], ['bigcmd', '大きな戦いは指揮', '20隻以上は自分で指揮、ほかは見る'], ['none', '見ない', '結果だけ報告']].map(([k, n, ds]) => `<button class="chip ${(d.watch || 'watch') === k ? 'on' : ''}" data-w="${k}">${n}<small>${ds}</small></button>`).join('')}</div>
       <button class="btn primary wide" data-a="go">${OFF[d.key].name}に「${Staff.POLICIES[d.policy].name}」を任せる</button>`;
     $('[data-a=pick]', body).onclick = async () => {
       Sound.se('click');
@@ -674,12 +683,13 @@ const UI = (() => {
     };
     $$('[data-p]', body).forEach(b => b.onclick = () => { Sound.se('click'); d.policy = b.dataset.p; drawSheet(); });
     $$('[data-m]', body).forEach(b => b.onclick = () => { Sound.se('click'); d.months = +b.dataset.m; drawSheet(); });
-    $('[data-a=big]', body).onchange = e => { d.big = e.target.checked; };
+    $$('[data-w]', body).forEach(b => b.onclick = () => { Sound.se('click'); d.watch = b.dataset.w; drawSheet(); });
     $('[data-a=go]', body).onclick = async () => {
       Sound.se('click');
       closeSheet();
       await talk(null, [[d.key, Staff.gradeOf(Staff.score(d.key, d.policy)) === 'D' ? 'sad' : 'happy', Staff.line(d.key, d.policy)]], null, 'bridge', true);
-      Staff.start(d.key, d.policy, d.months, d.big);
+      Staff.start(d.key, d.policy, d.months, (d.watch || 'watch') === 'bigcmd');
+      G.staff.watch = d.watch || 'watch';
       refresh();
       autoNext(300);
     };
@@ -840,6 +850,8 @@ const UI = (() => {
     $$('[data-title]').forEach(e => e.textContent = CONFIG.title);
     $$('[data-sub]').forEach(e => e.textContent = CONFIG.sub);
     StarMap.init($('#mapcv'), onMapTap);
+    // どこを触っても、止まった音を戻す（iPhone でアプリを切り替えた後など）
+    ['pointerdown', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, () => Sound.init(true), { capture: true, passive: true }));
     $('#tap').onclick = () => {
       Sound.init();
       let seen = false; try { seen = localStorage.getItem('seisou_seen_op') === '1'; } catch (e) { }
@@ -873,5 +885,5 @@ const UI = (() => {
     $('#sheet .sh-bg').onclick = () => closeSheet();
   }
 
-  return { show, toast, busy, modal, confirm, wait, sheet, closeSheet, refresh, refreshTop, talk, battlePrompt, monthReport, pendingProposals, gameOver, boot, toTitle, howto, ofcCard, openPlanet, openFleet, openStaff, autoNext, autoReport, staffStop, get current() { return current; } };
+  return { show, toast, busy, modal, confirm, wait, sheet, closeSheet, refresh, refreshTop, talk, battlePrompt, monthReport, pendingProposals, gameOver, boot, toTitle, howto, ofcCard, openPlanet, openFleet, openStaff, autoNext, autoReport, staffStop, watchBattle, get current() { return current; } };
 })();

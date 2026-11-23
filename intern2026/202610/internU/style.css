@@ -362,3 +362,6 @@ small { font-size: 11px; }
 .lg.news { color: #9fb2d8; font-size: 12px; }
 .lg.staff { color: #d8ccff; } .lg.sum { color: #ffe9a8; }
 .ab-t .staff { color: #d8ccff; } .ab-t .sum { color: #ffe9a8; } .ab-t .news { color: #9fb2d8; } .ab-t .bad { color: #ffa898; } .ab-t .big { color: var(--gold); } .ab-t .good { color: #a8f0b0; }
+
+.b-ctrl.watch .b-force button { font-size: 12px; }
+.b-ctrl.watch .b-force button.on { border-color: #ffb060; background: #6a3a1055; color: #ffd8a0; }

@@ -7,9 +7,34 @@ const Sound = (() => {
   let muted = false, mood = null, timer = null, step = 0, nextT = 0, song = null;
   try { muted = localStorage.getItem(CONFIG.muteKey) === '1'; } catch (e) { }
   const midi = n => 440 * Math.pow(2, (n - 69) / 12);
-
-  function init() {
-    if (ctx) { if (ctx.state === 'suspended') ctx.resume().catch(() => { }); return; }
+  // iPhone は、ほかのアプリへ移ると音の仕組みが止められ（interrupted）、戻っても鳴らないままのことがある。
+  //  離れていた後に最初に画面に触れた時、音の仕組みを作り直して、流れていた曲を鳴らし直す
+  const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let wasAway = false;
+  document.addEventListener('visibilitychange', () => {
+    if (!ctx) return;
+    if (document.hidden) { wasAway = true; try { if (ctx.state === 'running') ctx.suspend(); } catch (e) { } }
+    else { try { const p = ctx.resume(); if (p && p.catch) p.catch(() => { }); } catch (e) { } }
+  });
+  window.addEventListener('pagehide', () => { wasAway = true; });
+  function rebuild() {
+    const m = mood;
+    if (timer) clearInterval(timer); timer = null;
+    try { ctx.close(); } catch (e) { }
+    ctx = null; mood = null; song = null;
+    init();
+    if (m) bgm(m);
+  }
+  // gesture：画面に触れた時に呼ぶ（その時だけ作り直せる）
+  function init(gesture) {
+    if (ctx) {
+      if (gesture && (wasAway || ctx.state === 'interrupted' || ctx.state === 'closed')) {
+        wasAway = false;
+        if (IOS || ctx.state !== 'running') { rebuild(); return; }
+      }
+      if (ctx.state !== 'running' && ctx.state !== 'closed') { try { const p = ctx.resume(); if (p && p.catch) p.catch(() => { }); } catch (e) { } }
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
     ctx = new AC();
     const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4; comp.connect(ctx.destination);
@@ -25,7 +50,7 @@ const Sound = (() => {
     const sw = ctx.createGain(); sw.gain.value = 0.15; seG.connect(sw); sw.connect(rev);
     const nl = ctx.sampleRate; noise = ctx.createBuffer(1, nl, ctx.sampleRate);
     const nd = noise.getChannelData(0); for (let i = 0; i < nl; i++) nd[i] = Math.random() * 2 - 1;
-    document.addEventListener('visibilitychange', () => { if (!ctx) return; if (document.hidden) ctx.suspend().catch(() => { }); else ctx.resume().catch(() => { }); });
+    ctx.onstatechange = () => { if (ctx && ctx.state === 'interrupted') wasAway = true; };
     if (mood) { const m = mood; mood = null; bgm(m); }
   }
   function env(g, t, a, peak, d, rel = 0.0008) { g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(rel, t + a + d); }

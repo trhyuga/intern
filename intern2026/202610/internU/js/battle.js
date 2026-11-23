@@ -397,7 +397,18 @@ const Battle = (() => {
   }
 
   // ---------- AI ----------
+  // 観戦中の指示（撤退・構え・集中攻撃）を守りつつ、残りは参謀（AI）に任せる
   function ai(u) {
+    const sd = S.side[u.side];
+    if (sd.force === 'retreat') { u.stance = 'retreat'; u.order = null; return; }
+    if (sd.focus && !alive(sd.focus)) sd.focus = null;
+    if (sd.force === 'guard') { u.stance = 'guard'; u.order = null; return; }
+    aiBase(u);
+    if (u.stance === 'retreat' && sd.force) u.stance = sd.force;
+    if (sd.force) u.stance = sd.force;
+    if (sd.focus && u.stance !== 'retreat') u.order = { type: 'attack', target: sd.focus };
+  }
+  function aiBase(u) {
     const sd = S.side[u.side];
     const cmd = u.cmd || sd.cmd;
     const pers = cmd ? OFF[cmd].pers : (u.fac === 'E' ? '猛進' : '沈着');
@@ -542,17 +553,29 @@ const Battle = (() => {
 
   // ---------- 表示つきで戦う ----------
   let raf = null, last = 0, paused = false, hold = 0, speed = 1, resolveFn = null, mySide = 'A', cv = null, ctx = null, bg = null, sel = [], dpr = 1, scale = 1, ox = 0, oy = 0, msgs = [], cut = null, endShown = false;
-  function run(setup, playerSide) {
+  // opt.watch：観戦（参謀＝AI が指揮し、プレイヤーは簡単な指示だけ出す）
+  let watch = false, autoClose = null;
+  function run(setup, playerSide, opt = {}) {
     return new Promise(res => {
       resolveFn = res;
       build(setup);
       mySide = playerSide;
-      S.side[playerSide].ctrl = 'player';
+      watch = !!opt.watch;
+      S.side[playerSide].ctrl = watch ? 'ai' : 'player';
       S.side[playerSide === 'A' ? 'D' : 'A'].ctrl = 'ai';
-      view = true; paused = true; hold = 0; speed = 1; sel = []; msgs = []; cut = null; endShown = false;
+      S.side[playerSide].force = null; S.side[playerSide].focus = null;
+      view = true; paused = !watch; hold = 0; speed = watch ? 2 : 1; sel = []; msgs = []; cut = null; endShown = false;
       openView();
       intro();
     });
+  }
+  // 結果まで一気に進める
+  function skipToEnd() {
+    let n = 0;
+    const v = view; view = null;   // 描かずに計算だけ
+    while (!S.over && n++ < TLIMIT / DT + 10) step(DT);
+    if (!S.over) S.over = 'D';
+    view = v; hold = 0;
   }
   function openView() {
     const el = document.getElementById('battle');
@@ -565,7 +588,19 @@ const Battle = (() => {
       </div>
       <div class="b-msgs"></div>
       <div class="b-cut"></div>
-      <div class="b-ctrl">
+      ${watch ? `<div class="b-ctrl watch">
+        <div class="b-row b-sel"></div>
+        <div class="b-row b-force">
+          <button data-force="assault">⚔ 全軍突撃</button><button data-force="fire">🎯 砲撃戦</button><button data-force="guard">🛡 守りを固める</button><button data-force="">↩ 参謀に任せる</button>
+        </div>
+        <div class="b-row b-main">
+          <button data-a="skill" class="b-skill">奥の手</button>
+          <button data-a="speed">×2</button>
+          <button data-a="flee" class="b-flee">撤退</button>
+          <button data-a="skip">結果へ ⏭</button>
+        </div>
+      </div>
+      <div class="b-help">${S.side[mySide].cmd ? shortName(OFF[S.side[mySide].cmd]) + 'が' : '参謀が'}指揮しています。敵をタップすると、そこへ攻撃を集めます。</div>` : `<div class="b-ctrl">
         <div class="b-row b-sel"></div>
         <div class="b-row b-st">
           ${Object.entries(STANCES).map(([k, v]) => `<button data-st="${k}">${v.name}</button>`).join('')}
@@ -582,7 +617,7 @@ const Battle = (() => {
           <button data-a="flee" class="b-flee">撤退</button>
         </div>
       </div>
-      <div class="b-help">分隊をタップで選ぶ → 宇宙をタップで移動、敵をタップで攻撃。止めている間も命令できます。</div>`;
+      <div class="b-help">分隊をタップで選ぶ → 宇宙をタップで移動、敵をタップで攻撃。止めている間も命令できます。</div>`}`;
     UI.show('battle');
     cv = el.querySelector('#bcv'); ctx = cv.getContext('2d');
     resize();
@@ -620,6 +655,15 @@ const Battle = (() => {
     const [x, y] = toWorld(e);
     let hitU = null, bd = 40;
     for (const u of S.units) { if (!alive(u)) continue; const d = Math.hypot(u.x - x, u.y - y) - unitR(u) * 0.5; if (d < bd) { bd = d; hitU = u; } }
+    if (watch) {
+      if (hitU && hitU.side !== mySide) {
+        S.side[mySide].focus = hitU;
+        S.units.filter(u => u.side === mySide && alive(u) && !u.sat && u.stance !== 'retreat').forEach(u => { u.order = { type: 'attack', target: hitU }; u.aiT = 2.5; });
+        S.fx.push({ k: 'mark', x: hitU.x, y: hitU.y, life: 0.8, max: 0.8, col: '#ff6a5a' });
+        say(`${hitU.label}に攻撃を集めろ！`, '#ffb0a0'); Sound.se('order');
+      }
+      return;
+    }
     if (hitU && hitU.side === mySide && !hitU.sat) {
       if (sel.length === 1 && sel[0] === hitU) sel = []; else sel = [hitU];
       Sound.se('click');
@@ -637,6 +681,13 @@ const Battle = (() => {
   function onCtrl(e) {
     const b = e.target.closest('button'); if (!b || S.over) return;
     Sound.se('click');
+    if (b.dataset.force !== undefined) {
+      const f = b.dataset.force || null, sd = S.side[mySide];
+      sd.force = f; if (!f) sd.focus = null;
+      S.units.filter(u => u.side === mySide && alive(u) && !u.sat).forEach(u => { u.aiT = 0; if (f) { u.stance = f; if (f === 'guard') u.order = null; } });
+      say(f ? `全軍、${({ assault: '突撃せよ', fire: '砲撃戦に移れ', guard: '守りを固めろ' })[f]}！` : '指揮を任せる。', '#bfe0ff');
+    }
+    if (b.dataset.a === 'skip') { skipToEnd(); updateCtrl(); return; }
     if (b.dataset.st) { const list = sel.length ? sel : S.units.filter(u => u.side === mySide && alive(u) && !u.sat); list.forEach(u => { u.stance = b.dataset.st; if (b.dataset.st === 'retreat' || b.dataset.st === 'guard') u.order = null; }); }
     if (b.dataset.fm) { S.side[mySide].form = b.dataset.fm; say(`陣形を${FORMS[b.dataset.fm].name}に`, '#bfe0ff'); }
     const a = b.dataset.a;
@@ -645,7 +696,7 @@ const Battle = (() => {
     if (a === 'all') sel = sel.length ? [] : S.units.filter(u => u.side === mySide && alive(u) && !u.sat);
     if (a === 'skill') { if (useSkill(mySide)) { paused = false; } }
     if (a === 'auto') { S.side[mySide].ctrl = S.side[mySide].ctrl === 'ai' ? 'player' : 'ai'; }
-    if (a === 'flee') { UI.confirm('全軍を撤退させますか？（自陣の端まで下がった分隊は戦場を離れます）', () => { S.units.filter(u => u.side === mySide && alive(u) && !u.sat).forEach(u => { u.stance = 'retreat'; u.order = null; }); paused = false; updateCtrl(); }); }
+    if (a === 'flee') { UI.confirm('全軍を撤退させますか？（自陣の端まで下がった分隊は戦場を離れます）', () => { S.side[mySide].force = 'retreat'; S.units.filter(u => u.side === mySide && alive(u) && !u.sat).forEach(u => { u.stance = 'retreat'; u.order = null; }); paused = false; updateCtrl(); }); }
     updateCtrl();
   }
   function updateCtrl() {
@@ -654,16 +705,20 @@ const Battle = (() => {
     el.querySelectorAll('[data-fm]').forEach(b => b.classList.toggle('on', sd.form === b.dataset.fm));
     const ref = sel[0];
     el.querySelectorAll('[data-st]').forEach(b => b.classList.toggle('on', !!ref && sel.every(u => u.stance === b.dataset.st)));
-    const pb = el.querySelector('[data-a=pause]'); pb.textContent = paused ? '▶ 再開' : '❚❚ 停止'; pb.classList.toggle('hot', paused);
-    if (S.t === 0 && paused) pb.textContent = '▶ 開始';
+    const pb = el.querySelector('[data-a=pause]');
+    if (pb) { pb.textContent = paused ? '▶ 再開' : '❚❚ 停止'; pb.classList.toggle('hot', paused); if (S.t === 0 && paused) pb.textContent = '▶ 開始'; }
     el.querySelector('[data-a=speed]').textContent = '×' + speed;
-    el.querySelector('[data-a=auto]').classList.toggle('on', sd.ctrl === 'ai');
-    el.querySelector('[data-a=all]').classList.toggle('on', sel.length > 1);
+    const ab = el.querySelector('[data-a=auto]'); if (ab) ab.classList.toggle('on', sd.ctrl === 'ai');
+    const al = el.querySelector('[data-a=all]'); if (al) al.classList.toggle('on', sel.length > 1);
+    el.querySelectorAll('[data-force]').forEach(b => b.classList.toggle('on', (sd.force || '') === b.dataset.force));
     const skb = el.querySelector('[data-a=skill]');
     if (sd.cmd) { skb.textContent = sd.skillUsed ? '奥の手（済）' : SKILLS[skillOf(sd.cmd)].name; skb.disabled = sd.skillUsed; }
     else { skb.textContent = '奥の手なし'; skb.disabled = true; }
     const info = el.querySelector('.b-sel');
-    if (ref) {
+    if (watch) {
+      const lead = sd.cmd ? OFF[sd.cmd] : null;
+      info.innerHTML = `<span class="dim">${lead ? `${lead.name}（${lead.pers}）が指揮中` : '参謀が指揮中'}・${FORMS[sd.form].name}${sd.force ? `・指示：${({ assault: '全軍突撃', fire: '砲撃戦', guard: '守りを固める', retreat: '撤退' })[sd.force]}` : ''}${sd.focus && alive(sd.focus) ? `・集中攻撃：${sd.focus.label}` : ''}</span>`;
+    } else if (ref) {
       const live = ref.ships.filter(s => !s.dead);
       const hp = live.reduce((a, s) => a + s.hp, 0), mx = ref.ships.reduce((a, s) => a + s.max, 0);
       info.innerHTML = `<b>${sel.length > 1 ? `全${sel.length}分隊` : ref.label}</b><span>${sel.length > 1 ? '' : `${live.length}/${ref.ships.length}隻・耐久${Math.round(hp / mx * 100)}%・${STANCES[ref.stance].name}`}</span>`;
@@ -685,7 +740,9 @@ const Battle = (() => {
     el.innerHTML = `<div class="vs">${card(e, 'en')}<div class="vs-x">VS</div>${card(a, 'me')}<div class="vs-where">${S.planet ? S.planet.name + ' 宙域' : '星間宙域'}${S.terrain.length ? ' ― ' + S.terrain.map(t => ({ ast: '小惑星帯', neb: '星雲', deb: '残骸' })[t.type]).join('・') : ''}</div></div>`;
     el.classList.add('show');
     Sound.se('alarm');
-    const close = () => { el.removeEventListener('click', close); if (!el.querySelector('.vs')) return; el.classList.remove('show'); el.innerHTML = ''; };
+    if (watch) hold++;
+    let closed = false;
+    const close = () => { if (closed) return; closed = true; if (watch) { hold = Math.max(0, hold - 1); last = performance.now(); } el.removeEventListener('click', close); if (!el.querySelector('.vs')) return; el.classList.remove('show'); el.innerHTML = ''; };
     el.addEventListener('click', close);
     setTimeout(close, 3200);
   }
@@ -726,7 +783,10 @@ const Battle = (() => {
       <button class="btn primary">戦いを終える</button></div>`;
     el.classList.add('show');
     Sound.se(won ? 'fanfare' : 'lose');
+    clearTimeout(autoClose);
+    if (watch) autoClose = setTimeout(() => { const b = el.querySelector('.b-result button'); if (b) b.click(); }, 3200);
     el.querySelector('button').onclick = () => {
+      clearTimeout(autoClose);
       cancelAnimationFrame(raf); raf = null;
       cv.removeEventListener('pointerdown', onTap);
       window.removeEventListener('resize', resize);
