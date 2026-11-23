@@ -102,6 +102,7 @@ const UI = (() => {
   // 選んだものの小さなカード
   function quick() {
     const q = $('#quick'); if (!q || !G) return;
+    if (Staff.active()) { q.classList.remove('show'); return; }
     const mm = StarMap.moveMode;
     if (mm) { q.innerHTML = `<div class="q-move">「${Game.fleetName(mm)}」の行き先の星をタップ<br><small>光っている星へ進めます（赤は攻撃）。同じ星で待機。</small><button class="btn small" data-q="cancel">やめる</button></div>`; q.classList.add('show'); bindQuick(); return; }
     const fl = StarMap.selFleet, pid = StarMap.selPlanet;
@@ -675,7 +676,9 @@ const UI = (() => {
         return `<button class="pol ${d.policy === k ? 'on' : ''}" data-p="${k}" ${dis ? 'disabled' : ''}><b>${P.icon} ${P.name}</b>${gradeBadge(grs[k])}<small>${dis ? '蝕が来てから選べる' : P.desc}</small></button>`; }).join('')}</div>
       <h3>期間</h3><div class="chips">${[[6, '半年'], [12, '1年'], [24, '2年'], [0, '止めるまで']].map(([m, n]) => `<button class="chip ${d.months === m ? 'on' : ''}" data-m="${m}">${n}</button>`).join('')}</div>
       <h3>艦隊戦</h3><div class="chips">${[['watch', '見る', '参謀が指揮。簡単な指示が出せる'], ['bigcmd', '大きな戦いは指揮', '20隻以上は自分で指揮、ほかは見る'], ['none', '見ない', '結果だけ報告']].map(([k, n, ds]) => `<button class="chip ${(d.watch || 'watch') === k ? 'on' : ''}" data-w="${k}">${n}<small>${ds}</small></button>`).join('')}</div>
-      <button class="btn primary wide" data-a="go">${OFF[d.key].name}に「${Staff.POLICIES[d.policy].name}」を任せる</button>`;
+      <button class="btn primary wide" data-a="go">${OFF[d.key].name}に「${Staff.POLICIES[d.policy].name}」を任せる</button>
+      <button class="btn wide" data-a="self">任せずに、自分で指揮する</button>`;
+    $('[data-a=self]', body).onclick = () => { Sound.se('click'); closeSheet(); toast('星や艦隊をタップして命令。下のボタンで一覧。「月を進める」で次の月へ。', 5000); };
     $('[data-a=pick]', body).onclick = async () => {
       Sound.se('click');
       const k = await pickStaff(cands);
@@ -710,7 +713,7 @@ const UI = (() => {
   }
   // 自動で進む帯
   let autoSpeed = 1, autoTimer = null;
-  const AUTO_DELAY = [2600, 1300, 450];
+  const AUTO_DELAY = [900, 450, 150];
   function uiIdle() {
     return current === 'main' && !$('#sheet').classList.contains('show') && !$('#modal').classList.contains('show') && !$('#talk').classList.contains('show') && !Turn.running;
   }
@@ -739,19 +742,32 @@ const UI = (() => {
     s.lines = L; s.linesDate = Game.dateStr(G.turn - 1);
     drawAutobar();
   }
+  // 作戦室（参謀に任せている間、地図の下半分に出す）
   function drawAutobar() {
-    const el = $('#autobar'); if (!el) return;
-    if (!G || !Staff.active()) { el.classList.remove('show'); return; }
+    const wr = $('#warroom'); if (!wr) return;
+    const was = wr.classList.contains('show');
+    if (!G || !Staff.active()) { wr.classList.remove('show'); refreshEnd(); return; }
     const s = G.staff, P0 = Staff.POLICIES[s.policy];
     const P = s.policy === 'balanced' && s.cur ? { icon: '⚖', name: `均衡→${Staff.POLICIES[s.cur].icon}${Staff.POLICIES[s.cur].name}` } : P0;
-    el.classList.add('show');
-    const lines = (s.lines || []).map(x => typeof x === 'string' ? { cls: 'staff', t: x } : x);
-    el.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}<small>${Game.dateStr()}・${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}</small></b>
-      <div class="ab-t">${lines.slice(0, 3).map(x => `<div class="${x.cls}">${esc(x.t)}</div>`).join('') || `<div class="sum">${esc(Staff.monthLine())}</div>`}</div></div>
-      <div class="ab-b"><button data-ab="speed">${['ゆっくり', 'ふつう', '速い'][autoSpeed]}</button><button data-ab="stop" class="stop">■ 止める</button></div>`;
-    el.querySelector('[data-ab=speed]').onclick = e => { e.stopPropagation(); autoSpeed = (autoSpeed + 1) % 3; drawAutobar(); };
-    el.querySelector('[data-ab=stop]').onclick = e => { e.stopPropagation(); Sound.se('click'); Staff.stop(); clearTimeout(autoTimer); drawAutobar(); refresh(); toast('参謀に任せるのをやめました。自分で命令できます。'); };
-    el.querySelector('.ab-i').onclick = () => openStaff();
+    wr.classList.add('show');
+    const head = $('.wr-head', wr);
+    head.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>作戦室｜参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}</b><small>${Game.dateStr()}・${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}・${esc(Staff.monthLine())}</small></div>
+      <div class="ab-b"><button data-ab="speed">${['ゆっくり', 'ふつう', '速い'][autoSpeed]}</button><button data-ab="skip">⏭</button><button data-ab="stop" class="stop">■</button></div>`;
+    WarRoom.setSpeed(autoSpeed);
+    head.querySelector('[data-ab=speed]').onclick = e => { e.stopPropagation(); autoSpeed = (autoSpeed + 1) % 3; drawAutobar(); };
+    head.querySelector('[data-ab=skip]').onclick = e => { e.stopPropagation(); WarRoom.skip(); toast('今月の報告を一気に出します'); };
+    head.querySelector('[data-ab=stop]').onclick = e => { e.stopPropagation(); stopAuto(); };
+    head.querySelector('.ab-i').onclick = () => openStaff();
+    if (!was) WarRoom.redrawAll();
+    refreshEnd();
+  }
+  function stopAuto() { Sound.se('click'); Staff.stop(); WarRoom.clearQueue(); clearTimeout(autoTimer); drawAutobar(); refresh(); toast('参謀に任せるのをやめました。自分で命令できます。'); }
+  // 下の「月を進める」ボタン：任せている間は「止める」
+  function refreshEnd() {
+    const b = $('#main nav [data-nav=end]'); if (!b) return;
+    const on = G && Staff.active();
+    b.innerHTML = on ? '<i>■</i>任せるのを止める' : '<i>▶</i>月を進める';
+    b.classList.toggle('stopper', !!on);
   }
   async function staffStop(why) {
     const s = G.staff;
@@ -831,7 +847,12 @@ const UI = (() => {
     starting = false;
     Game.save();
     refresh();
-    if (!G.flags.tutorial) { G.flags.tutorial = 1; toast('星や艦隊をタップして命令。下のボタンで一覧。「月を進める」で次の月へ。', 5000); }
+    if (!G.flags.tutorial) {
+      G.flags.tutorial = 1;
+      // このゲームは参謀に任せて進めるのが基本。最初に参謀を選ぶ
+      await modal(`<div class="center"><h2>参謀を選ぶ</h2><p>このゲームでは、参謀に方針を任せて国を動かします。参謀の命令と士官たちの返事、その結果は、地図の下の「作戦室」に流れます。</p><p class="note">自分で命令したいときは、いつでも止めて手動で遊べます。</p></div>`, [{ t: '参謀を選ぶ', v: 1, cls: 'primary' }]);
+      openStaff();
+    }
   }
   function continueGame() {
     if (!Game.load()) { toast('セーブがありません'); return; }
@@ -875,7 +896,7 @@ const UI = (() => {
       const b = e.target.closest('[data-nav]'); if (!b || Turn.running || starting) return;
       Sound.se('click');
       const n = b.dataset.nav;
-      if (n === 'end') { if (Staff.active()) { toast('参謀に任せています。止めるときは下の帯の「■ 止める」'); return; } closeSheet(); StarMap.moveMode = null; Turn.end(); }
+      if (n === 'end') { if (Staff.active()) { stopAuto(); return; } closeSheet(); StarMap.moveMode = null; Turn.end(); }
       else openTab(n);
     });
     $('#btnMenu').onclick = () => { Sound.se('click'); openTab('menu'); };

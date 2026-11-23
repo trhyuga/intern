@@ -638,7 +638,7 @@ const Game = (() => {
       if (isMajor(newOwner) && R.chance(0.45)) { captureOfficer(k, newOwner); }
       else if (isMajor(old)) { const home = G.planets.filter(x => x.owner === old && x.id !== pid); if (!home.length) captureOfficer(k, newOwner); }
     }
-    p.owner = newOwner; p.gov = null; p.build = []; p.dock = []; p.prog = 0;
+    p.prev = old; p.owner = newOwner; p.gov = null; p.build = []; p.dock = []; p.prog = 0;
     p.stab = newOwner === 'E' ? 0 : 32;
     p.def = Math.max(0, Math.min(p.def, 1));
     if (isMajor(newOwner)) { G.facs[newOwner].stats.captured++; shiftParty(newOwner, 'war', 3); }

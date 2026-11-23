@@ -60,7 +60,9 @@ const AI = (() => {
       const o = G.officers[k];
       if (o.st === 'free' && o.loc !== null && G.planets[o.loc] && G.planets[o.loc].owner === fid && Math.random() < 0.25) {
         if (fid === G.player) { if (G.facs[fid].funds < 100) continue; G.facs[fid].funds -= 100; }
-        if (Math.random() < recruitChance(k, fid)) { o.st = 'act'; o.fac = fid; o.loyal = 60 + Math.random() * 20; o.ever = o.ever ?? fid; Game.log(`${OFF[k].name}が${FACTIONS[fid].name}に仕官した。`, 'info', fid); }
+        const okR = Math.random() < recruitChance(k, fid);
+        if (fid === G.player && api.hook) api.hook('recruit', k, okR);
+        if (okR) { o.st = 'act'; o.fac = fid; o.loyal = 60 + Math.random() * 20; o.ever = o.ever ?? fid; Game.log(`${OFF[k].name}が${FACTIONS[fid].name}に仕官した。`, 'info', fid); }
       }
       if (o.st === 'cap' && o.capBy === fid && Math.random() < 0.15) {
         if (Math.random() < recruitChance(k, fid) * 0.6) { o.st = 'act'; o.fac = fid; o.loyal = 50; }
@@ -87,7 +89,7 @@ const AI = (() => {
   function build(fid, pol = {}) {
     const f = G.facs[fid];
     const e = Game.economy(fid);
-    const bm = pol.build || 1;
+    const bm = pol.build || (f.ruling === 'war' ? 1.3 : 1) * (Diplo.aggOf(fid) > 0.8 ? 1.15 : 1);
     // 維持費が収入の 6 割を超えたら造らない（ただし資金が余っていれば造る）
     if (e.up > e.inc * (f.funds > 1200 ? 0.95 : 0.62) * bm) { invest(fid); return; }
     const yards = G.planets.filter(p => p.owner === fid && p.yard).sort((a, b) => (threatened(b.id, fid) ? 1 : 0) - (threatened(a.id, fid) ? 1 : 0) || b.yard - a.yard);
@@ -138,7 +140,7 @@ const AI = (() => {
   }
 
   function military(fid, pol = {}) {
-    const f = G.facs[fid], F = { agg: pol.agg ?? FACTIONS[fid].agg };
+    const f = G.facs[fid], F = { agg: pol.agg ?? Diplo.aggOf(fid) };
     const my = G.fleets.filter(x => x.fac === fid && x.cmd && x.ships.length);
     const busy = new Set();
     // 1. 守り：脅かされている星へ
@@ -178,7 +180,7 @@ const AI = (() => {
         if (pol.noIndep && p.owner === null) continue;
         const need = def * (pol.need || (1.25 + (1 - F.agg) * 0.4));
         if (myP < need) continue;
-        let sc = p.pop * 1.2 + (p.cap ? 40 : 0) - def * 0.3 + (p.owner === null ? 15 : 0) + (p.owner === 'E' ? 25 : 0) + (p.type === 'rift' ? 200 : 0);
+        let sc = (p.prev === fid ? 80 : 0) + p.pop * 1.2 + (p.cap ? 40 : 0) - def * 0.3 + (p.owner === null ? 15 : 0) + (p.owner === 'E' ? 25 : 0) + (p.type === 'rift' ? 200 : 0);
         if (Game.isMajor(p.owner) && p.owner === G.player) sc += 5;
         if (sc > bs) { bs = sc; best = p; }
       }
@@ -204,5 +206,6 @@ const AI = (() => {
     }
   }
 
-  return { turn, recruitChance };
+  const api = { turn, recruitChance, hook: null };
+  return api;
 })();

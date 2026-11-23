@@ -53,6 +53,9 @@ const Turn = (() => {
         if (!defF.length && !p.def && !p.dock.length) {
           Game.capture(p.id, af);
           report.push({ kind: af === G.player ? 'good' : oldOwner === G.player ? 'bad' : 'info', text: `${Game.ownerName(af)}が${p.name}を無血で制圧した。`, fac: af });
+          if (af === G.player) { const fl = attF[0]; if (fl.cmd) WarRoom.say(fl.cmd, '守りはいない。このまま押さえるぞ。', 'happy', p.id); WarRoom.result(`${p.name}を戦わずに制圧した`, true, p.id); }
+          else if (oldOwner === G.player) WarRoom.result(`守りのない${p.name}を${Game.ownerName(af)}に奪われた`, false, p.id);
+          else WarRoom.news(`${Game.ownerName(af)}が${p.name}を無血で制圧した。`);
           continue;
         }
         const setup = { pid: p.id, att: { fac: af, fleets: attF }, def: { fac: p.owner, fleets: defF, dock: true } };
@@ -76,6 +79,20 @@ const Turn = (() => {
           attF.filter(f => f.ships.length).forEach(f => { if (!retreat(f, p.id)) { f.ships = []; Game.removeFleet(f); } });
           report.push({ kind: oldOwner === G.player ? 'good' : af === G.player ? 'bad' : 'info', text: `${p.name}の戦い：${sideTxt}。${Game.ownerName(oldOwner)}が守り抜いた。`, fac: oldOwner, big: res.big });
         }
+        // 作戦室：司令の言葉と結果
+        if (mine) {
+          const myF = mine === 'A' ? attF : defF, won = res.winner === mine;
+          const lead = myF.find(f => f.cmd);
+          const k = lead && lead.cmd && G.officers[lead.cmd] && G.officers[lead.cmd].st !== 'dead' ? lead.cmd : null;
+          const sunk = mine === 'A' ? res.lostD : res.lostA, lost = mine === 'A' ? res.lostA : res.lostD;
+          if (k) WarRoom.say(k, Battle.LINES[OFF[k].pers][won ? 'win' : 'lose'], won ? 'happy' : 'sad', p.id);
+          const what = mine === 'A' ? (won ? `${p.name}を制圧した` : `${p.name}の攻略に失敗し、退いた`) : (won ? `${p.name}を守り抜いた` : `${p.name}を奪われた`);
+          const ord = mine === 'A' && lead && lead.lastOrder && lead.lastOrder.to === p.id ? `命令「${p.name}攻略」→ ` : '';
+          WarRoom.result(`${ord}${what}（撃沈 ${sunk}隻・喪失 ${lost}隻）`, won, p.id);
+        } else WarRoom.news(`${p.name}の戦い：${Game.ownerName(af)}が攻め、${res.winner === 'A' ? '制圧した' : `${Game.ownerName(oldOwner)}が守り抜いた`}。`);
+        res.dead.forEach(k => { if (G.officers[k].ever === G.player || G.officers[k].fac === G.player) WarRoom.result(`${OFF[k].name}、${p.name}にて戦死`, false, p.id); });
+        res.caught.forEach(k => { if (G.officers[k].ever === G.player) WarRoom.result(`${OFF[k].name}が捕らえられた`, false, p.id); else if (G.officers[k].capBy === G.player) WarRoom.result(`敵将${OFF[k].name}を捕らえた`, true, p.id); });
+        if (res.big && mine) WarRoom.result(`――後に「${res.big}」と呼ばれる大会戦であった`, res.winner === mine, p.id);
         res.dead.forEach(k => report.push({ kind: G.officers[k].ever === G.player ? 'bad' : 'info', text: `${OFF[k].name}、${p.name}にて戦死。`, fac: null }));
         res.caught.forEach(k => report.push({ kind: 'info', text: `${OFF[k].name}が捕らえられた。`, fac: null }));
         if (res.big) report.push({ kind: 'big', text: `――後に「${res.big}」と呼ばれる大会戦であった。`, fac: null });
@@ -104,6 +121,7 @@ const Turn = (() => {
       for (const fl of G.fleets) if (fl.fac === G.player) planRoute(fl);
       moveAll();
       UI.busy(false);
+      if (Staff.active()) await WarRoom.play();
       // 3. 戦い
       await battles(report);
       UI.busy('月が変わる…');
@@ -134,10 +152,24 @@ const Turn = (() => {
         if (l.fac === G.player || l.kind === 'big' || l.kind === 'warn' || l.kind === 'bad') report.push({ kind: l.kind, text: l.text });
         else if (l.kind === 'info') report.push({ kind: 'news', text: l.text });   // ほかの国どうしの出来事
       });
+      if (Staff.active()) {
+        dem.forEach(d => { const P = PARTIES[d.party]; WarRoom.result(d.new ? `${P.name}が要求を出した：${Game.DEMANDS[d.party].text}（8か月以内）` : d.ok ? `${P.name}の要求に応えた。民心が上がった` : `${P.name}の要求に応えられなかった。民心が下がった`, !!(d.new || d.ok)); });
+        let nn = 0;
+        for (const l of newLogs) {
+          if (l.text.startsWith('参謀') && l.text.includes('方針を任せた')) continue;
+          if (l.fac === G.player || l.kind === 'big' || l.kind === 'bad' || l.kind === 'warn') {
+            if (/を申し入れた|と盟約を結んだ|贈り物|が仕官した/.test(l.text)) continue;   // 外交は作戦室で別に出している
+            const pd = WarRoom.link(l.text);
+            const inc = l.text.startsWith('【出来事】');
+            if (inc) { const p = G.planets.find(x => l.text.includes(x.name) && x.owner === G.player); WarRoom.result(l.text.replace('【出来事】', '出来事：'), l.kind !== 'bad', p ? p.id : null); if (p && p.gov) WarRoom.say(p.gov, l.kind === 'bad' ? '手を尽くします。' : '良い知らせです。', l.kind === 'bad' ? 'sad' : 'happy', p.id); continue; }
+            WarRoom.result((pd ? `命令「${pd.text}」→ ` : '') + l.text.replace(/。$/, ''), l.kind !== 'bad' && l.kind !== 'warn', pd ? pd.pid : null);
+          } else if (l.kind === 'info' && nn++ < 4) WarRoom.news(l.text);
+        }
+      }
       // 9. 勝ち負け
       const v = Game.checkVictory();
       Game.save();
-      if (Staff.active() && !v) UI.autoReport(report); else await UI.monthReport(report);
+      if (Staff.active() && !v) { UI.autoReport(report); WarRoom.say(G.staff.key, '今月の報告は以上です。', 'normal'); await WarRoom.play(); } else await UI.monthReport(report);
       if (v) { if (G.staff) G.staff.on = false; G.over = v.type; Game.save(); await UI.gameOver(v.type); running = false; return; }
       // 10. 蝕の襲来（初めて現れた月だけ、特別な演出）
       if (!eclBefore && G.eclipse.arrived) {

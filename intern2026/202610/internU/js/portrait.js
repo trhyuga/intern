@@ -89,7 +89,11 @@ const Portrait = (() => {
     tg.addColorStop(0, 'rgba(70,25,30,.32)'); tg.addColorStop(1, 'rgba(70,25,30,0)');
     c.fillStyle = tg; c.fillRect(cx - fw - 2, cy - 50, fw * 2 + 4, 36);
     c.fillStyle = 'rgba(110,40,40,.16)'; c.beginPath(); c.ellipse(cx + fw * 0.55, cy + 16, fw * 0.32, 14, -0.3, 0, 7); c.fill();
+    // 頬紅
+    [-1, 1].forEach(s => { const bg2 = c.createRadialGradient(cx + s * 24, cy + 12, 1, cx + s * 24, cy + 12, 13); bg2.addColorStop(0, f.female ? 'rgba(255,110,120,.28)' : 'rgba(220,110,100,.12)'); bg2.addColorStop(1, 'rgba(255,110,120,0)'); c.fillStyle = bg2; c.fillRect(cx + s * 24 - 14, cy, 28, 26); });
     c.restore();
+    c.strokeStyle = Art.mix(f.skin, '#3a1a1a', 0.55); c.lineWidth = 0.9; facePath(); c.stroke();
+    c.lineWidth = 1.8; c.globalAlpha = 0.45; c.beginPath(); c.moveTo(cx + fw * 0.7, cy + fh * 0.45); c.bezierCurveTo(cx + fw * 0.5, cy + fh * 0.75, cx + fw * 0.2, cy + fh * 0.9, cx, cy + fh * 0.93); c.stroke(); c.globalAlpha = 1;
     // 耳
     [-1, 1].forEach(s => {
       c.fillStyle = shade(f.skin, 0.9); c.beginPath(); c.ellipse(cx + s * (fw - 1), cy - 4, 4.5, 8, s * 0.15, 0, 7); c.fill();
@@ -205,97 +209,135 @@ const Portrait = (() => {
     if (f.fac === 5) { c.strokeStyle = 'rgba(80,230,255,.85)'; c.lineWidth = 2; c.beginPath(); c.ellipse(cx, cy - 86, 30, 6, 0, 0, 7); c.stroke(); c.strokeStyle = 'rgba(80,230,255,.3)'; c.lineWidth = 5; c.stroke(); }
   }
 
+  // ---------- 髪：根元から毛先へ細くなる房を、何十本も重ねて描く ----------
+  // 3次ベジェ曲線に沿って、両側へ幅をつけた細長い形を作る（毛先ほど細い）
+  function strand(c, p0, p1, p2, p3, w, colA, colB, taperRoot = 0.6, ex = 0.85) {
+    const N = 16, L = [], Rr = [];
+    const at = t => {
+      const u = 1 - t;
+      return [u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
+              u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1]];
+    };
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, [x, y] = at(t), [x2, y2] = at(Math.min(1, t + 0.02)), [x0, y0] = at(Math.max(0, t - 0.02));
+      let nx = -(y2 - y0), ny = x2 - x0; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+      // 根元は少し細く、真ん中が太く、毛先へ鋭く細る
+      const k = (t < 0.15 ? taperRoot + (1 - taperRoot) * t / 0.15 : 1) * Math.pow(1 - t, ex);
+      L.push([x + nx * w * k, y + ny * w * k]); Rr.push([x - nx * w * k, y - ny * w * k]);
+    }
+    c.beginPath(); c.moveTo(L[0][0], L[0][1]);
+    L.forEach(([x, y]) => c.lineTo(x, y));
+    for (let i = Rr.length - 1; i >= 0; i--) c.lineTo(Rr[i][0], Rr[i][1]);
+    c.closePath();
+    const g = c.createLinearGradient(p0[0], p0[1], p3[0], p3[1]);
+    g.addColorStop(0, colA); g.addColorStop(1, colB);
+    c.fillStyle = g; c.fill();
+  }
   function backHair(c, f, cx, cy) {
-    const col = shade(f.hair, 0.78);
-    c.fillStyle = col;
+    const base = shade(f.hair, 0.72), r = Art.srand(hash(f.hair + f.style) + 3);
+    c.fillStyle = base;
     // 頭の丸み（顔より一回り大きい）
-    c.beginPath(); c.ellipse(cx, cy - 30, 50, 52, 0, 0, 7); c.fill();
-    if (f.style === 'long' || f.style === 'side') {
-      c.beginPath(); c.moveTo(cx - 48, cy - 34);
-      c.bezierCurveTo(cx - 62, cy + 30, cx - 66, cy + 96, cx - 50, cy + 122);
-      c.quadraticCurveTo(cx - 30, cy + 110, cx - 20, cy + 122);
-      c.lineTo(cx + 20, cy + 122); c.quadraticCurveTo(cx + 30, cy + 110, cx + 50, cy + 122);
-      c.bezierCurveTo(cx + 66, cy + 96, cx + 62, cy + 30, cx + 48, cy - 34); c.fill();
+    c.beginPath(); c.ellipse(cx, cy - 30, 50, 53, 0, 0, 7); c.fill();
+    const long = f.style === 'long' || f.style === 'side', bob = f.style === 'bob';
+    if (long || bob) {
+      // 背中・肩へ流れ落ちる髪：下地を塗ってから、房を重ねて流れを出す
+      const bottom = long ? cy + 128 : cy + 46;
+      c.beginPath(); c.moveTo(cx - 49, cy - 36);
+      c.bezierCurveTo(cx - 64, cy + 20, cx - 66, bottom - 30, cx - (long ? 56 : 44), bottom);
+      c.lineTo(cx + (long ? 56 : 44), bottom);
+      c.bezierCurveTo(cx + 66, bottom - 30, cx + 64, cy + 20, cx + 49, cy - 36); c.fill();
+      const n = long ? 18 : 12;
+      for (let i = 0; i < n; i++) {
+        const s = i < n / 2 ? -1 : 1, k = (i % (n / 2)) / (n / 2);
+        const x0 = cx + s * (20 + k * 28), y0 = cy - 44 + k * 10;
+        const x3 = cx + s * (34 + k * 26 + r() * 6), y3 = bottom - r() * 16;
+        strand(c, [x0, y0], [x0 + s * 22, y0 + 40], [x3 + s * 10, y3 - 50], [x3, y3], 6 + r() * 4,
+          shade(f.hair, 0.95 + r() * 0.15), shade(f.hair, 0.55 + r() * 0.15));
+      }
     } else if (f.style === 'pony') {
       c.beginPath(); c.moveTo(cx + 34, cy - 60);
       c.bezierCurveTo(cx + 92, cy - 56, cx + 86, cy + 40, cx + 62, cy + 108);
       c.quadraticCurveTo(cx + 66, cy + 40, cx + 30, cy - 30); c.fill();
-    } else if (f.style === 'bob') {
-      c.beginPath(); c.moveTo(cx - 50, cy - 34);
-      c.bezierCurveTo(cx - 58, cy + 10, cx - 56, cy + 36, cx - 42, cy + 42);
-      c.lineTo(cx + 42, cy + 42); c.bezierCurveTo(cx + 56, cy + 36, cx + 58, cy + 10, cx + 50, cy - 34); c.fill();
+      for (let i = 0; i < 7; i++) strand(c, [cx + 40, cy - 56], [cx + 92 + i * 2, cy - 40], [cx + 84 - i * 3, cy + 40], [cx + 56 + i * 3, cy + 100 + r() * 12], 4 + r() * 3, shade(f.hair, 1.1), shade(f.hair, 0.6));
     } else if (f.style === 'bun') {
       c.beginPath(); c.arc(cx + 8, cy - 80, 19, 0, 7); c.fill();
+      for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; strand(c, [cx + 8, cy - 80], [cx + 8 + Math.cos(a) * 20, cy - 80 + Math.sin(a) * 20], [cx + 8 + Math.cos(a + 1) * 16, cy - 80 + Math.sin(a + 1) * 16], [cx + 8 + Math.cos(a + 1.6) * 10, cy - 80 + Math.sin(a + 1.6) * 10], 4, shade(f.hair, 1.1), shade(f.hair, 0.7)); }
     }
     if (f.tags.includes('veil')) {
       c.fillStyle = '#f4f0fa';
       c.beginPath(); c.moveTo(cx - 56, cy - 44); c.bezierCurveTo(cx - 68, cy + 40, cx - 72, cy + 90, cx - 62, cy + 124); c.lineTo(cx + 62, cy + 124); c.bezierCurveTo(cx + 72, cy + 90, cx + 68, cy + 40, cx + 56, cy - 44); c.fill();
     }
   }
-  // 前髪：生え際から、先の細い房を何本も垂らす
   function frontHair(c, f, cx, cy, fw) {
-    const col = f.hair, r = Art.srand(f.r() * 1e6 | 0);
-    const top = cy - 74;
-    const g = c.createLinearGradient(0, top, 0, cy - 10);
-    g.addColorStop(0, shade(col, 1.18)); g.addColorStop(1, shade(col, 0.82));
+    const col = f.hair, r = Art.srand(hash(f.hair + f.style + fw.toFixed(2)) + 11);
+    const top = cy - 76;
+    // 頭頂（丸みのある塊）
+    const g = c.createLinearGradient(0, top, 0, cy - 20);
+    g.addColorStop(0, shade(col, 1.2)); g.addColorStop(1, shade(col, 0.88));
     c.fillStyle = g;
-    // 頭頂の帽子状の塊
     c.beginPath();
-    c.moveTo(cx - fw - 8, cy - 8);
-    c.bezierCurveTo(cx - fw - 14, top + 4, cx + fw + 14, top + 4, cx + fw + 8, cy - 8);
-    c.quadraticCurveTo(cx + fw * 0.6, cy - 50, cx, cy - 52);
-    c.quadraticCurveTo(cx - fw * 0.6, cy - 50, cx - fw - 8, cy - 8);
+    c.moveTo(cx - fw - 9, cy - 6);
+    c.bezierCurveTo(cx - fw - 15, top + 2, cx + fw + 15, top + 2, cx + fw + 9, cy - 6);
+    c.quadraticCurveTo(cx + fw * 0.6, cy - 52, cx, cy - 54);
+    c.quadraticCurveTo(cx - fw * 0.6, cy - 52, cx - fw - 9, cy - 6);
     c.fill();
-    if (f.style === 'buzz' || f.style === 'slick') {
-      // 短髪・撫でつけ：生え際をなめらかに
-      c.beginPath(); c.moveTo(cx - fw - 2, cy - 22);
-      c.quadraticCurveTo(cx - fw * 0.4, cy - 56, cx + 4, cy - 50);
-      c.quadraticCurveTo(cx + fw * 0.6, cy - 52, cx + fw + 2, cy - 22);
-      c.lineTo(cx + fw + 6, cy - 40); c.quadraticCurveTo(cx, cy - 82, cx - fw - 6, cy - 40); c.closePath(); c.fill();
+    if (f.style === 'buzz') {
+      c.beginPath(); c.moveTo(cx - fw - 2, cy - 20); c.quadraticCurveTo(cx, cy - 60, cx + fw + 2, cy - 20); c.lineTo(cx + fw + 6, cy - 40); c.quadraticCurveTo(cx, cy - 84, cx - fw - 6, cy - 40); c.closePath(); c.fill();
     } else {
-      // 房
-      const n = f.style === 'spiky' ? 7 : f.female ? 6 : 5;
-      const lean = f.style === 'swept' || f.style === 'side' ? 14 : f.style === 'spiky' ? 0 : 4;
-      const base = f.female ? -14 : f.style === 'short' ? -30 : -22;
-      for (let i = 0; i < n; i++) {
+      // 前髪：分け目から左右へ流れる細い房
+      const swept = f.style === 'swept' || f.style === 'side' || f.style === 'slick';
+      const part = swept ? cx - fw * 0.45 : cx + (r() - 0.5) * 8;
+      const n = f.style === 'spiky' ? 10 : f.female ? 15 : 12;
+      const baseLen = f.style === 'slick' ? -34 : f.female ? -20 : f.style === 'short' ? -28 : -24;
+      const order = [...Array(n).keys()].sort((a, b) => Math.abs(b - n / 2) - Math.abs(a - n / 2));   // 外側から先に描き、中央を上に重ねる
+      for (const i of order) {
         const k = (i + 0.5) / n;
-        const x0 = cx - fw - 4 + (fw * 2 + 8) * k;
-        const w = (fw * 2 + 8) / n * 0.75;
-        const len = base + Math.sin(k * Math.PI) * 6 + r() * 6 - (f.style === 'spiky' ? 8 : 0);
-        const tipX = x0 + lean * (k - 0.2), tipY = cy + len;
-        c.beginPath();
-        c.moveTo(x0 - w, cy - 50);
-        c.quadraticCurveTo(x0 - w * 0.6, cy - 26, tipX, tipY);
-        c.quadraticCurveTo(x0 + w * 0.7, cy - 30, x0 + w, cy - 52);
-        c.closePath(); c.fill();
+        const rx = cx - fw - 6 + (fw * 2 + 12) * k;
+        const ry = top + 6 + Math.pow((rx - cx) / (fw + 10), 2) * 24;
+        const dir = swept ? 1 : (rx < part ? -1 : 1);
+        const len = baseLen + Math.sin(k * Math.PI) * 6 + (r() - 0.5) * 6 - (f.style === 'spiky' ? 4 : 0) + (Math.abs(k - 0.5) > 0.35 ? 10 : 0);
+        const tipX = rx + dir * (swept ? 16 + k * 10 : 6 + Math.abs(rx - part) * 0.25) + (r() - 0.5) * 4;
+        const tipY = cy + len - (f.style === 'spiky' ? (i % 2) * 8 : 0);
+        const w = (fw * 2 + 12) / n * (f.style === 'spiky' ? 1.15 : 1.05) + r() * 1.5;
+        const tone = 0.92 + r() * 0.22;
+        strand(c, [rx, ry], [rx + dir * 2, ry + 18], [tipX - dir * 6, tipY - 16], [tipX, tipY], w, shade(col, 1.0 * tone), shade(col, 0.82 * tone), 1, 0.55);
       }
       if (f.style === 'spiky') {
-        for (let i = 0; i < 5; i++) { const x = cx - 40 + i * 20; c.beginPath(); c.moveTo(x - 13, top + 20); c.quadraticCurveTo(x + (i - 2) * 6, top + 4, x + (i - 2) * 9, top - 4 - (i % 2) * 4); c.quadraticCurveTo(x + 4, top + 10, x + 13, top + 20); c.fill(); }
+        for (let i = 0; i < 5; i++) { const x = cx - 38 + i * 19; strand(c, [x, top + 22], [x + (i - 2) * 3, top + 8], [x + (i - 2) * 8, top - 2], [x + (i - 2) * 11, top - 12 - (i % 2) * 5], 9, shade(col, 1.15), shade(col, 0.95)); }
+      }
+      // 毛の流れの線
+      c.strokeStyle = Art.hexA(shade(col, 0.45), 0.5); c.lineWidth = 0.7;
+      for (let i = 0; i < 10; i++) {
+        const x = cx - fw + (fw * 2) * (i + 0.5) / 10, dir = swept ? 1 : (x < part ? -1 : 1);
+        c.beginPath(); c.moveTo(x, top + 12 + r() * 6); c.bezierCurveTo(x + dir * 2, cy - 50, x + dir * 6, cy - 36, x + dir * (8 + r() * 6), cy - 24 - r() * 10); c.stroke();
       }
     }
-    // 横髪
-    if (f.female || f.style === 'long') {
+    // 横髪（顔の脇を流れ落ちる）
+    if (f.female || f.style === 'long' || f.style === 'bob') {
       [-1, 1].forEach(s => {
-        c.beginPath(); c.moveTo(cx + s * (fw + 8), cy - 30);
-        c.quadraticCurveTo(cx + s * (fw + 10), cy + 18, cx + s * (fw - 2), cy + 52);
-        c.quadraticCurveTo(cx + s * (fw - 4), cy + 10, cx + s * (fw - 8), cy - 14); c.closePath(); c.fill();
+        const n = f.female ? 3 : 2;
+        for (let i = 0; i < n; i++) {
+          const x0 = cx + s * (fw + 4 - i * 4), y0 = cy - 40 + i * 4;
+          const len = (f.style === 'bob' ? 40 : 58) + r() * 16 - i * 8;
+          strand(c, [x0, y0], [x0 + s * 8, y0 + 20], [x0 + s * (2 + i * 2), y0 + len * 0.7], [x0 - s * (2 - i * 3), y0 + len], 5 - i, shade(col, 1.05), shade(col, 0.68));
+        }
       });
     }
-    // 毛の流れ（細い線）
-    c.strokeStyle = Art.hexA(shade(col, 0.55), 0.55); c.lineWidth = 0.8;
-    for (let i = 0; i < 9; i++) {
-      const x = cx - fw + (fw * 2) * (i + 0.5) / 9;
-      c.beginPath(); c.moveTo(x + (r() - 0.5) * 6, top + 10 + r() * 6); c.quadraticCurveTo(x + (r() - 0.5) * 10, cy - 46, x + (r() - 0.5) * 8, cy - 28 - r() * 8); c.stroke();
-    }
-    // つや（天使の輪）
-    c.strokeStyle = 'rgba(255,255,255,.28)'; c.lineWidth = 2.6;
-    for (let i = 0; i < 5; i++) { const a0 = Math.PI * (1.12 + i * 0.13); c.beginPath(); c.ellipse(cx - 2, cy - 54, fw * 0.8, 13, -0.05, a0, a0 + 0.08); c.stroke(); }
-    c.strokeStyle = 'rgba(255,255,255,.12)'; c.lineWidth = 5;
-    c.beginPath(); c.ellipse(cx - 6, cy - 60, fw * 0.5, 9, -0.15, Math.PI * 1.2, Math.PI * 1.7); c.stroke();
+    // 輪郭の線（頭頂）
+    c.strokeStyle = Art.hexA(shade(col, 0.35), 0.55); c.lineWidth = 1;
+    c.beginPath(); c.moveTo(cx - fw - 9, cy - 8); c.bezierCurveTo(cx - fw - 15, top, cx + fw + 15, top, cx + fw + 9, cy - 8); c.stroke();
+    // つや（天使の輪）と、毛先の透け
+    c.save(); c.globalCompositeOperation = 'lighter';
+    c.strokeStyle = 'rgba(255,255,255,.13)'; c.lineWidth = 5;
+    c.beginPath(); c.ellipse(cx - 4, cy - 66, fw * 0.62, 9, -0.08, Math.PI * 1.18, Math.PI * 1.72); c.stroke();
+    const sg = c.createRadialGradient(cx - fw * 0.4, cy - 66, 2, cx - fw * 0.4, cy - 66, 22);
+    sg.addColorStop(0, 'rgba(255,255,255,.18)'); sg.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = sg; c.fillRect(cx - fw - 10, cy - 90, fw * 2, 50);
+    c.restore();
   }
   function face(c, f, cx, cy, expr) {
     const ey = cy - 4, ex = 16, es = f.eyeS;
-    const eyeW = 11.5 * es, eyeH = (f.female ? 9 : 7) * es * (expr === 'shock' ? 1.35 : expr === 'happy' ? 0.55 : expr === 'angry' ? 0.8 : expr === 'sad' ? 0.8 : 1);
+    const eyeW = 12.5 * es, eyeH = (f.female ? 9.5 : 7) * es * (expr === 'shock' ? 1.35 : expr === 'happy' ? 0.55 : expr === 'angry' ? 0.8 : expr === 'sad' ? 0.8 : 1);
     [-1, 1].forEach(s => {
       const x = cx + s * ex;
       if (f.tags.includes('patch') && s === 1) return;
@@ -317,6 +359,9 @@ const Portrait = (() => {
       c.fillStyle = g; c.beginPath(); c.arc(x + s * 1, ey + 1, ir, 0, 7); c.fill();
       c.strokeStyle = shade(f.eye, 0.3); c.lineWidth = 0.9; c.stroke();
       c.fillStyle = '#07070c'; c.beginPath(); c.ellipse(x + s * 1, ey + 1, ir * (expr === 'shock' ? 0.26 : 0.42), ir * (expr === 'shock' ? 0.26 : 0.5), 0, 0, 7); c.fill();
+      // 虹彩の筋
+      c.strokeStyle = Art.hexA(shade(f.eye, 1.7), 0.35); c.lineWidth = 0.6;
+      for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; c.beginPath(); c.moveTo(x + s + Math.cos(a) * ir * 0.5, ey + 1 + Math.sin(a) * ir * 0.5); c.lineTo(x + s + Math.cos(a) * ir * 0.92, ey + 1 + Math.sin(a) * ir * 0.92); c.stroke(); }
       c.fillStyle = 'rgba(255,255,255,.96)'; c.beginPath(); c.ellipse(x - 2 + s, ey - ir * 0.42, ir * 0.3, ir * 0.24, -0.4, 0, 7); c.fill();
       c.fillStyle = 'rgba(255,255,255,.7)'; c.beginPath(); c.arc(x + 2 + s, ey + ir * 0.45, ir * 0.13, 0, 7); c.fill();
       // 上まぶたの影
@@ -327,8 +372,16 @@ const Portrait = (() => {
       c.beginPath(); c.ellipse(x, ey, eyeW * 0.92, eyeH, 0, Math.PI * 0.2, Math.PI * 0.8); c.stroke();
       c.strokeStyle = shade(f.skin, 0.68); c.beginPath(); c.ellipse(x, ey - 1.5, eyeW * 1.02, eyeH * 1.3, 0, Math.PI * 1.15, Math.PI * 1.85); c.stroke();
       // まつげ・まぶた
-      c.strokeStyle = '#140e12'; c.lineWidth = f.female ? 2.8 : 2.2; c.lineCap = 'round';
-      c.beginPath(); c.ellipse(x, ey, eyeW, eyeH, 0, Math.PI * 1.02, Math.PI * 1.98); c.stroke();
+      c.strokeStyle = '#140e12'; c.lineCap = 'round';
+      // 目頭は細く、目尻へ太い三日月形
+      c.fillStyle = '#140e12'; c.beginPath();
+      const A0 = Math.PI * 1.02, A1 = Math.PI * 1.98, NN = 14, pts = [];
+      for (let i = 0; i <= NN; i++) { const a = A0 + (A1 - A0) * i / NN; pts.push([x + Math.cos(a) * eyeW, ey + Math.sin(a) * eyeH]); }
+      pts.forEach(([px, py], i) => i ? c.lineTo(px, py) : c.moveTo(px, py));
+      for (let i = NN; i >= 0; i--) { const a = A0 + (A1 - A0) * i / NN, outer = s > 0 ? i / NN : 1 - i / NN, th = (f.female ? 1.2 : 0.9) + outer * outer * (f.female ? 3.2 : 2.2); c.lineTo(x + Math.cos(a) * (eyeW + th * 0.3), ey + Math.sin(a) * (eyeH + th)); }
+      c.closePath(); c.fill();
+      // 目尻のはね
+      c.lineWidth = f.female ? 2 : 1.6; c.beginPath(); c.moveTo(x + s * eyeW * 0.96, ey - eyeH * 0.2); c.quadraticCurveTo(x + s * (eyeW + 3), ey - eyeH * 0.5, x + s * (eyeW + (f.female ? 5 : 3)), ey - eyeH * (f.female ? 0.95 : 0.6)); c.stroke();
       c.lineCap = 'butt';
       if (f.female) { c.beginPath(); c.moveTo(x + s * eyeW * 0.95, ey - eyeH * 0.3); c.lineTo(x + s * (eyeW + 4), ey - eyeH * 0.8); c.stroke(); }
     });

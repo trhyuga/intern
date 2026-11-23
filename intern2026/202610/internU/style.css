@@ -365,3 +365,34 @@ small { font-size: 11px; }
 
 .b-ctrl.watch .b-force button { font-size: 12px; }
 .b-ctrl.watch .b-force button.on { border-color: #ffb060; background: #6a3a1055; color: #ffd8a0; }
+
+/* ---------- 作戦室 ---------- */
+.warroom { position: absolute; left: 0; right: 0; bottom: 0; height: 56%; z-index: 3; display: none; flex-direction: column; background: linear-gradient(#0a1022e8, #05070ff5); border-top: 1px solid #8a7ad8; box-shadow: 0 -8px 24px #000a; }
+.warroom.show { display: flex; animation: up .25s; }
+.wr-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #2a3a5c; background: #120e28; }
+.wr-head img { width: 34px; height: 41px; border-radius: 6px; flex: none; }
+.wr-head .ab-i { flex: 1; min-width: 0; cursor: pointer; }
+.wr-head .ab-i b { font-size: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.wr-head .ab-i small { display: block; font-size: 10.5px; color: #ffe9a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wr-head .ab-b { display: flex; gap: 4px; }
+.wr-head .ab-b button { background: #1c2a48; border: 1px solid var(--line); border-radius: 7px; font-size: 11px; padding: 6px 7px; white-space: nowrap; }
+.wr-head .ab-b .stop { background: #5a1a2a; border-color: #c85a6a; }
+.wr-list { flex: 1; overflow-y: auto; padding: 8px 8px 14px; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; }
+.wr-e { animation: wrin .3s ease-out; font-size: 13px; line-height: 1.55; }
+@keyframes wrin { from { opacity: 0; transform: translateY(8px); } }
+.wr-say { display: flex; gap: 8px; align-items: flex-start; }
+.wr-say img { width: 38px; height: 46px; border-radius: 6px; border: 1px solid; flex: none; }
+.wr-b { flex: 1; background: color-mix(in srgb, var(--c) 14%, #0c1428); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); border-radius: 4px 12px 12px 12px; padding: 5px 9px; }
+.wr-b b { font-size: 11.5px; color: #fff; font-family: var(--mincho); display: block; }
+.wr-b p { margin: 2px 0 0; color: #e6eeff; min-height: 1.4em; }
+.wr-order, .wr-result, .wr-news { display: flex; gap: 8px; align-items: baseline; padding: 5px 9px; border-radius: 8px; margin-left: 46px; }
+.wr-i { flex: none; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+.wr-order { background: #0e2236; border-left: 3px solid #6ad0ff; color: #cfe8ff; } .wr-order .wr-i { background: #2a6ab0; color: #fff; }
+.wr-result.ok { background: #0e2a1c; border-left: 3px solid #7ae08a; color: #c8f5d0; } .wr-result.ok .wr-i { background: #2a8a4a; color: #fff; }
+.wr-result.ng { background: #2a1014; border-left: 3px solid #ff7a6a; color: #ffd0c8; } .wr-result.ng .wr-i { background: #a83a3a; color: #fff; }
+.wr-news { margin-left: 0; background: #ffffff08; color: #9fb2d8; font-size: 12px; } .wr-news .wr-i { background: #2a3a5c; color: #cfe0ff; }
+.wr-head-e, .wr-head { }
+.wr-e.wr-head { justify-content: center; text-align: center; color: var(--gold); font-family: var(--mincho); letter-spacing: .2em; font-size: 13px; padding: 6px 0 2px; border: none; background: none; display: block; }
+.bottombar .end.stopper { background: linear-gradient(#8a2a3a, #4a1220); border-left-color: #ff8a9a; }
+
+.wr-head .ab-b { flex-direction: row; }

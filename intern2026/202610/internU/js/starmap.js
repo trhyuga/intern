@@ -43,9 +43,11 @@ const StarMap = (() => {
     const [nx, ny] = toWorld(sx, sy);
     cam.x += wx - nx; cam.y += wy - ny; clampCam();
   }
-  function focus(pid, z) {
+  // yFrac：画面の高さのどこに星を置くか（作戦室が下半分を覆うときは 0.25）
+  function focus(pid, z, yFrac) {
     const p = G.planets[pid]; if (!p) return;
-    cam.x = p.x; cam.y = p.y; if (z) cam.z = z; clampCam();
+    if (z) cam.z = z;
+    cam.x = p.x; cam.y = p.y + (yFrac ? (0.5 - yFrac) * vh / cam.z : 0); clampCam();
   }
   function down(e) {
     cv.setPointerCapture(e.pointerId);
