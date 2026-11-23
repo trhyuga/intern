@@ -22,7 +22,8 @@ const UI = {
   talk(g, expr, text, color, opts = {}) {
     return new Promise(res => {
       const el = $('#talk');
-      const autoMs = opts.wait || ((typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text, opts) : 0);   // opts.wait：決まった時間だけ見せて進む（タップでも進む）
+      const autoMs0 = opts.wait || ((typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text, opts) : 0);   // opts.wait：決まった時間だけ見せて進む（タップでも進む）
+      const autoMs = opts.hold && autoMs0 ? Math.max(autoMs0, opts.hold) : autoMs0;   // opts.hold：オートの速さに関わらず、少なくともこの時間は出す
       el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/<b>[\s\S]*?<\/b>/g, m => m.replace(/\n/g, '<br>')).split('\n').map(t => `<span class="tl">${t}</span>`).join('<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div>` : '<div class="talk-next">▼</div>'}</div></div>`;
       el.classList.add('show');
       UI.fixOrphans(el);
@@ -32,7 +33,7 @@ const UI = {
       if (!veil) { veil = document.createElement('div'); veil.className = 'talk-veil'; el.after(veil); }
       let closed = false;
       const close = () => { if (closed) return; closed = true; clearTimeout(tm); el.classList.remove('show'); veil.onclick = null; el.onclick = null; if (!autoMs) Sound.se('tap'); res(); };
-      setTimeout(() => { veil.onclick = close; el.onclick = close; }, 180);
+      setTimeout(() => { veil.onclick = close; el.onclick = close; }, opts.hold ? 1200 : 180);   // 大事な知らせは、うっかりのタップで飛ばないように
       let tm = null;
       if (autoMs) { requestAnimationFrame(() => { const bar = $('.talk-auto i', el); if (bar) bar.style.width = '100%'; }); tm = setTimeout(close, autoMs); }
     });
@@ -560,7 +561,9 @@ const App = {
     const r = kind === 'ally' ? Game.diploAlly(g, fi) : Game.diploSurrender(g, fi);
     Sound.se(r.ok ? 'win' : 'ng');
     const tl = Game.lordOf(fi);
-    await UI.talk(tl, r.ok ? 'happy' : 'angry', `${r.msg}`, G.factions[fi].color);
+    const decisive = r.ok && Game.checkEnd() === 'win';   // 天下を決める降伏
+    if (decisive) G._finalShown = true;
+    await UI.talk(tl, r.ok ? 'happy' : 'angry', `${r.msg}`, G.factions[fi].color, decisive ? { tag: '降伏', hold: 6000 } : {});
     if (r.ok) Game.log(r.msg);
     App.refresh();
     await App.milestones();
@@ -908,13 +911,18 @@ const App = {
       // 季節の終わり
       let ev = Game.endSeason();
       // この季節のうちに天下が定まった（最後の敵が滅んだ）なら、ほかの勢力の跡継ぎや出来事は流さず、滅亡の知らせだけ見せてエンディングへ
-      if (Game.checkEnd() === 'win') ev = ev.filter(e => (e.title && /巨星墜つ/.test(e.title)) || /滅/.test(e.msg || ''));
-      for (const e of ev) {
-        if (e.quiet) continue;
+      const wonNow = Game.checkEnd() === 'win';
+      if (wonNow) ev = ev.filter(e => (e.title && /巨星墜つ/.test(e.title)) || /滅/.test(e.msg || ''));
+      for (const e0 of ev) {
+        if (e0.quiet) continue;
+        const fall = wonNow && /滅/.test(e0.msg || '');
+        if (fall) G._finalShown = true;
+        const e = wonNow ? { ...e0, hold: 6000 } : e0;   // 天下が定まった季節の知らせは、どの速さでも数秒は出す
         const eg = e.gen != null ? G.gens[e.gen] : null;
         const ecol = eg ? (G.factions[eg.faction] ? G.factions[eg.faction].color : '#6a5a4a') : undefined;
-        if (e.hist) { Sound.se(e.se || 'gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag, ev: true }); }
-        else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag, ev: true } : { ev: true }); }
+        if (e.hist) { Sound.se(e.se || 'gong'); await UI.talk(eg, e.expr || 'normal', `<b>【${e.title}】</b>\n${e.msg}`, ecol, { tag: e.tag, ev: true, hold: e.hold }); }
+        else if (eg) { Sound.se(e.death ? 'death' : 'event'); await UI.talk(eg, e.expr || 'normal', e.line ? `${eg.name}「${e.line}」\n<b>${e.msg}</b>` : `<b>${e.msg}</b>`, ecol, e.tag ? { tag: e.tag, ev: true, hold: e.hold } : { ev: true, hold: e.hold }); }
+        else if (e.hold) { Sound.se('gong'); await UI.talk(null, '', `<b>${e.msg}</b>`, undefined, { ev: true, hold: e.hold }); }
         else UI.toast(e.msg, 2600), await new Promise(r => setTimeout(r, 900));
       }
       await App.milestones();
@@ -1062,16 +1070,77 @@ const App = {
     App.enterMain(); UI.toast(n === 'auto' ? '自動セーブを読み込みました' : `記録${n}を読み込みました`);
   },
 
+  // 天下統一：①最後の敵が滅んだ知らせ（まだ見せていなければ）②天下統一の画面 ③軍師と功臣の祝いの言葉 ④エンディングへ
+  async unifyScene() {
+    const me = G.factions[G.player], lord = Game.lordOf(G.player) || G.gens[me.lord];
+    const fi = G._lastFall;
+    if (!G._finalShown && fi != null && fi !== G.player && G.factions[fi]) {
+      const ff = G.factions[fi], fl = G.gens[ff.lord];
+      Sound.se('gong');
+      await UI.talk(fl, 'sad', `<b>${ff.name}軍、滅亡――</b>\n最後の拠点を失い、${ff.name}軍はここに潰えた。`, ff.color, { tag: '滅亡', ev: true, hold: 5000 });
+    }
+    G._finalShown = true;
+    // 天下統一の画面
+    const ov = document.createElement('div');
+    ov.className = 'unify';
+    ov.style.setProperty('--fc', me.color);
+    ov.innerHTML = `<div class="uf-in"><div class="uf-date">${G.year}年　${SEASONS[G.season]}</div><div class="uf-title">天下統一</div><div class="uf-seal">${me.name}</div><div class="uf-msg">${lord ? lord.name : me.name + '軍'}のもとに、<br>乱れた天下は、ついに一つとなった。</div></div>`;
+    $('#talk').before(ov);
+    requestAnimationFrame(() => ov.classList.add('show'));
+    Sound.se('coronation');
+    await new Promise(res => {
+      let done = false;
+      const end = () => { if (done) return; done = true; clearTimeout(tm); res(); };
+      const tm = setTimeout(end, 4500);
+      setTimeout(() => { ov.onclick = end; }, 1200);
+    });
+    ov.onclick = null;
+    // 祝いの言葉：軍師（君主が兼ねていれば知力のいちばん高い家臣）と、功績のいちばん多い武将2人まで
+    const mine = Game.gensOf(G.player).filter(g => !g.isLord);
+    const sg0 = Auto.strategist();
+    const sg = sg0 && !sg0.isLord ? sg0 : mine.slice().sort((a, b) => b.int - a.int)[0];
+    const merit = g => (g.wins || 0) + (g.duels || 0);
+    const heroes = mine.filter(g => g !== sg).sort((a, b) => merit(b) - merit(a) || (b.lead + b.war) - (a.lead + a.war)).slice(0, 2);
+    const youOf = g => { const v = VOICE[g.name] || {}; return v.you && (!v.youIf || !lord || v.youIf === lord.name) ? v.you : '殿'; };
+    const SG = [
+      '{you}、おめでとうございます。長き乱世は、今日この時をもって終わりました',
+      '{you}の大業、ここに成りました。これより先は、民を安んずる治世の時でございます',
+      '思えば遠い道のりでした。{you}にお仕えできたこと、生涯の誇りといたします',
+    ];
+    const HERO = [
+      '{you}！　天下統一、おめでとうございます！　この日のために槍を振るってまいりました',
+      'やりましたな、{you}！　共に駆けた戦場の数々、決して忘れませぬ',
+      '{you}の旗が、ついに天下にひるがえりましたぞ！　今宵は存分に飲みましょう',
+      '散っていった者たちも、きっと喜んでおりましょう。{you}、おめでとうございます',
+    ];
+    const sayIt = (g, pool, tag) => {
+      const t = pool[Math.floor(Math.random() * pool.length)].replace(/\{you\}/g, youOf(g));
+      return UI.talk(g, 'happy', `${tag === '軍師' ? '軍師 ' : ''}${g.name}「${t}」${tag !== '軍師' && merit(g) ? `\n<small>戦功 ${g.wins}・一騎討ち ${g.duels}勝</small>` : ''}`, me.color, { tag: tag === '軍師' ? '祝賀' : '功臣の祝い', wait: 4200 });
+    };
+    const used = new Set();
+    if (sg) await sayIt(sg, SG, '軍師');
+    for (const h of heroes) {
+      let pool = HERO.filter(t => !used.has(t)); if (!pool.length) pool = HERO;
+      const t = pool[Math.floor(Math.random() * pool.length)]; used.add(t);
+      await sayIt(h, [t], '功臣');
+    }
+    ov.classList.remove('show');
+    await new Promise(r => setTimeout(r, 400));
+    ov.remove();
+  },
   async finish(kind) {
     G.gameOver = true;
-    // エンディングの前に、最後に何が起きたかを数秒見せる（オートの降伏などで、いきなり終わらないように）
     try {
-      const lord = Game.lordOf(G.player) || G.gens[G.factions[G.player].lord];
-      const lines = G.log.slice(0, 8).reverse();
-      const last = lines.map(l => `・<small>${l.t}</small> ${l.msg}`).join('\n');
       UI.closeSheet();
-      Sound.se(kind === 'win' ? 'coronation' : 'gong');
-      await UI.talk(lord, kind === 'win' ? 'happy' : 'sad', `<b>${kind === 'win' ? `天下は、${G.factions[G.player].name}軍のもとに一つとなった。` : `${G.factions[G.player].name}軍は、ここに潰えた。`}</b>\n${last}`, G.factions[G.player].color, { tag: kind === 'win' ? '天下統一' : '覇業ならず', wait: Math.min(20000, 5000 + lines.length * 1500) });   // 件数に合わせて長く（タップで先へ）
+      if (kind === 'win') await App.unifyScene();
+      else {
+        // 敗れたときは、最後に何が起きたかを数秒見せてからエンディングへ
+        const lord = Game.lordOf(G.player) || G.gens[G.factions[G.player].lord];
+        const lines = G.log.slice(0, 8).reverse();
+        const last = lines.map(l => `・<small>${l.t}</small> ${l.msg}`).join('\n');
+        Sound.se('gong');
+        await UI.talk(lord, 'sad', `<b>${G.factions[G.player].name}軍は、ここに潰えた。</b>\n${last}`, G.factions[G.player].color, { tag: '覇業ならず', wait: Math.min(20000, 5000 + lines.length * 1500) });
+      }
     } catch (e) { console.error('finish', e); }
     try { Secret.onFinish(kind); } catch (e) { console.error('secret', e); }
     if (Auto.running) Auto.stop(true);

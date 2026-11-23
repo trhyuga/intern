@@ -227,6 +227,19 @@ button { font-family: inherit; }
 .talk-veil { position: absolute; inset: 0; z-index: 39; display: none; }
 .talk.show + .talk-veil { display: block; }
 
+/* ---------- 天下統一の画面 ---------- */
+.unify { position: absolute; inset: 0; z-index: 38; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 42%, #3a1408 0%, #140603 60%, #050100 100%); opacity: 0; transition: opacity .8s; color: #f6e8c6; text-align: center; padding: 0 16px 140px; }
+.unify.show { opacity: 1; }
+.unify::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--fc) 45%, transparent) 0%, transparent 55%); pointer-events: none; }
+.uf-in { position: relative; }
+.uf-date { font-size: 14px; letter-spacing: .3em; color: #d8c48a; opacity: 0; animation: ufFade .8s .3s forwards; }
+.uf-title { font-family: var(--brush); font-size: clamp(54px, 18vw, 88px); line-height: 1.2; margin: 10px 0 6px; letter-spacing: .08em; background: linear-gradient(#fff6d0, #f2cf6a 45%, #c8901e); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 14px #ffb84a90) drop-shadow(0 3px 0 #000); opacity: 0; transform: scale(1.6); animation: ufStamp .7s .6s cubic-bezier(.2,1.4,.4,1) forwards; }
+.uf-seal { display: inline-block; font-family: var(--brush); font-size: 22px; color: #fff; background: var(--fc); border: 3px double #fff8; border-radius: 6px; padding: 4px 14px; box-shadow: 0 2px 10px #000a; opacity: 0; transform: rotate(-8deg) scale(1.8); animation: ufSeal .45s 1.3s ease-out forwards; }
+.uf-msg { margin-top: 16px; font-size: 16px; line-height: 1.9; opacity: 0; animation: ufFade .9s 1.8s forwards; }
+@keyframes ufFade { to { opacity: 1; } }
+@keyframes ufStamp { to { opacity: 1; transform: scale(1); } }
+@keyframes ufSeal { to { opacity: 1; transform: rotate(-8deg) scale(1); } }
+
 /* ---------- モーダル ---------- */
 .modal { position: absolute; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center; background: #000a; padding: 16px; }
 .modal.show { display: flex; }

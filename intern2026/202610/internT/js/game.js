@@ -493,6 +493,7 @@ const Game = {
     const f = G.factions[fi];
     if (!f.alive) return;
     f.alive = false;
+    G._lastFall = fi;   // 天下統一の直前に、最後に滅んだ勢力を知らせるため
     G.factions.forEach(o => { delete o.allies[fi]; });
     Game.log(`${f.name}軍、滅亡。`);
   },

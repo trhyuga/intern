@@ -751,7 +751,8 @@ const Auto = (() => {
     const lastFoe = G.factions.filter(f => f.alive && f.i !== G.player).length === 1;   // 最後の敵への降伏勧告
     const r = Game.diploSurrender(env, t.fi);
     Sound.se(r.ok ? 'win' : 'ng');
-    await UI.talk(tl, r.ok ? 'sad' : 'angry', r.msg, col, { tag: '外交', ev: r.ok && lastFoe });   // 天下を決める降伏は、どの速さでも読める長さで
+    if (r.ok && lastFoe) G._finalShown = true;
+    await UI.talk(tl, r.ok ? 'sad' : 'angry', r.msg, col, r.ok && lastFoe ? { tag: '降伏', ev: true, hold: 6000 } : { tag: '外交' });   // 天下を決める降伏は、どの速さでも読める長さで
     if (r.ok) Game.log(r.msg);
     if (r.ok && Game.checkEnd() === 'win') { App.refresh(); await App.milestones(); await App.finish('win'); }   // 最後の敵が降れば、その場で天下統一
   }
