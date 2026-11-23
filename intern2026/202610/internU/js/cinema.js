@@ -287,6 +287,68 @@ const Cinema = (() => {
     }, { tap: t => t < 66 ? 0 : 0 });
   }
 
+  // ---------------- 蝕の襲来（その時まで、プレイヤーには知らせない） ----------------
+  function eclipseArrival() {
+    Sound.stopBgm();
+    const stars = makeStars(320, 66);
+    const neb = Art.nebulaCanvas(420, 760, 404, [230, 260], { alpha: 0.07, stars: 400 });
+    const hits = new Set();
+    const at = (t, k, fn) => { if (t >= k && !hits.has(k)) { hits.add(k); fn(); } };
+    const swarm = Array.from({ length: 70 }, (_, i) => { const r = Art.srand(i * 13 + 5); r(); r(); return { a: i * 2.39996 + r() * 0.3, sp: 0.4 + r() * 1.2, d: r() * 0.4, s: 6 + r() * 14, h: r() < 0.8 ? 'spore' : 'maw' }; });
+    return play('opening', 'opcv', 17, (c, W, H, t) => {
+      const M = Math.min(W, H), cx = W / 2, cy = H * 0.42;
+      c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
+      // 1. いつもの静かな宇宙（0〜2.5）……のはずが
+      const shake = t > 2.5 && t < 6 ? (Math.random() - 0.5) * 10 * (1 - (t - 2.5) / 3.5) : 0;
+      c.save(); c.translate(shake, shake * 0.6);
+      c.globalAlpha = t < 2.5 ? 1 : Math.max(0.25, 1 - (t - 2.5) / 3); c.drawImage(neb, 0, 0, W, H); c.globalAlpha = 1;
+      starfield(c, W, H, stars, t, 0.01);
+      if (t < 2.6) textC(c, '異常な重力波を観測――', W / 2, H * 0.82, 15, fade(t, 0.4, 2.6, 0.4), { col: '#ffb0b0', glow: 'rgba(255,60,60,.8)' });
+      // 2. 宇宙に亀裂（2.5〜5）
+      if (t >= 2.5) {
+        at(t, 2.5, () => { Sound.se('alarm'); if (Sound.ctx) Sound.drum(Sound.ctx.currentTime + 0.01, 'timp', 1.4); });
+        const k = easeOut((t - 2.5) / 2);
+        c.strokeStyle = `rgba(255,60,120,${0.9})`; c.lineWidth = 2 + k * 3; c.shadowColor = '#ff2a6a'; c.shadowBlur = 20;
+        c.beginPath();
+        const r = Art.srand(9);
+        for (let i = 0; i <= 12; i++) { const x = cx + (i / 12 - 0.5) * W * 1.1 * k, y = cy + (r() - 0.5) * 40 * k; i ? c.lineTo(x, y) : c.moveTo(x, y); }
+        c.stroke(); c.shadowBlur = 0;
+      }
+      // 3. 裂け目が開く（4.5〜）
+      if (t >= 4.5) {
+        at(t, 4.5, () => { Sound.se('bigboom'); if (Sound.ctx) Sound.drum(Sound.ctx.currentTime + 0.01, 'crash', 1.5); });
+        const k = easeOut((t - 4.5) / 2.5);
+        const rr = M * (0.05 + k * 0.32);
+        for (let i = 0; i < 3; i++) {
+          const g = c.createRadialGradient(cx, cy, 0, cx, cy, rr * (1.3 + i * 0.5 + Math.sin(t * 3 + i) * 0.05));
+          g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.5, 'rgba(15,0,8,.95)'); g.addColorStop(0.68, 'rgba(255,40,110,.6)'); g.addColorStop(1, 'rgba(255,40,110,0)');
+          c.fillStyle = g; c.beginPath(); c.ellipse(cx, cy, rr * (2.2 + i * 0.4), rr * (0.9 + i * 0.25), 0, 0, 7); c.fill();
+        }
+        if (t < 5.2) { c.fillStyle = `rgba(255,220,230,${1 - (t - 4.5) / 0.7})`; c.fillRect(-20, -20, W + 40, H + 40); }
+      }
+      // 4. 群れが溢れ出す（6〜）
+      if (t >= 6) {
+        at(t, 6, () => { Sound.bgm('crisis'); });
+        for (const s of swarm) {
+          const k = (t - 6 - s.d) * s.sp; if (k < 0) continue;
+          const dist = k * M * 0.35, x = cx + Math.cos(s.a) * dist * 1.3, y = cy + Math.sin(s.a) * dist;
+          Art.ship(c, s.h, x, y, s.a + Math.PI / 2, s.s * (0.6 + Math.min(1, k) * 0.6), '#ff2a6a');
+        }
+      }
+      c.restore();
+      // 5. 名前（9〜）
+      if (t >= 9) {
+        at(t, 9, () => { if (Sound.ctx) Sound.drum(Sound.ctx.currentTime + 0.01, 'timp', 1.6); });
+        const a = Math.min(1, (t - 9) / 0.6);
+        c.fillStyle = `rgba(0,0,0,${a * 0.45})`; c.fillRect(0, 0, W, H);
+        textC(c, '蝕', W / 2, H * 0.4, Math.min(W / 2.6, 150), a, { w: 800, col: '#ffffff', glow: 'rgba(255,30,100,1)', blur: 40 });
+        textC(c, '― ECLIPSE ―', W / 2, H * 0.4 + Math.min(W / 2.6, 150) * 0.85, 15, Math.min(1, (t - 10) / 1), { ls: 6, col: '#ffc0d0', glow: 'rgba(255,40,110,.9)' });
+        textBlock(c, '星を喰らうものが、来た。', W / 2, H * 0.78, 18, fade(t, 11, 16.8, 0.8), W * 0.9, { col: '#ffe0e8', glow: 'rgba(255,40,110,.9)' });
+      }
+      if (t > 16) { c.fillStyle = `rgba(0,0,0,${(t - 16)})`; c.fillRect(0, 0, W, H); }
+    });
+  }
+
   // ---------------- エンディング ----------------
   function ending(rec) {
     stopTitle();
@@ -447,7 +509,7 @@ const Cinema = (() => {
     return L;
   }
 
-  return { title, stopTitle, opening, ending };
+  return { title, stopTitle, opening, ending, eclipseArrival };
 })();
 
 // ============================================================

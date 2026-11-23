@@ -132,7 +132,14 @@ const Turn = (() => {
       Game.save();
       if (Staff.active() && !v) UI.autoReport(report); else await UI.monthReport(report);
       if (v) { if (G.staff) G.staff.on = false; G.over = v.type; Game.save(); await UI.gameOver(v.type); running = false; return; }
-      // 10. 会話イベント
+      // 10. 蝕の襲来（初めて現れた月だけ、特別な演出）
+      if (!eclBefore && G.eclipse.arrived) {
+        await Cinema.eclipseArrival();
+        UI.show('main');
+        StarMap.focus(Eclipse.RIFT_ID, 0.7); StarMap.selPlanet = Eclipse.RIFT_ID;
+        Sound.bgm('crisis');
+      }
+      // 会話イベント
       await Story.run();
       // 11. 申し入れ
       await UI.pendingProposals();

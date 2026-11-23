@@ -70,7 +70,7 @@ const UI = (() => {
     $('#btnStaff').classList.toggle('on', Staff.active());
     const ecl = $('#tbEcl');
     if (G.eclipse.arrived && !G.eclipse.defeated) { ecl.textContent = '蝕 襲来中'; ecl.style.display = ''; }
-    else if (G.eclipse.omen) { ecl.textContent = '予兆あり'; ecl.style.display = ''; }
+    else if (G.eclipse.omen) { ecl.textContent = '異変あり'; ecl.style.display = ''; }
     else ecl.style.display = 'none';
   }
   function refresh() { refreshTop(); quick(); }
@@ -645,17 +645,18 @@ const UI = (() => {
     if (!staffDraft || !cands.includes(staffDraft.key)) {
       // いちばん得意の大きい士官を勧める
       let best = cands[0], bs = -1;
-      for (const k of cands) for (const p in Staff.POLICIES) { const sc = Staff.score(k, p); if (sc > bs && !(Staff.POLICIES[p].needEclipse && !(G.eclipse.arrived && !G.eclipse.defeated))) { bs = sc; best = k; } }
+      for (const k of cands) for (const p in Staff.POLICIES) { if (Staff.POLICIES[p].needEclipse) continue; const sc = Staff.score(k, p); if (sc > bs) { bs = sc; best = k; } }
       staffDraft = { key: best, policy: staffDraft ? staffDraft.policy : 'economy', months: 12, big: true };
     }
     const d = staffDraft;
     const grs = Staff.grades(d.key);
+    if (!G.eclipse.arrived) delete grs.eclipse;
     const good = Object.keys(grs).filter(p => 'SA'.includes(grs[p])).map(p => Staff.POLICIES[p].name), bad = Object.keys(grs).filter(p => grs[p] === 'D').map(p => Staff.POLICIES[p].name);
     body.innerHTML = `<p class="note">参謀と方針と期間を決めると、その方針を中心に、月を自動で進めます。参謀（7割）と君主（3割）の能力・性格で得意・不得意が決まり、方針の効き目と、しくじりやすさが変わります。会話の出来事は途中で見られます。</p>
       <h3>参謀</h3>${ofcCard(d.key, '<button class="btn small" data-a="pick">替える</button>')}
       <p class="note">得意：${good.join('・') || 'とくになし'}${bad.length ? `／不得手：${bad.join('・')}` : ''}${lead && isMine(lead) ? `（君主${shortName(OFF[lead])}の${OFF[lead].pers}の気質も加わる）` : ''}</p>
-      <h3>方針</h3><div class="pols">${Object.entries(Staff.POLICIES).map(([k, P]) => {
-        const dis = P.needEclipse && !(G.eclipse.arrived && !G.eclipse.defeated);
+      <h3>方針</h3><div class="pols">${Object.entries(Staff.POLICIES).filter(([k, P]) => !P.needEclipse || G.eclipse.arrived).map(([k, P]) => {
+        const dis = P.needEclipse && G.eclipse.defeated;
         return `<button class="pol ${d.policy === k ? 'on' : ''}" data-p="${k}" ${dis ? 'disabled' : ''}><b>${P.icon} ${P.name}</b>${gradeBadge(grs[k])}<small>${dis ? '蝕が来てから選べる' : P.desc}</small></button>`; }).join('')}</div>
       <h3>期間</h3><div class="chips">${[[6, '半年'], [12, '1年'], [24, '2年'], [0, '止めるまで']].map(([m, n]) => `<button class="chip ${d.months === m ? 'on' : ''}" data-m="${m}">${n}</button>`).join('')}</div>
       <label class="tgl"><input type="checkbox" ${d.big ? 'checked' : ''} data-a="big"> 艦が20隻以上の大きな戦いは、自分で指揮する</label>
@@ -681,7 +682,7 @@ const UI = (() => {
   function pickStaff(cands) {
     return new Promise(res => {
       sheet(body => {
-        const pols = Object.keys(Staff.POLICIES);
+        const pols = Object.keys(Staff.POLICIES).filter(p => !Staff.POLICIES[p].needEclipse || G.eclipse.arrived);
         body.innerHTML = `<p class="note">各方針への向き不向き（S〜D）。君主の気質も少し加わっています。</p>` + cands.map(k => {
           const g = Staff.grades(k);
           return `<div class="ofc sp" data-k="${k}"><img src="${Portrait.url(k)}"><div class="ofc-i"><b><span class="rk">${Game.rankName(k)}</span>${OFF[k].name}</b><small>${OFF[k].epi}・${OFF[k].pers}</small>
@@ -762,7 +763,7 @@ const UI = (() => {
       <h3>技術と設計</h3><p>兵器・機関・防御・経済の4系統。新しい船体やモジュールが手に入ったら、自分で艦を設計できます。禁忌の技術は強力ですが……。</p>
       <h3>外交</h3><p>交渉の高い士官を使者に、不可侵→通商→同盟と関係を深めます。中立の小勢力は、頼まれごとを果たすと味方になります。</p>
       <h3>国内の派閥</h3><p>主戦・通商・技術・融和の4派閥。主導する派閥で国の得意が変わり、ときどき要求を出してきます。</p>
-      <h3>蝕</h3><p>いずれ、銀河の外から何かが来ます。</p></div>`, [{ t: '閉じる', v: null }], { cls: 'wide' });
+</div>`, [{ t: '閉じる', v: null }], { cls: 'wide' });
   }
 
   // ---------- タイトル・勢力選び ----------

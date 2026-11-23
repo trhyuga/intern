@@ -60,7 +60,9 @@ const Story = (() => {
   async function run() {
     const list = EVENTS.filter(eligible).concat(dynamic());
     // 一度に見せるのは3つまで（勢力の物語を先に）
-    list.sort((x, y) => (y.fac !== undefined ? 1 : 0) - (x.fac !== undefined ? 1 : 0));
+    // 蝕の襲来はいちばん先に。その次に勢力の物語
+    const pr = e => (e.id === 'c_eclipse' ? 2 : 0) + (e.fac !== undefined ? 1 : 0);
+    list.sort((x, y) => pr(y) - pr(x));
     for (const ev of list.slice(0, 3)) await play(ev);
   }
   async function play(ev) {
