@@ -150,8 +150,42 @@ const App = {
   },
   async opening() {
     UI.show('opening');
-    await Cinema.opening($('#opcv'), $('#opening .skip'));
+    const ok = await App.opVideo();
+    if (!ok) await Cinema.opening($('#opcv'), $('#opening .skip'));   // 動画が再生できない時は、これまでの描画のオープニング
     App.title();
+  },
+  // オープニング動画：横長の映像を画面の中ほどに出し、終わりぎわに題字を重ねる。スキップで題字へ
+  opVideo() {
+    return new Promise(resolve => {
+      const sc = $('#opening'), cv = $('#opcv'), skip = $('#opening .skip');
+      const box = document.createElement('div'); box.className = 'op-vid';
+      box.innerHTML = `<video playsinline webkit-playsinline preload="auto" poster="media/opening_poster.jpg?v=1"></video><div class="op-title">群雄天下</div>`;
+      const v = box.querySelector('video'), ttl = box.querySelector('.op-title');
+      v.src = 'media/opening.mp4?v=1';
+      v.muted = Sound.muted;
+      cv.style.visibility = 'hidden';
+      sc.insertBefore(box, skip);
+      Sound.stop();
+      let done = false, started = false, timers = [];
+      const end = ok => {
+        if (done) return; done = true;
+        timers.forEach(clearTimeout); skip.onclick = null; v.onended = v.onerror = v.ontimeupdate = null;
+        const fin = () => { try { v.pause(); } catch (e) {} box.remove(); cv.style.visibility = ''; resolve(ok); };
+        if (ok) { box.classList.add('out'); setTimeout(fin, 600); } else fin();
+      };
+      const showTitle = () => { if (!ttl.classList.contains('show')) { ttl.classList.add('show'); Sound.se('gong'); } };
+      skip.onclick = e => { e.stopPropagation(); end(true); };   // スキップは、そのままタイトルへ
+      v.ontimeupdate = () => { if (v.duration && v.currentTime > v.duration - 3) showTitle(); };
+      v.onended = () => { showTitle(); timers.push(setTimeout(() => end(true), 2200)); };
+      v.onerror = () => { if (!started) end(false); };
+      v.onplaying = () => { started = true; };
+      timers.push(setTimeout(() => { if (!started) end(false); }, 6000));   // 読み込めない・再生できない時は描画のオープニングへ
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {
+        // 音つきの自動再生を断られたら、音なしでもう一度
+        if (!v.muted) { v.muted = true; v.play().catch(() => end(false)); } else end(false);
+      });
+    });
   },
   title() {
     UI.show('title');

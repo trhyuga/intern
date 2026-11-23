@@ -45,6 +45,11 @@ button { font-family: inherit; }
 
 /* ---------- オープニング・エンディング ---------- */
 #opening, #ending { background: #000; }
+.op-vid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 50%, #2a1408 0%, #000 70%); transition: opacity .6s; }
+.op-vid.out { opacity: 0; }
+.op-vid video { width: 100%; max-height: 70vh; object-fit: contain; display: block; box-shadow: 0 0 40px #000; -webkit-mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); mask-image: linear-gradient(transparent, #000 6%, #000 94%, transparent); }
+.op-title { font-family: var(--brush); font-size: clamp(48px, 16vw, 84px); letter-spacing: .1em; margin-top: 28px; background: linear-gradient(#fff6d0, #f2cf6a 45%, #c8901e); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 12px #ffb84a80) drop-shadow(0 3px 0 #000); opacity: 0; transform: scale(1.4); transition: opacity 1.2s, transform 1.2s cubic-bezier(.2,1.2,.4,1); }
+.op-title.show { opacity: 1; transform: scale(1); }
 #opcv, #endcv { width: 100%; height: 100%; display: block; }
 .skip { position: absolute; right: 12px; bottom: calc(14px + var(--safe-b)); background: #0008; color: #e8d9b0; border: 1px solid #e8d9b060; border-radius: 20px; padding: 7px 14px; font-size: 13px; z-index: 5; }
 .end-roll { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: #f6e8c6; text-align: center; }
