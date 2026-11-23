@@ -352,7 +352,7 @@ const Cinema = (() => {
   }
 
   // ================= タイトル背景 =================
-  const titleImg = new Image(); titleImg.src = 'media/title_bg.jpg?v=1';   // タイトルの背景の絵（読み込めなければ描画の背景）
+  const titleImg = new Image(); titleImg.src = 'media/title_bg.jpg?v=2';   // タイトルの背景の絵（読み込めなければ描画の背景）
   function titleBG(cv) {
     cancelAnimationFrame(titleRaf);
     const { c, W, H } = fit(cv);
