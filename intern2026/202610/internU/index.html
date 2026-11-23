@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>internU — 準備中</title>
+<style>
+  :root{ --ink:#2b3a4a; --ink-soft:#5d7186; --accent:#4a9de0; --accent2:#3ec99a; }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  body{
+    font-family:"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+    color:var(--ink);
+    background:linear-gradient(160deg, #f2f8ff 0%, #eef9f4 55%, #f7f4ff 100%);
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding:24px 16px; line-height:1.8; text-align:center;
+  }
+  .box{
+    background:#fff; border-radius:20px; padding:40px 28px; max-width:420px; width:100%;
+    box-shadow:0 8px 28px rgba(70,110,150,.10); border:1px solid #edf3f9;
+  }
+  .badge{ display:inline-block; font-size:12px; font-weight:700; letter-spacing:.14em; color:var(--accent); background:#e3f1ff; border-radius:999px; padding:5px 14px; }
+  h1{ margin-top:18px; font-size:26px; letter-spacing:.04em; }
+  p{ margin-top:12px; color:var(--ink-soft); font-size:14px; }
+  .dots span{ display:inline-block; width:8px; height:8px; margin:22px 4px 0; border-radius:50%; background:var(--accent2); animation:blink 1.2s ease-in-out infinite; }
+  .dots span:nth-child(2){ animation-delay:.2s; } .dots span:nth-child(3){ animation-delay:.4s; }
+  @keyframes blink{ 0%,100%{ opacity:.25 } 50%{ opacity:1 } }
+  a{ display:inline-block; margin-top:26px; font-size:13px; color:var(--accent); text-decoration:none; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="badge">COMING SOON</div>
+    <h1>internU の作品</h1>
+    <p>ただいま準備中です。<br>このページがこれから作品に変わります。</p>
+    <div class="dots"><span></span><span></span><span></span></div>
+    <a href="../../../">← INTERN WORKS へ戻る</a>
+  </div>
+</body>
+</html>

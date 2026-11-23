@@ -146,6 +146,11 @@
   }
   @keyframes wave{ 0%,100%{transform:skewY(0)} 50%{transform:skewY(-6deg)} }
 
+  /* 準備中のサムネイル（作品ができたら差し替える） */
+  .thumb.prep{ background:linear-gradient(135deg, #dfeefc 0%, #e3f7ee 55%, #ece6fb 100%); }
+  .thumb.prep .logo{ top:70px; color:#5d7186; font-size:22px; letter-spacing:.16em; text-shadow:none; }
+  .thumb.prep .logo small{ color:#8aa1b6; text-shadow:none; }
+
   .card .body{ padding:20px 22px 22px; display:flex; flex-direction:column; gap:10px; flex:1; }
   .card .meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .tag{ font-size:11px; font-weight:700; letter-spacing:.06em; padding:4px 10px; border-radius:999px; }
@@ -292,6 +297,28 @@
         <div class="actions">
           <a class="btn-play" href="intern2026/202610/internT/">▶ あそぶ</a>
           <a class="btn-sub" href="https://github.com/trhyuga/intern/tree/main/intern2026/202610/internT" target="_blank" rel="noopener">コード</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- internU: 準備中 -->
+    <div class="card">
+      <div class="thumb prep">
+        <div class="logo">COMING SOON<small>internU の作品を準備中</small></div>
+      </div>
+      <div class="body">
+        <div class="meta">
+          <span class="tag t1">準備中</span>
+        </div>
+        <h3>（作品名は準備中）</h3>
+        <div class="creator"><span class="avatar">U</span>制作: internU（intern2026）</div>
+        <p class="desc">
+          新しく参加したインターン生の作品がここに並びます。
+          どんなものができるか、お楽しみに。
+        </p>
+        <div class="actions">
+          <a class="btn-play" href="intern2026/202610/internU/">▶ 見る</a>
+          <a class="btn-sub" href="https://github.com/trhyuga/intern/tree/main/intern2026/202610/internU" target="_blank" rel="noopener">コード</a>
         </div>
       </div>
     </div>
