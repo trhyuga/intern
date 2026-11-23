@@ -352,6 +352,7 @@ const Cinema = (() => {
   }
 
   // ================= タイトル背景 =================
+  const titleImg = new Image(); titleImg.src = 'media/title_bg.jpg?v=1';   // タイトルの背景の絵（読み込めなければ描画の背景）
   function titleBG(cv) {
     cancelAnimationFrame(titleRaf);
     const { c, W, H } = fit(cv);
@@ -363,6 +364,24 @@ const Cinema = (() => {
     const frame = () => {
       if (UI.cur !== 'title') return;
       const t = (performance.now() - t0) / 1000;
+      if (titleImg.complete && titleImg.naturalWidth) {
+        // 背景の絵（画面いっぱいに、はみ出す分は左右を切る）。その上に光・霧・鳥・花びらを動かす
+        const iw = titleImg.naturalWidth, ih = titleImg.naturalHeight, k = Math.max(W / iw, H / ih), dw = iw * k, dh = ih * k, dx = (W - dw) / 2, dy = (H - dh) / 2;
+        c.drawImage(titleImg, dx, dy, dw, dh);
+        const sx = dx + dw * 0.33, sy = dy + dh * 0.425;   // 絵の中の夕日
+        glow(c, sx, sy, dw * (0.3 + Math.sin(t * 0.8) * 0.03), `rgba(255,120,70,${0.22 + Math.sin(t * 0.8) * 0.06})`);
+        c.save(); c.translate(sx, sy); c.globalAlpha = 0.05 + Math.sin(t * 0.6) * 0.025; for (let i = 0; i < 9; i++) { c.save(); c.rotate(-1.25 + i * 0.31 + Math.sin(t / 7 + i) * 0.02); const g = c.createLinearGradient(0, 0, 0, -H * 0.4); g.addColorStop(0, '#ffd8a0'); g.addColorStop(1, 'rgba(255,216,160,0)'); c.fillStyle = g; c.beginPath(); c.moveTo(0, 0); c.lineTo(-12, -H * 0.4); c.lineTo(12, -H * 0.4); c.fill(); c.restore(); } c.restore(); c.globalAlpha = 1;   // 光の筋は上向きだけ、先にいくほど薄く
+        c.globalAlpha = 0.35; clouds(c, cl, t, W, '#c89080'); c.globalAlpha = 1;
+        birds(c, flock, t, W, 'rgba(20,8,8,0.7)');
+        for (let i = 0; i < 4; i++) { const y = H * (0.56 + i * 0.08); const g = c.createLinearGradient(0, y - 26, 0, y + 26); g.addColorStop(0, 'rgba(230,210,210,0)'); g.addColorStop(0.5, 'rgba(230,210,210,0.08)'); g.addColorStop(1, 'rgba(230,210,210,0)'); c.fillStyle = g; c.fillRect(0, y - 26 + Math.sin(t / 3 + i) * 8, W, 52); }
+        const hxp = ((t * 22) % (W + 220)) - 110;
+        rider(c, hxp, H * 0.66, 0.5, 'rgba(10,6,8,0.85)', t, '#8a1c14');
+        fireflies.forEach(f => { const x = f.x + Math.sin(t * 0.7 + f.p) * 20, y = H * 0.72 + (f.y % (H * 0.26)) + Math.cos(t * 0.9 + f.p) * 10; const a = 0.35 + Math.sin(t * 3 + f.p) * 0.35; glow(c, x, y, 8, `rgba(255,200,120,${a})`); });
+        petals.forEach(p => { p.y += p.v * 0.8; p.x += Math.sin(t + p.p) * 0.6; if (p.y > H) { p.y = -10; p.x = Math.random() * W; } c.save(); c.translate(p.x, p.y); c.rotate(t * 1.5 + p.p); c.fillStyle = 'rgba(255,195,205,0.8)'; c.beginPath(); c.ellipse(0, 0, p.s + 2, (p.s + 2) * 0.5, 0, 0, 7); c.fill(); c.restore(); });
+        finish(c, W, H, 0.5);
+        titleRaf = requestAnimationFrame(frame);
+        return;
+      }
       sky(c, W, H, [[0, '#14060a'], [0.35, '#4a1210'], [0.62, '#b8542a'], [0.75, '#f0a050'], [1, '#2a0e08']]);
       // 夕日と光の筋
       const sx = W * 0.5, sy = H * 0.5;
