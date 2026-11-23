@@ -6,6 +6,9 @@
 // ============================================================
 const Staff = (() => {
   const POLICIES = {
+    balanced:  { name: '均衡', icon: '⚖', desc: '参謀の得意な分野を軸に、国の様子を見て毎月の重点を選び、万遍なく進める。',
+                 stat: null, pers: { '沈着': 4, '策士': 3, '仁徳': 2, '奔放': -4 },
+                 effect: 'その月の重点の効き目（得意な重点ほど強い）' },
     expand:    { name: '拡張', icon: '⚔', desc: '独立惑星や弱った敵の星を攻め、領土を広げる。造艦を増やす。',
                  stat: o => o.tac * 0.55 + o.ldr * 0.45, pers: { '猛進': 12, '野心': 10, '策士': 5, '仁徳': -6, '沈着': -3 },
                  effect: '艦の火力が上がる。攻める見極めが良くなる' },
@@ -25,12 +28,17 @@ const Staff = (() => {
                  stat: o => o.ldr * 0.4 + o.tac * 0.4 + o.sci * 0.2, pers: { '忠烈': 8, '沈着': 5, '猛進': 4 },
                  effect: '蝕への火力が上がる', needEclipse: true },
   };
+  const SUBS = ['expand', 'defend', 'economy', 'research', 'diplomacy', 'eclipse'];
   const GRADES = [[85, 'S'], [72, 'A'], [60, 'B'], [45, 'C'], [0, 'D']];
   const gradeOf = sc => GRADES.find(([v]) => sc >= v)[1];
   const GRADE_COL = { S: '#ffd860', A: '#7ae08a', B: '#6ad0ff', C: '#c8b8a0', D: '#ff8a7a' };
 
   // 方針への向き不向き（0〜100）
   function score(key, pol) {
+    if (pol === 'balanced') {
+      const sc = SUBS.filter(p => !POLICIES[p].needEclipse).map(p => score(key, p)).sort((a, b) => b - a);
+      return clamp(Math.round((sc[0] + sc[1]) / 2 + (POLICIES.balanced.pers[OFF[key].pers] || 0)), 0, 100);
+    }
     const P = POLICIES[pol], S = OFF[key];
     const lead = G.facs[G.player].leader;
     const L = lead && isMine(lead) ? OFF[lead] : S;
@@ -43,16 +51,68 @@ const Staff = (() => {
   function grades(key) { const o = {}; for (const p in POLICIES) o[p] = gradeOf(score(key, p)); return o; }
 
   const active = () => !!(G && G.staff && G.staff.on);
-  const q = () => active() ? G.staff.score / 100 : 0;
-  // 方針の効き目：amp × (0.3〜1.0)
-  function bonus(pol, amp) { return active() && G.staff.policy === pol ? amp * (0.3 + 0.7 * q()) : 0; }
+  const curPol = () => G.staff.policy === 'balanced' ? (G.staff.cur || 'economy') : G.staff.policy;
+  const curK = () => (G.staff.policy === 'balanced' ? (G.staff.curScore ?? G.staff.score) : G.staff.score) / 100;
+  const q = () => active() ? curK() : 0;
+  // 方針の効き目：amp × (0.3〜1.0)。均衡のときは、その月の重点に少し弱めにかかる
+  function bonus(pol, amp) { return active() && curPol() === pol ? amp * (0.3 + 0.7 * q()) * (G.staff.policy === 'balanced' ? 0.85 : 1) : 0; }
+
+  // 均衡：今月の重点を選ぶ（参謀の得意 × 国の様子）
+  function chooseFocus() {
+    const s = G.staff, me = G.player, f = G.facs[me];
+    const mine = G.planets.filter(p => p.owner === me);
+    const hostile = o => o === 'E' || (Game.isMajor(o) && o !== me && Game.rel(me, o).s === 'war');
+    let threat = 0;
+    for (const p of mine) for (const n of Game.ADJ[p.id]) for (const fl of G.fleets) if (fl.at === n && fl.ships.length && hostile(fl.fac)) threat += Game.fleetPower(fl) > Game.planetDefense(p) * 0.8 ? 1 : 0.3;
+    const myFleet = Math.max(0, ...G.fleets.filter(x => x.fac === me).map(x => Game.fleetPower(x)));
+    const targets = mine.some(p => Game.ADJ[p.id].some(n => { const q2 = G.planets[n]; return !Game.friendly(me, q2.owner) && Game.canAttack(me, q2.owner) && q2.owner !== 'E' && Game.planetDefense(q2) * 1.3 < myFleet; }));
+    const stab = mine.reduce((a, p) => a + p.stab, 0) / Math.max(1, mine.length);
+    const e = Game.economy(me), poor = f.funds < 150 && e.inc - e.up < 60;
+    const wars = G.facs.filter(x => x.alive && x.id !== me && Game.rel(me, x.id).s === 'war').length;
+    const unsigned = G.facs.filter(x => x.alive && x.id !== me && ['neutral', 'nap'].includes(Game.rel(me, x.id).s)).length;
+    const why = {
+      expand: targets ? '攻め取れる星がある' : '領土を広げる好機を探る',
+      defend: threat ? '国境に敵の艦隊が迫っている' : '守りを固める',
+      economy: poor ? '資金が乏しい' : stab < 50 ? '民心が揺らいでいる' : '国力を蓄える',
+      research: '技術で先んじる',
+      diplomacy: wars && f.warWeary > 3 ? '長引く戦を収める' : '味方を増やす',
+      eclipse: '蝕を討つ',
+    };
+    const need = {
+      expand: (targets ? 1.3 : 0.25) * (threat ? 0.4 : 1),
+      defend: threat ? 1.2 + threat * 0.8 : 0.35,
+      economy: poor || stab < 50 ? 1.7 : 1,
+      research: 1,
+      diplomacy: wars && f.warWeary > 3 ? 1.7 : unsigned ? 0.9 : 0.4,
+      eclipse: G.eclipse.arrived && !G.eclipse.defeated ? 3 : 0,
+    };
+    let best = null, bv = -1;
+    const w = {};
+    for (const p of SUBS) {
+      const sc = score(s.key, p) / 100;
+      let v = need[p] * Math.pow(sc, 1.6);       // 得意なほど選ばれやすい
+      if (p === s.cur) v *= s.curRun >= 4 ? 0.45 : 1.2;   // 続けすぎない・すぐ変えすぎない
+      // しばらく手をつけていない分野にも目を配る
+      s.last = s.last || {};
+      const since = G.turn - (s.last[p] ?? s.from);
+      if (p !== s.cur) v *= 1 + Math.min(0.9, since * 0.07);
+      v *= 0.85 + Math.random() * 0.3;
+      w[p] = v;
+      if (v > bv) { bv = v; best = p; }
+    }
+    if (best !== s.cur) { s.cur = best; s.curRun = 1; } else s.curRun = (s.curRun || 0) + 1;
+    s.last = s.last || {}; s.last[best] = G.turn;
+    s.curScore = score(s.key, best);
+    s.curWhy = why[best];
+    return best;
+  }
 
   // AI に渡す指示
   function params() {
-    const s = G.staff, k = s.score / 100, S = OFF[s.key];
+    const s = G.staff, k = curK(), S = OFF[s.key];
     const reckless = S.pers === '猛進' ? -0.15 : S.pers === '沈着' ? 0.1 : 0;
     const base = { mistake: 0.35 * Math.pow(1 - k, 2), noForb: true };
-    switch (s.policy) {
+    switch (curPol()) {
       case 'expand': return { ...base, agg: 0.92, need: 1.15 + (1 - k) * 0.5 + reckless, build: 1.25 };
       case 'defend': return { ...base, agg: 0.05, noMajors: true, noIndep: true, focus: 'def', build: 1.1, research: { def: 1.6 } };
       case 'economy': return { ...base, agg: 0.2, noMajors: true, focus: 'pop', build: 0.6, research: { eco: 1.7 } };
@@ -81,6 +141,10 @@ const Staff = (() => {
     const s = G.staff, me = G.player, f = G.facs[me];
     s.month = [];
     s.fundsBefore = f.funds;
+    if (s.policy === 'balanced') {
+      const prev = s.cur, p = chooseFocus(), P = POLICIES[p];
+      s.month.push(`今月の重点は${P.icon}${P.name}（${s.curWhy}・得意${gradeOf(s.curScore)}）${prev && prev !== p ? `。${POLICIES[prev].name}から切り替えた` : ''}。`);
+    }
     // 蝕が退いたら対蝕作戦はおしまい
     if (s.policy === 'eclipse' && (!G.eclipse.arrived || G.eclipse.defeated)) { s.month.push('対蝕作戦の相手がいません。'); return; }
     // 動く前の様子
@@ -109,14 +173,14 @@ const Staff = (() => {
   function policyWork() {
     const s = G.staff, me = G.player, f = G.facs[me], k = s.score / 100;
     const reserve = 300;
-    if (s.policy === 'economy') {
+    if (curPol() === 'economy') {
       // 余った資金を、人口の多い星の開発に投じる（得意なほど多くの星へ）
       const n = 1 + Math.round(2 * k);
       const ps = G.planets.filter(p => p.owner === me && p.focus !== 'pop' && (p[p.focus] || 0) < Game.devCap(p, p.focus)).sort((a, b) => b.pop - a.pop);
       let done = 0;
       for (const p of ps) { if (done >= n || f.funds - Game.investCost(p) < reserve) break; if (Game.invest(p.id)) done++; }
     }
-    if (s.policy === 'research') {
+    if (curPol() === 'research') {
       // 研究の星に投資し、残りを研究費に回す
       const rp = G.planets.filter(p => p.owner === me && p.focus === 'res' && p.res < Game.devCap(p, 'res')).sort((a, b) => b.pop - a.pop)[0];
       if (rp && f.funds - Game.investCost(rp) >= reserve) Game.invest(rp.id);
@@ -141,22 +205,22 @@ const Staff = (() => {
   function envoy() { return Game.officersOf(G.player).filter(k => G.officers[k].busy !== G.turn).sort((a, b) => OFF[b].dip - OFF[a].dip)[0]; }
   // 参謀の外交
   function diplomacy() {
-    const me = G.player, s = G.staff, k = s.score / 100;
+    const me = G.player, s = G.staff, k = curK(), pol = curPol();
     const out = [];
     // 小勢力の依頼が果たせていれば盟約を結ぶ
     for (const M of MINORS) {
       const m = G.minors[M.id];
       if (m.ally === null && G.planets[M.planet].owner === M.id && Game.minorProgress(M.id, me) >= M.quest.need) { Game.minorJoin(M.id, me); out.push(`${M.name}と盟約を結んだ。`); }
     }
-    const tryKinds = s.policy === 'diplomacy' ? ['ally', 'trade', 'nap', 'peace'] : s.policy === 'expand' ? ['peace'] : ['peace', 'nap', 'trade'];
+    const tryKinds = pol === 'diplomacy' ? ['ally', 'trade', 'nap', 'peace'] : pol === 'expand' ? ['peace'] : ['peace', 'nap', 'trade'];
     // 和平外交なら毎月、ほかの方針でもときどき
-    const freq = s.policy === 'diplomacy' ? 1 : 0.25;
+    const freq = pol === 'diplomacy' ? 1 : s.policy === 'balanced' ? 0.35 : 0.25;
     // 優れた参謀は通りそうな時だけ申し入れる
-    const minP = s.policy === 'diplomacy' ? 0.2 + 0.25 * k : 0.45;
+    const minP = pol === 'diplomacy' ? 0.2 + 0.25 * k : 0.45;
     for (let b = 0; b < 6; b++) {
       if (b === me || !G.facs[b].alive || Math.random() > freq) continue;
       const r = Game.rel(me, b);
-      if (r.s === 'war' && s.policy === 'expand' && G.facs[me].warWeary < 6) continue;
+      if (r.s === 'war' && pol === 'expand' && G.facs[me].warWeary < 6) continue;
       for (const kind of tryKinds) {
         if (!Diplo.KINDS[kind].need.includes(r.s)) continue;
         const ev = envoy(); if (!ev) break;
@@ -168,7 +232,7 @@ const Staff = (() => {
       }
     }
     // 和平外交：資金に余裕があれば、信頼の低い国へ贈り物
-    if (s.policy === 'diplomacy' && G.facs[me].funds > 900) {
+    if (pol === 'diplomacy' && G.facs[me].funds > 900) {
       const t = G.facs.filter(f => f.alive && f.id !== me && Game.rel(me, f.id).s !== 'ally').sort((a, b) => Game.rel(me, a.id).t - Game.rel(me, b.id).t)[0];
       if (t) { Diplo.gift(me, t.id, 200); out.push(`${FACTIONS[t.id].name}へ贈り物を届けた。`); }
     }
@@ -177,7 +241,7 @@ const Staff = (() => {
   // 他国からの申し入れに参謀が答える
   function answer(pd) {
     const s = G.staff;
-    if (s.policy === 'expand') return pd.kind === 'peace' || pd.kind === 'trade';
+    if (curPol() === 'expand') return pd.kind === 'peace' || pd.kind === 'trade';
     return true;
   }
   // 止めるべきか
@@ -185,7 +249,7 @@ const Staff = (() => {
     const s = G.staff;
     if (!active()) return null;
     if (s.until !== null && G.turn >= s.until) return `方針の期間（${s.until - s.from}か月）が終わりました。`;
-    if (info.eclipseArrived) return '蝕が現れました。方針を見直してください。';
+    if (info.eclipseArrived && s.policy !== 'balanced') return '蝕が現れました。方針を見直してください。';
     if (info.capitalLost) return '首都が陥落しました。';
     if (s.policy === 'eclipse' && G.eclipse.defeated) return '蝕を退けました。対蝕作戦はここまでです。';
     const lost = s.base.planets - G.planets.filter(p => p.owner === G.player).length;
@@ -216,9 +280,13 @@ const Staff = (() => {
       C: 'やってはみますが……あまり得意な分野ではありません。',
       D: '……正直に申し上げて、私向きの仕事ではありません。失敗しても恨まないでくださいよ。',
     };
+    if (policy === 'balanced') {
+      const top = SUBS.filter(p => !POLICIES[p].needEclipse).sort((a, b) => score(key, b) - score(key, a)).slice(0, 2).map(p => POLICIES[p].name);
+      byG.S = byG.A = `${top.join('と')}を軸に、国の様子を見ながら万遍なく進めます。`;
+    }
     const byP = { '猛進': '回りくどいのは嫌いだ。', '沈着': '焦らず、一手ずつ。', '策士': '盤面はもう見えています。', '仁徳': '民のためになるよう努めます。', '野心': '手柄は、いただきますよ。', '忠烈': 'この身命を賭して。', '奔放': 'ま、なんとかなるでしょ！' };
     return byP[pers] + byG[g];
   }
 
-  return { POLICIES, GRADE_COL, score, grades, gradeOf, active, bonus, params, start, stop, turnPlayer, answer, shouldStop, summary, line, monthLine };
+  return { POLICIES, SUBS, curPol, GRADE_COL, score, grades, gradeOf, active, bonus, params, start, stop, turnPlayer, answer, shouldStop, summary, line, monthLine };
 })();

@@ -634,7 +634,8 @@ const UI = (() => {
     const me = G.player;
     if (Staff.active()) {
       const s = G.staff, P = Staff.POLICIES[s.policy], g = Staff.gradeOf(s.score);
-      body.innerHTML = `<div class="st-now">${ofcCard(s.key)}<div class="st-pol"><b>${P.icon} ${P.name}</b> ${gradeBadge(g)}<small>${P.desc}</small><small>効き目：${P.effect}</small>
+      const cur = s.policy === 'balanced' && s.cur ? `<small>いまの重点：${Staff.POLICIES[s.cur].icon}${Staff.POLICIES[s.cur].name}（${s.curWhy || ''}・得意${Staff.gradeOf(s.curScore)}）</small>` : '';
+      body.innerHTML = `<div class="st-now">${ofcCard(s.key)}<div class="st-pol"><b>${P.icon} ${P.name}</b> ${gradeBadge(g)}<small>${P.desc}</small>${cur}<small>効き目：${P.effect}</small>
         <small>期間：${s.until ? `${Game.dateStr(s.until)}まで（あと${Math.max(0, s.until - G.turn)}か月）` : '止めるまで'}・${s.bigManual ? '大きな戦いは自分で指揮' : '戦いも参謀に任せる'}</small></div></div>
         ${(s.lines || []).length ? `<h3>${s.linesDate || ''}の報告</h3><div class="rep">${s.lines.map(x => typeof x === 'string' ? { cls: 'staff', t: x } : x).map(x => `<div class="lg ${x.cls}">${esc(x.t)}</div>`).join('')}</div>` : ''}
         <h3>ここまでの成果</h3><div class="kv">${Staff.summary().map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
@@ -649,12 +650,14 @@ const UI = (() => {
       // いちばん得意の大きい士官を勧める
       let best = cands[0], bs = -1;
       for (const k of cands) for (const p in Staff.POLICIES) { if (Staff.POLICIES[p].needEclipse) continue; const sc = Staff.score(k, p); if (sc > bs) { bs = sc; best = k; } }
-      staffDraft = { key: best, policy: staffDraft ? staffDraft.policy : 'economy', months: 12, big: true };
+      staffDraft = { key: best, policy: staffDraft ? staffDraft.policy : 'balanced', months: 12, big: true };
     }
     const d = staffDraft;
     const grs = Staff.grades(d.key);
     if (!G.eclipse.arrived) delete grs.eclipse;
+    const balG = grs.balanced; delete grs.balanced;
     const good = Object.keys(grs).filter(p => 'SA'.includes(grs[p])).map(p => Staff.POLICIES[p].name), bad = Object.keys(grs).filter(p => grs[p] === 'D').map(p => Staff.POLICIES[p].name);
+    grs.balanced = balG;
     body.innerHTML = `<p class="note">参謀と方針と期間を決めると、その方針を中心に、月を自動で進めます。参謀（7割）と君主（3割）の能力・性格で得意・不得意が決まり、方針の効き目と、しくじりやすさが変わります。会話の出来事は途中で見られます。</p>
       <h3>参謀</h3>${ofcCard(d.key, '<button class="btn small" data-a="pick">替える</button>')}
       <p class="note">得意：${good.join('・') || 'とくになし'}${bad.length ? `／不得手：${bad.join('・')}` : ''}${lead && isMine(lead) ? `（君主${shortName(OFF[lead])}の${OFF[lead].pers}の気質も加わる）` : ''}</p>
@@ -729,7 +732,8 @@ const UI = (() => {
   function drawAutobar() {
     const el = $('#autobar'); if (!el) return;
     if (!G || !Staff.active()) { el.classList.remove('show'); return; }
-    const s = G.staff, P = Staff.POLICIES[s.policy];
+    const s = G.staff, P0 = Staff.POLICIES[s.policy];
+    const P = s.policy === 'balanced' && s.cur ? { icon: '⚖', name: `均衡→${Staff.POLICIES[s.cur].icon}${Staff.POLICIES[s.cur].name}` } : P0;
     el.classList.add('show');
     const lines = (s.lines || []).map(x => typeof x === 'string' ? { cls: 'staff', t: x } : x);
     el.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}<small>${Game.dateStr()}・${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}</small></b>
