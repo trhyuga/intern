@@ -27,26 +27,28 @@ const Cinema = (() => {
       } else { c.fillStyle = `rgba(210,230,255,${a})`; c.fillRect(x, y, sz, sz); }
     }
   }
-  function textC(c, s, x, y, size, a, opt = {}) {
-    c.save(); c.globalAlpha = a; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.font = `${opt.w || 600} ${size}px ${opt.font || '"Shippori Mincho B1","Hiragino Mincho ProN",serif'}`;
-    if (opt.ls) c.letterSpacing = opt.ls + 'px';
-    c.shadowColor = opt.glow || 'rgba(120,180,255,.8)'; c.shadowBlur = opt.blur ?? 12;
-    c.fillStyle = opt.col || '#eef4ff'; c.fillText(s, x, y);
-    c.restore();
+  // ---------- 字幕（文字は Canvas に描かず、上に重ねた HTML で出す） ----------
+  //  Safari の Canvas の文字（字間など）に左右されないように。
+  //  毎フレーム「いま見せる文」を集め、同じ文の要素は使い回す。
+  let capEl = null; const capPool = new Map(); let capUsed = new Set();
+  function capBegin(el) { capEl = el; capUsed = new Set(); }
+  function capEnd() { for (const [k, d] of capPool) if (!capUsed.has(k)) { d.remove(); capPool.delete(k); } }
+  function capClear() { capPool.forEach(d => d.remove()); capPool.clear(); capUsed = new Set(); }
+  function putCap(s, x, y, size, a, opt, maxW) {
+    if (!capEl || a <= 0.01 || !s) return;
+    let key = s, n = 0;
+    while (capUsed.has(key)) key = s + '#' + (++n);
+    capUsed.add(key);
+    let d = capPool.get(key);
+    if (!d) { d = document.createElement('div'); d.className = 'cap'; d.textContent = s; capEl.appendChild(d); capPool.set(key, d); }
+    const ls = opt.ls || 0, glow = opt.glow || 'rgba(120,180,255,.8)', blur = opt.blur ?? 12;
+    const clip = opt.clip !== undefined ? `clip-path:inset(-40% ${Math.max(0, (1 - opt.clip) * 100)}% -40% -10%);-webkit-clip-path:inset(-40% ${Math.max(0, (1 - opt.clip) * 100)}% -40% -10%);` : '';
+    d.style.cssText = `left:${x}px;top:${y}px;font-size:${size}px;opacity:${Math.min(1, a)};color:${opt.col || '#eef4ff'};font-weight:${opt.w || 600};`
+      + `letter-spacing:${ls}px;padding-left:${ls}px;text-shadow:0 0 ${blur}px ${glow},0 0 ${Math.round(blur / 3)}px ${glow},0 1px 3px #000;`
+      + (maxW ? `width:${Math.round(maxW)}px;white-space:normal;` : 'white-space:nowrap;') + clip;
   }
-  function wrapLines(c, s, maxW, size) {
-    c.font = `600 ${size}px "Shippori Mincho B1",serif`;
-    const out = []; let line = '';
-    // 句読点や閉じかっこは行の頭に来ないようにする
-    for (const ch of s) { if (c.measureText(line + ch).width > maxW && line && !'。、」』）！？…'.includes(ch)) { out.push(line); line = ch; } else line += ch; }
-    if (line) out.push(line);
-    return out;
-  }
-  function textBlock(c, s, x, y, size, a, maxW, opt) {
-    const lines = wrapLines(c, s, maxW, size);
-    lines.forEach((l, i) => textC(c, l, x, y + (i - (lines.length - 1) / 2) * size * 1.6, size, a, opt));
-  }
+  function textC(c, s, x, y, size, a, opt = {}) { putCap(s, x, y, size, a, opt, null); }
+  function textBlock(c, s, x, y, size, a, maxW, opt = {}) { putCap(s, x, y, size, a, opt, maxW || null); }
   // 艦隊のシルエット
   function fleet(c, cx, cy, n, ang, L, col, seed, spread = 1) {
     const r = Art.srand(seed);
@@ -121,16 +123,22 @@ const Cinema = (() => {
   function stopTitle() { if (titleRaf) cancelAnimationFrame(titleRaf); titleRaf = null; if (title._off) title._off(); }
 
   // ---------------- 汎用の再生器 ----------------
+  let playing = null;   // 再生中の映像（二重に始まらないように）
   function play(screenId, cvId, dur, drawFn, opt = {}) {
+    if (playing) playing();   // 前の再生を黙って止める
     return new Promise(res => {
       UI.show(screenId);
       const scr = document.getElementById(screenId), cv = document.getElementById(cvId);
+      const capLayer = scr.querySelector('.cine-cap');
+      capClear();
       let { c, W, H } = fit(cv);
       const onR = () => ({ c, W, H } = fit(cv));
       window.addEventListener('resize', onR);
       const t0 = performance.now();
       let raf = null, done = false, skipT = 0;
-      const end = () => { if (done) return; done = true; cancelAnimationFrame(raf); window.removeEventListener('resize', onR); scr.querySelector('.skip').onclick = null; scr.onclick = null; res(); };
+      const stop = () => { if (done) return false; done = true; cancelAnimationFrame(raf); window.removeEventListener('resize', onR); scr.querySelector('.skip').onclick = null; scr.onclick = null; capClear(); if (playing === stop) playing = null; return true; };
+      const end = () => { if (stop()) res(); };
+      playing = stop;
       const skip = scr.querySelector('.skip');
       skip.onclick = e => { e.stopPropagation(); Sound.se('click'); end(); };
       if (opt.tap) scr.onclick = () => { skipT += opt.tap(((performance.now() - t0) / 1000) + skipT) || 0; };
@@ -138,7 +146,9 @@ const Cinema = (() => {
         const t = (performance.now() - t0) / 1000 + skipT;
         if (t >= dur) { end(); return; }
         c.setTransform(Math.min(2, window.devicePixelRatio || 1), 0, 0, Math.min(2, window.devicePixelRatio || 1), 0, 0);
+        capBegin(capLayer);
         drawFn(c, W, H, t);
+        capEnd();
         raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
@@ -197,7 +207,7 @@ const Cinema = (() => {
           c.fillStyle = g; c.beginPath(); c.arc(x, y, M * 0.12, 0, 7); c.fill();
           Art.emblem(c, F.emblem, x, y, M * 0.07 * (0.6 + k * 0.4), F.col, F.col2);
           c.restore();
-          const ta = a * fade(t, at, at + 2.6, 0.4);
+          const ta = a * fade(t, at, at + 2.2, 0.35);
           textC(c, F.name, W / 2, H * 0.5, 22, ta, { glow: F.col, blur: 18 });
           textC(c, '「' + F.motto + '」', W / 2, H * 0.5 + 30, 13, ta * 0.9, { col: F.col2 });
         });
@@ -259,22 +269,19 @@ const Cinema = (() => {
         // 光の筆で書かれる題字
         const size = Math.min(W / 6, 80);
         const reveal = easeOut((k - 0.8) / 3.2);
-        c.save();
-        c.beginPath(); c.rect(0, 0, W * reveal, H); c.clip();
-        textC(c, CONFIG.title, W / 2, H * 0.5, size, 1, { w: 800, glow: 'rgba(120,190,255,1)', blur: 30, ls: size * 0.12 });
-        textC(c, CONFIG.title, W / 2, H * 0.5, size, 1, { w: 800, glow: 'rgba(255,255,255,.9)', blur: 6, ls: size * 0.12, col: '#ffffff' });
-        c.restore();
-        // 筆の光
+        textC(c, CONFIG.title, W / 2, H * 0.5, size, reveal > 0 ? 1 : 0, { w: 800, glow: 'rgba(120,190,255,1)', blur: 30, ls: size * 0.12, col: '#ffffff', clip: reveal });
+        // 筆の光（題字の左端から右端へ）
+        const tw = size * CONFIG.title.length * 1.12;
         if (reveal > 0 && reveal < 1) {
-          const x = W * reveal; const g = c.createRadialGradient(x, H * 0.5, 0, x, H * 0.5, size * 0.9);
+          const x = W / 2 - tw / 2 + tw * reveal; const g = c.createRadialGradient(x, H * 0.5, 0, x, H * 0.5, size * 0.9);
           g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.3, 'rgba(150,210,255,.5)'); g.addColorStop(1, 'rgba(80,140,255,0)');
           c.fillStyle = g; c.beginPath(); c.arc(x, H * 0.5, size * 0.9, 0, 7); c.fill();
         }
-        textC(c, '― ' + CONFIG.sub + ' ―', W / 2, H * 0.5 + size * 0.85, Math.min(16, W / 24), ease((k - 4) / 2), { ls: 6, col: '#cfe2ff' });
+        textC(c, '― ' + CONFIG.sub + ' ―', W / 2, H * 0.5 + size * 1.25, Math.min(16, W / 24), ease((k - 4) / 2), { ls: 6, col: '#cfe2ff' });
         // 線
         const lk = ease((k - 3.5) / 2);
         c.strokeStyle = `rgba(180,210,255,${lk * 0.6})`; c.lineWidth = 1;
-        c.beginPath(); c.moveTo(W / 2 - W * 0.38 * lk, H * 0.5 + size * 0.58); c.lineTo(W / 2 + W * 0.38 * lk, H * 0.5 + size * 0.58); c.stroke();
+        c.beginPath(); c.moveTo(W / 2 - W * 0.38 * lk, H * 0.5 + size * 0.9); c.lineTo(W / 2 + W * 0.38 * lk, H * 0.5 + size * 0.9); c.stroke();
         if (k > 15) { c.fillStyle = `rgba(0,0,0,${(k - 15) / 2.5})`; c.fillRect(0, 0, W, H); }
       }
     }, { tap: t => t < 66 ? 0 : 0 });
