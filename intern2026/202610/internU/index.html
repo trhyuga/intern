@@ -2,38 +2,103 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>internU — 準備中</title>
-<style>
-  :root{ --ink:#2b3a4a; --ink-soft:#5d7186; --accent:#4a9de0; --accent2:#3ec99a; }
-  *{ margin:0; padding:0; box-sizing:border-box; }
-  body{
-    font-family:"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
-    color:var(--ink);
-    background:linear-gradient(160deg, #f2f8ff 0%, #eef9f4 55%, #f7f4ff 100%);
-    min-height:100vh; display:flex; align-items:center; justify-content:center;
-    padding:24px 16px; line-height:1.8; text-align:center;
-  }
-  .box{
-    background:#fff; border-radius:20px; padding:40px 28px; max-width:420px; width:100%;
-    box-shadow:0 8px 28px rgba(70,110,150,.10); border:1px solid #edf3f9;
-  }
-  .badge{ display:inline-block; font-size:12px; font-weight:700; letter-spacing:.14em; color:var(--accent); background:#e3f1ff; border-radius:999px; padding:5px 14px; }
-  h1{ margin-top:18px; font-size:26px; letter-spacing:.04em; }
-  p{ margin-top:12px; color:var(--ink-soft); font-size:14px; }
-  .dots span{ display:inline-block; width:8px; height:8px; margin:22px 4px 0; border-radius:50%; background:var(--accent2); animation:blink 1.2s ease-in-out infinite; }
-  .dots span:nth-child(2){ animation-delay:.2s; } .dots span:nth-child(3){ animation-delay:.4s; }
-  @keyframes blink{ 0%,100%{ opacity:.25 } 50%{ opacity:1 } }
-  a{ display:inline-block; margin-top:26px; font-size:13px; color:var(--accent); text-decoration:none; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#02030a">
+<title>星霜戦記 ―ECLIPSE CHRONICLE―</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
 </head>
 <body>
-  <div class="box">
-    <div class="badge">COMING SOON</div>
-    <h1>internU の作品</h1>
-    <p>ただいま準備中です。<br>このページがこれから作品に変わります。</p>
-    <div class="dots"><span></span><span></span><span></span></div>
-    <a href="../../../">← INTERN WORKS へ戻る</a>
-  </div>
+<div id="app">
+  <!-- 起動（音を鳴らすために最初のタップが必要） -->
+  <section id="tap" class="screen show">
+    <div class="tap-inner">
+      <div class="tap-title" data-title>星霜戦記</div>
+      <div class="tap-sub" data-sub>ECLIPSE CHRONICLE</div>
+      <div class="tap-hint">画面をタップしてください</div>
+      <div class="tap-note">音が鳴ります</div>
+    </div>
+  </section>
+
+  <section id="opening" class="screen"><canvas id="opcv"></canvas><button class="skip">スキップ ▶</button></section>
+
+  <section id="title" class="screen">
+    <canvas id="titlecv"></canvas>
+    <div class="title-wrap">
+      <h1 class="logo" data-title>星霜戦記</h1>
+      <div class="logo-sub">― <span data-sub>ECLIPSE CHRONICLE</span> ―</div>
+      <div class="title-menu">
+        <button class="btn big primary" data-act="new">新しく始める</button>
+        <button class="btn big" data-act="load">続きから</button>
+        <button class="btn" data-act="howto">遊び方</button>
+        <button class="btn" data-act="opening">オープニング</button>
+        <button class="btn" data-act="records">記録</button>
+        <button class="btn" data-act="mute">音：オン</button>
+      </div>
+      <div class="title-foot">intern2026 / internU</div>
+    </div>
+  </section>
+
+  <section id="select" class="screen">
+    <header class="hdr"><button class="back">‹ 戻る</button><h2>国を選ぶ</h2></header>
+    <div class="scroll" id="selList"></div>
+  </section>
+
+  <section id="main" class="screen">
+    <header class="topbar">
+      <div class="tb-l"><div class="tb-date" id="tbDate"></div><div class="tb-fac" id="tbFac"></div></div>
+      <div class="tb-res" id="tbRes"></div>
+      <div class="tb-ecl" id="tbEcl"></div>
+      <button class="tb-menu" id="btnMenu">☰</button>
+    </header>
+    <div class="mapwrap"><canvas id="mapcv"></canvas><div id="quick" class="quick"></div></div>
+    <nav class="bottombar">
+      <button data-nav="planets"><i>◉</i>惑星</button>
+      <button data-nav="fleets"><i>▲</i>艦隊</button>
+      <button data-nav="tech"><i>⚙</i>技術</button>
+      <button data-nav="people"><i>☺</i>人事</button>
+      <button data-nav="diplo"><i>✦</i>外交</button>
+      <button data-nav="gov"><i>☰</i>国政</button>
+      <button data-nav="end" class="end"><i>▶</i>月を進める</button>
+    </nav>
+  </section>
+
+  <section id="battle" class="screen"></section>
+  <section id="ending" class="screen"><canvas id="endcv"></canvas><button class="skip">スキップ ▶</button></section>
+
+  <!-- 下から出るシート -->
+  <div id="sheet" class="sheet"><div class="sh-bg"></div><div class="sh-panel"><div class="sh-head"><button class="sh-back">‹</button><b class="sh-title"></b><button class="sh-close">✕</button></div><div class="sh-body"></div></div></div>
+  <div id="talk" class="talk"></div>
+  <div id="modal" class="modal"></div>
+  <div id="busy" class="busy"></div>
+  <div id="toast" class="toast"></div>
+</div>
+
+<script src="js/config.js?v=1"></script>
+<script src="js/data_world.js?v=1"></script>
+<script src="js/data_factions.js?v=1"></script>
+<script src="js/data_ships.js?v=1"></script>
+<script src="js/data_officers.js?v=1"></script>
+<script src="js/art.js?v=1"></script>
+<script src="js/game.js?v=1"></script>
+<script src="js/data_events.js?v=1"></script>
+<script src="js/audio.js?v=1"></script>
+<script src="js/portrait.js?v=1"></script>
+<script src="js/designer.js?v=1"></script>
+<script src="js/diplomacy.js?v=1"></script>
+<script src="js/eclipse.js?v=1"></script>
+<script src="js/ai.js?v=1"></script>
+<script src="js/battle.js?v=1"></script>
+<script src="js/starmap.js?v=1"></script>
+<script src="js/story.js?v=1"></script>
+<script src="js/turn.js?v=1"></script>
+<script src="js/cinema.js?v=1"></script>
+<script src="js/ui.js?v=1"></script>
+<script>UI.boot();</script>
 </body>
 </html>
