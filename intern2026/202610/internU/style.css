@@ -396,3 +396,35 @@ small { font-size: 11px; }
 .bottombar .end.stopper { background: linear-gradient(#8a2a3a, #4a1220); border-left-color: #ff8a9a; }
 
 .wr-head .ab-b { flex-direction: row; }
+
+/* ---------- セーブの枠 ---------- */
+.slots { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 2px; }
+.slot { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 22%, #0b1222), #0b1222); border: 1px solid color-mix(in srgb, var(--c) 55%, #2a3a5c); cursor: pointer; }
+.slot.empty { background: #0b1222; border-style: dashed; }
+.slot.off { opacity: .4; cursor: default; }
+.slot.sure { outline: 2px solid var(--gold); }
+.sl-no { flex: 0 0 52px; text-align: center; font-family: var(--mincho); font-weight: 700; color: var(--gold); font-size: 13px; }
+.sl-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sl-body b { font-size: 14px; }
+.sl-body small { color: var(--dim); }
+.sl-at { opacity: .7; }
+.sl-del { flex: 0 0 auto; background: #2a1014; border: 1px solid #a83a3a; color: #ffd0c8; border-radius: 6px; font-size: 11px; padding: 4px 8px; }
+.sl-del.sure { background: #a83a3a; color: #fff; }
+
+/* ---------- 会敵の帯 ---------- */
+.raid { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 6; display: none; padding: 10px 14px 8px; border-radius: 12px; background: linear-gradient(#1a0a10f0, #0a0508f0); border: 1px solid #ff6a5a; box-shadow: 0 0 24px #ff3a2a60; text-align: center; cursor: pointer; }
+.raid.go { background: linear-gradient(#0a1a2af0, #050a12f0); border-color: #6ad0ff; box-shadow: 0 0 24px #3a8aff60; }
+.raid.show { display: block; animation: raidin .35s ease-out; }
+.raid .rd-h { font-family: var(--mincho); font-weight: 700; font-size: 17px; letter-spacing: .25em; color: #ff8a7a; }
+.raid.go .rd-h { color: #9ae0ff; }
+.raid.hit .rd-h { animation: rdblink .8s infinite alternate; }
+.raid .rd-b { font-size: 14px; line-height: 1.6; margin-top: 4px; }
+.raid .rd-b b { color: var(--gold); }
+.raid .rd-vs { font-size: 12px; color: var(--dim); margin-top: 3px; }
+.raid .rd-tap { display: block; color: #8a9ac088; font-size: 10px; margin-top: 2px; }
+@keyframes raidin { from { transform: translateY(-20px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes rdblink { from { opacity: 1; } to { opacity: .45; } }
+.wr-raid { cursor: pointer; }
+.wr-raid .wr-map { display: block; color: var(--accent); font-size: 11px; margin-top: 1px; }
+.rep .lg.rraid { cursor: pointer; border-left: 3px solid #ff6a5a; }
+.rep .lg.rraid.go { border-left-color: #6ad0ff; }

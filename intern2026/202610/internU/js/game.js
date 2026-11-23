@@ -735,24 +735,68 @@ const Game = (() => {
   }
 
   // ---------- セーブ ----------
-  function save() {
-    try { localStorage.setItem(CONFIG.saveKey, JSON.stringify(G)); return true; } catch (e) { return false; }
+  //  枠 0 は毎月の自動セーブ、1〜3 は手動セーブ
+  const SLOTS = 3;
+  const slotKey = slot => slot ? `${CONFIG.saveKey}_s${slot}` : CONFIG.saveKey;
+  const infoKey = CONFIG.saveKey.replace('save', 'slots');
+  function readInfo() { try { return JSON.parse(localStorage.getItem(infoKey) || '{}') || {}; } catch (e) { return {}; } }
+  function summary() {
+    const me = G.player;
+    return {
+      fac: me, name: FACTIONS[me].name, date: dateStr(), turn: G.turn,
+      planets: G.planets.filter(p => p.owner === me).length,
+      staff: G.staff && G.staff.on && OFF[G.staff.key] ? OFF[G.staff.key].name : null,
+      at: Date.now(), over: G.over || null,
+    };
   }
-  function hasSave() { try { return !!localStorage.getItem(CONFIG.saveKey); } catch (e) { return false; } }
-  function load() {
+  function save(slot = 0) {
     try {
-      const s = localStorage.getItem(CONFIG.saveKey);
+      // 作戦室の記録は直近6か月分だけ残して保存する（容量のため）
+      const war = G.war;
+      const data = JSON.stringify(Object.assign({}, G, { war: (war || []).filter(e => e.t >= G.turn - 6) }));
+      localStorage.setItem(slotKey(slot), data);
+      const info = readInfo(); info[slot] = summary();
+      localStorage.setItem(infoKey, JSON.stringify(info));
+      return true;
+    } catch (e) { return false; }
+  }
+  function hasSave(slot) {
+    try {
+      if (slot === undefined) { for (let s = 0; s <= SLOTS; s++) if (localStorage.getItem(slotKey(s))) return true; return false; }
+      return !!localStorage.getItem(slotKey(slot));
+    } catch (e) { return false; }
+  }
+  // 枠の見出し（見出しがない古いセーブは、中身を読んで作る）
+  function slotInfo() {
+    const info = readInfo(), out = [];
+    for (let s = 0; s <= SLOTS; s++) {
+      let i = null;
+      try {
+        if (localStorage.getItem(slotKey(s))) {
+          i = info[s] || null;
+          if (!i) { const d = JSON.parse(localStorage.getItem(slotKey(s))); i = { fac: d.player, name: FACTIONS[d.player].name, date: dateStr(d.turn), turn: d.turn, planets: d.planets.filter(p => p.owner === d.player).length, staff: null, at: null, over: d.over || null }; }
+        }
+      } catch (e) { i = null; }
+      out.push({ slot: s, auto: s === 0, info: i });
+    }
+    return out;
+  }
+  function load(slot = 0) {
+    try {
+      const s = localStorage.getItem(slotKey(slot));
       if (!s) return false;
       G = JSON.parse(s);
       buildLanes();
       return true;
     } catch (e) { return false; }
   }
-  function clearSave() { try { localStorage.removeItem(CONFIG.saveKey); } catch (e) { } }
+  function clearSave(slot = 0) {
+    try { localStorage.removeItem(slotKey(slot)); const info = readInfo(); delete info[slot]; localStorage.setItem(infoKey, JSON.stringify(info)); } catch (e) { }
+  }
 
   return {
     isLeader, rankIdx, rankName, fleetCap, checkPromotions, marshalOf,
-    newGame, save, load, hasSave, clearSave, buildLanes, log, dateStr,
+    newGame, save, load, hasSave, clearSave, slotInfo, SLOTS, buildLanes, log, dateStr,
     facOf, isMajor, ownerName, ownerShort, ownerCol, rel, relKey, off, canAttack, canEnter, friendly,
     get LANES() { return LANES; }, get ADJ() { return ADJ; }, path, hops, dist,
     designStats, designCost, designUnlocked, newDesign, newShip, shipMaxHp, shipPower, fleetPower, dockPower, satPower, planetDefense, rankOf,

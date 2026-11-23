@@ -784,7 +784,7 @@ const Battle = (() => {
     el.classList.add('show');
     Sound.se(won ? 'fanfare' : 'lose');
     clearTimeout(autoClose);
-    if (watch) autoClose = setTimeout(() => { const b = el.querySelector('.b-result button'); if (b) b.click(); }, 3200);
+    if (watch) autoClose = setTimeout(() => { const b = el.querySelector('.b-result button'); if (b) b.click(); }, 8000);
     el.querySelector('button').onclick = () => {
       clearTimeout(autoClose);
       cancelAnimationFrame(raf); raf = null;

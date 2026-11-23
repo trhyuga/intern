@@ -28,7 +28,27 @@ const Turn = (() => {
         if (path && path.length > 1 && Game.canEnter(fl.fac, path[1])) { fl.from = fl.at; fl.at = path[1]; }
       }
       if (fl.route === fl.at) fl.route = null;
+      // 敵の星へ入ったなら、侵攻として記録する（マップに矢印を描く）
+      const P = G.planets[fl.at];
+      if (!Game.friendly(fl.fac, P.owner) && (fl.fac === 'E' || Game.canAttack(fl.fac, P.owner))) addRaid(fl.from, fl.at, fl.fac, P.owner, fl);
     }
+  }
+  function addRaid(from, to, fac, def, fl) {
+    if (from === undefined || from === null || from === to) return null;
+    G.raids = (G.raids || []).filter(r => r.t >= G.turn - 2);
+    let r = G.raids.find(x => x.t === G.turn && x.from === from && x.to === to && x.fac === fac);
+    if (!r) { r = { t: G.turn, from, to, fac, def, n: 0, fleets: [] }; G.raids.push(r); }
+    if (fl) { r.n += fl.ships.length; r.fleets.push(Game.fleetName(fl)); }
+    return r;
+  }
+  // その星を攻めた侵攻の記録（なければ、艦隊の来た星から作る）
+  function raidFor(pid, fac, attF, def) {
+    const list = (G.raids || []).filter(r => r.t === G.turn && r.to === pid && r.fac === fac);
+    if (list.length) return list;
+    const f = attF[0], from = f && f.from !== undefined && f.from !== pid ? f.from : (Game.ADJ[pid] || []).find(n => G.planets[n].owner === fac);
+    const r = addRaid(from, pid, fac, def, null);
+    if (r) attF.forEach(fl => { r.n += fl.ships.length; r.fleets.push(Game.fleetName(fl)); });
+    return r ? [r] : [];
   }
   function hostileHere(fl) { return G.fleets.some(o => o !== fl && o.at === fl.at && o.ships.length && !Game.friendly(o.fac, fl.fac) && (o.fac === 'E' || Game.canAttack(o.fac, fl.fac))); }
 
@@ -50,7 +70,11 @@ const Turn = (() => {
         const attF = att.filter(f => f.fac === af);
         const defF = here.filter(fl => Game.friendly(fl.fac, p.owner) && fl.fac !== af);
         const oldOwner = p.owner;
+        const raids = raidFor(p.id, af, attF, oldOwner);
+        const mineAny = attF.some(f => f.fac === G.player) || defF.some(f => f.fac === G.player) || oldOwner === G.player;
         if (!defF.length && !p.def && !p.dock.length) {
+          if (mineAny) await UI.raidAlert({ raids, pid: p.id, af, def: oldOwner, attF, defF: [], free: true });
+          raids.forEach(r => r.res = 'free');
           Game.capture(p.id, af);
           report.push({ kind: af === G.player ? 'good' : oldOwner === G.player ? 'bad' : 'info', text: `${Game.ownerName(af)}が${p.name}を無血で制圧した。`, fac: af });
           if (af === G.player) { const fl = attF[0]; if (fl.cmd) WarRoom.say(fl.cmd, '守りはいない。このまま押さえるぞ。', 'happy', p.id); WarRoom.result(`${p.name}を戦わずに制圧した`, true, p.id); }
@@ -63,7 +87,9 @@ const Turn = (() => {
         let res;
         const shipsIn = [...attF, ...defF].reduce((a, f) => a + f.ships.length, 0) + p.dock.length;
         const watchMode = Staff.active() ? (G.staff.watch || (G.staff.bigManual ? 'bigcmd' : 'watch')) : null;
-        if (mine && watchMode === 'none') res = Battle.simulate(setup);
+        // 自国が関わる戦いは、どこからどこへ攻め込んだかを、まず地図と帯で知らせる
+        if (mine) await UI.raidAlert({ raids, pid: p.id, af, def: oldOwner, attF, defF, mine });
+        if (mine && watchMode === 'none') { res = Battle.simulate(setup); await UI.raidResult(res, mine, p.id); }
         else if (mine && watchMode && !(watchMode === 'bigcmd' && shipsIn >= 20)) res = await UI.watchBattle(setup, mine);
         else if (mine) res = await UI.battlePrompt(setup, mine);
         else res = Battle.simulate(setup);
@@ -71,6 +97,7 @@ const Turn = (() => {
         const emptied = [...attF, ...defF].filter(f => !f.ships.length);
         emptied.forEach(f => Game.removeFleet(f));
         const sideTxt = `${Game.ownerShort(af)}（攻）対 ${Game.ownerShort(oldOwner)}（守）`;
+        raids.forEach(r => r.res = res.winner === 'A' ? 'take' : 'repel');
         if (res.winner === 'A') {
           defF.filter(f => f.ships.length).forEach(f => { if (!retreat(f, p.id)) { f.ships = []; Game.removeFleet(f); } });
           Game.capture(p.id, af);

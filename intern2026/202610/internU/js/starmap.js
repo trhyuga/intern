@@ -49,6 +49,14 @@ const StarMap = (() => {
     if (z) cam.z = z;
     cam.x = p.x; cam.y = p.y + (yFrac ? (0.5 - yFrac) * vh / cam.z : 0); clampCam();
   }
+  // 2つの星がどちらも見えるように寄せる（侵攻の矢印を見せるとき）
+  function focusPair(a, b, yFrac) {
+    const A = G.planets[a], B = G.planets[b]; if (!A || !B) return;
+    const span = Math.max(Math.abs(A.x - B.x) + 160, (Math.abs(A.y - B.y) + 160) * (yFrac ? 2 : 1));
+    cam.z = clamp(Math.min(vw / span, 1.1), minZ(), 1.1);
+    const my = (A.y + B.y) / 2;
+    cam.x = (A.x + B.x) / 2; cam.y = my + (yFrac ? (0.5 - yFrac) * vh / cam.z : 0); clampCam();
+  }
   function down(e) {
     cv.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, [e.offsetX, e.offsetY]);
@@ -148,6 +156,8 @@ const StarMap = (() => {
       c.setLineDash([]); c.lineDashOffset = 0;
       const e = G.planets[tgt]; c.strokeStyle = 'rgba(120,230,255,.9)'; c.lineWidth = 2; c.beginPath(); c.arc(e.x, e.y, planetR(e) + 10 + Math.sin(t * 4) * 2, 0, 7); c.stroke();
     }
+    drawThreats(t);
+    drawRaids(t);
     // 移動先の候補
     if (moveMode) {
       const fl = moveMode;
@@ -201,12 +211,82 @@ const StarMap = (() => {
     }
     c.restore();
   }
+  // ---------- 侵攻の矢印（今月と先月、どこからどこへ攻め込んだか） ----------
+  let raidFocus = null;
+  const RES_TXT = { take: '制圧', repel: '撃退', free: '無血', fight: '交戦' };
+  function arrow(A, B, col, w, alpha, t, danger, strong) {
+    const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+    const sx = A.x + ux * (planetR(A) + 8), sy = A.y + uy * (planetR(A) + 8);
+    const ex = B.x - ux * (planetR(B) + 12), ey = B.y - uy * (planetR(B) + 12);
+    // 少し弧を描く（往復の矢印が重ならないように、進む向きの右へふくらむ）
+    const bend = Math.min(60, L * 0.18), mx = (sx + ex) / 2 - uy * bend, my = (sy + ey) / 2 + ux * bend;
+    c.save(); c.globalAlpha = alpha; c.lineCap = 'round';
+    if (danger) { c.strokeStyle = `rgba(255,60,50,${0.55 + Math.sin(t * 6) * 0.35})`; c.lineWidth = w + 6; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(mx, my, ex, ey); c.stroke(); }
+    c.strokeStyle = Art.hexA(col, 0.95); c.lineWidth = w;
+    c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(mx, my, ex, ey); c.stroke();
+    // 流れる光
+    c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = Math.max(1.2, w * 0.35); c.setLineDash([6, 22]); c.lineDashOffset = -t * (strong ? 70 : 40);
+    c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(mx, my, ex, ey); c.stroke(); c.setLineDash([]);
+    // 矢じり（曲線の終わりの向き）
+    const ax = ex - mx, ay = ey - my, al = Math.hypot(ax, ay) || 1, vx = ax / al, vy = ay / al, hs = w * 2.6 + 6;
+    c.fillStyle = danger ? '#ff4a3a' : Art.hexA(col, 1);
+    c.beginPath(); c.moveTo(ex + vx * 4, ey + vy * 4); c.lineTo(ex - vx * hs - vy * hs * 0.6, ey - vy * hs + vx * hs * 0.6); c.lineTo(ex - vx * hs + vy * hs * 0.6, ey - vy * hs - vx * hs * 0.6); c.closePath(); c.fill();
+    c.restore();
+  }
+  function drawRaids(t) {
+    // 月が変わると G.turn が1つ進むので、「直近の月」と「その前の月」の2か月分を描く
+    const list = (G.raids || []).filter(r => r.t >= G.turn - 2 && G.planets[r.from] && G.planets[r.to]);
+    if (!list.length) return;
+    const lastT = Math.max(...list.map(x => x.t));
+    for (const r of list) {
+      const A = G.planets[r.from], B = G.planets[r.to];
+      const now = r.t === lastT;
+      const foc = raidFocus && raidFocus.from === r.from && raidFocus.to === r.to;
+      const mine = r.fac === G.player, hit = r.def === G.player;
+      const alpha = raidFocus ? (foc ? 1 : 0.18) : now ? (mine || hit ? 0.95 : 0.6) : 0.3;
+      const w = foc ? 6 : mine || hit ? 4 : 2.6;
+      arrow(A, B, Game.ownerCol(r.fac), w, alpha, t, hit && (foc || now), foc);
+      // 戦いの星の印と結果の札
+      c.save(); c.globalAlpha = alpha; c.textAlign = 'center';
+      c.font = `700 ${foc ? 18 : 14}px sans-serif`; c.fillStyle = hit ? '#ff6a5a' : '#ffe0a0';
+      c.fillText('⚔', B.x - planetR(B) - 12, B.y - planetR(B) - 4);
+      if (r.res) {
+        const txt = RES_TXT[r.res] || '', win = r.res === 'take' || r.res === 'free';
+        const col = Game.ownerCol(win ? r.fac : r.def);
+        c.font = '700 11px sans-serif'; const tw = c.measureText(txt).width + 10, y = B.y - planetR(B) - 26;
+        c.fillStyle = 'rgba(0,0,0,.75)'; c.fillRect(B.x - tw / 2, y - 11, tw, 15);
+        c.strokeStyle = col; c.lineWidth = 1.2; c.strokeRect(B.x - tw / 2, y - 11, tw, 15);
+        c.fillStyle = col; c.fillText(txt, B.x, y);
+      }
+      c.restore();
+    }
+  }
+  // 自国の星の隣に敵の艦隊がいれば、その航路を赤い点線にし、星に「！」を出す
+  function drawThreats(t) {
+    if (G.player === undefined || G.player === null) return;
+    const warned = new Set();
+    for (const fl of G.fleets) {
+      if (!fl.ships.length || fl.fac === G.player || Game.friendly(fl.fac, G.player)) continue;
+      if (fl.fac !== 'E' && !Game.canAttack(fl.fac, G.player)) continue;
+      for (const n of Game.ADJ[fl.at] || []) {
+        const P = G.planets[n]; if (P.owner !== G.player) continue;
+        const A = G.planets[fl.at];
+        c.strokeStyle = `rgba(255,80,70,${0.45 + Math.sin(t * 4) * 0.25})`; c.lineWidth = 2.4; c.setLineDash([5, 6]); c.lineDashOffset = t * 20;
+        c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(P.x, P.y); c.stroke(); c.setLineDash([]); c.lineDashOffset = 0;
+        warned.add(n);
+      }
+    }
+    c.save(); c.textAlign = 'center'; c.font = '900 15px sans-serif';
+    for (const n of warned) { const P = G.planets[n]; c.fillStyle = `rgba(255,90,70,${0.7 + Math.sin(t * 6) * 0.3})`; c.fillText('！', P.x + planetR(P) + 9, P.y + 5); }
+    c.restore();
+  }
   function loop() { draw(); raf = requestAnimationFrame(loop); }
   function start() { if (!raf) { resize(); raf = requestAnimationFrame(loop); } }
   function stop() { if (raf) cancelAnimationFrame(raf); raf = null; }
 
   return {
-    init, start, stop, resize, focus, toScreen,
+    init, start, stop, resize, focus, focusPair, toScreen,
+    set raidFocus(v) { raidFocus = v; }, get raidFocus() { return raidFocus; },
     set selPlanet(v) { selPlanet = v; }, get selPlanet() { return selPlanet; },
     set selFleet(v) { selFleet = v; }, get selFleet() { return selFleet; },
     set moveMode(v) { moveMode = v; }, get moveMode() { return moveMode; },

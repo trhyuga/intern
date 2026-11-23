@@ -513,15 +513,54 @@ const UI = (() => {
       <button class="btn wide" data-m="howto">遊び方</button>
       <button class="btn wide" data-m="mute">音：${Sound.muted ? 'オフ' : 'オン'}</button>
       <button class="btn wide danger" data-m="title">タイトルへ戻る</button></div>
-      <p class="note">ひと月ごとに自動でセーブされます。</p>`;
+      <p class="note">ひと月ごとに「自動」の枠へセーブされます。ほかに、好きなときに3つの枠へセーブできます。</p>`;
     $$('[data-m]', body).forEach(b => b.onclick = () => {
       Sound.se('click');
       const m = b.dataset.m;
-      if (m === 'save') { toast(Game.save() ? 'セーブしました' : 'セーブできませんでした'); }
+      if (m === 'save') saveToSlot();
       if (m === 'howto') howto();
       if (m === 'mute') { Sound.toggleMute(); drawSheet(); }
       if (m === 'title') { Game.save(); closeSheet(); toTitle(); }
     });
+  }
+
+  // ---------- セーブの枠 ----------
+  //  mode 'save'：手動の枠（1〜3）を選ぶ ／ 'load'：自動と手動の枠から選ぶ
+  function pickSlot(mode) {
+    let chosen = null;
+    const render = () => Game.slotInfo().filter(s => mode === 'load' || !s.auto).map(s => {
+      const i = s.info, empty = !i, off = mode === 'load' && empty;
+      const when = i && i.at ? new Date(i.at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+      return `<div class="slot ${empty ? 'empty' : ''} ${off ? 'off' : ''}" data-s="${s.slot}" style="--c:${i ? FACTIONS[i.fac].col : '#556'}">
+        <div class="sl-no">${s.auto ? '自動' : '枠' + s.slot}</div>
+        <div class="sl-body">${i ? `<b>${i.name}</b><small>${i.date}・星 ${i.planets}${i.staff ? '・参謀 ' + i.staff : ''}${i.over ? '・終局' : ''}</small>${when ? `<small class="sl-at">保存 ${when}</small>` : ''}` : '<small>空き</small>'}</div>
+        ${i && !s.auto ? '<button class="sl-del" data-del="1">消す</button>' : ''}</div>`;
+    }).join('');
+    const p = modal(`<h3>${mode === 'save' ? 'どの枠にセーブしますか' : 'どこから続けますか'}</h3><div class="slots">${render()}</div>`, [{ t: 'やめる', v: null }], {
+      onOpen: m => {
+        const box = $('.slots', m);
+        box.onclick = e => {
+          const el = e.target.closest('.slot'); if (!el) return;
+          const s = +el.dataset.s;
+          if (e.target.closest('[data-del]')) {
+            const b = e.target.closest('[data-del]');
+            if (!b.classList.contains('sure')) { b.classList.add('sure'); b.textContent = '本当に消す'; return; }
+            Game.clearSave(s); Sound.se('click'); box.innerHTML = render(); return;
+          }
+          if (el.classList.contains('off')) return;
+          if (mode === 'save' && !el.classList.contains('empty') && !el.classList.contains('sure')) {
+            el.classList.add('sure'); $('.sl-no', el).textContent = '上書き？'; return;
+          }
+          chosen = s; $('.m-btns button', m).click();
+        };
+      },
+    });
+    return p.then(() => chosen);
+  }
+  async function saveToSlot() {
+    const s = await pickSlot('save');
+    if (s === null) return;
+    toast(Game.save(s) ? `枠${s}にセーブしました` : 'セーブできませんでした（容量が足りないかもしれません）');
   }
 
   // ---------- 会話 ----------
@@ -595,6 +634,58 @@ const UI = (() => {
     return res;
   }
 
+  // ---------- 会敵の帯：どこからどこへ攻め込んだか（攻め込まれたか）を、地図と帯で知らせる ----------
+  function raidText(r) { return `${G.planets[r.from].name} → ${G.planets[r.to].name}`; }
+  function showRaid(r) {
+    if (!r) return;
+    const f = { from: r.from, to: r.to };
+    StarMap.raidFocus = f;
+    StarMap.focusPair(r.from, r.to, Staff.active() ? 0.25 : null);
+    StarMap.selPlanet = r.to;
+    setTimeout(() => { if (StarMap.raidFocus === f) StarMap.raidFocus = null; }, 7000);
+  }
+  function raidAlert(o) {
+    return new Promise(res => {
+      const p = G.planets[o.pid], r = o.raids[0];
+      const attack = o.af === G.player, ally = !attack && o.attF.some(f => f.fac === G.player);
+      const facName = o.af === 'E' ? '蝕の群れ' : Game.ownerName(o.af);
+      const n = o.attF.reduce((a, f) => a + f.ships.length, 0);
+      const pw = fl => fl.reduce((a, f) => a + Game.fleetPower(f), 0);
+      const ap = pw(o.attF), dp = pw(o.defF) + Game.dockPower(p) + Game.satPower(p);
+      const who = o.attF.filter(f => f.fac !== 'E').map(f => Game.fleetName(f)).slice(0, 2).join('・');
+      const from = r ? G.planets[r.from].name : '';
+      const kind = attack || ally ? 'go' : 'hit';
+      const head = attack ? '⚔ 進攻' : o.def === G.player ? '⚠ 敵襲' : '⚔ 援軍';
+      const body = attack
+        ? `わが${who || '艦隊'}（${n}隻）が<b>${from}</b>から<b>${p.name}</b>へ攻め込む`
+        : `${facName}${who ? 'の' + who : ''}（${n}隻）が<b>${from || '近く'}</b>から<b>${p.name}</b>へ侵攻${o.def === G.player ? '' : `（${Game.ownerShort(o.def)}の星）`}`;
+      const vs = o.free ? (attack ? '守りはいない' : '守りがいない！') : `戦力　攻 ${num(ap)} ／ 守 ${num(dp)}`;
+      if (r) showRaid(r); else StarMap.focus(p.id, null, Staff.active() ? 0.25 : null);
+      if (Staff.active() && r) WarRoom.raid(head, `${raidText(r)}　${facName}（${n}隻）`, kind === 'go', r.from, r.to);
+      const el = $('#raid');
+      el.className = `raid show ${kind}`;
+      el.innerHTML = `<div class="rd-h">${head}</div><div class="rd-b">${body}</div><div class="rd-vs">${vs}</div><small class="rd-tap">タップで進む</small>`;
+      Sound.se(kind === 'hit' ? 'alarm' : 'order');
+      let done = false;
+      const fin = () => { if (done) return; done = true; el.onclick = null; el.classList.remove('show'); res(); };
+      el.onclick = fin;
+      const ms = Staff.active() ? [3200, 2500, 1400][WarRoom.speed ?? 1] : 3000;
+      setTimeout(fin, ms);
+    });
+  }
+  // 観戦しない設定のとき、勝ち負けをしばらく見せる
+  function raidResult(res, side, pid) {
+    return new Promise(done => {
+      const won = res.winner === side, p = G.planets[pid];
+      const el = $('#raid');
+      el.className = `raid show ${won ? 'go' : 'hit'}`;
+      el.innerHTML = `<div class="rd-h">${won ? '勝利' : '敗北'}</div><div class="rd-b"><b>${p.name}</b>の戦い</div><div class="rd-vs">撃沈 ${side === 'A' ? res.lostD : res.lostA}隻 ／ 喪失 ${side === 'A' ? res.lostA : res.lostD}隻</div>`;
+      Sound.se(won ? 'good' : 'bad');
+      let f = false; const fin = () => { if (f) return; f = true; el.onclick = null; el.classList.remove('show'); done(); };
+      el.onclick = fin; setTimeout(fin, 1800);
+    });
+  }
+
   // 観戦（参謀や司令が指揮し、簡単な指示だけ出す）
   async function watchBattle(setup, side) {
     const res = await Battle.run(setup, side, { watch: true });
@@ -610,7 +701,18 @@ const UI = (() => {
     if (!report.length) { toast(`${Game.dateStr()}`); return; }
     const mineR = report.filter(r => r.kind !== 'news' && r.kind !== 'info'), news = report.filter(r => r.kind === 'news' || r.kind === 'info');
     const shown = mineR.concat(news.slice(0, 4).map(r => ({ kind: 'news', text: '【銀河】' + r.text })));
-    await modal(`<h2 class="rep-h">${Game.dateStr()}</h2><div class="rep">${shown.map(r => `<div class="lg ${r.kind}">${r.text}</div>`).join('')}${news.length > 4 ? `<div class="lg news">ほか ${news.length - 4} 件の銀河の報（国政の記録で読めます）</div>` : ''}</div>`, [{ t: '閉じる', v: null, cls: 'primary' }]);
+    // 今月の戦い：どこからどこへ攻め込んだか（押すと、地図でその矢印を見せる）
+    const RES = { take: '制圧', repel: '撃退', free: '無血で制圧' };
+    const raids = (G.raids || []).filter(r => r.t === G.turn - 1 && (r.fac === G.player || r.def === G.player) && G.planets[r.from] && G.planets[r.to]);
+    const rh = raids.length ? `<h3>今月の戦い</h3>${raids.map((r, i) => {
+      const go = r.fac === G.player, won = go ? r.res === 'take' || r.res === 'free' : r.res === 'repel';
+      return `<div class="lg rraid ${go ? 'go' : ''} ${won ? 'good' : 'bad'}" data-r="${i}">${go ? '⚔ 進攻' : '⚠ 敵襲'}　${G.planets[r.from].name} → <b>${G.planets[r.to].name}</b>　${go ? '' : (r.fac === 'E' ? '蝕' : Game.ownerShort(r.fac)) + '・'}${r.n}隻${r.res ? `　<b>${RES[r.res] || ''}</b>` : ''}<small class="wr-map"> 地図で見る ›</small></div>`;
+    }).join('')}<h3>報告</h3>` : '';
+    let pick = null;
+    await modal(`<h2 class="rep-h">${Game.dateStr()}</h2><div class="rep">${rh}${shown.map(r => `<div class="lg ${r.kind}">${r.text}</div>`).join('')}${news.length > 4 ? `<div class="lg news">ほか ${news.length - 4} 件の銀河の報（国政の記録で読めます）</div>` : ''}</div>`, [{ t: '閉じる', v: null, cls: 'primary' }], {
+      onOpen: m => $$('[data-r]', m).forEach(d => d.onclick = () => { pick = raids[+d.dataset.r]; $('.m-btns button', m).click(); }),
+    });
+    if (pick) showRaid(pick);
   }
   async function pendingProposals() {
     while (G.pending.length) {
@@ -854,8 +956,10 @@ const UI = (() => {
       openStaff();
     }
   }
-  function continueGame() {
-    if (!Game.load()) { toast('セーブがありません'); return; }
+  async function continueGame() {
+    const s = await pickSlot('load');
+    if (s === null) return;
+    if (!Game.load(s)) { toast('セーブを読めませんでした'); return; }
     Cinema.stopTitle();
     show('main');
     StarMap.focus(G.facs[G.player].capital, 0.7);
@@ -883,7 +987,7 @@ const UI = (() => {
       const b = e.target.closest('[data-act]'); if (!b) return;
       Sound.se('click');
       const a = b.dataset.act;
-      if (a === 'new') { if (Game.hasSave()) confirm('セーブが消えます。新しく始めますか？', factionSelect); else factionSelect(); }
+      if (a === 'new') { if (Game.hasSave(0)) confirm('「自動」の枠のセーブは、新しいゲームで上書きされます（枠1〜3は残ります）。新しく始めますか？', factionSelect); else factionSelect(); }
       if (a === 'load') continueGame();
       if (a === 'howto') howto();
       if (a === 'opening') { Cinema.stopTitle(); Cinema.opening().then(toTitle); }
@@ -906,5 +1010,5 @@ const UI = (() => {
     $('#sheet .sh-bg').onclick = () => closeSheet();
   }
 
-  return { show, toast, busy, modal, confirm, wait, sheet, closeSheet, refresh, refreshTop, talk, battlePrompt, monthReport, pendingProposals, gameOver, boot, toTitle, howto, ofcCard, openPlanet, openFleet, openStaff, autoNext, autoReport, staffStop, watchBattle, get current() { return current; } };
+  return { show, toast, busy, modal, confirm, wait, sheet, closeSheet, refresh, refreshTop, talk, battlePrompt, monthReport, pendingProposals, gameOver, boot, toTitle, howto, ofcCard, openPlanet, openFleet, openStaff, autoNext, autoReport, staffStop, watchBattle, raidAlert, raidResult, showRaid, get current() { return current; } };
 })();

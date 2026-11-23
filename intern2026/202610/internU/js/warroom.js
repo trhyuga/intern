@@ -19,6 +19,8 @@ const WarRoom = (() => {
   const result = (text, ok = true, pid = null) => push({ k: 'result', text, ok, pid });
   const news = text => push({ k: 'news', text });
   const head = text => push({ k: 'head', text });
+  // 侵攻：どこからどこへ（タップで地図をその矢印へ寄せる）
+  const raid = (label, text, ok, from, to) => push({ k: 'raid', label, text, ok, from, to, pid: to });
 
   // ---------- 待ちの命令（あとで結果と結びつける） ----------
   function pend(match, text, pid) { if (!on()) return; G.warPend = (G.warPend || []).concat([{ match, text, pid, t: G.turn }]).slice(-40); }
@@ -91,6 +93,11 @@ const WarRoom = (() => {
       else p.textContent = e.text;
     } else if (e.k === 'order') wrap.innerHTML = `<span class="wr-i">▶ 命令</span><span>${esc(e.text)}</span>`;
     else if (e.k === 'result') wrap.innerHTML = `<span class="wr-i">${e.ok ? '✔ 結果' : '✖ 結果'}</span><span>${esc(e.text)}</span>`;
+    else if (e.k === 'raid') {
+      wrap.className = 'wr-e wr-result wr-raid ' + (e.ok ? 'ok' : 'ng');
+      wrap.innerHTML = `<span class="wr-i">${esc(e.label)}</span><span>${esc(e.text)}<small class="wr-map">地図で見る ›</small></span>`;
+      wrap.onclick = () => { if (typeof UI !== 'undefined') UI.showRaid({ from: e.from, to: e.to }); };
+    }
     else if (e.k === 'news') wrap.innerHTML = `<span class="wr-i">銀河の報</span><span>${esc(e.text)}</span>`;
     else wrap.innerHTML = `<span>${esc(e.text)}</span>`;
     return wrap;
@@ -109,9 +116,11 @@ const WarRoom = (() => {
       list.appendChild(el);
       while (list.children.length > 160) list.removeChild(list.firstChild);
       list.scrollTop = list.scrollHeight;
-      if (e.pid !== null && e.pid !== undefined && G.planets[e.pid]) { StarMap.focus(e.pid, null, 0.25); StarMap.selPlanet = e.pid; }
+      if (e.k === 'raid' && G.planets[e.from] && G.planets[e.to]) { StarMap.raidFocus = { from: e.from, to: e.to }; StarMap.focusPair(e.from, e.to, 0.25); StarMap.selPlanet = e.to; }
+      else if (e.pid !== null && e.pid !== undefined && G.planets[e.pid]) { StarMap.raidFocus = null; StarMap.focus(e.pid, null, 0.25); StarMap.selPlanet = e.pid; }
       if (e.k === 'say' && !skipAll) Sound.se('type');
       if (e.k === 'result') Sound.se(e.ok ? 'good' : 'bad');
+      if (e.k === 'raid') Sound.se(e.ok ? 'order' : 'alarm');
       if (!skipAll) {
         const sp = SPEED[speedIdx];
         await sleep(e.k === 'head' ? sp.base * 0.5 : sp.base + (e.text || '').length * sp.per);
@@ -119,7 +128,7 @@ const WarRoom = (() => {
         while (on() && (document.querySelector('#talk.show') || document.querySelector('#modal.show') || (typeof UI !== 'undefined' && UI.current !== 'main'))) await sleep(300);
       }
     }
-    playing = false;
+    playing = false; StarMap.raidFocus = null;
   }
   // 作戦室を開いた時に、残っている記録を並べ直す
   function redrawAll() {
@@ -130,5 +139,5 @@ const WarRoom = (() => {
     list.scrollTop = list.scrollHeight;
   }
   function clearQueue() { queue = []; }
-  return { say, order, result, news, head, pend, link, reply, RECRUIT, DIPLO, pickL, play, redrawAll, setSpeed, clearQueue, skip: () => { skipAll = true; }, get playing() { return playing; }, get queued() { return queue.length; } };
+  return { say, order, result, news, head, raid, get speed() { return speedIdx; }, pend, link, reply, RECRUIT, DIPLO, pickL, play, redrawAll, setSpeed, clearQueue, skip: () => { skipAll = true; }, get playing() { return playing; }, get queued() { return queue.length; } };
 })();
