@@ -141,6 +141,12 @@ const Battle = (() => {
     // 派閥・禁忌
     const f2 = Game.facOf(sd.fac);
     if (f2 && f2.ruling === 'war') m.dmg *= 1.05;
+    // 参謀の方針
+    if (sd.fac === G.player) {
+      const foe = S.side[sd.key === 'A' ? 'D' : 'A'].fac;
+      m.dmg *= 1 + Staff.bonus('expand', 0.08) + (foe === 'E' ? Staff.bonus('eclipse', 0.2) : 0);
+      if (sd.key === 'D') m.taken *= 1 - Staff.bonus('defend', 0.15);
+    }
     return m;
   }
   function unitMods(u) {
@@ -149,6 +155,7 @@ const Battle = (() => {
     let cmdK = 1 + Math.max(0, ...u.ships.map(s => s.command || 0));
     if (cmd) {
       const o = OFF[cmd];
+      m.dmg *= 1 + Game.rankIdx(cmd) * 0.008;   // 階級（経験）
       m.dmg *= 1 + (o.tac - 50) / 220 * cmdK;
       m.taken *= 1 - (o.ldr - 50) / 320 * cmdK;
       if (o.pers === '猛進' && u.stance === 'assault') m.dmg *= 1.1;
@@ -485,8 +492,8 @@ const Battle = (() => {
           const k = fl[slot]; if (!k) continue;
           const o = G.officers[k];
           o.battles++;
-          if (S.over === sk) { o.wins++; Game.addMerit(k, 3 + S.side[sk].sunk * 0.3); }
-          else Game.addMerit(k, 1);
+          if (S.over === sk) { o.wins++; Game.addMerit(k, 5 + S.side[sk].sunk * 0.5); }
+          else Game.addMerit(k, 1.5);
           if (fl.ships.length === 0) {
             const f = Game.facOf(fl.fac);
             const deathP = f && f.forb.includes('f3') ? 0.04 : 0.13;

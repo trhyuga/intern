@@ -44,6 +44,7 @@ const Diplo = (() => {
     why.push(`信頼 ${Math.round(r.t)}`);
     if (envoy) { const v = (OFF[envoy].dip - 50) * 0.5; sc += v; why.push(`使者の交渉 ${v >= 0 ? '+' : ''}${Math.round(v)}`); }
     if (F.bonus.dip) { sc += 12; why.push('国の外交 +12'); }
+    if (from === G.player) { const sb = Math.round(Staff.bonus('diplomacy', 18)); if (sb) { sc += sb; why.push(`参謀の外交 +${sb}`); } }
     if (ff.ruling === 'peace') { sc += 15; why.push('融和派 +15'); }
     if (tf.ruling === 'peace') { sc += 8; why.push(`${T.short}の融和派 +8`); }
     if (tf.ruling === 'war' && kind !== 'peace') { sc -= 10; why.push(`${T.short}の主戦派 −10`); }

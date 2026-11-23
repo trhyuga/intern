@@ -26,6 +26,18 @@ const OFFICERS = OFFICER_SRC.trim().split('\n').map(l => {
 const OFF = Object.fromEntries(OFFICERS.map(o => [o.key, o]));
 const shortName = o => (o.name.split('・')[0]);
 
+// ---------- 階級（少尉〜元帥。武功で上がる） ----------
+const OFFRANKS = ['少尉', '中尉', '大尉', '少佐', '中佐', '大佐', '准将', '少将', '中将', '大将', '元帥'];
+const RANK_MERIT = [0, 6, 14, 24, 36, 50, 68, 90, 116, 146, 180];
+const RANK_CAP = [8, 8, 10, 12, 14, 16, 20, 22, 26, 30, 30];   // 率いられる艦の数
+// 最初の武功：能力と年齢（経験）から
+function initMerit(o) {
+  const age = o.age || 35;
+  let m = Math.max(0, (o.ldr + o.tac - 100) * 0.8) + (age >= 55 ? 25 : age >= 40 ? 15 : age >= 30 ? 6 : 0);
+  if (o.tags.includes('cyber') && !o.age) m += 10;
+  return Math.min(120, Math.round(m));
+}
+
 const Game = (() => {
   // ---------- 小道具 ----------
   const facOf = id => (typeof id === 'number' ? G.facs[id] : null);
@@ -236,7 +248,7 @@ const Game = (() => {
     OFFICERS.forEach(o => {
       let st = 'act', loc = null;
       if (o.fac0 === null) { st = o.appear <= 1 ? 'free' : 'hidden'; loc = o.loc; }
-      G.officers[o.key] = { fac: o.fac0, st, loc, loyal: o.fac0 === null ? 0 : (FACTIONS.some(f => f.leader === o.key) ? 100 : R.i(70, 92)), merit: 0, battles: 0, wins: 0, kills: 0, busy: 0, role: null, ever: o.fac0 };
+      G.officers[o.key] = { fac: o.fac0, st, loc, loyal: o.fac0 === null ? 0 : (FACTIONS.some(f => f.leader === o.key) ? 100 : R.i(70, 92)), merit: initMerit(o), battles: 0, wins: 0, kills: 0, busy: 0, role: null, ever: o.fac0 };
     });
     // 設計
     for (const F of FACTIONS) {
@@ -267,6 +279,7 @@ const Game = (() => {
     }
     // 小勢力の守り
     MINORS.forEach(m => { const p = G.planets[m.planet]; p.yard = 1; });
+    for (const k in G.officers) G.officers[k].rk = rankIdx(k);
     log(`${dateStr()}、${FACTIONS[playerFid].name}の歴史が動き出す。`, 'big', playerFid);
     return G;
   }
@@ -338,6 +351,7 @@ const Game = (() => {
     let tr = 0; for (let b = 0; b < 6; b++) if (b !== p.owner && G.facs[b].alive && ['trade', 'ally'].includes(rel(p.owner, b).s)) tr++;
     v *= 1 + Math.min(0.25, tr * 0.05);
     if (p.gov) v *= 1 + (OFF[p.gov].pol - 50) / 300;
+    if (p.owner === G.player) v *= 1 + Staff.bonus('economy', 0.15);
     return v;
   }
   function planetResearch(p) {
@@ -347,6 +361,7 @@ const Game = (() => {
     v *= 1 + (F.bonus.research || 0) + (f.ruling === 'tech' ? 0.2 : 0);
     if (G.minors.m1.ally === p.owner) v *= 1.15;
     if (p.gov) v *= 1 + (OFF[p.gov].sci - 50) / 300;
+    if (p.owner === G.player) v *= 1 + Staff.bonus('research', 0.25);
     return v;
   }
   function upkeep(fid) {
@@ -372,6 +387,7 @@ const Game = (() => {
   function devSpeed(p) {
     const f = facOf(p.owner);
     let s = 9 + (p.gov ? OFF[p.gov].pol * 0.14 : 2) + (f ? f.tech.eco * 1.5 : 0);
+    if (p.owner === G.player) s *= 1 + Staff.bonus('economy', 0.4) + (p.focus === 'def' ? Staff.bonus('defend', 0.5) : 0);
     const lv = p.focus === 'pop' ? 0 : p[p.focus] || 0;
     return s * (p.focus === 'def' ? 1.6 : 1) / (1 + lv * 0.18);
   }
@@ -484,7 +500,7 @@ const Game = (() => {
           p.build.shift();
           const s = newShip(b.d);
           // 同じ星にいる自軍の艦隊（命令なし）に入れる。なければ駐留
-          const fl = G.fleets.find(x => x.fac === p.owner && x.at === p.id && !x.dest && x.ships.length < 30 && x.cmd);
+          const fl = G.fleets.find(x => x.fac === p.owner && x.at === p.id && !x.dest && x.cmd && x.ships.length < fleetCap(x));
           if (fl && p.owner !== G.player) fl.ships.push(s); else p.dock.push(s);
           if (p.owner === G.player) log(`${p.name}で ${G.designs[b.d].name} が竣工した。`, 'good', p.owner);
         }
@@ -534,6 +550,9 @@ const Game = (() => {
         if (isMajor(back) && G.facs[back] && G.facs[back].alive) { o.st = 'act'; o.fac = back; o.capBy = null; }
       }
     }
+    // 総督の働きも武功になる
+    G.planets.forEach(p => { if (p.gov && isMajor(p.owner)) addMerit(p.gov, 0.35); });
+    checkPromotions();
     // 派閥の評議（12か月ごと）
     for (const f of G.facs) {
       if (!f.alive) continue;
@@ -675,8 +694,39 @@ const Game = (() => {
     return null;
   }
 
-  // ---------- 士官の手柄 ----------
+  // ---------- 士官の手柄と階級 ----------
   function addMerit(k, v) { if (k && G.officers[k]) G.officers[k].merit += v; }
+  function isLeader(k) { const o = G && G.officers[k]; return !!o && isMajor(o.fac) && o.st === 'act' && G.facs[o.fac].leader === k; }
+  // 元帥はその国でいちばん武功の大きい一人だけ
+  function marshalOf(fac) {
+    let best = null, bm = RANK_MERIT[10] - 0.01;
+    for (const k in G.officers) { const o = G.officers[k]; if (o.fac === fac && o.st === 'act' && !isLeader(k) && o.merit > bm) { bm = o.merit; best = k; } }
+    return best;
+  }
+  function rankIdx(k) {
+    const m = G && G.officers[k] ? G.officers[k].merit : initMerit(OFF[k]);
+    let i = 0; while (i < 9 && m >= RANK_MERIT[i + 1]) i++;
+    if (i === 9 && G && G.officers[k] && m >= RANK_MERIT[10] && marshalOf(G.officers[k].fac) === k) i = 10;
+    return i;
+  }
+  function rankName(k) {
+    if (G && isLeader(k)) return FACTIONS[G.officers[k].fac].title;
+    return OFFRANKS[rankIdx(k)];
+  }
+  function fleetCap(fl) {
+    if (!fl.cmd) return 12;
+    return isLeader(fl.cmd) ? 30 : RANK_CAP[rankIdx(fl.cmd)];
+  }
+  // 昇進の知らせ（自国の士官）
+  function checkPromotions() {
+    for (const k in G.officers) {
+      const o = G.officers[k];
+      if (o.st !== 'act' || isLeader(k)) continue;
+      const r = rankIdx(k);
+      if (o.rk !== undefined && r > o.rk && o.fac === G.player) log(`${OFF[k].name}が${OFFRANKS[r]}に昇進した。`, r >= 6 ? 'big' : 'good', G.player);
+      o.rk = r;
+    }
+  }
 
   // ---------- セーブ ----------
   function save() {
@@ -695,6 +745,7 @@ const Game = (() => {
   function clearSave() { try { localStorage.removeItem(CONFIG.saveKey); } catch (e) { } }
 
   return {
+    isLeader, rankIdx, rankName, fleetCap, checkPromotions, marshalOf,
     newGame, save, load, hasSave, clearSave, buildLanes, log, dateStr,
     facOf, isMajor, ownerName, ownerShort, ownerCol, rel, relKey, off, canAttack, canEnter, friendly,
     get LANES() { return LANES; }, get ADJ() { return ADJ; }, path, hops, dist,

@@ -58,7 +58,9 @@ const Turn = (() => {
         const setup = { pid: p.id, att: { fac: af, fleets: attF }, def: { fac: p.owner, fleets: defF, dock: true } };
         const mine = attF.some(f => f.fac === G.player) ? 'A' : (defF.some(f => f.fac === G.player) || p.owner === G.player) ? 'D' : null;
         let res;
-        if (mine) res = await UI.battlePrompt(setup, mine);
+        const shipsIn = [...attF, ...defF].reduce((a, f) => a + f.ships.length, 0) + p.dock.length;
+        if (mine && Staff.active() && !(G.staff.bigManual && shipsIn >= 20)) res = Battle.simulate(setup);
+        else if (mine) res = await UI.battlePrompt(setup, mine);
         else res = Battle.simulate(setup);
         // 後始末
         const emptied = [...attF, ...defF].filter(f => !f.ships.length);
@@ -90,6 +92,9 @@ const Turn = (() => {
     try {
       UI.busy('各勢力が動いている…');
       await UI.wait(30);
+      const capBefore = G.facs[G.player].capital, eclBefore = G.eclipse.arrived;
+      // 0. 参謀に任せているなら、自国も参謀が動かす
+      if (Staff.active()) Staff.turnPlayer();
       // 1. AI
       for (const f of G.facs) if (f.alive && f.id !== G.player) AI.turn(f.id);
       Eclipse.turn();
@@ -125,12 +130,18 @@ const Turn = (() => {
       // 9. 勝ち負け
       const v = Game.checkVictory();
       Game.save();
-      await UI.monthReport(report);
-      if (v) { G.over = v.type; Game.save(); await UI.gameOver(v.type); running = false; return; }
+      if (Staff.active() && !v) UI.autoReport(report); else await UI.monthReport(report);
+      if (v) { if (G.staff) G.staff.on = false; G.over = v.type; Game.save(); await UI.gameOver(v.type); running = false; return; }
       // 10. 会話イベント
       await Story.run();
       // 11. 申し入れ
       await UI.pendingProposals();
+      // 12. 参謀に任せている間は、次の月へ
+      if (Staff.active()) {
+        const why = Staff.shouldStop({ capitalLost: G.facs[G.player].capital !== capBefore, eclipseArrived: !eclBefore && G.eclipse.arrived });
+        if (why) { running = false; await UI.staffStop(why); }
+        else UI.autoNext();
+      }
       Game.save();
     } catch (e) {
       console.error(e);

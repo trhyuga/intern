@@ -67,6 +67,7 @@ const UI = (() => {
     $('#tbDate').textContent = Game.dateStr();
     $('#tbFac').innerHTML = `<span style="color:${F.col}">◆</span> ${F.name}`;
     $('#tbRes').innerHTML = `<span title="資金">💰 ${num(f.funds)} <small class="${e.inc - e.up >= 0 ? 'up' : 'down'}">${e.inc - e.up >= 0 ? '+' : ''}${e.inc - e.up}</small></span><span title="研究">🔬 ${rt.name} ${Math.min(100, Math.floor(f.rp / rt.cost * 100))}%</span>`;
+    $('#btnStaff').classList.toggle('on', Staff.active());
     const ecl = $('#tbEcl');
     if (G.eclipse.arrived && !G.eclipse.defeated) { ecl.textContent = '蝕 襲来中'; ecl.style.display = ''; }
     else if (G.eclipse.omen) { ecl.textContent = '予兆あり'; ecl.style.display = ''; }
@@ -144,7 +145,8 @@ const UI = (() => {
   function ofcCard(k, extra = '') {
     const S = OFF[k], o = G.officers[k];
     const role = roleText(k);
-    return `<div class="ofc" data-ofc="${k}"><img src="${Portrait.url(k)}"><div class="ofc-i"><b>${S.name}</b><small>${S.epi}・${S.pers}${role ? '・' + role : ''}</small>
+    const rk = o && o.st === 'act' ? `<span class="rk ${Game.isLeader(k) ? 'lord' : Game.rankIdx(k) >= 6 ? 'gen' : ''}">${Game.rankName(k)}</span>` : '';
+    return `<div class="ofc" data-ofc="${k}"><img src="${Portrait.url(k)}"><div class="ofc-i"><b>${rk}${S.name}</b><small>${S.epi}・${S.pers}${role ? '・' + role : ''}</small>
       <div class="st"><span>統${S.ldr}</span><span>戦${S.tac}</span><span>政${S.pol}</span><span>交${S.dip}</span><span>技${S.sci}</span></div></div>${extra}</div>`;
   }
   function roleText(k) {
@@ -235,10 +237,10 @@ const UI = (() => {
       const k = await pickOfficer('新しい艦隊の司令', list, 'ldr', '司令の統率は被害を減らし、戦術は火力を上げます。');
       if (!k) return;
       const fl = Game.newFleet(G.player, k, pid);
-      fl.ships = p.dock.splice(0, 30);
+      fl.ships = p.dock.splice(0, Game.fleetCap(fl));
       toast(`${Game.fleetName(fl)}を編成しました`); Sound.se('good'); redraw();
     });
-    $$('[data-join]', body).forEach(b => b.onclick = () => { const fl = G.fleets.find(x => x.id === +b.dataset.join); while (p.dock.length && fl.ships.length < 30) fl.ships.push(p.dock.shift()); Sound.se('good'); redraw(); });
+    $$('[data-join]', body).forEach(b => b.onclick = () => { const fl = G.fleets.find(x => x.id === +b.dataset.join); if (fl.ships.length >= Game.fleetCap(fl)) { toast(`${Game.fleetName(fl)}はもう艦を率いきれません（司令の階級で上限が決まります）`); return; } while (p.dock.length && fl.ships.length < Game.fleetCap(fl)) fl.ships.push(p.dock.shift()); Sound.se('good'); redraw(); });
     $$('[data-fl]', body).forEach(b => b.onclick = () => { const fl = G.fleets.find(x => x.id === +b.dataset.fl); if (fl && fl.fac === G.player) openFleet(fl); });
     $$('[data-recruit]', body).forEach(b => b.onclick = () => recruit(b.dataset.recruit));
     $$('.ofc[data-ofc]', body).forEach(el => el.querySelector('img').onclick = () => openOfficer(el.dataset.ofc));
@@ -324,7 +326,7 @@ const UI = (() => {
     if (!G.fleets.includes(fl)) { body.innerHTML = '<p>この艦隊はもうありません。</p>'; return; }
     const p = G.planets[fl.at];
     const tgt = fl.route ?? fl.dest;
-    let h = `<div class="kv"><div><span>現在地</span><b>${p.name}</b></div><div><span>行き先</span><b>${tgt !== null && tgt !== undefined ? G.planets[tgt].name : '待機'}</b></div><div><span>艦</span><b>${fl.ships.length} / 30</b></div><div><span>戦力</span><b>${num(Game.fleetPower(fl))}</b></div></div>`;
+    let h = `<div class="kv"><div><span>現在地</span><b>${p.name}</b></div><div><span>行き先</span><b>${tgt !== null && tgt !== undefined ? G.planets[tgt].name : '待機'}</b></div><div><span>艦（上限は司令の階級）</span><b>${fl.ships.length} / ${Game.fleetCap(fl)}</b></div><div><span>戦力</span><b>${num(Game.fleetPower(fl))}</b></div></div>`;
     h += `<div class="row"><button class="btn primary" data-a="move">移動を指示</button><button class="btn" data-a="stay">待機</button></div>`;
     h += `<h3>司令</h3>${fl.cmd ? ofcCard(fl.cmd, '<button class="btn small" data-a="cmd">替える</button>') : `<div class="empty">司令がいません（奥の手が使えず、弱くなります）<button class="btn small primary" data-a="cmd">任命</button></div>`}`;
     if (fl.cmd) h += `<p class="note">奥の手：<b>${SKILLS[skillName(fl.cmd)].name}</b> ― ${SKILLS[skillName(fl.cmd)].desc}</p>`;
@@ -341,7 +343,7 @@ const UI = (() => {
     on('[data-a=cmd]', async () => { const k = await pickOfficer('艦隊の司令', Game.officersOf(G.player).filter(k => !G.officers[k].role || G.officers[k].role === 'cmd:' + fl.id), 'ldr'); if (k) Game.setCmd(fl, k); redraw(); });
     on('[data-a=sub]', async () => { const k = await pickOfficer('副官', Game.officersOf(G.player).filter(k => (!G.officers[k].role || G.officers[k].role === 'cmd:' + fl.id) && k !== fl.cmd), 'tac'); Game.setCmd(fl, k, 'sub'); redraw(); });
     $$('[data-fm]', body).forEach(b => b.onclick = () => { fl.form = b.dataset.fm; Sound.se('click'); redraw(); });
-    on('[data-a=take]', () => { while (p.dock.length && fl.ships.length < 30) fl.ships.push(p.dock.shift()); redraw(); });
+    on('[data-a=take]', () => { if (fl.ships.length >= Game.fleetCap(fl)) { toast('司令の階級では、これ以上の艦は率いられません'); return; } while (p.dock.length && fl.ships.length < Game.fleetCap(fl)) fl.ships.push(p.dock.shift()); redraw(); });
     on('[data-a=drop]', () => { const hurt = fl.ships.filter(s => s.hp < Game.shipMaxHp(s) * 0.5); if (!hurt.length) { toast('半分以上傷ついた艦はありません'); return; } fl.ships = fl.ships.filter(s => !hurt.includes(s)); p.dock.push(...hurt); toast(`${hurt.length}隻を駐留させました`); redraw(); });
     on('[data-a=disband]', () => confirm('艦隊を解いて、艦をこの星に駐留させますか？', () => { p.dock.push(...fl.ships); fl.ships = []; Game.removeFleet(fl); StarMap.selFleet = null; closeSheet(); }));
     $$('.ofc[data-ofc]', body).forEach(el => el.querySelector('img').onclick = () => openOfficer(el.dataset.ofc));
@@ -413,7 +415,10 @@ const UI = (() => {
       const ties = OFFICER_TIES.filter(t => t[0] === k || t[1] === k);
       const mine = o.fac === G.player && o.st === 'act';
       const sk = PERSONALITY[S.pers].skill;
-      body.innerHTML = `<div class="ofc-big"><img src="${Portrait.url(k, 'normal')}"><div><h2>${S.name}</h2><p class="epi">${S.epi}</p>
+      const ri = Game.rankIdx(k), lord = Game.isLeader(k);
+      const rankHtml = o.st !== 'act' ? '' : lord ? `<p class="rkline"><span class="rk lord">${Game.rankName(k)}</span>艦隊は30隻まで率いる</p>`
+        : `<p class="rkline"><span class="rk ${ri >= 6 ? 'gen' : ''}">${OFFRANKS[ri]}</span>${ri < 10 ? `次の${OFFRANKS[ri + 1]}まで 武功 ${Math.max(0, Math.ceil(RANK_MERIT[ri + 1] - o.merit))}${ri === 9 ? '（元帥は国に一人）' : ''}` : '国でただ一人の元帥'}・艦隊は${RANK_CAP[ri]}隻まで</p>`;
+      body.innerHTML = `<div class="ofc-big"><img src="${Portrait.url(k, 'normal')}"><div><h2>${S.name}</h2><p class="epi">${S.epi}</p>${rankHtml}
         <p>${S.age ? S.age + '歳・' : '年齢不詳・'}${S.pers}（${PERSONALITY[S.pers].desc}）</p><p>${roleText(k) || (o.st === 'dead' ? '戦死' : '')}</p></div></div>
         <div class="stat-bars">${[['統率', 'ldr', '艦隊の被害を減らす'], ['戦術', 'tac', '艦隊の火力を上げる'], ['政治', 'pol', '総督として開発・収入'], ['交渉', 'dip', '外交の使者'], ['技術', 'sci', '総督として研究']].map(([n, s, d]) => `<div><span>${n}</span>${bar(S[s], 100, '#6ad0ff')}<b>${S[s]}</b><small>${d}</small></div>`).join('')}</div>
         <p class="note">奥の手：<b>${sk === 'random' ? '気まぐれ（毎回変わる）' : SKILLS[sk].name}</b>${sk !== 'random' ? ' ― ' + SKILLS[sk].desc : ''}</p>
@@ -491,7 +496,7 @@ const UI = (() => {
   function tabGov(body) {
     const f = G.facs[G.player];
     const v = (() => { const others = G.facs.filter(x => x.alive && x.id !== G.player); return { allies: others.filter(x => Game.rel(G.player, x.id).s === 'ally').length, others: others.length, mine: G.planets.filter(p => p.owner === G.player || Game.friendly(G.player, p.owner)).length, total: G.planets.length }; })();
-    let h = `<h3>勝利への道</h3><div class="kv"><div><span>武力統一</span><b>${v.mine} / ${v.total} 星</b></div><div><span>和平</span><b>同盟 ${v.allies} / ${v.others} 国</b></div></div>`;
+    let h = `<button class="btn primary wide" data-a="staff">参謀に任せる（オートモード）${Staff.active() ? '：実行中' : ''}</button><h3>勝利への道</h3><div class="kv"><div><span>武力統一</span><b>${v.mine} / ${v.total} 星</b></div><div><span>和平</span><b>同盟 ${v.allies} / ${v.others} 国</b></div></div>`;
     if (G.eclipse.arrived && !G.eclipse.defeated) h += `<p class="warn">蝕が来ています。どちらの勝利にも、裂け目の核を砕くことが要ります。</p>`;
     h += `<h3>国内の派閥 <small>主導：${PARTIES[f.ruling].name}</small></h3>`;
     h += Object.entries(PARTIES).map(([k, P]) => `<div class="party"><b style="color:${P.col}">${P.name}</b>${bar(f.parties[k], 100, P.col)}<span>${Math.round(f.parties[k])}%</span><small>${P.bonus}</small></div>`).join('');
@@ -499,6 +504,7 @@ const UI = (() => {
     if (f.demand) h += `<div class="demand"><b>${PARTIES[f.demand.party].name}の要求</b><p>${Game.DEMANDS[f.demand.party].text}</p><small>期限：${Game.dateStr(f.demand.until)}まで。応えれば民心が上がり、背けば下がります。</small></div>`;
     h += `<h3>記録</h3><div class="log">${G.log.slice(0, 60).map(l => `<div class="lg ${l.kind}"><small>${Game.dateStr(l.t)}</small> ${l.text}</div>`).join('')}</div>`;
     body.innerHTML = h;
+    $('[data-a=staff]', body).onclick = () => { Sound.se('click'); openStaff(); };
   }
   function tabMenu(body) {
     body.innerHTML = `<div class="menu">
@@ -601,11 +607,132 @@ const UI = (() => {
       const r = Game.rel(pd.from, G.player);
       if (!Diplo.KINDS[pd.kind].need.includes(r.s)) continue;
       const F = FACTIONS[pd.from], lead = G.facs[pd.from].leader;
+      if (Staff.active()) {
+        const yes = Staff.answer(pd);
+        Diplo.answer(pd, yes);
+        autoLine(`${F.name}からの${Diplo.KINDS[pd.kind].name}の申し入れを、参謀が${yes ? '受けた' : '断った'}。`);
+        if (yes) { const vic = Game.checkVictory(); if (vic) { G.staff.on = false; G.over = vic.type; Game.save(); await gameOver(vic.type); return; } }
+        continue;
+      }
       const lines = { nap: '貴国と、互いに攻め込まぬ約束を交わしたい。', trade: '交易の道を開こうではないか。互いの懐が温まる。', ally: '共に戦う盟約を結びたい。いかがか。', peace: 'この戦、そろそろ終わりにせぬか。' };
       const v = await modal(`<div class="center">${lead && OFF[lead] ? `<img class="big-por" src="${Portrait.url(lead, 'normal')}">` : ''}<h2>${F.name}からの申し入れ</h2><p><b>${Diplo.KINDS[pd.kind].name}</b></p><p>「${lines[pd.kind]}」</p></div>`, [{ t: '断る', v: false }, { t: '受ける', v: true, cls: 'primary' }]);
       Diplo.answer(pd, v);
       if (v) { const vic = Game.checkVictory(); if (vic) { G.over = vic.type; Game.save(); await gameOver(vic.type); return; } }
     }
+  }
+
+  // ---------- 参謀 ----------
+  let staffDraft = null;
+  function openStaff() {
+    sheetStack = [];
+    sheet(body => renderStaff(body), '参謀');
+  }
+  function gradeBadge(g) { return `<span class="grade" style="--g:${Staff.GRADE_COL[g]}">${g}</span>`; }
+  function renderStaff(body) {
+    const me = G.player;
+    if (Staff.active()) {
+      const s = G.staff, P = Staff.POLICIES[s.policy], g = Staff.gradeOf(s.score);
+      body.innerHTML = `<div class="st-now">${ofcCard(s.key)}<div class="st-pol"><b>${P.icon} ${P.name}</b> ${gradeBadge(g)}<small>${P.desc}</small><small>効き目：${P.effect}</small>
+        <small>期間：${s.until ? `${Game.dateStr(s.until)}まで（あと${Math.max(0, s.until - G.turn)}か月）` : '止めるまで'}・${s.bigManual ? '大きな戦いは自分で指揮' : '戦いも参謀に任せる'}</small></div></div>
+        <h3>ここまでの成果</h3><div class="kv">${Staff.summary().map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
+        <div class="row"><button class="btn primary" data-a="resume">続けて任せる</button><button class="btn danger" data-a="stop">任せるのをやめる</button></div>`;
+      $('[data-a=stop]', body).onclick = () => { Sound.se('click'); Staff.stop(); toast('参謀に任せるのをやめました'); closeSheet(); };
+      $('[data-a=resume]', body).onclick = () => { Sound.se('click'); closeSheet(); autoNext(); };
+      return;
+    }
+    const lead = G.facs[me].leader;
+    const cands = Game.officersOf(me).filter(k => k !== lead);
+    if (!staffDraft || !cands.includes(staffDraft.key)) {
+      // いちばん得意の大きい士官を勧める
+      let best = cands[0], bs = -1;
+      for (const k of cands) for (const p in Staff.POLICIES) { const sc = Staff.score(k, p); if (sc > bs && !(Staff.POLICIES[p].needEclipse && !(G.eclipse.arrived && !G.eclipse.defeated))) { bs = sc; best = k; } }
+      staffDraft = { key: best, policy: staffDraft ? staffDraft.policy : 'economy', months: 12, big: true };
+    }
+    const d = staffDraft;
+    const grs = Staff.grades(d.key);
+    const good = Object.keys(grs).filter(p => 'SA'.includes(grs[p])).map(p => Staff.POLICIES[p].name), bad = Object.keys(grs).filter(p => grs[p] === 'D').map(p => Staff.POLICIES[p].name);
+    body.innerHTML = `<p class="note">参謀と方針と期間を決めると、その方針を中心に、月を自動で進めます。参謀（7割）と君主（3割）の能力・性格で得意・不得意が決まり、方針の効き目と、しくじりやすさが変わります。会話の出来事は途中で見られます。</p>
+      <h3>参謀</h3>${ofcCard(d.key, '<button class="btn small" data-a="pick">替える</button>')}
+      <p class="note">得意：${good.join('・') || 'とくになし'}${bad.length ? `／不得手：${bad.join('・')}` : ''}${lead && isMine(lead) ? `（君主${shortName(OFF[lead])}の${OFF[lead].pers}の気質も加わる）` : ''}</p>
+      <h3>方針</h3><div class="pols">${Object.entries(Staff.POLICIES).map(([k, P]) => {
+        const dis = P.needEclipse && !(G.eclipse.arrived && !G.eclipse.defeated);
+        return `<button class="pol ${d.policy === k ? 'on' : ''}" data-p="${k}" ${dis ? 'disabled' : ''}><b>${P.icon} ${P.name}</b>${gradeBadge(grs[k])}<small>${dis ? '蝕が来てから選べる' : P.desc}</small></button>`; }).join('')}</div>
+      <h3>期間</h3><div class="chips">${[[6, '半年'], [12, '1年'], [24, '2年'], [0, '止めるまで']].map(([m, n]) => `<button class="chip ${d.months === m ? 'on' : ''}" data-m="${m}">${n}</button>`).join('')}</div>
+      <label class="tgl"><input type="checkbox" ${d.big ? 'checked' : ''} data-a="big"> 艦が20隻以上の大きな戦いは、自分で指揮する</label>
+      <button class="btn primary wide" data-a="go">${OFF[d.key].name}に「${Staff.POLICIES[d.policy].name}」を任せる</button>`;
+    $('[data-a=pick]', body).onclick = async () => {
+      Sound.se('click');
+      const k = await pickStaff(cands);
+      if (k) staffDraft.key = k; drawSheet();
+    };
+    $$('[data-p]', body).forEach(b => b.onclick = () => { Sound.se('click'); d.policy = b.dataset.p; drawSheet(); });
+    $$('[data-m]', body).forEach(b => b.onclick = () => { Sound.se('click'); d.months = +b.dataset.m; drawSheet(); });
+    $('[data-a=big]', body).onchange = e => { d.big = e.target.checked; };
+    $('[data-a=go]', body).onclick = async () => {
+      Sound.se('click');
+      closeSheet();
+      await talk(null, [[d.key, Staff.gradeOf(Staff.score(d.key, d.policy)) === 'D' ? 'sad' : 'happy', Staff.line(d.key, d.policy)]], null, 'bridge', true);
+      Staff.start(d.key, d.policy, d.months, d.big);
+      refresh();
+      autoNext(300);
+    };
+  }
+  // 参謀を選ぶ（方針ごとの得意を並べて）
+  function pickStaff(cands) {
+    return new Promise(res => {
+      sheet(body => {
+        const pols = Object.keys(Staff.POLICIES);
+        body.innerHTML = `<p class="note">各方針への向き不向き（S〜D）。君主の気質も少し加わっています。</p>` + cands.map(k => {
+          const g = Staff.grades(k);
+          return `<div class="ofc sp" data-k="${k}"><img src="${Portrait.url(k)}"><div class="ofc-i"><b><span class="rk">${Game.rankName(k)}</span>${OFF[k].name}</b><small>${OFF[k].epi}・${OFF[k].pers}</small>
+            <div class="gr">${pols.map(p => `<span>${Staff.POLICIES[p].icon}${gradeBadge(g[p])}</span>`).join('')}</div></div><button class="btn small primary">選ぶ</button></div>`;
+        }).join('');
+        $$('.sp', body).forEach(el => el.onclick = () => { Sound.se('click'); sheetStack.pop(); drawSheet(); res(el.dataset.k); });
+      }, '参謀を選ぶ');
+    });
+  }
+  // 自動で進む帯
+  let autoSpeed = 1, autoTimer = null;
+  const AUTO_DELAY = [2600, 1300, 450];
+  function uiIdle() {
+    return current === 'main' && !$('#sheet').classList.contains('show') && !$('#modal').classList.contains('show') && !$('#talk').classList.contains('show') && !Turn.running;
+  }
+  function autoNext(delay) {
+    clearTimeout(autoTimer);
+    drawAutobar();
+    if (!Staff.active() || G.over) return;
+    autoTimer = setTimeout(function tick() {
+      if (!Staff.active() || G.over) { drawAutobar(); return; }
+      if (!uiIdle()) { autoTimer = setTimeout(tick, 600); return; }
+      Turn.end();
+    }, delay ?? AUTO_DELAY[autoSpeed]);
+  }
+  function autoLine(t) { if (G.staff) { G.staff.lines.unshift(t); G.staff.lines.length = Math.min(G.staff.lines.length, 4); } drawAutobar(); }
+  function autoReport(report) {
+    refresh();
+    const imp = report.filter(r => r.kind === 'big' || r.kind === 'bad' || r.kind === 'good');
+    (imp.length ? imp : report).slice(-3).reverse().forEach(r => autoLine(r.text));
+    if (!report.length) autoLine(`${Game.dateStr()}：変わりなし。`);
+  }
+  function drawAutobar() {
+    const el = $('#autobar'); if (!el) return;
+    if (!G || !Staff.active()) { el.classList.remove('show'); return; }
+    const s = G.staff, P = Staff.POLICIES[s.policy];
+    el.classList.add('show');
+    el.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}<small>${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}</small></b>
+      <div class="ab-t">${(s.lines || []).slice(0, 2).map(t => `<div>${esc(t)}</div>`).join('')}</div></div>
+      <div class="ab-b"><button data-ab="speed">${['ゆっくり', 'ふつう', '速い'][autoSpeed]}</button><button data-ab="stop" class="stop">■ 止める</button></div>`;
+    el.querySelector('[data-ab=speed]').onclick = e => { e.stopPropagation(); autoSpeed = (autoSpeed + 1) % 3; drawAutobar(); };
+    el.querySelector('[data-ab=stop]').onclick = e => { e.stopPropagation(); Sound.se('click'); Staff.stop(); clearTimeout(autoTimer); drawAutobar(); refresh(); toast('参謀に任せるのをやめました。自分で命令できます。'); };
+    el.querySelector('.ab-i').onclick = () => openStaff();
+  }
+  async function staffStop(why) {
+    const s = G.staff;
+    Staff.stop(); clearTimeout(autoTimer); drawAutobar(); refresh();
+    Sound.se('event');
+    await modal(`<div class="center"><img class="big-por" src="${Portrait.url(s.key, 'normal')}"><h2>参謀からの報告</h2><p>「${why}」</p></div>
+      <div class="kv">${Staff.summary().map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>`, [{ t: '自分で指揮する', v: null }, { t: '方針を決め直す', v: 'again', cls: 'primary' }])
+      .then(v => { if (v === 'again') openStaff(); });
   }
 
   // ---------- 終わり ----------
@@ -686,6 +813,8 @@ const UI = (() => {
     StarMap.focus(G.facs[G.player].capital, 0.7);
     refresh();
     Sound.bgm(G.eclipse.arrived && !G.eclipse.defeated ? 'crisis' : 'strategy');
+    drawAutobar();
+    if (Staff.active()) toast('参謀に任せたまま中断しています。帯の「■ 止める」で自分の指揮に戻れます。下の帯をタップで詳細。', 4000), autoNext(2500);
   }
 
   // ---------- 起動 ----------
@@ -717,14 +846,15 @@ const UI = (() => {
       const b = e.target.closest('[data-nav]'); if (!b || Turn.running || starting) return;
       Sound.se('click');
       const n = b.dataset.nav;
-      if (n === 'end') { closeSheet(); StarMap.moveMode = null; Turn.end(); }
+      if (n === 'end') { if (Staff.active()) { toast('参謀に任せています。止めるときは下の帯の「■ 止める」'); return; } closeSheet(); StarMap.moveMode = null; Turn.end(); }
       else openTab(n);
     });
     $('#btnMenu').onclick = () => { Sound.se('click'); openTab('menu'); };
+    $('#btnStaff').onclick = () => { if (Turn.running) return; Sound.se('click'); openStaff(); };
     $('#sheet .sh-close').onclick = () => { Sound.se('click'); closeSheet(); };
     $('#sheet .sh-back').onclick = () => { Sound.se('click'); backSheet(); };
     $('#sheet .sh-bg').onclick = () => closeSheet();
   }
 
-  return { show, toast, busy, modal, confirm, wait, sheet, closeSheet, refresh, refreshTop, talk, battlePrompt, monthReport, pendingProposals, gameOver, boot, toTitle, howto, ofcCard, openPlanet, openFleet, get current() { return current; } };
+  return { show, toast, busy, modal, confirm, wait, sheet, closeSheet, refresh, refreshTop, talk, battlePrompt, monthReport, pendingProposals, gameOver, boot, toTitle, howto, ofcCard, openPlanet, openFleet, openStaff, autoNext, autoReport, staffStop, get current() { return current; } };
 })();

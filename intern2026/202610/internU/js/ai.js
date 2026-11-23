@@ -2,27 +2,32 @@
 //  AI 勢力：研究・開発・造艦・人事・艦隊の動き
 // ============================================================
 const AI = (() => {
-  function turn(fid) {
+  // pol：参謀の方針で動かすときの指示（AI の国では使わない）
+  //  { agg 攻めっ気, need 攻める時に求める戦力の倍率, focus 開発の好み, research 研究の重み, build 造艦の多さ,
+  //    onlyE 蝕だけを攻める, noMajors 大国を攻めない, mistake しくじる確率, noForb 禁忌に手を出さない }
+  function turn(fid, pol = {}) {
     const f = G.facs[fid], F = FACTIONS[fid];
     if (!f.alive) return;
+    const slip = () => pol.mistake && Math.random() < pol.mistake;
     Designer.autoDesign(fid);
-    research(fid);
-    planets(fid);
+    if (!slip()) research(fid, pol);
+    if (!slip()) planets(fid, pol);
     officers(fid);
-    build(fid);
+    if (!slip()) build(fid, pol);
     fleets(fid);
-    military(fid);
+    if (!slip()) military(fid, pol);
   }
 
-  function research(fid) {
+  function research(fid, pol = {}) {
     const f = G.facs[fid], F = FACTIONS[fid];
     if (FORBIDDEN[f.researching]) return;
     // 禁忌に手を出すか
-    for (const k of Object.keys(FORBIDDEN)) {
+    if (!pol.noForb) for (const k of Object.keys(FORBIDDEN)) {
       if (Game.forbAvailable(f, k) && Math.random() < (F.agg > 0.6 || f.ruling === 'tech' ? 0.04 : 0.01)) { f.researching = k; return; }
     }
     const w = { wep: 1, eng: 0.85, def: 0.95, eco: 1.1 };
     if (f.ruling === 'war') w.wep *= 1.3; if (f.ruling === 'trade') w.eco *= 1.3; if (f.ruling === 'tech') w.eng *= 1.2;
+    if (pol.research) for (const k in pol.research) w[k] *= pol.research[k];
     let best = 'wep', bs = -1e9;
     for (const k of ['wep', 'eng', 'def', 'eco']) { if (f.tech[k] >= 8) continue; const s = w[k] * 10 - f.tech[k] * 6 + Math.random() * 3; if (s > bs) { bs = s; best = k; } }
     f.researching = best;
@@ -33,12 +38,14 @@ const AI = (() => {
   }
   function border(pid, fid) { return Game.ADJ[pid].some(n => G.planets[n].owner !== fid); }
 
-  function planets(fid) {
+  function planets(fid, pol = {}) {
     for (const p of G.planets) {
       if (p.owner !== fid) continue;
       let focus = 'ind';
-      if (p.stab < 35) focus = 'pop';
+      if (p.stab < (pol.focus === 'pop' ? 55 : 35)) focus = 'pop';
       else if (threatened(p.id, fid) && p.def < Game.devCap(p, 'def') - 2) focus = 'def';
+      else if (pol.focus === 'def' && border(p.id, fid) && p.def < Game.devCap(p, 'def')) focus = 'def';
+      else if (pol.focus === 'res' && p.res < Game.devCap(p, 'res') && (p.ind >= 3 || p.type !== 'barren')) focus = 'res';
       else if (!p.yard && p.pop >= 30 && G.planets.filter(x => x.owner === fid && x.yard).length < 3) focus = 'yard';
       else if (p.type === 'ice' || p.type === 'ruin') focus = p.res < Game.devCap(p, 'res') ? 'res' : 'ind';
       else if (p.ind >= Game.devCap(p, 'ind')) focus = p.res < Game.devCap(p, 'res') ? 'res' : 'def';
@@ -52,6 +59,7 @@ const AI = (() => {
     for (const k in G.officers) {
       const o = G.officers[k];
       if (o.st === 'free' && o.loc !== null && G.planets[o.loc] && G.planets[o.loc].owner === fid && Math.random() < 0.25) {
+        if (fid === G.player) { if (G.facs[fid].funds < 100) continue; G.facs[fid].funds -= 100; }
         if (Math.random() < recruitChance(k, fid)) { o.st = 'act'; o.fac = fid; o.loyal = 60 + Math.random() * 20; o.ever = o.ever ?? fid; Game.log(`${OFF[k].name}が${FACTIONS[fid].name}に仕官した。`, 'info', fid); }
       }
       if (o.st === 'cap' && o.capBy === fid && Math.random() < 0.15) {
@@ -76,11 +84,12 @@ const AI = (() => {
     return clamp(p, 0.05, 0.9);
   }
 
-  function build(fid) {
+  function build(fid, pol = {}) {
     const f = G.facs[fid];
     const e = Game.economy(fid);
+    const bm = pol.build || 1;
     // 維持費が収入の 6 割を超えたら造らない（ただし資金が余っていれば造る）
-    if (e.up > e.inc * (f.funds > 1200 ? 0.95 : 0.62)) { invest(fid); return; }
+    if (e.up > e.inc * (f.funds > 1200 ? 0.95 : 0.62) * bm) { invest(fid); return; }
     const yards = G.planets.filter(p => p.owner === fid && p.yard).sort((a, b) => (threatened(b.id, fid) ? 1 : 0) - (threatened(a.id, fid) ? 1 : 0) || b.yard - a.yard);
     for (const p of yards) {
       if (p.build.length >= p.yard) continue;
@@ -102,14 +111,14 @@ const AI = (() => {
     for (const p of G.planets.filter(p => p.owner === fid && p.dock.length)) {
       const keep = p.cap ? 2 : 0;
       if (p.dock.length - keep < 3) continue;
-      let fl = G.fleets.find(x => x.fac === fid && x.at === p.id && x.cmd && x.ships.length < 24 && !x.dest);
+      let fl = G.fleets.find(x => x.fac === fid && x.at === p.id && x.cmd && x.ships.length < Game.fleetCap(x) && !x.dest);
       if (!fl) {
         const cmd = idle()[0];
         if (!cmd) continue;
         fl = Game.newFleet(fid, cmd, p.id);
         fl.form = ['spindle', 'crane', 'circle', 'line'][Math.floor(Math.random() * 4)];
       }
-      while (p.dock.length > keep && fl.ships.length < 30) fl.ships.push(p.dock.pop());
+      while (p.dock.length > keep && fl.ships.length < Game.fleetCap(fl)) fl.ships.push(p.dock.pop());
     }
     // 司令官のいない艦隊に司令を
     for (const fl of G.fleets.filter(x => x.fac === fid && !x.cmd)) { const k = idle()[0]; if (k) Game.setCmd(fl, k); }
@@ -122,14 +131,14 @@ const AI = (() => {
       if (list.length < 2) continue;
       list.sort((a, b) => b.ships.length - a.ships.length);
       const main = list[0];
-      for (const o of list.slice(1)) { if (main.ships.length + o.ships.length <= 30 && o.ships.length < 8) { main.ships.push(...o.ships); o.ships = []; } }
+      for (const o of list.slice(1)) { if (main.ships.length + o.ships.length <= Game.fleetCap(main) && o.ships.length < 8) { main.ships.push(...o.ships); o.ships = []; } }
     }
     // 空の艦隊を解く
     G.fleets.filter(x => x.fac === fid && !x.ships.length).forEach(x => Game.removeFleet(x));
   }
 
-  function military(fid) {
-    const f = G.facs[fid], F = FACTIONS[fid];
+  function military(fid, pol = {}) {
+    const f = G.facs[fid], F = { agg: pol.agg ?? FACTIONS[fid].agg };
     const my = G.fleets.filter(x => x.fac === fid && x.cmd && x.ships.length);
     const busy = new Set();
     // 1. 守り：脅かされている星へ
@@ -164,7 +173,10 @@ const AI = (() => {
         // 小勢力（頼まれごとの相手）は、しばらく攻めない
         if (typeof p.owner === 'string' && p.owner !== 'E' && (G.turn < 36 || F.agg < 0.55 || Math.random() < 0.7)) continue;
         const def = Game.planetDefense(p) + G.fleets.filter(x => x.at === n && Game.friendly(x.fac, p.owner)).reduce((a, x) => a + 0, 0);
-        const need = def * (1.25 + (1 - F.agg) * 0.4);
+        if (pol.onlyE && p.owner !== 'E') continue;
+        if (pol.noMajors && Game.isMajor(p.owner)) continue;
+        if (pol.noIndep && p.owner === null) continue;
+        const need = def * (pol.need || (1.25 + (1 - F.agg) * 0.4));
         if (myP < need) continue;
         let sc = p.pop * 1.2 + (p.cap ? 40 : 0) - def * 0.3 + (p.owner === null ? 15 : 0) + (p.owner === 'E' ? 25 : 0) + (p.type === 'rift' ? 200 : 0);
         if (Game.isMajor(p.owner) && p.owner === G.player) sc += 5;
