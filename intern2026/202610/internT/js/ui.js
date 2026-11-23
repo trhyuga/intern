@@ -22,7 +22,7 @@ const UI = {
   talk(g, expr, text, color, opts = {}) {
     return new Promise(res => {
       const el = $('#talk');
-      const autoMs = (typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text, opts) : 0;
+      const autoMs = opts.wait || ((typeof Auto !== 'undefined' && (Auto.running || (typeof Battle !== 'undefined' && Battle.watching && UI.cur === 'battle'))) ? Auto.talkMs(text, opts) : 0);   // opts.wait：決まった時間だけ見せて進む（タップでも進む）
       el.innerHTML = `<div class="talk-box">${g ? `<img src="${Portrait.get(g, expr || 'normal', color || facColor(g))}">` : ''}<div class="talk-text">${opts.tag ? `<div class="talk-tag">${opts.tag}</div><br>` : ''}${text.replace(/<b>[\s\S]*?<\/b>/g, m => m.replace(/\n/g, '<br>')).split('\n').map(t => `<span class="tl">${t}</span>`).join('<br>')}${autoMs ? `<div class="talk-auto"><i style="transition:width ${autoMs}ms linear"></i></div>` : '<div class="talk-next">▼</div>'}</div></div>`;
       el.classList.add('show');
       UI.fixOrphans(el);
@@ -1064,6 +1064,14 @@ const App = {
 
   async finish(kind) {
     G.gameOver = true;
+    // エンディングの前に、最後に何が起きたかを数秒見せる（オートの降伏などで、いきなり終わらないように）
+    try {
+      const lord = Game.lordOf(G.player) || G.gens[G.factions[G.player].lord];
+      const last = G.log.slice(0, 3).reverse().map(l => `・${l.msg}`).join('\n');
+      UI.closeSheet();
+      Sound.se(kind === 'win' ? 'coronation' : 'gong');
+      await UI.talk(lord, kind === 'win' ? 'happy' : 'sad', `<b>${kind === 'win' ? `天下は、${G.factions[G.player].name}軍のもとに一つとなった。` : `${G.factions[G.player].name}軍は、ここに潰えた。`}</b>\n${last}`, G.factions[G.player].color, { tag: kind === 'win' ? '天下統一' : '覇業ならず', wait: 6000 });
+    } catch (e) { console.error('finish', e); }
     try { Secret.onFinish(kind); } catch (e) { console.error('secret', e); }
     if (Auto.running) Auto.stop(true);
     Game.clearSave();
