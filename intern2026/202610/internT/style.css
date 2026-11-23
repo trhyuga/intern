@@ -114,6 +114,14 @@ button { font-family: inherit; }
 #title .title-menu .btn { border: none; border-radius: 3px; background: url(media/btn_paper.jpg?v=1) center / 100% 100% no-repeat; color: #3a2414; box-shadow: 0 4px 10px #000c; text-shadow: 0 1px 0 #fff6; min-height: 54px; }
 #title .title-menu .btn.primary { background-image: url(media/btn_red.jpg?v=1); color: #f8e2a8; text-shadow: 0 1px 3px #000, 0 0 8px #000a; }
 #title .title-menu .btn:active { filter: brightness(1.15); transform: translateY(1px); }
+/* タイトルの四隅の金の飾り（左上の絵を反転して四隅に） */
+.corner { position: absolute; width: min(24vw, 110px); aspect-ratio: 446 / 494; background: url(media/corner.webp?v=1) center / contain no-repeat; z-index: 1; pointer-events: none; opacity: 0; animation: cornerIn 1.2s .4s forwards; filter: drop-shadow(0 0 3px #000); }
+@keyframes cornerIn { to { opacity: .95; } }
+.corner.tl { left: 6px; top: calc(6px + var(--safe-t)); }
+.corner.tr { right: 6px; top: calc(6px + var(--safe-t)); transform: scaleX(-1); }
+.corner.bl, .corner.br { width: min(17vw, 80px); }
+.corner.bl { left: 6px; bottom: calc(6px + var(--safe-b)); transform: scaleY(-1); }
+.corner.br { right: 6px; bottom: calc(6px + var(--safe-b)); transform: scale(-1, -1); }
 .title-menu { margin-top: auto; display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 300px; opacity: 0; animation: inkIn .8s 1.6s forwards; }
 .title-foot { color: #8a7a5a; font-size: 11px; margin-top: 16px; }
 
