@@ -78,13 +78,65 @@ const Staff = (() => {
 
   // 自国の月の動き（AI として）
   function turnPlayer() {
-    const s = G.staff;
+    const s = G.staff, me = G.player, f = G.facs[me];
+    s.month = [];
+    s.fundsBefore = f.funds;
     // 蝕が退いたら対蝕作戦はおしまい
-    if (s.policy === 'eclipse' && (!G.eclipse.arrived || G.eclipse.defeated)) return;
-    AI.turn(G.player, params());
+    if (s.policy === 'eclipse' && (!G.eclipse.arrived || G.eclipse.defeated)) { s.month.push('対蝕作戦の相手がいません。'); return; }
+    // 動く前の様子
+    const mine = G.planets.filter(p => p.owner === me);
+    const before = new Map(mine.map(p => [p.id, { focus: p.focus, prog: p.prog, build: p.build.length }]));
+    const offBefore = new Set(Game.officersOf(me));
+    const resBefore = f.researching;
+    const destBefore = new Map(G.fleets.filter(x => x.fac === me).map(x => [x.id, x.dest]));
+    AI.turn(me, params());
+    policyWork();
     diplomacy();
+    // 動いた後と比べて、したことを書く
+    for (const p of mine) {
+      const b = before.get(p.id); if (!b || p.owner !== me) continue;
+      if (p.focus !== b.focus) s.month.push(`${p.name}の重点を${Game.FOCUS[p.focus]}に切り替えた。`);
+      if (p.prog - b.prog >= 59 && p.focus === b.focus) s.month.push(`${p.name}の${Game.FOCUS[p.focus]}開発に資金を投じた。`);
+      if (p.build.length > b.build) p.build.slice(b.build).forEach(x => s.month.push(`${p.name}で${G.designs[x.d].name}を発注した。`));
+    }
+    Game.officersOf(me).filter(k => !offBefore.has(k)).forEach(k => s.month.push(`${OFF[k].name}を登用した。`));
+    if (f.researching !== resBefore) s.month.push(`研究を「${Game.researchTarget(f).name}」に切り替えた。`);
+    G.fleets.filter(x => x.fac === me && x.dest !== null && x.dest !== undefined && destBefore.get(x.id) !== x.dest).forEach(x => s.month.push(`${Game.fleetName(x)}を${G.planets[x.dest].name}へ向かわせた。`));
     // 参謀にも武功
     Game.addMerit(s.key, 0.6);
+  }
+  // 方針ごとの、目に見える仕事
+  function policyWork() {
+    const s = G.staff, me = G.player, f = G.facs[me], k = s.score / 100;
+    const reserve = 300;
+    if (s.policy === 'economy') {
+      // 余った資金を、人口の多い星の開発に投じる（得意なほど多くの星へ）
+      const n = 1 + Math.round(2 * k);
+      const ps = G.planets.filter(p => p.owner === me && p.focus !== 'pop' && (p[p.focus] || 0) < Game.devCap(p, p.focus)).sort((a, b) => b.pop - a.pop);
+      let done = 0;
+      for (const p of ps) { if (done >= n || f.funds - Game.investCost(p) < reserve) break; if (Game.invest(p.id)) done++; }
+    }
+    if (s.policy === 'research') {
+      // 研究の星に投資し、残りを研究費に回す
+      const rp = G.planets.filter(p => p.owner === me && p.focus === 'res' && p.res < Game.devCap(p, 'res')).sort((a, b) => b.pop - a.pop)[0];
+      if (rp && f.funds - Game.investCost(rp) >= reserve) Game.invest(rp.id);
+      const amt = Math.floor(Math.min(f.funds - reserve, 150 + 150 * k) / 50) * 50;
+      if (amt >= 50) { const v = Game.researchGrant(me, amt, 0.5 + 0.3 * k); if (v) s.month.push(`研究費として資金${amt}を投じた（研究 +${v}）。`); }
+    }
+  }
+  // 月の要約（いつも出す）
+  function monthLine() {
+    const me = G.player, f = G.facs[me], e = Game.economy(me), rt = Game.researchTarget(f);
+    const delta = G.staff && G.staff.fundsBefore !== undefined ? Math.round(f.funds - G.staff.fundsBefore) : e.inc - e.up;
+    // 次に上がりそうな開発
+    let next = null;
+    for (const p of G.planets) {
+      if (p.owner !== me || p.focus === 'pop' || (p[p.focus] || 0) >= Game.devCap(p, p.focus)) continue;
+      const m = Math.max(1, Math.ceil((100 - p.prog) / Math.max(1, Game.devSpeed(p))));
+      if (!next || m < next.m) next = { p, m };
+    }
+    return `資金 ${Math.round(f.funds).toLocaleString()}（${delta >= 0 ? '+' : ''}${delta}）・研究「${rt.name}」${Math.min(100, Math.floor(f.rp / rt.cost * 100))}%`
+      + (next ? `・次は${next.p.name}の${Game.FOCUS[next.p.focus]}Lv${(next.p[next.p.focus] || 0) + 1}（あと${next.m}か月）` : '');
   }
   function envoy() { return Game.officersOf(G.player).filter(k => G.officers[k].busy !== G.turn).sort((a, b) => OFF[b].dip - OFF[a].dip)[0]; }
   // 参謀の外交
@@ -168,5 +220,5 @@ const Staff = (() => {
     return byP[pers] + byG[g];
   }
 
-  return { POLICIES, GRADE_COL, score, grades, gradeOf, active, bonus, params, start, stop, turnPlayer, answer, shouldStop, summary, line };
+  return { POLICIES, GRADE_COL, score, grades, gradeOf, active, bonus, params, start, stop, turnPlayer, answer, shouldStop, summary, line, monthLine };
 })();

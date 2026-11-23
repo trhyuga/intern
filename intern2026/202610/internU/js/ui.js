@@ -598,7 +598,9 @@ const UI = (() => {
     Sound.se('turn');
     refresh();
     if (!report.length) { toast(`${Game.dateStr()}`); return; }
-    await modal(`<h2 class="rep-h">${Game.dateStr()}</h2><div class="rep">${report.map(r => `<div class="lg ${r.kind}">${r.text}</div>`).join('')}</div>`, [{ t: '閉じる', v: null, cls: 'primary' }]);
+    const mineR = report.filter(r => r.kind !== 'news' && r.kind !== 'info'), news = report.filter(r => r.kind === 'news' || r.kind === 'info');
+    const shown = mineR.concat(news.slice(0, 4).map(r => ({ kind: 'news', text: '【銀河】' + r.text })));
+    await modal(`<h2 class="rep-h">${Game.dateStr()}</h2><div class="rep">${shown.map(r => `<div class="lg ${r.kind}">${r.text}</div>`).join('')}${news.length > 4 ? `<div class="lg news">ほか ${news.length - 4} 件の銀河の報（国政の記録で読めます）</div>` : ''}</div>`, [{ t: '閉じる', v: null, cls: 'primary' }]);
   }
   async function pendingProposals() {
     while (G.pending.length) {
@@ -634,6 +636,7 @@ const UI = (() => {
       const s = G.staff, P = Staff.POLICIES[s.policy], g = Staff.gradeOf(s.score);
       body.innerHTML = `<div class="st-now">${ofcCard(s.key)}<div class="st-pol"><b>${P.icon} ${P.name}</b> ${gradeBadge(g)}<small>${P.desc}</small><small>効き目：${P.effect}</small>
         <small>期間：${s.until ? `${Game.dateStr(s.until)}まで（あと${Math.max(0, s.until - G.turn)}か月）` : '止めるまで'}・${s.bigManual ? '大きな戦いは自分で指揮' : '戦いも参謀に任せる'}</small></div></div>
+        ${(s.lines || []).length ? `<h3>${s.linesDate || ''}の報告</h3><div class="rep">${s.lines.map(x => typeof x === 'string' ? { cls: 'staff', t: x } : x).map(x => `<div class="lg ${x.cls}">${esc(x.t)}</div>`).join('')}</div>` : ''}
         <h3>ここまでの成果</h3><div class="kv">${Staff.summary().map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>
         <div class="row"><button class="btn primary" data-a="resume">続けて任せる</button><button class="btn danger" data-a="stop">任せるのをやめる</button></div>`;
       $('[data-a=stop]', body).onclick = () => { Sound.se('click'); Staff.stop(); toast('参謀に任せるのをやめました'); closeSheet(); };
@@ -708,20 +711,29 @@ const UI = (() => {
       Turn.end();
     }, delay ?? AUTO_DELAY[autoSpeed]);
   }
-  function autoLine(t) { if (G.staff) { G.staff.lines.unshift(t); G.staff.lines.length = Math.min(G.staff.lines.length, 4); } drawAutobar(); }
+  function autoLine(t) { if (G.staff) { G.staff.lines = [{ cls: 'staff', t }].concat((G.staff.lines || []).map(x => typeof x === 'string' ? { cls: 'staff', t: x } : x)).slice(0, 8); } drawAutobar(); }
+  // 参謀に任せている間の、月ごとの報告（帯に出す。「変わりなし」は出さない）
   function autoReport(report) {
     refresh();
-    const imp = report.filter(r => r.kind === 'big' || r.kind === 'bad' || r.kind === 'good');
-    (imp.length ? imp : report).slice(-3).reverse().forEach(r => autoLine(r.text));
-    if (!report.length) autoLine(`${Game.dateStr()}：変わりなし。`);
+    const s = G.staff; if (!s) return;
+    const L = [];
+    const add = (cls, t) => { if (t && !L.some(x => x.t === t)) L.push({ cls, t }); };
+    report.filter(r => r.text.startsWith('【出来事】') || r.kind === 'big' || r.kind === 'bad').forEach(r => add(r.kind === 'bad' ? 'bad' : 'big', r.text));
+    (s.month || []).forEach(t => add('staff', '参謀：' + t));
+    add('sum', Staff.monthLine());
+    report.filter(r => r.kind === 'good').slice(0, 3).forEach(r => add('good', r.text));
+    report.filter(r => r.kind === 'news' || r.kind === 'info').slice(0, 3).forEach(r => add('news', '【銀河】' + r.text));
+    s.lines = L; s.linesDate = Game.dateStr(G.turn - 1);
+    drawAutobar();
   }
   function drawAutobar() {
     const el = $('#autobar'); if (!el) return;
     if (!G || !Staff.active()) { el.classList.remove('show'); return; }
     const s = G.staff, P = Staff.POLICIES[s.policy];
     el.classList.add('show');
-    el.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}<small>${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}</small></b>
-      <div class="ab-t">${(s.lines || []).slice(0, 2).map(t => `<div>${esc(t)}</div>`).join('')}</div></div>
+    const lines = (s.lines || []).map(x => typeof x === 'string' ? { cls: 'staff', t: x } : x);
+    el.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}<small>${Game.dateStr()}・${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}</small></b>
+      <div class="ab-t">${lines.slice(0, 3).map(x => `<div class="${x.cls}">${esc(x.t)}</div>`).join('') || `<div class="sum">${esc(Staff.monthLine())}</div>`}</div></div>
       <div class="ab-b"><button data-ab="speed">${['ゆっくり', 'ふつう', '速い'][autoSpeed]}</button><button data-ab="stop" class="stop">■ 止める</button></div>`;
     el.querySelector('[data-ab=speed]').onclick = e => { e.stopPropagation(); autoSpeed = (autoSpeed + 1) % 3; drawAutobar(); };
     el.querySelector('[data-ab=stop]').onclick = e => { e.stopPropagation(); Sound.se('click'); Staff.stop(); clearTimeout(autoTimer); drawAutobar(); refresh(); toast('参謀に任せるのをやめました。自分で命令できます。'); };

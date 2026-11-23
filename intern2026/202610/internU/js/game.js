@@ -399,6 +399,12 @@ const Game = (() => {
     return true;
   }
   const investCost = p => Math.round(60 + (p[p.focus] || 0) * 30);
+  // 研究費：資金を研究に回す（rate は資金1あたりの研究点）
+  function researchGrant(fid, amt, rate = 0.5) {
+    const f = facOf(fid); if (!f || f.funds < amt) return 0;
+    f.funds -= amt; const v = Math.round(amt * rate); f.rp += v;
+    return v;
+  }
 
   // ---------- 技術 ----------
   function researchTarget(f) {
@@ -752,7 +758,7 @@ const Game = (() => {
     designStats, designCost, designUnlocked, newDesign, newShip, shipMaxHp, shipPower, fleetPower, dockPower, satPower, planetDefense, rankOf,
     officersOf, setGov, newFleet, setCmd, fleetName, removeFleet, freeOfficer,
     rulingOf, shiftParty, economy, planetIncome, planetResearch, devCap, devSpeed, FOCUS, invest, investCost,
-    researchTarget, forbAvailable, queueBuild, canBuildHull, economyTurn, DEMANDS, demandTurn,
+    researchTarget, forbAvailable, researchGrant, queueBuild, canBuildHull, economyTurn, DEMANDS, demandTurn,
     minorProgress, minorJoin, capture, captureOfficer, destroyFaction, checkVictory, addMerit,
   };
 })();

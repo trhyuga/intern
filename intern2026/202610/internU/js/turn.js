@@ -108,6 +108,8 @@ const Turn = (() => {
       await UI.wait(20);
       // 4. 経済
       Game.economyTurn();
+      // 小さな出来事
+      Incidents.roll();
       // 5. 外交
       for (const f of G.facs) if (f.alive && f.id !== G.player) Diplo.aiTurn(f.id);
       // 6. 派閥の要求
@@ -126,7 +128,10 @@ const Turn = (() => {
       // 8. この月の出来事（ログから）
       const newLogs = [];
       for (const l of G.log) { if (l === logStart) break; newLogs.push(l); }
-      newLogs.reverse().forEach(l => { if (l.fac === G.player || l.kind === 'big' || l.kind === 'warn' || l.kind === 'bad') report.push({ kind: l.kind, text: l.text }); });
+      newLogs.reverse().forEach(l => {
+        if (l.fac === G.player || l.kind === 'big' || l.kind === 'warn' || l.kind === 'bad') report.push({ kind: l.kind, text: l.text });
+        else if (l.kind === 'info') report.push({ kind: 'news', text: l.text });   // ほかの国どうしの出来事
+      });
       // 9. 勝ち負け
       const v = Game.checkVictory();
       Game.save();

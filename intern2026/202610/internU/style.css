@@ -358,3 +358,7 @@ small { font-size: 11px; }
 .ab-b { display: flex; flex-direction: column; gap: 4px; }
 .ab-b button { background: #1c2a48; border: 1px solid var(--line); border-radius: 7px; font-size: 11px; padding: 5px 7px; white-space: nowrap; }
 .ab-b .stop { background: #5a1a2a; border-color: #c85a6a; }
+
+.lg.news { color: #9fb2d8; font-size: 12px; }
+.lg.staff { color: #d8ccff; } .lg.sum { color: #ffe9a8; }
+.ab-t .staff { color: #d8ccff; } .ab-t .sum { color: #ffe9a8; } .ab-t .news { color: #9fb2d8; } .ab-t .bad { color: #ffa898; } .ab-t .big { color: var(--gold); } .ab-t .good { color: #a8f0b0; }
