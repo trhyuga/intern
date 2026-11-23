@@ -8,7 +8,7 @@ const Battle = (() => {
   const fcol = fi => (fi != null && G.factions[fi]) ? G.factions[fi].color : '#777';   // 勢力の色（勢力がなければ灰色）
   const COLS = 9, ROWS = 11;
   const COST = { plain: 1, forest: 2, mount: 3, ford: 2, water: 99, inner: 1, keep: 1, gate: 1, wall: 99, road: 1 };
-  const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.35, keep: 1.9, gate: 1.4, wall: 2, road: 1 };   // 本丸は三方から囲まれやすいので、守りを厚く（1.6→1.9）
+  const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.35, keep: 1.9, gate: 1.4, wall: 2, road: 1 };   // 本丸は三方から囲まれやすいので守りを厚く。ただし小勢力の攻め手には弱める（calcDamage）
   const TNAME = { plain: '平地', forest: '森', mount: '山', ford: '浅瀬', water: '川', inner: '城内', keep: '本丸', gate: '城門', wall: '城壁', road: '道' };
   let B = null, cv, ctx, cell, raf, resolveEnd, terrainLayer, anims = [], floaters = [], particles = [];
   // 合戦が進んでいる印（待ち時間が明けるたびに更新）。止まったままかどうかの見張りに使う
@@ -447,7 +447,9 @@ const Battle = (() => {
     const ag = a.g, dg = d.g;
     const aVal = (ag.lead || 40) * 0.55 + ag.war * 0.45, dVal = (dg.lead || 40) * 0.65 + dg.war * 0.25 + dg.int * 0.1;
     const t = B.tiles[d.r][d.c].t;
-    let k = Math.pow(a.troops, 0.85) * 0.75 * (aVal / Math.max(20, dVal)) / DEFK[t];
+    // 本丸の守り：攻め手の勢力が小さいうち（序盤）は1.6、大きくなるほど1.9まで（城壁と同じく siegeK で決める）
+    const defk = t === 'keep' ? 1.6 + 0.3 * clamp((B.wallK - 0.35) / 0.65, 0, 1) : DEFK[t];
+    let k = Math.pow(a.troops, 0.85) * 0.75 * (aVal / Math.max(20, dVal)) / defk;
     k *= (0.6 + (a.train || 50) / 250) * (0.5 + a.morale / 160) * (1 + bondBonus(a));
     if (Game.has(ag, '猪突')) k *= 1.1;
     if (Game.has(dg, '慎重')) k *= 0.9;
