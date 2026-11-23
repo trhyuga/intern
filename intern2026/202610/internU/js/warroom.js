@@ -19,6 +19,7 @@ const WarRoom = (() => {
   const result = (text, ok = true, pid = null) => push({ k: 'result', text, ok, pid });
   const news = text => push({ k: 'news', text });
   const head = text => push({ k: 'head', text });
+  const flow = text => push({ k: 'flow', text });   // 艦隊戦の流れ
   // 侵攻：どこからどこへ（タップで地図をその矢印へ寄せる）
   const raid = (label, text, ok, from, to) => push({ k: 'raid', label, text, ok, from, to, pid: to });
 
@@ -98,6 +99,7 @@ const WarRoom = (() => {
       wrap.innerHTML = `<span class="wr-i">${esc(e.label)}</span><span>${esc(e.text)}<small class="wr-map">地図で見る ›</small></span>`;
       wrap.onclick = () => { if (typeof UI !== 'undefined') UI.showRaid({ from: e.from, to: e.to }); };
     }
+    else if (e.k === 'flow') wrap.innerHTML = `<span class="wr-i">戦況</span><span>${esc(e.text)}</span>`;
     else if (e.k === 'news') wrap.innerHTML = `<span class="wr-i">銀河の報</span><span>${esc(e.text)}</span>`;
     else wrap.innerHTML = `<span>${esc(e.text)}</span>`;
     return wrap;
@@ -139,5 +141,5 @@ const WarRoom = (() => {
     list.scrollTop = list.scrollHeight;
   }
   function clearQueue() { queue = []; }
-  return { say, order, result, news, head, raid, get speed() { return speedIdx; }, pend, link, reply, RECRUIT, DIPLO, pickL, play, redrawAll, setSpeed, clearQueue, skip: () => { skipAll = true; }, get playing() { return playing; }, get queued() { return queue.length; } };
+  return { say, order, result, news, head, raid, flow, get speed() { return speedIdx; }, pend, link, reply, RECRUIT, DIPLO, pickL, play, redrawAll, setSpeed, clearQueue, skip: () => { skipAll = true; }, get playing() { return playing; }, get queued() { return queue.length; } };
 })();

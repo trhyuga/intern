@@ -27,6 +27,35 @@ const Battle = (() => {
   };
   const ECL_LINE = { start: '……ヒカリ……クラウ……', skill: '……', win: '……', lose: '……' };
 
+  // ---------- 策（司令官が戦いの中で仕掛ける作戦） ----------
+  const TACTICS = {
+    pincer:       { name: '挟撃', desc: '艦隊を左右に分け、敵を両側から挟む', min: 2 },
+    breakthrough: { name: '中央突破', desc: '紡錘陣で敵の中央を突き抜け、反転して背後を撃つ', min: 1 },
+    ambush:       { name: '偽装撤退', desc: '退くと見せて敵を誘い、隠した伏兵で包む', min: 2 },
+    rapid:        { name: '高速機動', desc: '足の速い分隊で大きく回り込み、敵の背後を突く', min: 1 },
+  };
+  // 性格ごとの好み（策士は伏兵、猛進は突破、奔放は機動…）
+  const PREF = {
+    '猛進': { breakthrough: 3, rapid: 2, pincer: 1, ambush: 0.3 }, '沈着': { pincer: 2, ambush: 1.5, breakthrough: 0.7, rapid: 1 },
+    '策士': { ambush: 3, pincer: 2.5, rapid: 1.5, breakthrough: 0.8 }, '仁徳': { pincer: 2, ambush: 1.5, rapid: 1, breakthrough: 0.6 },
+    '野心': { breakthrough: 2.5, pincer: 2, rapid: 1.5, ambush: 1 }, '忠烈': { breakthrough: 3, pincer: 1, rapid: 1, ambush: 0.3 },
+    '奔放': { rapid: 3, ambush: 2, breakthrough: 1.5, pincer: 1 },
+  };
+  const TL = {
+    pincer: { start: ['両翼、開け。敵を挟み込む。', '左右から包め。逃げ場をなくせ。'], done: ['包囲完成だ！ 撃て！', '挟み込んだ！ 一隻も逃すな！'] },
+    breakthrough: { start: ['紡錘陣！ 敵の中央を食い破る！', '一点を貫け！ 突き抜けたら反転だ！'], done: ['突き抜けた！ 全艦反転、背中を撃て！', '背後を取った！ 撃ちまくれ！'], fail: ['突破できん……！ 押し返されたか。', 'くっ、厚い……！ 一度下がれ！'] },
+    ambush: { start: ['全艦、後退。……ゆっくりとだ。', '退け。敵に、勝ったと思わせろ。'], done: ['今だ、伏兵、出ろ！', 'かかったな！ 包め！'] },
+    rapid: { start: ['快速部隊、続け！ 大きく回り込む！', '足で勝負だ。背中をもらうぞ。'], done: ['背後に回った！ 食らいつけ！', 'もらった！ 後ろはがら空きだ！'] },
+    detect: { pincer: ['両側から来るぞ。方円陣に組み替えろ！'], breakthrough: ['中央突破か。両翼を広げて迎え撃て！'], ambush: ['……退き方が整いすぎている。伏兵がいるぞ、深追いするな！'], rapid: ['回り込む気だな。後ろに備えろ！'] },
+    surprised: ['なにっ、伏兵だと！？', '側面から！？ 隊列を立て直せ！', 'しまった……誘われたか！'],
+    reinf: ['待たせたな！ 加勢する！', '間に合ったか！ 全艦、突っ込め！'],
+    reserve: ['後詰め、出るぞ！ ここが勝負どころだ！', '温存していた艦を出せ！ 押し返す！'],
+    flag: ['旗艦が……！ 指揮を、引き継げ……！', 'ここまで、か……。皆、退け……！'],
+    rout: ['だめだ、もう持たない……！', '退け、退けぇっ！'],
+    low: ['持ちこたえろ！ ここが踏ん張りどころだ！', '怯むな！ 隊列を崩すな！'],
+    upset: ['数ではない。戦は、ここで決まる。', 'この差を覆した……！ 皆、よくやった！'],
+  };
+
   let S = null;         // 戦いの状態
   let view = null;      // 表示（UI のとき）
 
@@ -37,7 +66,7 @@ const Battle = (() => {
     S = {
       t: 0, units: [], shots: [], fx: [], ftr: [], over: null, setup, planet: pl, uid: 1,
       side: { A: mkSide(setup.att, 'A'), D: mkSide(setup.def, 'D') },
-      terrain: [], log: [],
+      terrain: [], log: [], story: [], cuts: 0,
     };
     // 地形
     const r = Art.srand((pl ? pl.seed : 77) + G.turn * 13);
@@ -47,6 +76,7 @@ const Battle = (() => {
       S.terrain.push({ type, x: 80 + r() * 440, y: 330 + r() * 340, r: 60 + r() * 70, seed: Math.floor(r() * 1e6) });
     }
     deploy('A'); deploy('D');
+    for (const sk of ['A', 'D']) setupReserve(sk);
     // 防衛衛星
     if (pl && pl.def > 0) {
       const isRift = pl.type === 'rift';
@@ -64,15 +94,24 @@ const Battle = (() => {
         S.units.push(u);
       }
     }
+    // 士気と、始まりの戦力（逆転の判定に使う）
+    for (const sk of ['A', 'D']) {
+      const sd = S.side[sk];
+      const o = sd.cmd ? OFF[sd.cmd] : null;
+      sd.mMax = sd.fac === 'E' ? 9999 : Math.min(110, 85 + (o ? (o.ldr - 50) * 0.3 : 0));
+      sd.morale = sd.mMax;
+      sd.ships0 = Math.max(4, S.units.filter(u => u.side === sk).reduce((a, u) => a + u.ships.length, 0));
+      sd.p0 = S.units.filter(u => u.side === sk).reduce((a, u) => a + power(u), 0);
+    }
     return S;
   }
   function mkSide(sd, key) {
     const fleets = sd.fleets || [];
     const lead = fleets.find(f => f.cmd) || null;
-    return { key, fac: sd.fac, fleets, dock: !!sd.dock, cmd: lead ? lead.cmd : null, form: lead ? lead.form : 'line', skillUsed: false, buff: null, buffUntil: 0, ctrl: 'ai', lost: 0, sunk: 0 };
+    return { key, fac: sd.fac, fleets, dock: !!sd.dock, cmd: lead ? lead.cmd : null, form: lead ? lead.form : 'line', skillUsed: false, buff: null, buffUntil: 0, ctrl: 'ai', lost: 0, sunk: 0, plan: null, planUsed: false, cmdLost: false, routed: false, cautious: false, lowSaid: false };
   }
   function mkUnit(side, fac, fleet, cmd) {
-    return { id: S.uid++, side, fac, fleet, cmd, ships: [], x: 0, y: 0, ang: side === 'A' ? 0 : Math.PI, vx: 0, vy: 0, order: null, stance: 'fire', alive: true, out: false, sat: false, label: '', sel: false, aiT: Math.random() * 0.5, engaged: false };
+    return { id: S.uid++, side, fac, fleet, cmd, ships: [], x: 0, y: 0, ang: side === 'A' ? 0 : Math.PI, vx: 0, vy: 0, order: null, stance: 'fire', alive: true, out: false, sat: false, label: '', sel: false, aiT: Math.random() * 0.5, engaged: false, role: null, hidden: false, wait: false, flag: false };
   }
   function shipEntry(s, fac) {
     let st, hull;
@@ -86,13 +125,17 @@ const Battle = (() => {
     const by = new Map();
     ships.filter(s => s.hp > 0).forEach(s => { const k = s.ecl || s.d; if (!by.has(k)) by.set(k, []); by.get(k).push(s); });
     const out = [];
-    for (const list of by.values()) for (let i = 0; i < list.length; i += 6) out.push(list.slice(i, i + 6));
+    for (const list of by.values()) for (let i = 0; i < list.length; i += 4) out.push(list.slice(i, i + 4));
     return out.sort((a, b) => b.length - a.length);
   }
   function deploy(side) {
     const sd = S.side[side];
     const groups = [];
-    sd.fleets.forEach(fl => squads(fl.ships).slice(0, 5).forEach(g => groups.push({ fl, g })));
+    // 2つ目以降の艦隊は、遅れて戦場に着くことがある（援軍：横から現れる）
+    const late = new Map();
+    sd.fleets.forEach((fl, i) => { if (i > 0 && fl.fac !== 'E' && Math.random() < 0.42) late.set(fl, 10 + Math.random() * 20); });
+    const lead = sd.fleets.find(f => f.cmd) || null;
+    sd.fleets.forEach(fl => squads(fl.ships).slice(0, 6).forEach(g => { if (!late.has(fl)) groups.push({ fl, g }); }));
     if (sd.dock && S.planet) squads(S.planet.dock).slice(0, 3).forEach(g => groups.push({ fl: null, g }));
     const n = groups.length;
     const baseY = side === 'A' ? H - 110 : 230;
@@ -109,8 +152,34 @@ const Battle = (() => {
       else if (form === 'circle') { const a = (i / n) * Math.PI * 2; x = W / 2 + Math.cos(a) * 85 * Math.min(1, n / 3); y = baseY + Math.sin(a) * 60 * Math.min(1, n / 3); }
       u.x = x; u.y = y;
       u.label = labelOf(u);
+      if (fl && fl === lead && !S.units.some(x => x.side === side && x.flag)) u.flag = true;
       S.units.push(u);
     });
+    // 援軍：敵の側面の外で待たせておく
+    for (const [fl, at] of late) {
+      const s = Math.random() < 0.5 ? -1 : 1;
+      squads(fl.ships).slice(0, 6).forEach((g, i) => {
+        const u = mkUnit(side, fl.fac, fl, fl.cmd || null);
+        g.forEach(sh => u.ships.push(shipEntry(sh, sd.fac)));
+        u.wait = true; u.arriveAt = at; u.reinf = true; u.enter = s;
+        u.x = s < 0 ? 14 : W - 14; u.y = H / 2 + fwd(side) * (60 + i * 46);
+        u.ang = s < 0 ? Math.PI / 2 : -Math.PI / 2;
+        u.label = labelOf(u);
+        S.units.push(u);
+      });
+    }
+  }
+  // 後詰め：統率の高い司令官や、沈着・仁徳の司令官は、一隊を後ろに残しておく
+  function setupReserve(sk) {
+    const sd = S.side[sk];
+    if (!sd.cmd || sd.fac === 'E') return;
+    const o = OFF[sd.cmd];
+    const list = S.units.filter(u => u.side === sk && !u.sat && !u.wait && !u.flag);
+    if (S.units.filter(u => u.side === sk && !u.sat && !u.wait).length < 3 || !list.length) return;
+    if (!(o.ldr >= 66 || o.pers === '沈着' || o.pers === '仁徳') || Math.random() > 0.75) return;
+    const u = list.sort((a, b) => power(b) - power(a))[Math.min(1, list.length - 1)];
+    u.wait = true; u.reserve = true; u.arriveAt = 26 + Math.random() * 18;
+    u.x = W / 2 + (Math.random() - 0.5) * 120; u.y = sk === 'A' ? H - 24 : 24;
   }
   function labelOf(u) {
     const s = u.ships[0];
@@ -120,8 +189,15 @@ const Battle = (() => {
   }
 
   // ---------- 計算 ----------
-  const alive = u => u.alive && !u.out;
-  const enemiesOf = side => S.units.filter(u => u.side !== side && alive(u));
+  const alive = u => u.alive && !u.out && !u.wait;
+  // 狙える敵（隠れている伏兵は見えない）
+  const enemiesOf = side => S.units.filter(u => u.side !== side && alive(u) && !u.hidden);
+  const fwd = sk => sk === 'A' ? -1 : 1;           // 前へ進む向き（A は上へ、D は下へ）
+  const foeOf = sk => sk === 'A' ? 'D' : 'A';
+  const mob = (sk, incHidden) => S.units.filter(u => u.side === sk && alive(u) && !u.sat && (incHidden || !u.hidden));
+  const center = list => list.length ? [list.reduce((a, u) => a + u.x, 0) / list.length, list.reduce((a, u) => a + u.y, 0) / list.length] : null;
+  const cmdTac = sd => sd.cmd && !sd.cmdLost ? OFF[sd.cmd].tac : 30;
+  const pickL = a => a[Math.floor(Math.random() * a.length)];
   const unitR = u => 18 + Math.sqrt(u.ships.filter(s => !s.dead).length) * 10;
   function inTerrain(x, y, type) { return S.terrain.some(t => t.type === type && Math.hypot(t.x - x, t.y - y) < t.r); }
   function sideMods(sd) {
@@ -138,6 +214,10 @@ const Battle = (() => {
       if (b === 'focus') { m.dmg *= 1.25; m.range *= 1.15; }
       if (b === 'hold') { m.taken *= 0.75; m.dmg *= 1.15; }
     }
+    // 士気：下がるほど、撃つ力も狙いも鈍る
+    if (sd.fac !== 'E' && !DBG.noMorale) { const mo = clamp(sd.morale / 80, 0.35, 1.1); m.dmg *= 0.84 + 0.16 * mo; m.acc *= 0.9 + 0.1 * mo; }
+    if (sd.confusedUntil > S.t) { m.acc *= 0.7; m.dmg *= 0.9; }   // 伏兵に驚いた
+    if (sd.rearUntil > S.t) m.taken *= 1.15;                          // 背後を取られた
     // 派閥・禁忌
     const f2 = Game.facOf(sd.fac);
     if (f2 && f2.ruling === 'war') m.dmg *= 1.05;
@@ -151,13 +231,13 @@ const Battle = (() => {
   }
   function unitMods(u) {
     const sd = S.side[u.side], m = sideMods(sd);
-    const cmd = u.cmd || sd.cmd;
+    const cmd = sd.cmdLost && (!u.cmd || u.cmd === sd.cmd) ? null : (u.cmd || sd.cmd);
     let cmdK = 1 + Math.max(0, ...u.ships.map(s => s.command || 0));
     if (cmd) {
       const o = OFF[cmd];
       m.dmg *= 1 + Game.rankIdx(cmd) * 0.008;   // 階級（経験）
-      m.dmg *= 1 + (o.tac - 50) / 220 * cmdK;
-      m.taken *= 1 - (o.ldr - 50) / 320 * cmdK;
+      m.dmg *= 1 + (o.tac - 50) / 400 * cmdK;
+      m.taken *= 1 - (o.ldr - 50) / 420 * cmdK;
       if (o.pers === '猛進' && u.stance === 'assault') m.dmg *= 1.1;
       if (o.pers === '沈着' && u.stance === 'guard') m.taken *= 0.9;
       if (o.pers === '策士') m.flank += 0.12;
@@ -169,6 +249,13 @@ const Battle = (() => {
     if (u.stance === 'assault') { m.dmg *= 1.15; m.taken *= 1.1; }
     if (u.stance === 'fire') m.acc *= 1.1;
     if (u.stance === 'guard') { m.dmg *= 0.85; m.taken *= 0.75; }
+    // 策の役目
+    const P = sd.plan;
+    if (P && !P.done && u.role) {
+      if (u.role === 'spear' && P.phase === 1) { m.speed *= 1.18; m.dmg *= 1.1; if (P.detected) m.taken *= 1.2; }
+      if (u.role === 'rapid' && P.phase === 1) m.speed *= 1.5;
+      if (u.hidden) m.speed *= 1.2;
+    }
     if (inTerrain(u.x, u.y, 'neb')) m.range *= 0.72;
     if (inTerrain(u.x, u.y, 'ast')) m.speed *= 0.6;
     return m;
@@ -201,7 +288,8 @@ const Battle = (() => {
   // ---------- 被害 ----------
   function hit(target, dmg, type, srcSide) {
     const tm = unitMods(target);
-    let d = dmg * tm.taken;
+    let d = dmg * tm.taken * 0.62;   // 戦いが早く終わりすぎないように（策が動く時間を作る）
+    if (target.flag) d *= 0.72;      // 旗艦は護衛に守られている
     if (inTerrain(target.x, target.y, 'deb')) d *= 0.75;
     if (inTerrain(target.x, target.y, 'ast') && (type === 'kin' || type === 'msl')) d *= 0.85;
     // 禁忌「星喰らいの解析」は蝕に強い
@@ -218,8 +306,19 @@ const Battle = (() => {
     if (s.hp <= 0 && !s.dead) {
       s.dead = true; s.hp = 0;
       S.side[target.side].lost++; S.side[srcSide].sunk++;
+      const td = S.side[target.side], sd2 = S.side[srcSide];
+      td.morale -= 58 / td.ships0 * (target.sat ? 0.5 : 1);
+      sd2.morale = Math.min(sd2.mMax, sd2.morale + 14 / td.ships0);
       if (view) { boom(target, s, true); if (Sound) Sound.se(s.size >= 15 ? 'bigboom' : 'boom'); }
-      if (!target.ships.some(x => !x.dead)) { target.alive = false; if (view) say(`${target.label}が全滅`, target.side === 'A' ? '#ff8a7a' : '#9ad0ff'); }
+      if (!target.ships.some(x => !x.dead)) {
+        target.alive = false; if (view) say(`${target.label}が全滅`, target.side === 'A' ? '#ff8a7a' : '#9ad0ff');
+        // 旗艦が沈んだ：指揮が途絶え、士気が大きく下がる
+        if (target.flag && td.cmd && !td.cmdLost && td.fac !== 'E' && mob(target.side).length) {
+          td.cmdLost = true; td.flagSunk = true; td.morale -= 22;
+          event(target.side, `${OFF[td.cmd].name}の旗艦が沈んだ`, { who: td.cmd, line: pickL(TL.flag), title: '旗艦、轟沈', expr: 'sad', cut: true });
+          if (td.plan && !td.plan.done) endPlan(target.side);
+        }
+      }
     }
   }
   function shipPos(u, i) {
@@ -245,6 +344,7 @@ const Battle = (() => {
       if (sd.ctrl === 'player' && u.aiT <= 0) { u.aiT = 0.5; autoTarget(u); }
     }
     for (const sk of ['A', 'D']) if (S.side[sk].ctrl === 'ai') aiSkill(sk);
+    tactics(dt);
     // 動き
     for (const u of S.units) {
       if (!alive(u) || u.sat) continue;
@@ -289,6 +389,7 @@ const Battle = (() => {
       if (!alive(u)) continue;
       const m = unitMods(u);
       const live = u.ships.filter(s => !s.dead);
+      if (u.hidden) { live.forEach(s => { if (s.smax) s.shield = Math.min(s.smax, s.shield + s.regen * dt); }); continue; }   // 伏兵は撃たずに潜む
       // 修理
       live.forEach(s => {
         if (s.repair) s.hp = Math.min(s.max, s.hp + s.repair * dt);
@@ -317,7 +418,9 @@ const Battle = (() => {
           acc *= 1 - ecm;
           const enemySide = S.side[t.side];
           if (enemySide.buff === 'feint' && S.t < enemySide.buffUntil) acc *= 0.65;
-          const dmg = w.dmg * m.dmg * flankMul(u, t, m.flank, sideMods(S.side[t.side]).circle) * (1 + s.xp * 0.04);
+          const fm = flankMul(u, t, m.flank, sideMods(S.side[t.side]).circle);
+          const dmg = w.dmg * m.dmg * fm * (1 + s.xp * 0.04);
+          if (fm >= 1.4) S.side[t.side].morale -= 0.05;   // 背後から撃たれると、浮き足立つ
           const [sx, sy] = shipPos(u, u.ships.indexOf(s));
           if (w.type === 'beam') {
             if (Math.random() < acc) hit(t, dmg, 'beam', u.side);
@@ -382,8 +485,9 @@ const Battle = (() => {
     // 効果
     for (const e of S.fx) e.life -= dt;
     S.fx = S.fx.filter(e => e.life > 0);
-    // 終わり
-    const aLeft = S.units.some(u => u.side === 'A' && alive(u)), dLeft = S.units.some(u => u.side === 'D' && alive(u));
+    // 終わり（前線が尽きても、援軍・後詰めが残っていれば、すぐに呼ぶ）
+    for (const sk of ['A', 'D']) if (!S.units.some(u => u.side === sk && alive(u)) && S.units.some(u => u.side === sk && u.wait && u.alive)) S.units.filter(u => u.side === sk && u.wait).forEach(u => u.arriveAt = 0);
+    const aLeft = S.units.some(u => u.side === 'A' && (alive(u) || u.wait && u.alive)), dLeft = S.units.some(u => u.side === 'D' && (alive(u) || u.wait && u.alive));
     if (!aLeft || !dLeft || S.t >= TLIMIT) {
       S.over = !dLeft && aLeft ? 'A' : 'D';
       if (!aLeft && !dLeft) S.over = 'D';
@@ -400,6 +504,8 @@ const Battle = (() => {
   // 観戦中の指示（撤退・構え・集中攻撃）を守りつつ、残りは参謀（AI）に任せる
   function ai(u) {
     const sd = S.side[u.side];
+    if (sd.routed) { u.stance = 'retreat'; u.order = null; return; }
+    if (u.role && sd.plan && !sd.plan.done && !sd.force) return;   // 策の最中は、策の指図に従う
     if (sd.force === 'retreat') { u.stance = 'retreat'; u.order = null; return; }
     if (sd.focus && !alive(sd.focus)) sd.focus = null;
     if (sd.force === 'guard') { u.stance = 'guard'; u.order = null; return; }
@@ -429,6 +535,7 @@ const Battle = (() => {
       let sc = -d * 0.8 - eh * 0.05 + (e.sat ? -80 : 0);
       if (pers === '策士') sc += (flankMul(u, e, 0, false) - 1) * 300;
       if (pers === '野心') sc += power(e) * 0.5;
+      if (e.flag && (pers === '野心' || pers === '猛進' || pers === '策士')) sc += 90;   // 敵の旗艦を狙う
       if (sc > best) { best = sc; t = e; }
     }
     u.order = { type: 'attack', target: t };
@@ -437,6 +544,10 @@ const Battle = (() => {
     else if (minRange(u) > 300) u.stance = 'fire';
     else u.stance = hpRatio > 0.6 && (pers === '奔放' ? Math.random() < 0.5 : pers === '野心') ? 'assault' : 'fire';
     if (u.side === 'D' && S.planet && S.t < 6 && pers !== '猛進') { u.order = null; u.stance = 'fire'; }
+    // 旗艦は前に出すぎない（猛進・忠烈の司令官は別）
+    if (u.flag && pers !== '猛進' && pers !== '忠烈' && u.stance === 'assault') u.stance = 'fire';
+        // 伏兵を疑っている間は、深追いしない
+    if (sd.cautious) { const d = t ? Math.hypot(t.x - u.x, t.y - u.y) : 0; if (d > mainRange(u) * 0.95) { u.order = null; u.stance = 'fire'; } }
   }
   function autoTarget(u) {
     // プレイヤーの分隊：命令がないときは、いちばん近い敵へ向かう（防御・後退の構えでは動かない）
@@ -447,7 +558,7 @@ const Battle = (() => {
   }
   function aiSkill(sk) {
     const sd = S.side[sk];
-    if (sd.skillUsed || !sd.cmd || S.t < 8) return;
+    if (sd.skillUsed || !sd.cmd || sd.cmdLost || S.t < 8) return;
     const engaged = S.units.some(u => u.side === sk && alive(u) && u.engaged);
     if (!engaged) return;
     const hp = S.units.filter(u => u.side === sk).reduce((a, u) => a + u.ships.reduce((b, s) => b + Math.max(0, s.hp), 0), 0);
@@ -468,6 +579,8 @@ const Battle = (() => {
     if (sd.skillUsed || !sd.cmd) return false;
     sd.skillUsed = true;
     const s = skillOf(sd.cmd);
+    sd.morale = Math.min(sd.mMax, sd.morale + 8);
+    S.story.push({ t: S.t, side: sk, text: `${OFF[sd.cmd].name}が奥の手「${SKILLS[s].name}」を使った` });
     if (s === 'repair') {
       S.units.filter(u => u.side === sk && alive(u)).forEach(u => u.ships.forEach(x => { if (!x.dead) x.hp = Math.min(x.max, x.hp + x.max * 0.25); }));
     } else { sd.buff = s; sd.buffUntil = S.t + (s === 'hold' ? 12 : 10); }
@@ -476,9 +589,248 @@ const Battle = (() => {
     return true;
   }
 
+
+  // ---------- 戦いの流れ（策・援軍・後詰め・士気） ----------
+  // 出来事を記録し、表示中なら台詞のカットインや字幕を出す
+  function event(sk, text, o = {}) {
+    S.story.push({ t: S.t, side: sk, text });
+    if (!view) return;
+    const sd = S.side[sk];
+    const col = sk === mySide ? '#9ad0ff' : '#ffb0a0';
+    if (o.cut && S.cuts < 9 && o.who && OFF[o.who]) { S.cuts++; dramaCut(sk, o.who, o.title || '', o.line || '', o.expr || 'angry'); }
+    else if (o.line && o.who && OFF[o.who]) say(`${shortName(OFF[o.who])}「${o.line}」`, col);
+    say(text, o.good === undefined ? col : o.good ? '#a0f0b0' : '#ffb0a0');
+    void sd;
+  }
+  // 士気への一撃
+  function shock(sk, v) { const sd = S.side[sk]; if (sd.fac !== 'E') sd.morale -= v; }
+
+  function tactics(dt) {
+    for (const sk of ['A', 'D']) {
+      const sd = S.side[sk], fd = S.side[foeOf(sk)];
+      // 援軍・後詰めの到着
+      for (const u of S.units) {
+        if (u.side !== sk || !u.wait || !u.alive) continue;
+        let go = S.t >= u.arriveAt;
+        if (u.reserve && !go) go = S.t > 8 && (sd.morale < sd.mMax * 0.62 || mob(sk, true).length <= 1);
+        if (!go) continue;
+        u.wait = false;
+        if (u.reserve) {
+          u.y = sk === 'A' ? H - 30 : 30; u.stance = 'assault'; u.order = null;
+          if (!sd.reserveSaid) {
+            sd.reserveSaid = true; sd.morale = Math.min(sd.mMax, sd.morale + 12);
+            event(sk, `${sd.cmd && !sd.cmdLost ? OFF[sd.cmd].name + 'が' : ''}後詰めを投入した`, { who: sd.cmdLost ? null : sd.cmd, line: pickL(TL.reserve), title: '後詰め投入', cut: true });
+          }
+        } else if (u.reinf) {
+          u.stance = 'assault'; u.order = null;
+          if (view) S.fx.push({ k: 'ring', x: u.x, y: u.y, r: 40, life: 0.9, max: 0.9 });
+          const key = 'r' + (u.fleet ? u.fleet.id : u.id);
+          if (!sd['said' + key]) {
+            sd['said' + key] = true;
+            sd.morale = Math.min(sd.mMax, sd.morale + 12); shock(foeOf(sk), 12);
+            const k = u.fleet && u.fleet.cmd ? u.fleet.cmd : null;
+            event(sk, `援軍到着！ ${u.fleet && u.fleet.cmd ? Game.fleetName(u.fleet) : '分艦隊'}が${u.enter < 0 ? '左' : '右'}から現れた`, { who: k, line: pickL(TL.reinf), title: '援軍到着', cut: true, expr: 'happy' });
+          }
+        }
+      }
+      if (sd.fac === 'E') continue;
+      // 士気：少しずつ持ち直す。落ち込みきると潰走する
+      if (sd.morale < sd.mMax * 0.55) sd.morale += 0.35 * dt;
+      if (!sd.lowSaid && sd.morale < 40 && S.t > 6 && sd.cmd && !sd.cmdLost && !sd.routed) { sd.lowSaid = true; event(sk, `${sideName(sd)}の士気が揺らいでいる`, { who: sd.cmd, line: pickL(TL.low), expr: 'angry' }); }
+      const loyal = sd.cmd && !sd.cmdLost && OFF[sd.cmd].pers === '忠烈';
+      if (!DBG.noMorale && !sd.routed && sd.morale < (loyal ? 6 : 16) && S.t > 10 && mob(sk).length) {
+        sd.routed = true;
+        if (sd.plan && !sd.plan.done) endPlan(sk);
+        S.units.filter(u => u.side === sk && alive(u) && !u.sat).forEach(u => { u.stance = 'retreat'; u.order = null; u.hidden = false; });
+        event(sk, `${sideName(sd)}、潰走！ 隊列が崩れた`, { who: sd.cmdLost ? null : sd.cmd, line: pickL(TL.rout), title: '潰走', expr: 'sad', cut: true, good: sk !== mySide });
+        S.units.filter(u => u.side === sk && u.wait).forEach(u => { u.alive = false; });   // 来るはずだった艦も引き返す
+      }
+      // 策
+      sd.planT = (sd.planT || 0) - dt;
+      if (sd.planT > 0) continue;
+      sd.planT = 0.4;
+      if (sd.plan && !sd.plan.done) planTick(sk);
+      else if (!sd.planUsed && sd.ctrl === 'ai' && !sd.force && !sd.routed && S.t > 2.5) choosePlan(sk);
+      void fd;
+    }
+  }
+  // AI の司令官が策を選ぶ（戦術が高いほど策を使い、成功しやすい）
+  const DBG = {};   // 確かめ用（策・士気を切る）
+  function choosePlan(sk) {
+    const sd = S.side[sk];
+    sd.planUsed = true;
+    if (DBG.noPlan) return;
+    if (!sd.cmd || sd.cmdLost) return;
+    const o = OFF[sd.cmd], n = mob(sk).length;
+    if (Math.random() > 0.3 + (o.tac - 50) / 55) return;   // 戦術 50 で3割、80 で8割、90 以上ならほぼ必ず
+    const my = mob(sk).reduce((a, u) => a + power(u), 0), en = mob(foeOf(sk)).reduce((a, u) => a + power(u), 0) || 1;
+    const r = my / en;
+    const mySp = Math.max(...mob(sk).map(unitSpeed)), enSp = Math.max(...mob(foeOf(sk)).map(unitSpeed), 1);
+    const w = Object.assign({}, PREF[o.pers]);
+    if (r < 0.85) { w.ambush *= 1.8; w.rapid *= 1.4; w.breakthrough *= 0.6; }   // 劣勢なら、奇策
+    if (r > 1.3) { w.pincer *= 1.6; }                                           // 優勢なら、包んで潰す
+    if (mySp < enSp * 1.05) w.rapid *= 0.3;
+    if (S.terrain.some(t => t.type !== 'deb')) w.ambush *= 1.4;                  // 隠れる場所がある
+    // 相手がもう策を始めていれば、それに合わせる（退く敵には追い討ち、突っ込む敵には包み込み）
+    const fp = S.side[foeOf(sk)].plan;
+    if (fp && !fp.done) {
+      if (fp.type === 'ambush') { w.ambush = 0; w.rapid *= 1.5; }
+      if (fp.type === 'breakthrough') { w.pincer *= 2; w.breakthrough *= 0.4; }
+      if (fp.type === 'pincer') { w.breakthrough *= 1.8; }
+    }
+    if (sk === 'D' && S.planet && S.planet.def > 0) w.ambush *= 1.3;
+    Object.keys(w).forEach(k => { if (n < TACTICS[k].min) w[k] = 0; });
+    const tot = Object.values(w).reduce((a, b) => a + b, 0); if (!tot) return;
+    let x = Math.random() * tot, pick = null;
+    for (const [k, v] of Object.entries(w)) { x -= v; if (x <= 0) { pick = k; break; } }
+    if (pick) startPlan(sk, pick);
+  }
+  function startPlan(sk, type) {
+    const sd = S.side[sk], fd = S.side[foeOf(sk)];
+    const units = mob(sk);
+    if (sd.routed || units.length < TACTICS[type].min || !mob(foeOf(sk)).length) return false;
+    sd.planUsed = true;
+    const q = clamp(cmdTac(sd) / 100 + (Math.random() - 0.5) * 0.15, 0.25, 1.1);
+    const det = fd.cmd && !fd.cmdLost ? clamp(0.06 + (cmdTac(fd) - cmdTac(sd)) * 0.012, 0.03, 0.55) : 0;
+    const P = sd.plan = { type, phase: 1, t0: S.t, q, detected: Math.random() < det };
+    units.forEach(u => { u.role = null; u.wpi = 0; });
+    units.sort((a, b) => a.x - b.x);
+    const n = units.length;
+    if (type === 'pincer') {
+      const k = n === 2 ? 1 : Math.max(1, Math.floor(n / 3));
+      units.forEach((u, i) => u.role = i < k ? 'wingL' : i >= n - k ? 'wingR' : 'center');
+    } else if (type === 'ambush') {
+      let k = n === 2 ? 1 : Math.max(1, Math.floor(n / 3)); if (n > 2 && 2 * k >= n) k = Math.floor((n - 1) / 2);
+      units.forEach((u, i) => {
+        const amb = n === 2 ? i === 0 : (i < k || i >= n - k);
+        u.role = amb ? 'ambush' : 'bait';
+        if (amb) {
+          u.hidden = true;
+          const left = u.x < W / 2;
+          const tr = S.terrain.find(t => t.type !== 'deb' && (t.x < W / 2) === left && Math.abs(t.y - H / 2) < 260);
+          u.spot = tr ? [tr.x, tr.y] : [left ? 34 : W - 34, H / 2 - fwd(sk) * 70];
+        }
+      });
+    } else if (type === 'breakthrough') {
+      units.forEach(u => u.role = 'spear'); sd.form = 'spindle';
+    } else if (type === 'rapid') {
+      const bySp = [...units].sort((a, b) => unitSpeed(b) - unitSpeed(a));
+      const k = Math.max(1, Math.ceil(n / 2));
+      const ec = center(mob(foeOf(sk)));
+      const side = ec[0] < W / 2 ? 1 : -1;   // 広く空いている側から回る
+      bySp.forEach((u, i) => {
+        u.role = i < k ? 'rapid' : 'center';
+        if (u.role === 'rapid') {
+          const ex = side > 0 ? W - 28 : 28;
+          u.wp = [[ex, clamp(ec[1] - fwd(sk) * 40, 40, H - 40)], [ex, clamp(ec[1] + fwd(sk) * 90, 40, H - 40)], [clamp(ec[0] + side * 40, 40, W - 40), clamp(ec[1] + fwd(sk) * 150, 40, H - 40)]];
+        }
+      });
+    }
+    const T = TACTICS[type];
+    // 敵の偽装撤退は、始まった時には見せない（伏兵の驚きのため）
+    if (type === 'ambush' && sk !== mySide && view) { say('敵艦隊が、退いていく……？', '#ffd8a0'); S.story.push({ t: S.t, side: sk, text: `${OFF[sd.cmd].name}は退くふりをした（偽装撤退）` }); }
+    else event(sk, `${OFF[sd.cmd].name}の策：${T.name} ― ${T.desc}`, { who: sd.cmd, line: pickL(TL[type].start), title: '策・' + T.name, cut: true });
+    return true;
+  }
+  // 敵が策を見破った
+  function counter(fk, type) {
+    const fd = S.side[fk];
+    if (type === 'pincer') fd.form = 'circle';
+    if (type === 'breakthrough') fd.form = 'crane';
+    if (type === 'ambush') fd.cautious = true;
+    if (type === 'rapid') {
+      const rp = S.units.filter(u => u.side === foeOf(fk) && alive(u) && u.role === 'rapid');
+      const g = mob(fk).sort((a, b) => power(b) - power(a))[0];
+      if (g && rp.length) { g.order = { type: 'attack', target: rp[0] }; g.aiT = 6; }
+    }
+    event(fk, `${OFF[fd.cmd].name}が策を見破った！`, { who: fd.cmd, line: pickL(TL.detect[type]), title: '看破', cut: true, expr: 'happy' });
+  }
+  function endPlan(sk) {
+    const sd = S.side[sk], P = sd.plan; if (!P) return;
+    P.done = true; sd.cautious = false; S.side[foeOf(sk)].cautious = false;
+    S.units.filter(u => u.side === sk).forEach(u => { u.role = null; u.wp = null; if (u.hidden) { u.hidden = false; } u.aiT = 0; });
+  }
+  function planTick(sk) {
+    const sd = S.side[sk], P = sd.plan, fk = foeOf(sk);
+    if (sd.force || sd.routed || sd.cmdLost) { endPlan(sk); return; }
+    const es = mob(fk), ec = center(es);
+    if (!ec) { endPlan(sk); return; }
+    const all = S.units.filter(u => u.side === sk && alive(u) && u.role);
+    if (!all.length) { endPlan(sk); return; }   // 策の分隊がすべて沈んだ
+    const T = S.t - P.t0, f = fwd(sk);
+    if (P.detected && !P.detShown && T >= 2.5 + Math.random() * 2) { P.detShown = true; counter(fk, P.type); }
+    const near = u => nearestEnemy(u) || es[0];
+    const allAttack = (list, st = 'assault') => list.forEach(u => { u.stance = st; u.order = { type: 'attack', target: near(u) }; });
+    if (P.phase === 2) { if (T > P.t2 + 12) endPlan(sk); else allAttack(all.filter(u => !u.order || u.order.type !== 'attack' || !alive(u.order.target))); return; }
+
+    if (P.type === 'pincer') {
+      const wings = all.filter(u => u.role === 'wingL' || u.role === 'wingR'), mid = all.filter(u => u.role === 'center');
+      const spot = u => [clamp(ec[0] + (u.role === 'wingL' ? -1 : 1) * 230, 26, W - 26), clamp(ec[1] - f * 20, 40, H - 40)];
+      wings.forEach(u => { const [x, y] = spot(u); u.order = { type: 'move', x, y }; u.stance = 'fire'; });
+      mid.forEach(u => { u.stance = 'fire'; u.order = { type: 'attack', target: near(u) }; });
+      const ready = wings.every(u => { const [x, y] = spot(u); return Math.hypot(u.x - x, u.y - y) < 70; });
+      if (ready || T > 17 || !wings.length) {
+        P.phase = 2; P.t2 = T; allAttack(all);
+        if (!P.detected) { shock(fk, 10 * P.q); S.side[fk].rearUntil = S.t + 4; }
+        event(sk, P.detected ? '挟撃は読まれていた。正面からの撃ち合いになる' : `包囲完成！ ${sideName(S.side[fk])}を両側から挟んだ`, { who: sd.cmd, line: P.detected ? null : pickL(TL.pincer.done), title: '包囲完成', cut: !P.detected, good: sk === mySide });
+      }
+    } else if (P.type === 'breakthrough') {
+      const my = center(all);
+      all.forEach(u => { u.stance = 'assault'; u.order = { type: 'move', x: clamp(ec[0] + (u.x - my[0]) * 0.3, 30, W - 30), y: clamp(ec[1] + f * 170, 30, H - 30) }; });
+      const passed = f < 0 ? my[1] < ec[1] - 40 : my[1] > ec[1] + 40;
+      if (passed) {
+        P.phase = 2; P.t2 = T; allAttack(all);
+        shock(fk, 10 * P.q); S.side[fk].rearUntil = S.t + 5;
+        event(sk, `中央突破！ ${sideName(sd)}は敵陣を貫き、反転して背後を撃つ`, { who: sd.cmd, line: pickL(TL.breakthrough.done), title: '背面展開', cut: true, good: sk === mySide });
+      } else if (T > 24 || sd.morale < sd.mMax * 0.4) {
+        shock(sk, 8); endPlan(sk); sd.form = 'line';
+        event(sk, '中央突破は押し返された', { who: sd.cmd, line: pickL(TL.breakthrough.fail), expr: 'sad', good: sk !== mySide });
+      }
+    } else if (P.type === 'ambush') {
+      const bait = all.filter(u => u.role === 'bait'), amb = all.filter(u => u.role === 'ambush');
+      bait.forEach(u => { u.stance = 'fire'; u.order = { type: 'move', x: u.x, y: sk === 'A' ? H - 80 : 80 }; });
+      amb.forEach(u => { u.stance = 'fire'; u.order = { type: 'move', x: u.spot[0], y: u.spot[1] }; });
+      const lured = f < 0 ? ec[1] > H * 0.47 : ec[1] < H * 0.53;
+      if ((lured && T > 5) || T > 21 || !bait.length) {
+        P.phase = 2; P.t2 = T;
+        amb.forEach(u => { u.hidden = false; if (view) S.fx.push({ k: 'ring', x: u.x, y: u.y, r: 50, life: 0.9, max: 0.9 }); });
+        allAttack(all);
+        S.side[fk].cautious = false;
+        if (!P.detected && lured) {
+          shock(fk, 14 * P.q); S.side[fk].confusedUntil = S.t + 4; S.side[fk].rearUntil = S.t + 4;
+          event(sk, `伏兵！ ${sideName(sd)}の隠れていた艦が、側面から襲いかかった`, { who: sd.cmd, line: pickL(TL.ambush.done), title: '伏兵', cut: true, good: sk === mySide });
+          const fc = S.side[fk];
+          if (fc.cmd && !fc.cmdLost) event(fk, `${sideName(fc)}は混乱している`, { who: fc.cmd, line: pickL(TL.surprised), expr: 'sad' });
+        } else event(sk, P.detected ? '伏兵は見破られていた。敵は誘いに乗らなかった' : '敵は誘いに乗らなかった。伏兵が姿を現す', { who: sd.cmd, good: false });
+      }
+    } else if (P.type === 'rapid') {
+      const rp = all.filter(u => u.role === 'rapid'), mid = all.filter(u => u.role === 'center');
+      mid.forEach(u => { u.stance = 'fire'; u.order = { type: 'attack', target: near(u) }; });
+      let arrived = true;
+      rp.forEach(u => {
+        const w = u.wp[Math.min(u.wpi, u.wp.length - 1)];
+        if (Math.hypot(u.x - w[0], u.y - w[1]) < 40 && u.wpi < u.wp.length - 1) u.wpi++;
+        const w2 = u.wp[u.wpi];
+        if (u.wpi < u.wp.length - 1 || Math.hypot(u.x - w2[0], u.y - w2[1]) > 40) arrived = false;
+        u.stance = 'fire'; u.order = { type: 'move', x: w2[0], y: w2[1] };
+      });
+      if (arrived || T > 20 || !rp.length) {
+        P.phase = 2; P.t2 = T; allAttack(all);
+        if (rp.length && arrived) { shock(fk, (P.detected ? 3 : 9) * P.q); if (!P.detected) S.side[fk].rearUntil = S.t + 6; }
+        event(sk, rp.length && arrived ? `高速機動！ ${sideName(sd)}の快速部隊が背後に回り込んだ` : '回り込みは間に合わなかった', { who: sd.cmd, line: rp.length && arrived ? pickL(TL.rapid.done) : null, title: '背後強襲', cut: !!(rp.length && arrived && !P.detected), good: sk === mySide });
+      }
+    }
+  }
+
   // ---------- 結果を世界に戻す ----------
   function apply() {
     const res = { winner: S.over, timeout: S.timeout, lostA: S.side.A.lost, lostD: S.side.D.lost, satLost: 0, dead: [], caught: [], sunkBy: {} };
+    // 戦いの流れ（後で作戦室や報告に出す）と、逆転
+    res.story = S.story.map(e => ({ side: e.side, text: e.text }));
+    const W0 = S.side[S.over], L0 = S.side[foeOf(S.over)];
+    res.upset = !!(W0 && L0 && W0.fac !== 'E' && W0.p0 < L0.p0 * 0.8);
+    res.routed = S.side.A.routed ? 'A' : S.side.D.routed ? 'D' : null;
+    if (res.upset) res.story.push({ side: S.over, text: `${sideName(W0)}は、${Math.round(L0.p0 / Math.max(1, W0.p0) * 10) / 10}倍の敵を破った` });
     // 艦の耐久を書き戻す
     for (const u of S.units) {
       for (const s of u.ships) {
@@ -503,8 +855,15 @@ const Battle = (() => {
           const k = fl[slot]; if (!k) continue;
           const o = G.officers[k];
           o.battles++;
-          if (S.over === sk) { o.wins++; Game.addMerit(k, 5 + S.side[sk].sunk * 0.5); }
+          if (S.over === sk) { o.wins++; Game.addMerit(k, 5 + S.side[sk].sunk * 0.5 + (S.side[sk].p0 < S.side[other].p0 * 0.8 ? 6 : 0)); }
           else Game.addMerit(k, 1.5);
+          // 旗艦が沈んだ司令官は、艦隊が残っていても命を落とすことがある
+          if (slot === 'cmd' && fl.ships.length > 0 && S.side[sk].flagSunk && k === S.side[sk].cmd) {
+            const r = Math.random();
+            if (r < 0.18) { Game.freeOfficer(k); o.st = 'dead'; o.diedAt = G.turn; o.diedWhere = S.planet ? S.planet.name : '宇宙'; res.dead.push(k); }
+            else if (S.over !== sk && r < 0.36 && Game.isMajor(S.side[other].fac)) { Game.captureOfficer(k, S.side[other].fac); res.caught.push(k); }
+            continue;
+          }
           if (fl.ships.length === 0) {
             const f = Game.facOf(fl.fac);
             const deathP = f && f.forb.includes('f3') ? 0.04 : 0.13;
@@ -562,6 +921,8 @@ const Battle = (() => {
       mySide = playerSide;
       watch = !!opt.watch;
       S.side[playerSide].ctrl = watch ? 'ai' : 'player';
+      // 自分で指揮するときは、後詰めを残さず全部を最初から並べる（援軍は遅れて来る）
+      if (!watch) S.units.forEach(u => { if (u.side === playerSide && u.reserve) { u.wait = false; u.reserve = false; u.y = playerSide === 'A' ? H - 110 : 230; } });
       S.side[playerSide === 'A' ? 'D' : 'A'].ctrl = 'ai';
       S.side[playerSide].force = null; S.side[playerSide].focus = null;
       view = true; paused = !watch; hold = 0; speed = watch ? 2 : 1; sel = []; msgs = []; cut = null; endShown = false;
@@ -582,9 +943,9 @@ const Battle = (() => {
     el.innerHTML = `
       <canvas id="bcv"></canvas>
       <div class="b-top">
-        <div class="b-side b-me"><b></b><div class="bar"><i></i></div></div>
+        <div class="b-side b-me"><b></b><div class="bar"><i></i></div><div class="mo"><i></i></div><small class="b-plan"></small></div>
         <div class="b-time"></div>
-        <div class="b-side b-en"><b></b><div class="bar"><i></i></div></div>
+        <div class="b-side b-en"><b></b><div class="bar"><i></i></div><div class="mo"><i></i></div><small class="b-plan"></small></div>
       </div>
       <div class="b-msgs"></div>
       <div class="b-cut"></div>
@@ -608,6 +969,9 @@ const Battle = (() => {
         <div class="b-row b-fm">
           ${Object.entries(FORMS).map(([k, v]) => `<button data-fm="${k}">${v.name.replace('陣', '')}</button>`).join('')}
           <button data-a="skill" class="b-skill">奥の手</button>
+        </div>
+        <div class="b-row b-tac">
+          ${Object.entries(TACTICS).map(([k, v]) => `<button data-tac="${k}">策・${v.name}</button>`).join('')}
         </div>
         <div class="b-row b-main">
           <button data-a="all">全隊</button>
@@ -688,6 +1052,13 @@ const Battle = (() => {
       say(f ? `全軍、${({ assault: '突撃せよ', fire: '砲撃戦に移れ', guard: '守りを固めろ' })[f]}！` : '指揮を任せる。', '#bfe0ff');
     }
     if (b.dataset.a === 'skip') { skipToEnd(); updateCtrl(); return; }
+    if (b.dataset.tac) {
+      const sd = S.side[mySide];
+      if (!sd.cmd || sd.cmdLost) say('司令官がいないと、策は使えない', '#ffb0a0');
+      else if (sd.planUsed) say('策は一度だけ', '#ffb0a0');
+      else if (!startPlan(mySide, b.dataset.tac)) say(`分隊が足りない（${TACTICS[b.dataset.tac].min}隊以上）`, '#ffb0a0');
+      else { paused = false; sel = []; }
+    }
     if (b.dataset.st) { const list = sel.length ? sel : S.units.filter(u => u.side === mySide && alive(u) && !u.sat); list.forEach(u => { u.stance = b.dataset.st; if (b.dataset.st === 'retreat' || b.dataset.st === 'guard') u.order = null; }); }
     if (b.dataset.fm) { S.side[mySide].form = b.dataset.fm; say(`陣形を${FORMS[b.dataset.fm].name}に`, '#bfe0ff'); }
     const a = b.dataset.a;
@@ -711,13 +1082,14 @@ const Battle = (() => {
     const ab = el.querySelector('[data-a=auto]'); if (ab) ab.classList.toggle('on', sd.ctrl === 'ai');
     const al = el.querySelector('[data-a=all]'); if (al) al.classList.toggle('on', sel.length > 1);
     el.querySelectorAll('[data-force]').forEach(b => b.classList.toggle('on', (sd.force || '') === b.dataset.force));
+    el.querySelectorAll('[data-tac]').forEach(b => { b.disabled = !sd.cmd || sd.cmdLost || sd.planUsed || mob(mySide).length < TACTICS[b.dataset.tac].min; b.classList.toggle('on', !!(sd.plan && sd.plan.type === b.dataset.tac && !sd.plan.done)); });
     const skb = el.querySelector('[data-a=skill]');
     if (sd.cmd) { skb.textContent = sd.skillUsed ? '奥の手（済）' : SKILLS[skillOf(sd.cmd)].name; skb.disabled = sd.skillUsed; }
     else { skb.textContent = '奥の手なし'; skb.disabled = true; }
     const info = el.querySelector('.b-sel');
     if (watch) {
       const lead = sd.cmd ? OFF[sd.cmd] : null;
-      info.innerHTML = `<span class="dim">${lead ? `${lead.name}（${lead.pers}）が指揮中` : '参謀が指揮中'}・${FORMS[sd.form].name}${sd.force ? `・指示：${({ assault: '全軍突撃', fire: '砲撃戦', guard: '守りを固める', retreat: '撤退' })[sd.force]}` : ''}${sd.focus && alive(sd.focus) ? `・集中攻撃：${sd.focus.label}` : ''}</span>`;
+      info.innerHTML = `<span class="dim">${lead && !sd.cmdLost ? `${lead.name}（${lead.pers}・戦術${lead.tac}）が指揮中` : '参謀が指揮中'}・${FORMS[sd.form].name}${sd.plan && !sd.plan.done ? `・策：${TACTICS[sd.plan.type].name}` : ''}${sd.force ? `・指示：${({ assault: '全軍突撃', fire: '砲撃戦', guard: '守りを固める', retreat: '撤退' })[sd.force]}` : ''}${sd.focus && alive(sd.focus) ? `・集中攻撃：${sd.focus.label}` : ''}</span>`;
     } else if (ref) {
       const live = ref.ships.filter(s => !s.dead);
       const hp = live.reduce((a, s) => a + s.hp, 0), mx = ref.ships.reduce((a, s) => a + s.max, 0);
@@ -758,6 +1130,17 @@ const Battle = (() => {
     hold++;
     setTimeout(() => { hold--; if (!hold && !endShown) { el.classList.remove('show'); el.innerHTML = ''; } last = performance.now(); }, 1600);
   }
+  // 戦いの山場：司令官の顔と台詞を短く出す（その間、時間を止める）
+  function dramaCut(sk, who, title, line, expr) {
+    const el = document.querySelector('#battle .b-cut');
+    if (!el || endShown) return;
+    const sd = S.side[sk];
+    el.innerHTML = `<div class="cutin drama ${sk === mySide ? 'me' : 'en'}" style="--c:${Game.ownerCol(sd.fac)}"><img src="${Portrait.url(who, expr)}"><div><small>${title}</small><b>${line ? '「' + line + '」' : ''}</b><span>${OFF[who].name}（${sk === mySide ? '味方' : '敵'}）</span></div></div>`;
+    el.classList.add('show');
+    Sound.se(title === '潰走' || title === '旗艦、轟沈' ? 'bigboom' : 'skill');
+    hold++;
+    setTimeout(() => { hold = Math.max(0, hold - 1); if (!hold && !endShown) { el.classList.remove('show'); el.innerHTML = ''; } last = performance.now(); }, 1700);
+  }
   function loop(now) {
     if (!S) return;
     let dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -776,8 +1159,11 @@ const Battle = (() => {
     const won = S.over === mySide;
     const sd = S.side[mySide];
     const el = document.querySelector('#battle .b-cut');
-    const line = sd.cmd ? LINES[OFF[sd.cmd].pers][won ? 'win' : 'lose'] : '';
-    el.innerHTML = `<div class="b-result ${won ? 'win' : 'lose'}"><h2>${won ? '勝利' : S.timeout ? '時間切れ' : '敗北'}</h2>
+    const up = S.side[S.over] && S.side[S.over].p0 < S.side[foeOf(S.over)].p0 * 0.8 && S.side[S.over].fac !== 'E';
+    const line = sd.cmd ? (won && up ? pickL(TL.upset) : LINES[OFF[sd.cmd].pers][won ? 'win' : 'lose']) : '';
+    const flow = S.story.slice(-5).map(e => `<li class="${e.side === mySide ? 'me' : 'en'}">${e.text}</li>`).join('');
+    el.innerHTML = `<div class="b-result ${won ? 'win' : 'lose'}"><h2>${won ? (up ? '大逆転' : '勝利') : S.timeout ? '時間切れ' : '敗北'}</h2>
+      ${flow ? `<ul class="b-flow">${flow}</ul>` : ''}
       ${sd.cmd ? `<img src="${Portrait.url(sd.cmd, won ? 'happy' : 'sad')}"><p>「${line}」</p>` : ''}
       <div class="b-stat">撃沈 ${S.side[mySide].sunk}隻 ／ 喪失 ${S.side[mySide].lost}隻</div>
       <button class="btn primary">戦いを終える</button></div>`;
@@ -818,11 +1204,19 @@ const Battle = (() => {
       c.lineWidth = 1.5; c.setLineDash([5, 6]); c.beginPath(); c.moveTo(u.x, u.y);
       const t = u.order.type === 'attack' ? u.order.target : u.order; c.lineTo(t.x, t.y); c.stroke(); c.setLineDash([]);
     }
+    // 策の動き（味方の分隊の行き先を、太い矢印で）
+    for (const u of S.units) {
+      if (!alive(u) || u.side !== mySide || !u.role || !u.order || u.order.type !== 'move') continue;
+      c.strokeStyle = u.hidden ? 'rgba(200,170,255,.45)' : 'rgba(255,220,120,.5)'; c.lineWidth = 3; c.setLineDash([10, 8]); c.lineDashOffset = -S.t * 40;
+      c.beginPath(); c.moveTo(u.x, u.y); c.lineTo(u.order.x, u.order.y); c.stroke(); c.setLineDash([]); c.lineDashOffset = 0;
+    }
     // 艦
     for (const u of S.units) {
       if (!alive(u)) continue;
+      if (u.hidden && u.side !== mySide) continue;   // 敵の伏兵は見えない
       const col = Game.ownerCol(u.fac);
       const isSel = sel.includes(u);
+      c.save(); if (u.hidden) c.globalAlpha = 0.38;
       // 足元の輪
       c.beginPath(); c.arc(u.x, u.y, unitR(u), 0, 7);
       c.fillStyle = Art.hexA(col, isSel ? 0.18 : 0.07); c.fill();
@@ -840,8 +1234,15 @@ const Battle = (() => {
       c.fillStyle = hp / mx > 0.5 ? '#7ae08a' : hp / mx > 0.25 ? '#f0c050' : '#ff5a4a'; c.fillRect(u.x - bw / 2, by, bw * hp / mx, 4);
       if (u.side === mySide && !u.sat) {
         c.fillStyle = '#dfefff'; c.font = '13px sans-serif'; c.textAlign = 'center';
-        c.fillText(STANCES[u.stance].name, u.x, by + 17);
+        c.fillText(u.hidden ? '伏兵（潜伏中）' : u.role === 'bait' ? '囮' : u.role === 'rapid' ? '快速部隊' : u.role === 'spear' ? '突撃' : STANCES[u.stance].name, u.x, by + 17);
       }
+      // 旗艦の印
+      if (u.flag) {
+        const sd = S.side[u.side];
+        c.fillStyle = sd.cmdLost ? '#888' : '#ffd86a'; c.font = '700 13px sans-serif'; c.textAlign = 'center';
+        c.fillText(`⚑ ${sd.cmd ? shortName(OFF[sd.cmd]) : '旗艦'}`, u.x, u.y - unitR(u) - 6);
+      }
+      c.restore();
     }
     // 艦載機
     for (const f of S.ftr) { c.fillStyle = Game.ownerCol(f.fac); c.save(); c.translate(f.x, f.y); c.rotate(f.ang); c.beginPath(); c.moveTo(4, 0); c.lineTo(-3, 2.5); c.lineTo(-3, -2.5); c.closePath(); c.fill(); c.restore(); }
@@ -882,6 +1283,14 @@ const Battle = (() => {
       el.querySelector('.b-me .bar i').style.width = (pw(me) / p0(me) * 100) + '%';
       el.querySelector('.b-en .bar i').style.width = (pw(en) / p0(en) * 100) + '%';
       const left = Math.max(0, TLIMIT - S.t);
+      const moW = sk => { const sd = S.side[sk]; return sd.fac === 'E' ? 100 : clamp(sd.morale / 100, 0, 1) * 100; };
+      [['.b-me', me], ['.b-en', en]].forEach(([q, sk]) => {
+        const sd = S.side[sk], mo = el.querySelector(q + ' .mo i'), pl = el.querySelector(q + ' .b-plan');
+        mo.style.width = moW(sk) + '%'; mo.style.background = sd.morale > 55 ? '#e8d070' : sd.morale > 30 ? '#f09040' : '#ff4a3a';
+        // 策の表示（敵の偽装撤退は、伏兵が出るまで隠す）
+        const P = sd.plan, hide = P && P.type === 'ambush' && P.phase === 1 && sk !== mySide;
+        pl.textContent = sd.routed ? '潰走' : sd.cmdLost ? '旗艦喪失' : P && !P.done && !hide ? '策：' + TACTICS[P.type].name + (P.phase === 2 ? '（決行）' : '') : sd.fac === 'E' ? '' : `士気 ${Math.max(0, Math.round(sd.morale))}`;
+      });
       el.querySelector('.b-time').textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}${paused ? ' ❚❚' : ''}`;
       el.querySelector('.b-msgs').innerHTML = msgs.map(m => `<div style="color:${m.col};opacity:${Math.min(1, m.life)}">${m.t}</div>`).join('');
     }
@@ -909,5 +1318,5 @@ const Battle = (() => {
     }
   }
 
-  return { simulate, run, FORMS, STANCES, LINES, get state() { return S; }, power: (fl) => Game.fleetPower(fl) };
+  return { simulate, run, FORMS, STANCES, LINES, TACTICS, DBG, get state() { return S; }, power: (fl) => Game.fleetPower(fl) };
 })();

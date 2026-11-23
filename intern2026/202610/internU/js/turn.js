@@ -112,13 +112,15 @@ const Turn = (() => {
           const lead = myF.find(f => f.cmd);
           const k = lead && lead.cmd && G.officers[lead.cmd] && G.officers[lead.cmd].st !== 'dead' ? lead.cmd : null;
           const sunk = mine === 'A' ? res.lostD : res.lostA, lost = mine === 'A' ? res.lostA : res.lostD;
+          (res.story || []).slice(0, 5).forEach(e => WarRoom.flow(e.text));
           if (k) WarRoom.say(k, Battle.LINES[OFF[k].pers][won ? 'win' : 'lose'], won ? 'happy' : 'sad', p.id);
           const what = mine === 'A' ? (won ? `${p.name}を制圧した` : `${p.name}の攻略に失敗し、退いた`) : (won ? `${p.name}を守り抜いた` : `${p.name}を奪われた`);
           const ord = mine === 'A' && lead && lead.lastOrder && lead.lastOrder.to === p.id ? `命令「${p.name}攻略」→ ` : '';
           WarRoom.result(`${ord}${what}（撃沈 ${sunk}隻・喪失 ${lost}隻）`, won, p.id);
-        } else WarRoom.news(`${p.name}の戦い：${Game.ownerName(af)}が攻め、${res.winner === 'A' ? '制圧した' : `${Game.ownerName(oldOwner)}が守り抜いた`}。`);
+        } else WarRoom.news(`${p.name}の戦い：${Game.ownerName(af)}が攻め、${res.winner === 'A' ? '制圧した' : `${Game.ownerName(oldOwner)}が守り抜いた`}。${res.upset ? '寡兵による逆転だった。' : ''}`);
         res.dead.forEach(k => { if (G.officers[k].ever === G.player || G.officers[k].fac === G.player) WarRoom.result(`${OFF[k].name}、${p.name}にて戦死`, false, p.id); });
         res.caught.forEach(k => { if (G.officers[k].ever === G.player) WarRoom.result(`${OFF[k].name}が捕らえられた`, false, p.id); else if (G.officers[k].capBy === G.player) WarRoom.result(`敵将${OFF[k].name}を捕らえた`, true, p.id); });
+        if (mine && res.story && res.story.length) report.push({ kind: 'flow', text: `　戦況：${res.story.slice(0, 3).map(e => e.text).join('／')}`, fac: null });
         if (res.big && mine) WarRoom.result(`――後に「${res.big}」と呼ばれる大会戦であった`, res.winner === mine, p.id);
         res.dead.forEach(k => report.push({ kind: G.officers[k].ever === G.player ? 'bad' : 'info', text: `${OFF[k].name}、${p.name}にて戦死。`, fac: null }));
         res.caught.forEach(k => report.push({ kind: 'info', text: `${OFF[k].name}が捕らえられた。`, fac: null }));
