@@ -154,38 +154,57 @@ const App = {
     if (!ok) await Cinema.opening($('#opcv'), $('#opening .skip'));   // 動画が再生できない時は、これまでの描画のオープニング
     App.title();
   },
-  // オープニング動画：横長の映像を画面の中ほどに出し、終わりぎわに題字を重ねる。スキップで題字へ
-  opVideo() {
-    return new Promise(resolve => {
+  // オープニング動画：縦長の映像に、前のオープニングの文言を時間に合わせて重ねる。映像のあとは筆で書く題字（描画）へ
+  OP_CUES: [
+    { s: 0.6, e: 8.8, pos: 'vert', lines: [['後漢の末', 0, 26]] },
+    { s: 1.6, e: 5.7, pos: 'top', lines: [['蒼天、已に死す。', 0, 26], ['黄天、当に立つべし。', 1.0, 26], ['歳は甲子に在り　天下大吉', 2.0, 15]] },
+    { s: 6.1, e: 9.3, pos: 'top', lines: [['黄巾の炎は漢土を焼き、', 0, 20], ['洛陽は暴君の手に落ちた。', 0.9, 20]] },
+    { s: 10.0, e: 14.7, pos: 'top', lines: [['天下の大勢、', 0, 20], ['分かれて久しければ必ず合し、', 1.0, 20], ['合して久しければ必ず分かる。', 2.0, 20]] },
+    { s: 15.1, e: 19.3, pos: 'bottom', lines: [['群雄、天下に割拠す。', 0, 22], ['天下を一つにするは、誰か――。', 1.2, 19]] },
+  ],
+  async opVideo() {
+    const r = await new Promise(resolve => {
       const sc = $('#opening'), cv = $('#opcv'), skip = $('#opening .skip');
       const box = document.createElement('div'); box.className = 'op-vid';
-      box.innerHTML = `<video playsinline webkit-playsinline preload="auto" poster="media/opening_poster.jpg?v=1"></video><div class="op-title">群雄天下</div>`;
-      const v = box.querySelector('video'), ttl = box.querySelector('.op-title');
-      v.src = 'media/opening.mp4?v=1';
+      box.innerHTML = `<video playsinline webkit-playsinline preload="auto" poster="media/opening_poster.jpg?v=2"></video>` + App.OP_CUES.map(c => `<div class="op-cap ${c.pos}">${c.lines.map(([t, , fs]) => `<span style="font-size:${fs}px">${t}</span>`).join('')}</div>`).join('');
+      const v = box.querySelector('video'), caps = [...box.querySelectorAll('.op-cap')];
+      v.src = 'media/opening.mp4?v=2';
       v.muted = Sound.muted;
       cv.style.visibility = 'hidden';
       sc.insertBefore(box, skip);
       Sound.stop();
-      let done = false, started = false, timers = [];
-      const end = ok => {
+      let done = false, started = false, raf = 0, timers = [];
+      const end = how => {
         if (done) return; done = true;
-        timers.forEach(clearTimeout); skip.onclick = null; v.onended = v.onerror = v.ontimeupdate = null;
-        const fin = () => { try { v.pause(); } catch (e) {} box.remove(); cv.style.visibility = ''; resolve(ok); };
-        if (ok) { box.classList.add('out'); setTimeout(fin, 600); } else fin();
+        cancelAnimationFrame(raf); timers.forEach(clearTimeout); skip.onclick = null; v.onended = v.onerror = v.onplaying = null;
+        const fin = () => { try { v.pause(); } catch (e) {} box.remove(); cv.style.visibility = ''; resolve(how); };
+        if (how === 'fail') fin(); else { box.classList.add('out'); setTimeout(fin, how === 'skip' ? 300 : 700); }
       };
-      const showTitle = () => { if (!ttl.classList.contains('show')) { ttl.classList.add('show'); Sound.se('gong'); } };
-      skip.onclick = e => { e.stopPropagation(); end(true); };   // スキップは、そのままタイトルへ
-      v.ontimeupdate = () => { if (v.duration && v.currentTime > v.duration - 3) showTitle(); };
-      v.onended = () => { showTitle(); timers.push(setTimeout(() => end(true), 2200)); };
-      v.onerror = () => { if (!started) end(false); };
+      // 文字の出し入れ（映像の再生位置に合わせる）
+      const tick = () => {
+        const t = v.currentTime;
+        App.OP_CUES.forEach((c, i) => {
+          const on = t >= c.s && t < c.e;
+          caps[i].classList.toggle('show', on);
+          [...caps[i].children].forEach((sp, j) => sp.classList.toggle('show', on && t >= c.s + c.lines[j][1]));
+        });
+        raf = requestAnimationFrame(tick);
+      };
+      skip.onclick = e => { e.stopPropagation(); end('skip'); };
+      v.onended = () => end('ok');
+      v.onerror = () => { if (!started) end('fail'); };
       v.onplaying = () => { started = true; };
-      timers.push(setTimeout(() => { if (!started) end(false); }, 6000));   // 読み込めない・再生できない時は描画のオープニングへ
+      timers.push(setTimeout(() => { if (!started) end('fail'); }, 6000));   // 読み込めない・再生できない時は描画のオープニングへ
+      tick();
       const p = v.play();
       if (p && p.catch) p.catch(() => {
         // 音つきの自動再生を断られたら、音なしでもう一度
-        if (!v.muted) { v.muted = true; v.play().catch(() => end(false)); } else end(false);
+        if (!v.muted) { v.muted = true; v.play().catch(() => end('fail')); } else end('fail');
       });
     });
+    if (r === 'fail') return false;
+    if (r === 'ok') await Cinema.opening($('#opcv'), $('#opening .skip'), 33);   // 映像のあとに、筆で書く題字
+    return true;
   },
   title() {
     UI.show('title');

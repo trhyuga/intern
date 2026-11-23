@@ -184,7 +184,7 @@ const Cinema = (() => {
   }
 
   // ================= オープニング =================
-  function opening(cv, skipBtn) {
+  function opening(cv, skipBtn, startAt = 0) {   // startAt：途中の場面から始める（動画のあとの題字だけ、など）
     return new Promise(resolve => {
       Sound.bgm('title');
       const { c, W, H } = fit(cv);
@@ -204,7 +204,7 @@ const Cinema = (() => {
       tc.shadowColor = 'rgba(0,0,0,0.8)'; tc.shadowBlur = 14; tc.fillStyle = '#f6e8c6';
       const chars = [...'群雄天下'];
       const T = 38;
-      let t0 = performance.now(), done = false, raf, gonged = false;
+      let t0 = performance.now() - startAt * 1000, done = false, raf, gonged = false;
       const finishOp = () => { if (done) return; done = true; cancelAnimationFrame(raf); skipBtn.onclick = null; resolve(); };
       skipBtn.onclick = e => { e.stopPropagation(); finishOp(); };
       const frame = () => {
