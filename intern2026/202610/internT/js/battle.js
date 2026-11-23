@@ -8,7 +8,7 @@ const Battle = (() => {
   const fcol = fi => (fi != null && G.factions[fi]) ? G.factions[fi].color : '#777';   // 勢力の色（勢力がなければ灰色）
   const COLS = 9, ROWS = 11;
   const COST = { plain: 1, forest: 2, mount: 3, ford: 2, water: 99, inner: 1, keep: 1, gate: 1, wall: 99, road: 1 };
-  const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.35, keep: 1.6, gate: 1.4, wall: 2, road: 1 };
+  const DEFK = { plain: 1, forest: 1.2, mount: 1.35, ford: 0.85, water: 0.8, inner: 1.35, keep: 1.9, gate: 1.4, wall: 2, road: 1 };   // 本丸は三方から囲まれやすいので、守りを厚く（1.6→1.9）
   const TNAME = { plain: '平地', forest: '森', mount: '山', ford: '浅瀬', water: '川', inner: '城内', keep: '本丸', gate: '城門', wall: '城壁', road: '道' };
   let B = null, cv, ctx, cell, raf, resolveEnd, terrainLayer, anims = [], floaters = [], particles = [];
   // 合戦が進んでいる印（待ち時間が明けるたびに更新）。止まったままかどうかの見張りに使う
@@ -1635,6 +1635,16 @@ const Battle = (() => {
     T(u, '開始');
     showInfo(u);
     const wmine = B.watch && u.side === B.playerSide;
+    // 本丸の真下にいる攻め手は、左右が空いていれば先にそちらへずれ、真下を後から来る味方に譲る（一騎討ちや攻撃はそのあとで）
+    if (u.side === 'atk' && !rogue && u.r === 1 && u.c === 4 && B.tiles[0][4].t === 'keep') {
+      const ko = unitAt(0, 4);
+      const waiting = B.units.some(o => o.alive && o.side === 'atk' && o !== u && dist(o, { r: 0, c: 4 }) > 1);
+      if (ko && ko.side !== u.side && waiting) {
+        const reach0 = moveRange(u);
+        const side = [[0, 3], [0, 5]].find(([sr, sc]) => B.tiles[sr][sc].t === 'inner' && !unitAt(sr, sc) && reach0.includes(sr + ',' + sc));
+        if (side) { await animateMove(u, side[0], side[1]); T(u, '本丸の横へ'); if (u.acted || !u.alive) return; }
+      }
+    }
     // 必殺技（好機なら使う）
     if (!rogue && await aiSkill(u)) return;
     // 一騎打ち（移動の前にも後にも考える）
@@ -1710,6 +1720,15 @@ const Battle = (() => {
       { let enc = 0; DIRS.forEach(([dr, dc]) => { const o = unitAt(r + dr, c + dc); if (o && o.alive && o.side !== u.side && isField(o)) { const n = surrounders(o).filter(x => x !== u).length; if (n >= 1) enc = Math.max(enc, n * 5 * (isWise(u) ? 1.4 : 1)); } }); score += enc; }
       if (u.charge && DIRS.some(([dr, dc]) => { const o = unitAt(r + dr, c + dc); return o && o.side !== u.side && o.gi >= 0; })) score += 14;
       if (B.tiles[r][c].t === 'keep' && u.side === 'atk') score += 100;
+      // 本丸攻め：本丸の左右に回れるなら、真下のマスは後から来る味方に譲る（真下にいると、後ろの部隊が詰まって動けない）
+      if (u.side === 'atk' && B.tiles[0][4].t === 'keep') {
+        const ko = unitAt(0, 4);
+        if (ko && ko.side !== u.side) {
+          const sideFree = [[0, 3], [0, 5]].filter(([sr, sc]) => B.tiles[sr][sc].t === 'inner' && (!unitAt(sr, sc) || unitAt(sr, sc) === u) && reach.includes(sr + ',' + sc));
+          if (r === 1 && c === 4 && sideFree.length) score -= 12;
+          if (r === 0 && (c === 3 || c === 5)) score += 4;
+        }
+      }
       // 知力の高い将（知力75以上か智謀・神算）は、門が無事なうち、門を叩く1部隊でなければ城壁の矢が届かない所で待つ
       if (gateHitter && u !== gateHitter && !tg.some(([tr, tc]) => unitAt(tr, tc))) {
         const archers = B.units.filter(o => o.alive && o.side === 'def' && o.r <= 2 && ['inner', 'gate'].includes(B.tiles[o.r][o.c].t) && dist(o, { r, c }) <= 2).length;
