@@ -36,6 +36,7 @@ const Story = (() => {
   }
   async function play(ev) {
     G.evDone[ev.id] = G.turn;
+    if (ev.valid && !ev.valid()) return;   // 前の出来事で、もう片づいた（取り戻した捕虜など）
     const scenes = ev.scenes().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead')));
     if (!scenes.length) { G.evDone[ev.id] = G.turn; return; }
     const choice = await UI.talk(ev.title, scenes, ev.choices, ev.bg);

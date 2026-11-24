@@ -249,20 +249,36 @@ const People = (() => {
             fx: () => { s.mem++; s.memT = G.turn; FX.loyal(sv, 3); } });
         }
       }
-      // 相手が敵に捕らわれた
+    }
+    // 捕らわれた人物：一人につき一つの出来事にまとめる（縁のある者が何人いても、身代金は一度だけ）
+    G.capDone = G.capDone || {};
+    const captives = new Map();
+    for (const t of all()) {
+      if (!WARM.has(t.kind) && t.kind !== 'rival') continue;
       for (const [c, sv] of [[t.a, t.b], [t.b, t.a]]) {
         const oc = G.officers[c];
-        if (!oc || oc.st !== 'cap' || oc.capBy === me || !mine(sv) || !Game.isMajor(oc.capBy) || s.cap === (oc.capAt || 0)) continue;
-        if (!WARM.has(t.kind) && t.kind !== 'rival') continue;
-        const by = oc.capBy, capAt = oc.capAt || 0;
-        out.push({ fx: () => { s.cap = capAt; }, id: `cap_${c}_${sv}_${G.turn}`, title: '囚われの身', bg: 'crisis', pr: 4,
-          scenes: () => [['narr', '', `${OFF[c].name}が、${FACTIONS[by].name}に捕らわれている。`], [sv, 'angry', line(t, 'capture', sv)]],
-          choices: [
-            { t: `身代金を払って取り戻す（資金 −400・${FACTIONS[by].short}の信頼 +5）`, fx: () => { if (G.facs[me].funds >= 400) { G.facs[me].funds -= 400; free(c); FX.trust(by, 5); } } , after: () => [[c, 'happy', voice(c, 'join') || '……迎えに来てくれたのか。']] },
-            { t: `救い出す作戦を許す（成功は五分。失敗すると${OFF[sv].name}の忠誠が下がる）`, fx: () => { if (Math.random() < 0.5 + (OFF[sv].tac - 60) / 200) { free(c); G.flags.rescued = G.turn; } else FX.loyal(sv, -6); }, after: () => G.officers[c].st === 'act' ? [[sv, 'happy', '取り戻したぞ！'], [c, 'happy', voice(c, 'join') || '……ありがとう。']] : [[sv, 'sad', '……失敗した。すまない。']] },
-            { t: '今は動けない（何もしない）', fx: () => FX.loyal(sv, -3), after: () => [[sv, 'sad', '……わかった。今は、待つ。']] },
-          ] });
+        if (!oc || oc.st !== 'cap' || oc.capBy === me || !mine(sv) || !Game.isMajor(oc.capBy)) continue;
+        if (G.capDone[c] === (oc.capAt || 0)) continue;
+        if (!captives.has(c)) captives.set(c, []);
+        captives.get(c).push({ sv, t });
       }
+    }
+    for (const [c, list] of captives) {
+      const oc = G.officers[c], by = oc.capBy, capAt = oc.capAt || 0;
+      list.sort((x, y) => (WARM.has(y.t.kind) ? 1 : 0) - (WARM.has(x.t.kind) ? 1 : 0));
+      const main = list[0].sv;
+      const still = () => G.officers[c].st === 'cap' && G.officers[c].capBy === by;
+      out.push({ id: `cap_${c}_${capAt}`, title: '囚われの身', bg: 'crisis', pr: 4,
+        valid: still,
+        fx: () => { G.capDone[c] = capAt; },
+        scenes: () => [['narr', '', `${OFF[c].name}が、${FACTIONS[by].name}に捕らわれている。`], ...list.slice(0, 3).map(({ sv, t }, i) => [sv, i ? 'sad' : 'angry', line(t, 'capture', sv)])],
+        choices: [
+          { t: `身代金を払って取り戻す（資金 −400・${FACTIONS[by].short}の信頼 +5）`, fx: () => { if (still() && G.facs[me].funds >= 400) { G.facs[me].funds -= 400; free(c); FX.trust(by, 5); } },
+            after: () => G.officers[c].st === 'act' ? [[c, 'happy', voice(c, 'join') || '……迎えに来てくれたのか。']] : [[main, 'sad', '……資金が足りない。すまない。']] },
+          { t: `救い出す作戦を許す（成功は五分。失敗すると${OFF[main].name}の忠誠が下がる）`, fx: () => { if (!still()) return; if (Math.random() < 0.5 + (OFF[main].tac - 60) / 200) { free(c); G.flags.rescued = G.turn; } else FX.loyal(main, -6); },
+            after: () => G.officers[c].st === 'act' ? [[main, 'happy', '取り戻したぞ！'], [c, 'happy', voice(c, 'join') || '……ありがとう。']] : [[main, 'sad', '……失敗した。すまない。']] },
+          { t: '今は動けない（何もしない）', fx: () => list.forEach(({ sv }) => FX.loyal(sv, -3)), after: () => [[main, 'sad', '……わかった。今は、待つ。']] },
+        ] });
     }
     return out;
   }
