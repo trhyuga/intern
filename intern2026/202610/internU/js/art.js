@@ -24,6 +24,7 @@ const Art = (() => {
   };
   // 艦を描く：ang はラジアン（0 で上向き）。L は全長(px)
   function ship(c, hull, x, y, ang, L, col, opt = {}) {
+    if (typeof ShipArt !== 'undefined') return ShipArt.draw(c, hull, x, y, ang, L, col, opt);   // 詳しい艦の絵（js/shipart.js）
     const pts = SHAPES[hull] || SHAPES.cl;
     c.save(); c.translate(x, y); c.rotate(ang);
     const eclipse = hull === 'spore' || hull === 'maw' || hull === 'crown';
