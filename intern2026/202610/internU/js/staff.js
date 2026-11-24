@@ -142,6 +142,14 @@ const Staff = (() => {
     if (Game.isLeader(k)) return HONOR[G.officers[k].fac] || shortName(OFF[k]);
     return shortName(OFF[k]) + (role === 'fleet' ? '提督' : role === 'gov' ? '総督' : '');
   }
+  // 相手への言葉づかい：君主には最上の敬語、参謀より階級が上の士官には丁寧に、ほかは命令口調
+  //  0 = 命令（〜せよ）／1 = 丁寧（〜していただけますか）／2 = 君主へ（〜をお願い申し上げます）
+  function tone(k) {
+    if (!k || k === G.staff.key) return 0;
+    if (Game.isLeader(k)) return 2;
+    return Game.rankIdx(k) > Game.rankIdx(G.staff.key) ? 1 : 0;
+  }
+  const T3 = (k, a, b, c) => [a, b, c][tone(k)];
   // 自国の月の動き（AI として）
   function turnPlayer() {
     const s = G.staff, me = G.player, f = G.facs[me];
@@ -179,14 +187,18 @@ const Staff = (() => {
       const to = G.planets[x.dest], hostile = !Game.friendly(me, to.owner);
       const hurt = x.ships.reduce((a, sh) => a + sh.hp / Game.shipMaxHp(sh), 0) / Math.max(1, x.ships.length) < 0.6;
       const kind = hostile ? 'attack' : hurt && to.yard ? 'repair' : 'move';
-      const intel = to.owner === null ? '独立惑星だ。衛星を落とせば我らのものになる。' : `${Game.ownerName(to.owner)}の守りは${Math.round(Game.planetDefense(to))}ほど、こちらは${Math.round(Game.fleetPower(x))}。`;
+      const pol = tone(x.cmd) > 0;
+      const intel = to.owner === null ? (pol ? '独立惑星です。衛星を落とせば、我らのものになります。' : '独立惑星だ。衛星を落とせば我らのものになる。')
+        : `${Game.ownerName(to.owner)}の守りは${Math.round(Game.planetDefense(to))}ほど、こちらは${Math.round(Game.fleetPower(x))}${pol ? 'です' : ''}。`;
       if (x.cmd === s.key) {
         // 参謀が自ら艦隊を率いる
         loud.say(s.key, kind === 'attack' ? `私が自ら艦隊を率いて${to.name}を攻める。${intel}` : kind === 'repair' ? `私の艦隊は${to.name}で修理に入る。` : `私の艦隊は${to.name}へ移って備える。`, kind === 'attack' ? 'angry' : 'normal', to.id);
       } else {
         const nm = x.cmd ? callName(x.cmd, 'fleet') : '艦隊';
-        loud.say(s.key, kind === 'attack' ? `${nm}、${to.name}を攻略せよ。${intel}`
-          : kind === 'repair' ? `${nm}、${to.name}の造船所で艦を直してくれ。` : `${nm}、${to.name}へ移って備えよ。`, 'normal', to.id);
+        const k2 = x.cmd;
+        loud.say(s.key, kind === 'attack' ? `${nm}、${T3(k2, `${to.name}を攻略せよ。`, `${to.name}の攻略をお願いできますか。`, `${to.name}の攻略を、お願い申し上げます。`)}${intel}`
+          : kind === 'repair' ? `${nm}、${T3(k2, `${to.name}の造船所で艦を直してくれ。`, `${to.name}の造船所で、艦を直していただけますか。`, `${to.name}の造船所にて、艦の修理をお願い申し上げます。`)}`
+          : `${nm}、${T3(k2, `${to.name}へ移って備えよ。`, `${to.name}へ移って備えていただけますか。`, `${to.name}へお移りいただき、お備えくださいますよう。`)}`, 'normal', to.id);
         if (x.cmd) loud.say(x.cmd, reply(kind, x.cmd), kind === 'attack' ? 'angry' : 'normal', to.id);
       }
       loud.order(`${Game.fleetName(x)}（${x.ships.length}隻）→ ${to.name}${kind === 'attack' ? '（攻撃）' : kind === 'repair' ? '（修理）' : '（移動）'}`, to.id);
@@ -195,7 +207,7 @@ const Staff = (() => {
     // 艦隊の新設・司令の任命
     for (const x of G.fleets.filter(x => x.fac === me && x.cmd && cmdBefore.get(x.id) !== x.cmd)) {
       if (x.cmd === s.key) loud.say(s.key, `${G.planets[x.at].name}の艦${x.ships.length}隻は、私が率いる。`, 'normal', x.at);
-      else { loud.say(s.key, `${callName(x.cmd)}、${G.planets[x.at].name}の艦${x.ships.length}隻を率いてくれ。`, 'normal', x.at); loud.say(x.cmd, reply('attack', x.cmd), 'happy', x.at); }
+      else { loud.say(s.key, `${callName(x.cmd)}、${G.planets[x.at].name}の艦${x.ships.length}隻を${T3(x.cmd, '率いてくれ。', '率いていただけますか。', 'お率いくださいますよう、お願い申し上げます。')}`, 'normal', x.at); loud.say(x.cmd, reply('attack', x.cmd), 'happy', x.at); }
       loud.order(`${OFF[x.cmd].name}を艦隊司令に（${G.planets[x.at].name}・${x.ships.length}隻）`, x.at);
     }
     // 星：重点・総督・発注
@@ -203,12 +215,12 @@ const Staff = (() => {
       const b = before.get(p.id); if (!b || p.owner !== me) continue;
       if (p.gov && govBefore.get(p.id) !== p.gov) {
         if (p.gov === s.key) loud.say(s.key, `${p.name}の統治は、私が兼ねます。`, 'normal', p.id);
-        else { loud.say(s.key, `${callName(p.gov)}、${p.name}の${Game.isLeader(p.gov) ? '統治をお願いしたく' : '総督を任せたい'}。`, 'normal', p.id); loud.say(p.gov, reply('appoint', p.gov), 'happy', p.id); }
+        else { loud.say(s.key, `${callName(p.gov)}、${p.name}の${T3(p.gov, '総督を任せたい。', '総督をお願いできますか。', '統治を、お願い申し上げます。')}`, 'normal', p.id); loud.say(p.gov, reply('appoint', p.gov), 'happy', p.id); }
         loud.order(`${OFF[p.gov].name}を${p.name}の総督に`, p.id);
       }
       if (p.focus !== b.focus) {
         const why = { ind: '産業を伸ばして財源を厚くする', res: '研究所を増やす', def: '敵に備えて防衛衛星を増やす', yard: '造船所を整える', pop: '民の暮らしを立て直す' }[p.focus];
-        loud.say(s.key, `${p.name}は${why}。${p.gov && p.gov !== s.key ? callName(p.gov, 'gov') + '、頼む。' : ''}`, 'normal', p.id);
+        loud.say(s.key, `${p.name}は${why}。${p.gov && p.gov !== s.key ? callName(p.gov, 'gov') + '、' + T3(p.gov, '頼む。', 'よろしくお願いします。', 'よろしくお願い申し上げます。') : ''}`, 'normal', p.id);
         if (p.gov && p.gov !== s.key) loud.say(p.gov, reply('govern', p.gov), 'normal', p.id);
         loud.order(`${p.name}：重点を${Game.FOCUS[p.focus]}へ`, p.id);
         if (p.focus !== 'pop') loud.pend(`${p.name}の${Game.FOCUS[p.focus]}が`, `${p.name}の重点を${Game.FOCUS[p.focus]}へ`, p.id);
@@ -306,7 +318,9 @@ const Staff = (() => {
         const ev = envoy(); if (!ev) break;
         const c = Diplo.chance(me, b, kind, ev);
         if (c.p < minP) continue;
-        WarRoom.say(s.key, `${ev === s.key ? '私が' : callName(ev) + '、'}${FACTIONS[b].name}へ使者に立${ev === s.key ? 'つ' : 'ってくれ'}。${Diplo.KINDS[kind].name}を申し入れる。見込みは${Math.round(c.p * 100)}%だ。`, 'normal', G.facs[b].capital);
+        const pc = Math.round(c.p * 100), KN = Diplo.KINDS[kind].name;
+        WarRoom.say(s.key, ev === s.key ? `私が${FACTIONS[b].name}へ使者に立ちます。${KN}を申し入れます。見込みは${pc}%です。`
+          : `${callName(ev)}、${FACTIONS[b].name}へ${T3(ev, `使者に立ってくれ。${KN}を申し入れる。見込みは${pc}%だ。`, `使者に立っていただけますか。${KN}を申し入れます。見込みは${pc}%です。`, `御自ら使者にお立ちいただけますでしょうか。${KN}を申し入れます。見込みは${pc}%にございます。`)}`, 'normal', G.facs[b].capital);
         WarRoom.order(`使者${OFF[ev].name} → ${FACTIONS[b].name}：${Diplo.KINDS[kind].name}`, G.facs[b].capital);
         WarRoom.say(ev, WarRoom.DIPLO.ask[kind], 'normal', G.facs[b].capital);
         const res = Diplo.propose(me, b, kind, ev);

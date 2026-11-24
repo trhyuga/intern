@@ -190,7 +190,7 @@ const Turn = (() => {
             if (/を申し入れた|と盟約を結んだ|贈り物|が仕官した/.test(l.text)) continue;   // 外交は作戦室で別に出している
             const pd = WarRoom.link(l.text);
             const inc = l.text.startsWith('【出来事】');
-            if (inc) { const p = G.planets.find(x => l.text.includes(x.name) && x.owner === G.player); WarRoom.result(l.text.replace('【出来事】', '出来事：'), l.kind !== 'bad', p ? p.id : null); if (p && p.gov) WarRoom.say(p.gov, l.kind === 'bad' ? '手を尽くします。' : '良い知らせです。', l.kind === 'bad' ? 'sad' : 'happy', p.id); continue; }
+            if (inc) { const p = G.planets.find(x => l.text.includes(x.name) && x.owner === G.player); WarRoom.result(l.text.replace('【出来事】', '出来事：'), l.kind !== 'bad', p ? p.id : null); if (p && p.gov) WarRoom.say(p.gov, Game.isLeader(p.gov) ? (l.kind === 'bad' ? 'うむ、手を打とう。' : '喜ばしいことだ。') : l.kind === 'bad' ? '手を尽くします。' : '良い知らせです。', l.kind === 'bad' ? 'sad' : 'happy', p.id); continue; }
             WarRoom.result((pd ? `命令「${pd.text}」→ ` : '') + l.text.replace(/。$/, ''), l.kind !== 'bad' && l.kind !== 'warn', pd ? pd.pid : null);
           } else if (l.kind === 'info' && nn++ < 4) WarRoom.news(l.text);
         }
