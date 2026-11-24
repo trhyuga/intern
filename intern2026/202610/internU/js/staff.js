@@ -219,7 +219,9 @@ const Staff = (() => {
         loud.order(`${OFF[p.gov].name}を${p.name}の総督に`, p.id);
       }
       if (p.focus !== b.focus) {
-        const why = { ind: '産業を伸ばして財源を厚くする', res: '研究所を増やす', def: '敵に備えて防衛衛星を増やす', yard: '造船所を整える', pop: '民の暮らしを立て直す' }[p.focus];
+        const polite = p.gov && p.gov !== s.key && tone(p.gov) > 0;
+        const why = (polite ? { ind: '産業を伸ばして、財源を厚くいたします', res: '研究所を増やしてまいります', def: '敵に備え、防衛衛星を増やします', yard: '造船所を整えます', pop: '民の暮らしを立て直します' }
+          : { ind: '産業を伸ばして財源を厚くする', res: '研究所を増やす', def: '敵に備えて防衛衛星を増やす', yard: '造船所を整える', pop: '民の暮らしを立て直す' })[p.focus];
         loud.say(s.key, `${p.name}は${why}。${p.gov && p.gov !== s.key ? callName(p.gov, 'gov') + '、' + T3(p.gov, '頼む。', 'よろしくお願いします。', 'よろしくお願い申し上げます。') : ''}`, 'normal', p.id);
         if (p.gov && p.gov !== s.key) loud.say(p.gov, reply('govern', p.gov), 'normal', p.id);
         loud.order(`${p.name}：重点を${Game.FOCUS[p.focus]}へ`, p.id);
