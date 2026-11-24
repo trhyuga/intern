@@ -89,7 +89,7 @@ const Diplo = (() => {
     if (tf.ruling === 'peace') { sc += 8; why.push(`${T.short}の融和派 +8`); }
     if (tf.ruling === 'war' && kind !== 'peace') { sc -= 10; why.push(`${T.short}の主戦派 −10`); }
     sc -= T.agg * 18; why.push(`${T.short}の気風 −${Math.round(T.agg * 18)}`);
-    if (G.eclipse.arrived && !G.eclipse.defeated) { sc += 22; why.push('蝕という共通の敵 +22'); }
+    if (Eclipse.active()) { sc += 22; why.push('蝕という共通の敵 +22'); }
     if (commonEnemy(from, to)) { sc += 12; why.push('共通の敵 +12'); }
     const pf = power(from), pt = power(to), ratio = pf / pt;
     if (kind === 'peace') {
@@ -189,7 +189,7 @@ const Diplo = (() => {
       // 信頼のゆらぎ
       const border = G.planets.some(p => p.owner === fid && Game.ADJ[p.id].some(n => G.planets[n].owner === b));
       const agg = aggOf(fid);
-      const crisis = G.eclipse.arrived && !G.eclipse.defeated;
+      const crisis = Eclipse.active();
       if (border && r.s !== 'ally') r.t -= agg * 0.6;
       r.t += (r.s === 'trade' ? 0.6 : 0) + (0 - r.t) * 0.01 + aff(fid, b) * 0.15;
       // 抜きん出た国は警戒される
@@ -208,13 +208,13 @@ const Diplo = (() => {
       const ratio = power(fid) / power(b);
       const hawk = f.ruling === 'war';
       if (r.s === 'war') {
-        if (G.turn - r.since > 5 && (ratio < (hawk ? 0.55 : 0.8) || f.warWeary > (hawk ? 9 : 5) || crisis)) kind = 'peace';
+        if (G.turn - r.since > 5 && (ratio < (hawk ? 0.55 : 0.8) || f.warWeary > (hawk ? 9 : 5) || crisis || (G.turn - r.since > 20 && ratio < 1.6 && Math.random() < 0.35))) kind = 'peace';   // 長い戦は、決め手がなければ手打ちに
       } else if (r.s === 'neutral') {
         // 覇権を阻む：いちばん大きな国（とくにプレイヤー）を主戦派は狙う
         const biggest = G.facs.filter(x => x.alive).sort((x, y) => G.planets.filter(p => p.owner === y.id).length - G.planets.filter(p => p.owner === x.id).length)[0];
         const hegemon = biggest && biggest.id === b && fear(b) > 0;
         const wantWar = agg > 0.45 && G.turn > 6 && (border || hegemon) && ratio > (hawk ? 1.1 : 1.35) * (hegemon ? 0.75 : 1) && r.t < (hawk ? 25 : 10) && f.ruling !== 'peace' && !crisis;
-        if (wantWar && Math.random() < agg * 0.5 && !G.facs.some((x, i) => i !== fid && i !== b && x.alive && Game.rel(fid, i).s === 'war' && power(i) > power(fid) * 0.7)) { declareWar(fid, b, hegemon ? `${FACTIONS[b].name}の覇権を阻むと称して` : hawk ? '主戦派に押され' : ''); continue; }
+        if (wantWar && G.turn > 12 && Math.random() < agg * 0.3 && !G.facs.some((x, i) => i !== fid && i !== b && x.alive && Game.rel(fid, i).s === 'war' && power(i) > power(fid) * 0.7)) { declareWar(fid, b, hegemon ? `${FACTIONS[b].name}の覇権を阻むと称して` : hawk ? '主戦派に押され' : ''); continue; }
         if (r.t > -5) kind = 'nap';
       } else if (r.s === 'nap') {
         if (r.t > 10) kind = 'trade';

@@ -155,7 +155,7 @@ const Turn = (() => {
     try {
       UI.busy('各勢力が動いている…');
       await UI.wait(30);
-      const capBefore = G.facs[G.player].capital, eclBefore = G.eclipse.arrived;
+      const capBefore = G.facs[G.player].capital, eclBefore = G.eclipse.arrived, phBefore = (Eclipse.norm(), G.eclipse.phase);
       // 0. 参謀に任せているなら、自国も参謀が動かす
       if (Staff.active()) Staff.turnPlayer();
       // 1. AI
@@ -218,19 +218,21 @@ const Turn = (() => {
       if (Staff.active() && !v) { UI.autoReport(report); WarRoom.say(G.staff.key, '今月の報告は以上です。', 'normal'); await WarRoom.play(); } else await UI.monthReport(report);
       if (v) { if (G.staff) G.staff.on = false; G.over = v.type; Game.save(); await UI.gameOver(v.type); running = false; return; }
       // 10. 蝕の襲来（初めて現れた月だけ、特別な演出）
-      if (!eclBefore && G.eclipse.arrived) {
-        await Cinema.eclipseArrival();
+      // 先触れ・大侵攻・再来は、それぞれの演出で（その時まで、プレイヤーには知らせない）
+      const ph = G.eclipse.phase;
+      if (ph !== phBefore && ['first', 'great', 'ret'].includes(ph)) {
+        await Cinema.eclipseArrival(ph, G.eclipse.cycle);
         UI.show('main');
-        StarMap.focus(Eclipse.RIFT_ID, 0.7); StarMap.selPlanet = Eclipse.RIFT_ID;
+        StarMap.focus(Eclipse.mainRift(), ph === 'first' ? 0.7 : 0.4); StarMap.selPlanet = Eclipse.mainRift();
         Sound.bgm('crisis');
-      }
+      } else if (ph !== phBefore && (ph === 'receded' || ph === 'solved')) Sound.bgm('strategy');
       // 会話イベント
       await Story.run();
       // 11. 申し入れ
       await UI.pendingProposals();
       // 12. 参謀に任せている間は、次の月へ
       if (Staff.active()) {
-        const why = Staff.shouldStop({ capitalLost: G.facs[G.player].capital !== capBefore, eclipseArrived: !eclBefore && G.eclipse.arrived });
+        const why = Staff.shouldStop({ capitalLost: G.facs[G.player].capital !== capBefore, eclipseArrived: G.eclipse.phase !== phBefore && ['first', 'great', 'ret'].includes(G.eclipse.phase) });
         if (why) { running = false; await UI.staffStop(why); }
         else UI.autoNext();
       }

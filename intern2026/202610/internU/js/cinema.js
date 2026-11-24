@@ -288,13 +288,18 @@ const Cinema = (() => {
   }
 
   // ---------------- 蝕の襲来（その時まで、プレイヤーには知らせない） ----------------
-  function eclipseArrival() {
+  function eclipseArrival(phase = 'first', cycle = 1) {
     Sound.stopBgm();
+    const TX = {
+      first: { pre: '異常な重力波を観測――', title: '蝕', sub: '― ECLIPSE ―', line: '星を喰らうものが、来た。', n: 1 },
+      great: { pre: '銀河の三方で、同時に重力波――', title: '大蝕', sub: '― THE GREAT ECLIPSE ―', line: 'あれは、先触れにすぎなかった。', n: 3 },
+      ret: { pre: '閉じたはずの裂け目が、ふたたび――', title: '再蝕', sub: `― ECLIPSE RETURNS・${cycle}度目 ―`, line: '根を断たぬかぎり、蝕は何度でも来る。', n: Math.min(4, 1 + cycle) },
+    }[phase] || {};
     const stars = makeStars(320, 66);
     const neb = Art.nebulaCanvas(420, 760, 404, [230, 260], { alpha: 0.07, stars: 400 });
     const hits = new Set();
     const at = (t, k, fn) => { if (t >= k && !hits.has(k)) { hits.add(k); fn(); } };
-    const swarm = Array.from({ length: 70 }, (_, i) => { const r = Art.srand(i * 13 + 5); r(); r(); return { a: i * 2.39996 + r() * 0.3, sp: 0.4 + r() * 1.2, d: r() * 0.4, s: 6 + r() * 14, h: r() < 0.8 ? 'spore' : 'maw' }; });
+    const swarm = Array.from({ length: 70 * Math.min(3, TX.n || 1) }, (_, i) => { const r = Art.srand(i * 13 + 5); r(); r(); return { a: i * 2.39996 + r() * 0.3, sp: 0.4 + r() * 1.2, d: r() * 0.4, s: 6 + r() * 14, h: r() < 0.8 ? 'spore' : 'maw' }; });
     return play('opening', 'opcv', 17, (c, W, H, t) => {
       const M = Math.min(W, H), cx = W / 2, cy = H * 0.42;
       c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
@@ -303,7 +308,7 @@ const Cinema = (() => {
       c.save(); c.translate(shake, shake * 0.6);
       c.globalAlpha = t < 2.5 ? 1 : Math.max(0.25, 1 - (t - 2.5) / 3); c.drawImage(neb, 0, 0, W, H); c.globalAlpha = 1;
       starfield(c, W, H, stars, t, 0.01);
-      if (t < 2.6) textC(c, '異常な重力波を観測――', W / 2, H * 0.82, 15, fade(t, 0.4, 2.6, 0.4), { col: '#ffb0b0', glow: 'rgba(255,60,60,.8)' });
+      if (t < 2.6) textC(c, TX.pre, W / 2, H * 0.82, 15, fade(t, 0.4, 2.6, 0.4), { col: '#ffb0b0', glow: 'rgba(255,60,60,.8)' });
       // 2. 宇宙に亀裂（2.5〜5）
       if (t >= 2.5) {
         at(t, 2.5, () => { Sound.se('alarm'); if (Sound.ctx) Sound.drum(Sound.ctx.currentTime + 0.01, 'timp', 1.4); });
@@ -318,11 +323,14 @@ const Cinema = (() => {
       if (t >= 4.5) {
         at(t, 4.5, () => { Sound.se('bigboom'); if (Sound.ctx) Sound.drum(Sound.ctx.currentTime + 0.01, 'crash', 1.5); });
         const k = easeOut((t - 4.5) / 2.5);
-        const rr = M * (0.05 + k * 0.32);
-        for (let i = 0; i < 3; i++) {
-          const g = c.createRadialGradient(cx, cy, 0, cx, cy, rr * (1.3 + i * 0.5 + Math.sin(t * 3 + i) * 0.05));
-          g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.5, 'rgba(15,0,8,.95)'); g.addColorStop(0.68, 'rgba(255,40,110,.6)'); g.addColorStop(1, 'rgba(255,40,110,0)');
-          c.fillStyle = g; c.beginPath(); c.ellipse(cx, cy, rr * (2.2 + i * 0.4), rr * (0.9 + i * 0.25), 0, 0, 7); c.fill();
+        const POS = TX.n === 1 ? [[cx, cy, 1]] : [[cx, cy, 1], [W * 0.2, H * 0.2, 0.55], [W * 0.82, H * 0.66, 0.6], [W * 0.25, H * 0.75, 0.5]].slice(0, TX.n);
+        for (const [px, py, sc] of POS) {
+          const rr = M * (0.05 + k * 0.32) * sc;
+          for (let i = 0; i < 3; i++) {
+            const g = c.createRadialGradient(px, py, 0, px, py, rr * (1.3 + i * 0.5 + Math.sin(t * 3 + i) * 0.05));
+            g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.5, 'rgba(15,0,8,.95)'); g.addColorStop(0.68, 'rgba(255,40,110,.6)'); g.addColorStop(1, 'rgba(255,40,110,0)');
+            c.fillStyle = g; c.beginPath(); c.ellipse(px, py, rr * (2.2 + i * 0.4), rr * (0.9 + i * 0.25), 0, 0, 7); c.fill();
+          }
         }
         if (t < 5.2) { c.fillStyle = `rgba(255,220,230,${1 - (t - 4.5) / 0.7})`; c.fillRect(-20, -20, W + 40, H + 40); }
       }
@@ -341,9 +349,9 @@ const Cinema = (() => {
         at(t, 9, () => { if (Sound.ctx) Sound.drum(Sound.ctx.currentTime + 0.01, 'timp', 1.6); });
         const a = Math.min(1, (t - 9) / 0.6);
         c.fillStyle = `rgba(0,0,0,${a * 0.45})`; c.fillRect(0, 0, W, H);
-        textC(c, '蝕', W / 2, H * 0.4, Math.min(W / 2.6, 150), a, { w: 800, col: '#ffffff', glow: 'rgba(255,30,100,1)', blur: 40 });
-        textC(c, '― ECLIPSE ―', W / 2, H * 0.4 + Math.min(W / 2.6, 150) * 0.85, 15, Math.min(1, (t - 10) / 1), { ls: 6, col: '#ffc0d0', glow: 'rgba(255,40,110,.9)' });
-        textBlock(c, '星を喰らうものが、来た。', W / 2, H * 0.78, 18, fade(t, 11, 16.8, 0.8), W * 0.9, { col: '#ffe0e8', glow: 'rgba(255,40,110,.9)' });
+        textC(c, TX.title, W / 2, H * 0.4, Math.min(W / (1.3 + TX.title.length * 1.3), 150), a, { w: 800, col: '#ffffff', glow: 'rgba(255,30,100,1)', blur: 40 });
+        textC(c, TX.sub, W / 2, H * 0.4 + Math.min(W / 2.6, 150) * 0.85, 15, Math.min(1, (t - 10) / 1), { ls: 6, col: '#ffc0d0', glow: 'rgba(255,40,110,.9)' });
+        textBlock(c, TX.line, W / 2, H * 0.78, 18, fade(t, 11, 16.8, 0.8), W * 0.9, { col: '#ffe0e8', glow: 'rgba(255,40,110,.9)' });
       }
       if (t > 16) { c.fillStyle = `rgba(0,0,0,${(t - 16)})`; c.fillRect(0, 0, W, H); }
     });

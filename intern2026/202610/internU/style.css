@@ -461,3 +461,12 @@ em.gl.b1 { background: #4a3a14; color: #ffe0a0; } em.gl.b2 { background: #5a2018
 .vbub img { width: 46px; height: 56px; border-radius: 8px; border: 2px solid; object-fit: cover; }
 .vbub b { font-size: 12px; color: var(--gold); } .vbub p { margin: 2px 0 0; font-size: 13.5px; line-height: 1.5; }
 .kv small { display: block; font-size: 10px; color: var(--dim); line-height: 1.3; }
+.eclbox { margin: 10px 0; padding: 10px 12px; border-radius: 10px; background: linear-gradient(#2a0814, #12040a); border: 1px solid #ff3070; }
+.eclbox > b { color: #ff7aa0; font-family: var(--mincho); font-size: 15px; letter-spacing: .1em; }
+.eclbox p { font-size: 13px; line-height: 1.6; margin: 6px 0; }
+.eclbox.omen { background: #1a1020; border-color: #8a6ab0; } .eclbox.omen > b { color: #c8a8ff; }
+.eclbox.done { background: #0a1a14; border-color: #4ac08a; } .eclbox.done > b { color: #8af0c0; }
+.eclbox .btn { margin: 4px 4px 0 0; }
+h3.seal { color: #ff7aa0; }
+.tb.seal { --c: #ff3070; }
+#tbEcl { cursor: pointer; }

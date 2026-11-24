@@ -21,6 +21,9 @@ const AI = (() => {
   function research(fid, pol = {}) {
     const f = G.facs[fid], F = FACTIONS[fid];
     if (FORBIDDEN[f.researching]) return;
+    // 核の欠片がそろったら、蝕の根を断つ研究を急ぐ
+    if (f.researching === 'seal' && !f.sealed) return;
+    if (Eclipse.canSeal(fid) && Math.random() < 0.5) { f.researching = 'seal'; return; }
     // 禁忌に手を出すか
     if (!pol.noForb) for (const k of Object.keys(FORBIDDEN)) {
       if (Game.forbAvailable(f, k) && Math.random() < (F.agg > 0.6 || f.ruling === 'tech' ? 0.04 : 0.01)) { f.researching = k; return; }
@@ -156,6 +159,36 @@ const AI = (() => {
       if (cand.length && (p.cap || p.pop > 30)) { const fl = cand[0]; const path = Game.path(fl.at, p.id, n => Game.friendly(fid, G.planets[n].owner)); if (path) { fl.dest = path[1]; busy.add(fl); } }
       else { const here = my.find(fl => fl.at === p.id); if (here) busy.add(here); }
     }
+    // 1.5 蝕との戦い：近くに裂け目（封印の理論があれば深淵）があれば、隣の自国の星に艦隊を集め、そろったら一斉に攻める
+    if (G.eclipse && G.eclipse.arrived && G.eclipse.phase !== 'solved') {
+      const mine = G.planets.filter(p => p.owner === fid);
+      const targets = G.planets.filter(p => p.owner === 'E' && p.type === 'rift' && (!p.abyss || G.facs[fid].sealed));
+      let plan = null;
+      for (const t0 of targets) {
+        // いちばん近い自国の星を集結地に。隣でなければ、間にある星（蝕の星・独立惑星）から攻め取る
+        const stage = mine.slice().sort((a, b) => Game.hops(a.id, t0.id) - Game.hops(b.id, t0.id))[0];
+        if (!stage) continue;
+        const d = Game.hops(stage.id, t0.id);
+        if (d > (t0.abyss ? 6 : 3)) continue;
+        let t = t0;
+        if (d > 1) { const path = Game.path(stage.id, t0.id, () => true); if (!path || path.length < 2) continue; t = G.planets[path[1]]; if (Game.friendly(fid, t.owner) || !Game.canAttack(fid, t.owner)) continue; }
+        const sc = (t0.abyss ? 50 : 0) - d * 3 - Game.hops(f.capital, t0.id);
+        if (!plan || sc > plan.sc) plan = { t, stage, sc };
+      }
+      if (plan) {
+        const { t, stage } = plan;
+        const need = (Game.planetDefense(t) + G.fleets.filter(x => x.at === t.id && x.fac === 'E').reduce((a, x) => a + Game.fleetPower(x), 0)) * 1.15;
+        const ready = my.filter(x => !busy.has(x) && x.at === stage.id && x.ships.length >= 3);
+        const readyP = ready.reduce((a, x) => a + Game.fleetPower(x), 0);
+        if (readyP >= need) { ready.forEach(x => { x.dest = t.id; busy.add(x); }); }
+        else {
+          // 集結：半分ほどの艦隊を集結地へ（自国の守りは残す）
+          const free = my.filter(x => !busy.has(x) && x.at !== stage.id && x.ships.length >= 3).sort((a, b) => Game.hops(a.at, stage.id) - Game.hops(b.at, stage.id));
+          free.slice(0, Math.max(1, Math.ceil(free.length * 0.6))).forEach(x => { const path = Game.path(x.at, stage.id, n => Game.friendly(fid, G.planets[n].owner)); if (path && path.length > 1) { x.dest = path[1]; busy.add(x); } });
+          ready.forEach(x => busy.add(x));
+        }
+      }
+    }
     // 2. 攻め：勝てそうな隣の星へ
     for (const fl of my) {
       if (busy.has(fl)) continue;
@@ -175,11 +208,11 @@ const AI = (() => {
         if (p.owner === null && G.turn < 3) continue;
         // 小勢力（頼まれごとの相手）は、しばらく攻めない
         if (typeof p.owner === 'string' && p.owner !== 'E' && (G.turn < 36 || F.agg < 0.55 || Math.random() < 0.7)) continue;
-        const def = Game.planetDefense(p) + G.fleets.filter(x => x.at === n && Game.friendly(x.fac, p.owner)).reduce((a, x) => a + 0, 0);
+        const def = Game.planetDefense(p) + G.fleets.filter(x => x.at === n && Game.friendly(x.fac, p.owner)).reduce((a, x) => a + Game.fleetPower(x), 0);   // そこにいる艦隊も数える
         if (pol.onlyE && p.owner !== 'E') continue;
         if (pol.noMajors && Game.isMajor(p.owner)) continue;
         if (pol.noIndep && p.owner === null) continue;
-        const need = def * (pol.need || (1.25 + (1 - F.agg) * 0.4));
+        const need = def * (pol.need || (1.25 + (1 - F.agg) * 0.4)) * (p.cap && Game.isMajor(p.owner) ? 1.5 : 1);   // 首都は落としにくい
         if (myP < need) continue;
         let sc = (p.prev === fid ? 80 : 0) + p.pop * 1.2 + (p.cap ? 40 : 0) - def * 0.3 + (p.owner === null ? 15 : 0) + (p.owner === 'E' ? 25 : 0) + (p.type === 'rift' ? 200 : 0);
         if (Game.isMajor(p.owner) && p.owner === G.player) sc += 5;

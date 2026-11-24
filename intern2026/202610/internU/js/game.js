@@ -78,7 +78,7 @@ const Game = (() => {
       }
     }
     GATE_LANES.forEach(([a, b]) => add(a, b));
-    if (G.eclipse.rift !== null) RIFT_SITES[G.eclipse.site].links.forEach(b => add(G.eclipse.rift, b));
+    Eclipse.lanes(add);
     LANES = lanes;
     ADJ = P.map(() => []);
     lanes.forEach(([a, b]) => { ADJ[a].push(b); ADJ[b].push(a); });
@@ -126,6 +126,7 @@ const Game = (() => {
   }
   // a の艦隊が惑星 id に入れるか（攻めるか、味方の星か）
   function canEnter(a, id) {
+    if (G.planets[id].abyss && !Eclipse.canEnterAbyss(a)) return false;   // 深淵には封印の理論が要る
     const o = G.planets[id].owner;
     return friendly(a, o) || canAttack(a, o);
   }
@@ -181,9 +182,9 @@ const Game = (() => {
     const d = G.designs[did];
     return { d: did, hp: designStats(d, d.fac).hp, xp: 0 };
   }
-  function shipMaxHp(s) { if (s.ecl) return ECLIPSE_SHIPS[s.ecl].hp; const d = G.designs[s.d]; return designStats(d, d.fac).hp; }
+  function shipMaxHp(s) { if (s.ecl) return ECLIPSE_SHIPS[s.ecl].hp * (s.m || 1); const d = G.designs[s.d]; return designStats(d, d.fac).hp; }
   function shipPower(s) {
-    if (s.ecl) { const E = ECLIPSE_SHIPS[s.ecl]; return s.hp * 0.04 * (1 + E.armor * 0.03) + E.weapons.reduce((a, w) => a + w.dmg / w.cd, 0) * 1.6; }
+    if (s.ecl) { const E = ECLIPSE_SHIPS[s.ecl]; return s.hp * 0.04 * (1 + E.armor * 0.03) + E.weapons.reduce((a, w) => a + w.dmg / w.cd, 0) * 1.6 * (s.m || 1); }
     const d = G.designs[s.d]; const st = designStats(d, d.fac);
     return (s.hp + st.shield * 0.6) * (1 + st.armor * 0.03) * 0.04 + st.dps * 1.6 * (1 + s.xp * 0.05);
   }
@@ -196,7 +197,7 @@ const Game = (() => {
   function satPower(pl) {
     if (!pl.def) return 0;
     const f = facOf(pl.owner); const t = f ? f.tech.def : 1;
-    return pl.def * (18 + t * 3) * (pl.owner === 'E' && pl.type === 'rift' ? 4 : 1);
+    return pl.def * (18 + t * 3) * (pl.owner === 'E' && pl.type === 'rift' ? 4 : 1) * (pl.cap ? 1.8 : 1) * (isMajor(pl.owner) && G.facs[pl.owner].nPl !== undefined && G.facs[pl.owner].nPl <= 3 ? 1.5 : 1);   // 追い詰められた国の最後の抵抗
   }
   function planetDefense(pl) {
     let p = satPower(pl) + dockPower(pl);
@@ -211,7 +212,7 @@ const Game = (() => {
     G = {
       v: 1, turn: 1, player: playerFid, nextId: 1, over: null,
       facs: [], designs: {}, rel: {}, planets: [], minors: {}, officers: {}, fleets: [],
-      eclipse: { eta: CONFIG.eclipseBase + R.i(-4, 6), arrived: false, rift: null, site: null, defeated: false, wave: 0, omen: 0 },
+      eclipse: { eta: CONFIG.eclipseBase + R.i(-6, 8), arrived: false, rift: null, site: null, defeated: false, wave: 0, omen: 0, phase: 'none', cycle: 1, rifts: [], hintN: 0, hintAt: 0, eaten: 0, etaFixed: true },
       log: [], flags: {}, evDone: {}, pending: [], demands: {},
       rec: { battles: 0, won: 0, lost: 0, sunk: 0, lostShips: 0, big: [], captured: 0, allies: 0 },
     };
@@ -409,6 +410,7 @@ const Game = (() => {
 
   // ---------- 技術 ----------
   function researchTarget(f) {
+    if (f.researching === 'seal') return { name: Eclipse.SEAL.name, short: Eclipse.SEAL.name, cost: Eclipse.SEAL.cost, seal: true, gain: '蝕の源「深淵」への道が開く' };
     if (FORBIDDEN[f.researching]) return { name: FORBIDDEN[f.researching].name, cost: FORBIDDEN[f.researching].cost, forb: true };
     const lv = f.tech[f.researching] + 1;
     const b = f.researching;
@@ -423,13 +425,18 @@ const Game = (() => {
     const done = [];
     let guard = 0;
     while (guard++ < 4) {
-      if (!FORBIDDEN[f.researching] && f.tech[f.researching] >= 8) { f.researching = ['wep', 'eng', 'def', 'eco'].find(k => f.tech[k] < 8) || 'wep'; if (f.tech[f.researching] >= 8) break; }
+      if (f.researching === 'seal' && (f.sealed || !Eclipse.canSeal(fid))) f.researching = 'wep';
+      if (!FORBIDDEN[f.researching] && f.researching !== 'seal' && f.tech[f.researching] >= 8) { f.researching = ['wep', 'eng', 'def', 'eco'].find(k => f.tech[k] < 8) || 'wep'; if (f.tech[f.researching] >= 8) break; }
       const t = researchTarget(f);
       if (f.rp < t.cost) break;
       f.rp -= t.cost;
-      if (t.forb) {
+      if (t.seal) {
+        f.researching = ['wep', 'eng', 'def', 'eco'].find(k => f.tech[k] < 8) || 'wep';
+        done.push(t.name);
+        Eclipse.sealDone(fid);
+      } else if (t.forb) {
         f.forb.push(f.researching);
-        G.eclipse.eta = Math.max(40, G.eclipse.eta - CONFIG.eclipsePerForbidden);
+        Eclipse.forbHit();
         done.push(t.name);
         log(`${FACTIONS[fid].name}が禁忌の技術「${t.name}」に手を染めた。`, 'warn', fid);
         f.researching = 'wep';
@@ -486,6 +493,8 @@ const Game = (() => {
         let target = 62 + (FACTIONS[p.owner].bonus.stab || 0) + (f.ruling === 'peace' ? 5 : 0) + (p.gov ? (OFF[p.gov].pol - 50) / 5 : -8) + (p.focus === 'pop' ? 12 : 0);
         if (f.demandFail) target -= 10;
         if (f.warWeary > 6) target -= Math.min(15, f.warWeary - 6);
+        if (f._nT !== G.turn) { f._nT = G.turn; f.nPl = G.planets.filter(x => x.owner === f.id).length; }
+        target -= Math.min(18, Math.max(0, f.nPl - 12) * 1.2);   // 広がりすぎ
         p.stab += clamp(target - p.stab, -3, 4);
         p.stab = clamp(p.stab, 0, 100);
       } else if (p.owner !== 'E') p.stab += clamp(55 - p.stab, -2, 2);
@@ -663,7 +672,7 @@ const Game = (() => {
       }
       f.warWeary += 2;
     }
-    if (old === 'E' && p.type === 'rift') Eclipse.onRiftTaken(newOwner);
+    if (old === 'E' && p.type === 'rift') Eclipse.onRiftTaken(newOwner, p.id);
   }
   function captureOfficer(k, by) {
     const o = G.officers[k];
@@ -680,7 +689,7 @@ const Game = (() => {
       if (o.fac === fid && o.st === 'act') {
         freeOfficer(k);
         if (isMajor(by) && R.chance(0.5)) { o.st = 'cap'; o.capBy = by; o.fac = by; }
-        else { o.st = 'free'; o.fac = null; o.loc = R.pick(G.planets.filter(p => p.owner !== 'E')).id; }
+        else { o.st = 'free'; o.fac = null; const pl = G.planets.filter(p => p.owner !== 'E'); o.loc = pl.length ? R.pick(pl).id : null; }
       }
     });
     for (const m of Object.values(G.minors)) if (m.ally === fid) m.ally = null;
@@ -694,11 +703,13 @@ const Game = (() => {
     const me = G.player;
     if (!G.facs[me].alive || !G.planets.some(p => p.owner === me)) return { type: 'defeat' };
     const otherMajors = G.facs.filter(f => f.alive && f.id !== me);
-    const eclipseOk = !G.eclipse.arrived || G.eclipse.defeated;
+    const eclipseOk = G.eclipse.defeated;
     const minorsOk = MINORS.every(M => { const p = G.planets[M.planet]; return p.owner !== M.id || G.minors[M.id].ally === me; });
-    if (otherMajors.length && eclipseOk && minorsOk && otherMajors.every(f => rel(me, f.id).s === 'ally')) return { type: 'peace' };
-    const allMine = G.planets.every(p => p.owner === me || friendly(me, p.owner));
-    if (allMine && eclipseOk) return { type: otherMajors.length ? 'peace' : 'conquest' };
+    const peace = otherMajors.length && minorsOk && otherMajors.every(f => rel(me, f.id).s === 'ally');
+    const allMine = G.planets.every(p => p.owner === me || friendly(me, p.owner) || (p.type === 'rift' && p.owner !== 'E'));
+    if (!eclipseOk) { if ((peace || allMine) && !G.eclipse.arrived) Eclipse.hasten(); return null; }
+    if (peace) return { type: 'peace' };
+    if (allMine) return { type: otherMajors.length ? 'peace' : 'conquest' };
     return null;
   }
 

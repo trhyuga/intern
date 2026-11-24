@@ -118,7 +118,7 @@ const Battle = (() => {
   }
   function shipEntry(s, fac) {
     let st, hull;
-    if (s.ecl) { const E = ECLIPSE_SHIPS[s.ecl]; st = { hp: E.hp, armor: E.armor, shield: E.shield, regen: E.regen || 0, pd: 0.1, ecm: 0, speed: E.speed, repair: 0, command: 0, weapons: E.weapons.map(w => ({ ...w })), size: E.size }; hull = s.ecl; }
+    if (s.ecl) { const E = ECLIPSE_SHIPS[s.ecl]; st = { hp: E.hp * (s.m || 1), armor: E.armor, shield: E.shield * (s.m || 1), regen: E.regen || 0, pd: 0.1, ecm: 0, speed: E.speed, repair: 0, command: 0, weapons: E.weapons.map(w => ({ ...w, dmg: w.dmg * Math.sqrt(s.m || 1) })), size: E.size }; hull = s.ecl; }
     else { const d = G.designs[s.d]; st = Game.designStats(d, d.fac); hull = d.hull; }
     return { ref: s, hull, hp: s.hp, max: st.hp, shield: st.shield, smax: st.shield, regen: st.regen, armor: st.armor, pd: st.pd, ecm: st.ecm, size: st.size, speed: st.speed, repair: st.repair, command: st.command,
       weapons: st.weapons.map(w => ({ ...w, t: Math.random() * w.cd })), xp: s.xp || 0, dead: s.hp <= 0, hit: 0, ftrUp: 0 };

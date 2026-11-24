@@ -80,9 +80,9 @@ const UI = (() => {
     $('#tbRes').innerHTML = `<span title="資金">💰 ${num(f.funds)} <small class="${e.inc - e.up >= 0 ? 'up' : 'down'}">${e.inc - e.up >= 0 ? '+' : ''}${e.inc - e.up}</small></span><span title="研究中：${rt.name}${rt.gain ? '（' + rt.gain + '）' : ''}">🔬 ${rt.short || rt.name} ${Math.min(100, Math.floor(f.rp / rt.cost * 100))}%</span>`;
     $('#btnStaff').classList.toggle('on', Staff.active());
     const ecl = $('#tbEcl');
-    if (G.eclipse.arrived && !G.eclipse.defeated) { ecl.textContent = '蝕 襲来中'; ecl.style.display = ''; }
-    else if (G.eclipse.omen) { ecl.textContent = '異変あり'; ecl.style.display = ''; }
-    else ecl.style.display = 'none';
+    const st = Eclipse.status();
+    ecl.textContent = st; ecl.style.display = st ? '' : 'none';
+    ecl.onclick = () => { if (G.eclipse.arrived) { Sound.se('click'); openTab('gov'); } };
   }
   function refresh() { refreshTop(); quick(); }
 
@@ -397,6 +397,7 @@ const UI = (() => {
       const lv = f.tech[k], next = TECH_UNLOCK[k][lv + 1];
       return `<button class="tb ${f.researching === k ? 'on' : ''}" data-t="${k}" style="--c:${B.col}"><b>${B.name} <span>Lv${lv}${lv ? '「' + Gloss.techName(k, lv) + '」' : ''}</span></b><small>いまの効果：${Gloss.techEffect(k, lv)}</small><small>次：${lv >= 8 ? '極めた' : `Lv${lv + 1}「${Gloss.techName(k, lv + 1)}」― ${Gloss.techGain(k, lv + 1)}（研究 ${techCost(lv + 1)}）`}</small></button>`;
     }).join('')}</div>`;
+    if (Eclipse.canSeal(G.player) || f.sealed || f.researching === 'seal') h += `<h3 class="seal">蝕を断つ</h3><button class="tb seal ${f.researching === 'seal' ? 'on' : ''}" data-t="seal" ${f.sealed ? 'disabled' : ''}><b>${Eclipse.SEAL.name}${f.sealed ? '（修得済）' : ''}</b><small>${Eclipse.SEAL.desc}</small><small>研究 ${Eclipse.SEAL.cost}・核の欠片 ${Eclipse.keysOf(G.player)} / ${Eclipse.KEYS_NEEDED}</small></button>`;
     const forb = Object.keys(FORBIDDEN).filter(k => Game.forbAvailable(f, k) || f.forb.includes(k));
     if (forb.length) h += `<h3 class="forb">禁忌の技術</h3>${forb.map(k => { const F = FORBIDDEN[k]; const done = f.forb.includes(k); return `<button class="tb forb ${f.researching === k ? 'on' : ''}" data-t="${k}" ${done ? 'disabled' : ''}><b>${F.name}${done ? '（修得済）' : ''}</b><small>${F.desc}</small><small class="warn">⚠ ${F.warn}${G.flags.knowForbidden ? '' : '（……と、星詠みたちは言う）'}・${F.cost}</small></button>`; }).join('')}`;
     h += `<h3>設計 <small>${f.designs.length}種</small></h3><div class="list">${f.designs.map(id => { const d = G.designs[id]; const ok = Game.designUnlocked(d, G.player); return `<div class="dsg"><canvas width="44" height="44" data-hull="${d.hull}"></canvas><div class="dsg-i"><b>${d.name}${ok ? '' : '（旧式）'}</b><small>${HULLS[d.hull].name}・${d.mods.map(m => MODULES[m].name).join('・')}</small></div><button class="btn small" data-copy="${id}">改良</button></div>`; }).join('')}</div>
@@ -527,11 +528,27 @@ const UI = (() => {
     const no = { nap: '信用できぬな。出直してまいれ。', trade: '今はその時ではない。', ally: '盟を結ぶには、まだ互いを知らなすぎる。', peace: '停戦だと？ 笑わせる。', surrender: '降伏？ 寝言は寝て言え！' };
     await talk(null, [[lead, ok ? 'happy' : 'angry', (ok ? yes : no)[kind]]], null, 'palace', true);
   }
+  // 蝕のいま：段階・開いている裂け目・核の欠片・何をすべきか
+  function eclipseBox() {
+    const e = G.eclipse;
+    if (!e.arrived) return e.omen ? `<div class="eclbox omen"><b>異変</b><p>遠い星が消え、辺境の観測所が沈黙している。何かが起きている。</p></div>` : '';
+    if (e.phase === 'solved') return `<div class="eclbox done"><b>蝕は根絶された</b><p>${Game.ownerName(e.defeatedBy)}が深淵の核を砕いた（${Game.dateStr(e.defeatedAt)}）。もう裂け目は開かない。</p></div>`;
+    const me = G.player, f = G.facs[me], keys = Eclipse.keysOf(me), rifts = Eclipse.openRifts();
+    const eatenPl = G.planets.filter(p => p.owner === 'E' && p.type !== 'rift').length;
+    const stage = { first: '先触れ ― 裂け目がひとつ。群れは近くの国を襲っている。だが、これは先遣隊にすぎない。', lull: '小康 ― 先触れの裂け目は閉じた。だが観測所は、もっと大きなものが来ると告げている。', great: '大侵攻 ― 銀河の三方で裂け目が開いた。群れは何倍にもなり、どの国も襲われる。', receded: `退潮 ― 裂け目はすべて閉じた。だが根は残っている。およそ${Math.max(0, e.returnAt - G.turn)}か月後、蝕はもっと強くなって戻ってくる。`, ret: `再来（${e.cycle}度目）― 閉じたはずの裂け目が開いた。前よりも多く、強く。` }[e.phase] || '';
+    const todo = f.sealed ? (G.planets[e.abyss] && G.planets[e.abyss].owner === 'E' ? '封印の理論を修めた。艦隊を「深淵」へ送り、核を砕けば、蝕は二度と来ない。' : '')
+      : keys >= Eclipse.KEYS_NEEDED ? '核の欠片がそろった。技術の画面で「封印の理論」を研究すれば、蝕の源「深淵」への道が開く。'
+      : `裂け目の核を砕くと「核の欠片」が手に入る（同盟国の分も合わせられる）。欠片が${Eclipse.KEYS_NEEDED}つそろえば、蝕の源を突き止められる。`;
+    return `<div class="eclbox"><b>蝕：${Eclipse.PHASE_NAME[e.phase]}${e.cycle > 1 ? '・' + e.cycle + '度目' : ''}</b><p>${stage}</p>
+      <div class="kv"><div><span>開いている裂け目</span><b>${rifts.length}</b></div><div><span>喰われた星</span><b>${eatenPl}</b></div><div><span>消えた民</span><b>${Math.round(e.eaten)}億</b></div><div><span>核の欠片</span><b>${keys} / ${Eclipse.KEYS_NEEDED}</b></div></div>
+      ${rifts.map(r => `<button class="btn small" data-rift="${r.id}">${G.planets[r.id].name}を見る</button>`).join('')}
+      <p class="note">${todo}</p><p class="note">蝕の根を断たないかぎり、どちらの勝利（統一・和平）にも届かない。</p></div>`;
+  }
   function tabGov(body) {
     const f = G.facs[G.player];
     const v = (() => { const others = G.facs.filter(x => x.alive && x.id !== G.player); return { allies: others.filter(x => Game.rel(G.player, x.id).s === 'ally').length, others: others.length, mine: G.planets.filter(p => p.owner === G.player || Game.friendly(G.player, p.owner)).length, total: G.planets.length }; })();
     let h = `<button class="btn primary wide" data-a="staff">参謀に任せる（オートモード）${Staff.active() ? '：実行中' : ''}</button><h3>勝利への道</h3><div class="kv"><div><span>武力統一</span><b>${v.mine} / ${v.total} 星</b></div><div><span>和平</span><b>同盟 ${v.allies} / ${v.others} 国</b></div></div>`;
-    if (G.eclipse.arrived && !G.eclipse.defeated) h += `<p class="warn">蝕が来ています。どちらの勝利にも、裂け目の核を砕くことが要ります。</p>`;
+    h += eclipseBox();
     h += `<h3>国内の派閥 <small>主導：${PARTIES[f.ruling].name}</small></h3>`;
     h += Object.entries(PARTIES).map(([k, P]) => `<div class="party"><b style="color:${P.col}">${P.name}</b>${bar(f.parties[k], 100, P.col)}<span>${Math.round(f.parties[k])}%</span><small>${P.bonus}</small></div>`).join('');
     h += `<p class="note">戦えば主戦派、条約を結べば通商派・融和派、研究すれば技術派が伸びます。毎年1月の評議で、いちばん支持の多い派閥が主導権を握ります。</p>`;
@@ -539,6 +556,7 @@ const UI = (() => {
     h += `<h3>記録</h3><div class="log">${G.log.slice(0, 60).map(l => `<div class="lg ${l.kind}"><small>${Game.dateStr(l.t)}</small> ${l.text}</div>`).join('')}</div>`;
     body.innerHTML = h;
     $('[data-a=staff]', body).onclick = () => { Sound.se('click'); openStaff(); };
+    $$('[data-rift]', body).forEach(b => b.onclick = () => { closeSheet(); StarMap.focus(+b.dataset.rift, 0.7); StarMap.selPlanet = +b.dataset.rift; quick(); });
   }
   function tabMenu(body) {
     body.innerHTML = `<div class="menu">
@@ -658,7 +676,7 @@ const UI = (() => {
     if (v === 'cmd') {
       res = await Battle.run(setup, side);
       show('main');
-      Sound.bgm(G.eclipse.arrived && !G.eclipse.defeated ? 'crisis' : 'strategy');
+      Sound.bgm(Eclipse.active() ? 'crisis' : 'strategy');
     } else {
       res = Battle.simulate(setup);
       const won = res.winner === side;
@@ -723,7 +741,7 @@ const UI = (() => {
   async function watchBattle(setup, side) {
     const res = await Battle.run(setup, side, { watch: true });
     show('main');
-    Sound.bgm(G.eclipse.arrived && !G.eclipse.defeated ? 'crisis' : 'strategy');
+    Sound.bgm(Eclipse.active() ? 'crisis' : 'strategy');
     return res;
   }
 
@@ -997,7 +1015,7 @@ const UI = (() => {
     show('main');
     StarMap.focus(G.facs[G.player].capital, 0.7);
     refresh();
-    Sound.bgm(G.eclipse.arrived && !G.eclipse.defeated ? 'crisis' : 'strategy');
+    Sound.bgm(Eclipse.active() ? 'crisis' : 'strategy');
     drawAutobar();
     if (Staff.active()) toast('参謀に任せたまま中断しています。帯の「■ 止める」で自分の指揮に戻れます。下の帯をタップで詳細。', 4000), autoNext(2500);
   }

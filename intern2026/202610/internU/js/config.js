@@ -11,6 +11,6 @@ const CONFIG = {
   recKey: 'seisou_records_v1',
   muteKey: 'seisou_mute',
   startYear: 3012,
-  eclipseBase: 84,        // 蝕が来るおよその月（ターン）
-  eclipsePerForbidden: 8, // 禁忌技術1つで早まる月数
+  eclipseBase: 120,       // 蝕（先触れ）が来るおよその月（ターン）。それまでは匂わせと予兆だけ
+  eclipsePerForbidden: 10, // 禁忌技術1つで早まる月数
 };

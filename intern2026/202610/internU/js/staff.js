@@ -84,7 +84,7 @@ const Staff = (() => {
       economy: poor || stab < 50 ? 1.7 : 1,
       research: 1,
       diplomacy: wars && f.warWeary > 3 ? 1.7 : unsigned ? 0.9 : 0.4,
-      eclipse: G.eclipse.arrived && !G.eclipse.defeated ? 3 : 0,
+      eclipse: Eclipse.active() ? 3 : 0,
     };
     let best = null, bv = -1;
     const w = {};
@@ -169,7 +169,7 @@ const Staff = (() => {
       WarRoom.say(s.key, `今月も方針どおり、${P.name}を進めます。`, 'normal');
     }
     // 蝕が退いたら対蝕作戦はおしまい
-    if (s.policy === 'eclipse' && (!G.eclipse.arrived || G.eclipse.defeated)) { s.month.push('対蝕作戦の相手がいません。'); return; }
+    if (s.policy === 'eclipse' && !G.planets.some(p => p.owner === 'E' && (!p.abyss || G.facs[G.player].sealed))) { s.month.push('対蝕作戦の相手がいません。'); return; }
     // 動く前の様子
     const mine = G.planets.filter(p => p.owner === me);
     const before = new Map(mine.map(p => [p.id, { focus: p.focus, prog: p.prog, build: p.build.length }]));
@@ -363,7 +363,7 @@ const Staff = (() => {
     if (s.until !== null && G.turn >= s.until) return `方針の期間（${s.until - s.from}か月）が終わりました。`;
     if (info.eclipseArrived && s.policy !== 'balanced') return '蝕が現れました。方針を見直してください。';
     if (info.capitalLost) return '首都が陥落しました。';
-    if (s.policy === 'eclipse' && G.eclipse.defeated) return '蝕を退けました。対蝕作戦はここまでです。';
+    if (s.policy === 'eclipse' && !G.planets.some(p => p.owner === 'E' && (!p.abyss || G.facs[G.player].sealed))) return G.eclipse.defeated ? '蝕を根から絶ちました。対蝕作戦はここまでです。' : '蝕は退きました。いまは攻める相手がいません。';
     const lost = s.base.planets - G.planets.filter(p => p.owner === G.player).length;
     if (lost >= 3) return `星を ${lost} つ失いました。ご判断を。`;
     return null;
