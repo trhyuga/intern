@@ -88,7 +88,14 @@ const Turn = (() => {
         const shipsIn = [...attF, ...defF].reduce((a, f) => a + f.ships.length, 0) + p.dock.length;
         const watchMode = Staff.active() ? (G.staff.watch || (G.staff.bigManual ? 'bigcmd' : 'watch')) : null;
         // 自国が関わる戦いは、どこからどこへ攻め込んだかを、まず地図と帯で知らせる
-        if (mine) await UI.raidAlert({ raids, pid: p.id, af, def: oldOwner, attF, defF, mine });
+        if (mine) {
+          // 敵将と因縁のある自国の士官が、ひと言
+          const ec = (mine === 'A' ? defF : attF).find(f => f.cmd), cm = ec ? People.enemyComment(ec.cmd) : null;
+          if (cm) WarRoom.say(cm.who, cm.text, 'angry', p.id);
+          const allies = (mine === 'A' ? attF : defF).map(f => f.cmd).filter(Boolean), ac = allies.length > 1 ? People.allyComment(allies) : null;
+          if (ac) WarRoom.say(ac.who, ac.text, 'happy', p.id);
+          await UI.raidAlert({ raids, pid: p.id, af, def: oldOwner, attF, defF, mine });
+        }
         if (mine && watchMode === 'none') { res = Battle.simulate(setup); await UI.raidResult(res, mine, p.id); }
         else if (mine && watchMode && !(watchMode === 'bigcmd' && shipsIn >= 20)) res = await UI.watchBattle(setup, mine);
         else if (mine) res = await UI.battlePrompt(setup, mine);
@@ -113,13 +120,21 @@ const Turn = (() => {
           const k = lead && lead.cmd && G.officers[lead.cmd] && G.officers[lead.cmd].st !== 'dead' ? lead.cmd : null;
           const sunk = mine === 'A' ? res.lostD : res.lostA, lost = mine === 'A' ? res.lostA : res.lostD;
           (res.story || []).slice(0, 5).forEach(e => WarRoom.flow(e.text));
-          if (k) WarRoom.say(k, Battle.LINES[OFF[k].pers][won ? 'win' : 'lose'], won ? 'happy' : 'sad', p.id);
+          if (k) WarRoom.say(k, People.voice(k, won ? 'win' : 'lose') || Battle.LINES[OFF[k].pers][won ? 'win' : 'lose'], won ? 'happy' : 'sad', p.id);
           const what = mine === 'A' ? (won ? `${p.name}を制圧した` : `${p.name}の攻略に失敗し、退いた`) : (won ? `${p.name}を守り抜いた` : `${p.name}を奪われた`);
           const ord = mine === 'A' && lead && lead.lastOrder && lead.lastOrder.to === p.id ? `命令「${p.name}攻略」→ ` : '';
           WarRoom.result(`${ord}${what}（撃沈 ${sunk}隻・喪失 ${lost}隻）`, won, p.id);
         } else WarRoom.news(`${p.name}の戦い：${Game.ownerName(af)}が攻め、${res.winner === 'A' ? '制圧した' : `${Game.ownerName(oldOwner)}が守り抜いた`}。${res.upset ? '寡兵による逆転だった。' : ''}`);
-        res.dead.forEach(k => { if (G.officers[k].ever === G.player || G.officers[k].fac === G.player) WarRoom.result(`${OFF[k].name}、${p.name}にて戦死`, false, p.id); });
-        res.caught.forEach(k => { if (G.officers[k].ever === G.player) WarRoom.result(`${OFF[k].name}が捕らえられた`, false, p.id); else if (G.officers[k].capBy === G.player) WarRoom.result(`敵将${OFF[k].name}を捕らえた`, true, p.id); });
+        res.dead.forEach(k => {
+          const last = People.voice(k, 'death');
+          if (G.officers[k].ever === G.player || G.officers[k].fac === G.player) WarRoom.result(`${OFF[k].name}、${p.name}にて戦死${last ? `――「${last}」` : ''}`, false, p.id);
+          // 関係のある自国の士官のひと言（敵将でも）
+          for (const t of People.tiesOf(k)) { const o = People.other(t, k); if (isMine(o)) { WarRoom.say(o, People.line(t, 'death', o), 'sad', p.id); break; } }
+        });
+        res.caught.forEach(k => {
+          if (G.officers[k].ever === G.player) { WarRoom.say(k, People.voice(k, 'captured') || '……不覚。', 'sad', p.id); WarRoom.result(`${OFF[k].name}が捕らえられた`, false, p.id); }
+          else if (G.officers[k].capBy === G.player) { WarRoom.result(`敵将${OFF[k].name}を捕らえた`, true, p.id); const v = People.voice(k, 'captured'); if (v) WarRoom.say(k, v, 'angry', p.id); }
+        });
         if (mine && res.story && res.story.length) report.push({ kind: 'flow', text: `　戦況：${res.story.slice(0, 3).map(e => e.text).join('／')}`, fac: null });
         if (res.big && mine) WarRoom.result(`――後に「${res.big}」と呼ばれる大会戦であった`, res.winner === mine, p.id);
         res.dead.forEach(k => report.push({ kind: G.officers[k].ever === G.player ? 'bad' : 'info', text: `${OFF[k].name}、${p.name}にて戦死。`, fac: null }));
@@ -161,6 +176,8 @@ const Turn = (() => {
       Incidents.roll();
       // 5. 外交
       for (const f of G.facs) if (f.alive && f.id !== G.player) Diplo.aiTurn(f.id);
+      // 人物の関係・国家間の出来事
+      People.monthTick();
       // 6. 派閥の要求
       const dem = Game.demandTurn(G.player);
       for (const f of G.facs) if (f.alive && f.id !== G.player) Game.demandTurn(f.id);

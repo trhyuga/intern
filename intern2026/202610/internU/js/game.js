@@ -281,6 +281,7 @@ const Game = (() => {
     MINORS.forEach(m => { const p = G.planets[m.planet]; p.yard = 1; });
     for (const k in G.officers) G.officers[k].rk = rankIdx(k);
     log(`${dateStr()}、${FACTIONS[playerFid].name}の歴史が動き出す。`, 'big', playerFid);
+    if (typeof People !== 'undefined') People.init();
     return G;
   }
 
@@ -410,7 +411,8 @@ const Game = (() => {
   function researchTarget(f) {
     if (FORBIDDEN[f.researching]) return { name: FORBIDDEN[f.researching].name, cost: FORBIDDEN[f.researching].cost, forb: true };
     const lv = f.tech[f.researching] + 1;
-    return { name: TECH_BRANCH[f.researching].name + ' ' + lv, cost: techCost(lv), lv };
+    const b = f.researching;
+    return { name: `${TECH_BRANCH[b].name}Lv${lv}「${Gloss.techName(b, lv)}」`, short: Gloss.techName(b, lv), gain: Gloss.techGain(b, lv), cost: techCost(lv), lv };
   }
   function forbAvailable(f, k) {
     const F = FORBIDDEN[k];
@@ -435,7 +437,7 @@ const Game = (() => {
         f.tech[f.researching]++;
         done.push(t.name);
         const un = TECH_UNLOCK[f.researching][f.tech[f.researching]];
-        if (fid === G.player) log(`技術「${t.name}」を修めた。${un ? '（' + un + '）' : ''}`, 'good', fid);
+        if (fid === G.player) log(`技術 ${t.name}を修めた。${t.gain ? '（' + t.gain + '）' : un ? '（' + un + '）' : ''}`, 'good', fid);
       }
       f.stats.techs++;
       shiftParty(fid, 'tech', 2);
@@ -666,7 +668,7 @@ const Game = (() => {
   function captureOfficer(k, by) {
     const o = G.officers[k];
     freeOfficer(k);
-    if (isMajor(by)) { o.st = 'cap'; o.capBy = by; o.fac = by; }
+    if (isMajor(by)) { o.st = 'cap'; o.capBy = by; o.fac = by; o.capAt = G.turn; }
     else { o.st = 'free'; o.fac = null; o.loc = R.pick(G.planets).id; }
   }
   function destroyFaction(fid, by) {
@@ -729,7 +731,10 @@ const Game = (() => {
       const o = G.officers[k];
       if (o.st !== 'act' || isLeader(k)) continue;
       const r = rankIdx(k);
-      if (o.rk !== undefined && r > o.rk && o.fac === G.player) log(`${OFF[k].name}が${OFFRANKS[r]}に昇進した。`, r >= 6 ? 'big' : 'good', G.player);
+      if (o.rk !== undefined && r > o.rk && o.fac === G.player) {
+        const v = typeof People !== 'undefined' ? People.voice(k, 'promote') : null;
+        log(`${OFF[k].name}が${OFFRANKS[r]}に昇進した。${v ? '「' + v + '」' : ''}`, r >= 6 ? 'big' : 'good', G.player);
+      }
       o.rk = r;
     }
   }
@@ -787,6 +792,7 @@ const Game = (() => {
       if (!s) return false;
       G = JSON.parse(s);
       buildLanes();
+      if (typeof People !== 'undefined') People.init();
       return true;
     } catch (e) { return false; }
   }

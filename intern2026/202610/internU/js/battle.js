@@ -103,6 +103,9 @@ const Battle = (() => {
       sd.ships0 = Math.max(4, S.units.filter(u => u.side === sk).reduce((a, u) => a + u.ships.length, 0));
       sd.p0 = S.units.filter(u => u.side === sk).reduce((a, u) => a + power(u), 0);
     }
+    // 司令どうしの因縁（宿敵には燃え、絆のある相手にはためらう）
+    S.tie = typeof People !== 'undefined' ? People.battleTie(S.side.A.cmd, S.side.D.cmd) : null;
+    if (S.tie) S.story.push({ t: 0, side: 'A', text: `因縁の対決：${OFF[S.side.A.cmd].name}と${OFF[S.side.D.cmd].name}（${S.tie.t.label}）` });
     return S;
   }
   function mkSide(sd, key) {
@@ -217,7 +220,9 @@ const Battle = (() => {
     // 士気：下がるほど、撃つ力も狙いも鈍る
     if (sd.fac !== 'E' && !DBG.noMorale) { const mo = clamp(sd.morale / 80, 0.35, 1.1); m.dmg *= 0.84 + 0.16 * mo; m.acc *= 0.9 + 0.1 * mo; }
     if (sd.confusedUntil > S.t) { m.acc *= 0.7; m.dmg *= 0.9; }   // 伏兵に驚いた
-    if (sd.rearUntil > S.t) m.taken *= 1.15;                          // 背後を取られた
+    if (sd.rearUntil > S.t) m.taken *= 1.15;
+    if (S.tie) m.dmg *= S.tie.mul;
+    if (typeof People !== 'undefined' && sd.cmd) m.dmg *= People.avengeMul(sd.cmd, S.side[sd.key === 'A' ? 'D' : 'A'].fac);   // 仇討ち                          // 背後を取られた
     // 派閥・禁忌
     const f2 = Game.facOf(sd.fac);
     if (f2 && f2.ruling === 'war') m.dmg *= 1.05;
@@ -245,7 +250,7 @@ const Battle = (() => {
     }
     // 副官
     const fl = u.fleet;
-    if (fl && fl.sub) m.dmg *= 1 + (OFF[fl.sub].tac - 50) / 500;
+    if (fl && fl.sub) m.dmg *= (1 + (OFF[fl.sub].tac - 50) / 500) * (typeof People !== 'undefined' ? People.fleetMul(fl) : 1);
     if (u.stance === 'assault') { m.dmg *= 1.15; m.taken *= 1.1; }
     if (u.stance === 'fire') m.acc *= 1.1;
     if (u.stance === 'guard') { m.dmg *= 0.85; m.taken *= 0.75; }
@@ -860,7 +865,7 @@ const Battle = (() => {
           // 旗艦が沈んだ司令官は、艦隊が残っていても命を落とすことがある
           if (slot === 'cmd' && fl.ships.length > 0 && S.side[sk].flagSunk && k === S.side[sk].cmd) {
             const r = Math.random();
-            if (r < 0.18) { Game.freeOfficer(k); o.st = 'dead'; o.diedAt = G.turn; o.diedWhere = S.planet ? S.planet.name : '宇宙'; res.dead.push(k); }
+            if (r < 0.18) { Game.freeOfficer(k); o.st = 'dead'; o.diedAt = G.turn; o.diedWhere = S.planet ? S.planet.name : '宇宙'; o.killedBy = S.side[other].fac; res.dead.push(k); }
             else if (S.over !== sk && r < 0.36 && Game.isMajor(S.side[other].fac)) { Game.captureOfficer(k, S.side[other].fac); res.caught.push(k); }
             continue;
           }
@@ -868,7 +873,7 @@ const Battle = (() => {
             const f = Game.facOf(fl.fac);
             const deathP = f && f.forb.includes('f3') ? 0.04 : 0.13;
             const r = Math.random();
-            if (r < deathP) { Game.freeOfficer(k); o.st = 'dead'; o.diedAt = G.turn; o.diedWhere = S.planet ? S.planet.name : '宇宙'; res.dead.push(k); }
+            if (r < deathP) { Game.freeOfficer(k); o.st = 'dead'; o.diedAt = G.turn; o.diedWhere = S.planet ? S.planet.name : '宇宙'; o.killedBy = S.side[other].fac; res.dead.push(k); }
             else if (r < deathP + 0.32 && Game.isMajor(S.side[other].fac)) { Game.captureOfficer(k, S.side[other].fac); res.caught.push(k); }
           }
         }
@@ -1107,9 +1112,10 @@ const Battle = (() => {
   function intro() {
     const a = S.side[mySide], e = S.side[mySide === 'A' ? 'D' : 'A'];
     const el = document.querySelector('#battle .b-cut');
-    const lineOf = (sd) => sd.fac === 'E' ? ECL_LINE.start : sd.cmd ? R.pick(LINES[OFF[sd.cmd].pers].start) : '迎え撃て！';
+    const lineOf = (sd) => sd.fac === 'E' ? ECL_LINE.start : !sd.cmd ? '迎え撃て！'
+      : S.tie ? (sd.key === 'A' ? S.tie.la : S.tie.lb) : (People.voice(sd.cmd, 'bstart') || R.pick(LINES[OFF[sd.cmd].pers].start));
     const card = (sd, cls) => `<div class="vs-card ${cls}" style="--c:${Game.ownerCol(sd.fac)}">${sd.cmd ? `<img src="${Portrait.url(sd.cmd, 'angry')}">` : `<div class="vs-em"></div>`}<div><b>${sd.cmd ? OFF[sd.cmd].name : sideName(sd)}</b><p>「${lineOf(sd)}」</p></div></div>`;
-    el.innerHTML = `<div class="vs">${card(e, 'en')}<div class="vs-x">VS</div>${card(a, 'me')}<div class="vs-where">${S.planet ? S.planet.name + ' 宙域' : '星間宙域'}${S.terrain.length ? ' ― ' + S.terrain.map(t => ({ ast: '小惑星帯', neb: '星雲', deb: '残骸' })[t.type]).join('・') : ''}</div></div>`;
+    el.innerHTML = `<div class="vs">${card(e, 'en')}<div class="vs-x">VS</div>${card(a, 'me')}${S.tie ? `<div class="vs-tie">因縁の対決 ― ${S.tie.t.label}：${S.tie.t.desc}</div>` : ''}<div class="vs-where">${S.planet ? S.planet.name + ' 宙域' : '星間宙域'}${S.terrain.length ? ' ― ' + S.terrain.map(t => ({ ast: '小惑星帯', neb: '星雲', deb: '残骸' })[t.type]).join('・') : ''}</div></div>`;
     el.classList.add('show');
     Sound.se('alarm');
     if (watch) hold++;
@@ -1122,7 +1128,7 @@ const Battle = (() => {
     const sd = S.side[sk];
     const el = document.querySelector('#battle .b-cut');
     if (!el || !sd.cmd) return;
-    const line = sd.fac === 'E' ? ECL_LINE.skill : LINES[OFF[sd.cmd].pers].skill;
+    const line = sd.fac === 'E' ? ECL_LINE.skill : (People.voice(sd.cmd, 'bskill') || LINES[OFF[sd.cmd].pers].skill);
     el.innerHTML = `<div class="cutin ${sk === mySide ? 'me' : 'en'}" style="--c:${Game.ownerCol(sd.fac)}"><img src="${Portrait.url(sd.cmd, 'angry')}"><div><small>${SKILLS[s].name}</small><b>「${line}」</b><span>${OFF[sd.cmd].name}</span></div></div>`;
     el.classList.add('show');
     Sound.se('skill');
@@ -1160,7 +1166,7 @@ const Battle = (() => {
     const sd = S.side[mySide];
     const el = document.querySelector('#battle .b-cut');
     const up = S.side[S.over] && S.side[S.over].p0 < S.side[foeOf(S.over)].p0 * 0.8 && S.side[S.over].fac !== 'E';
-    const line = sd.cmd ? (won && up ? pickL(TL.upset) : LINES[OFF[sd.cmd].pers][won ? 'win' : 'lose']) : '';
+    const line = sd.cmd ? (won && up ? pickL(TL.upset) : (People.voice(sd.cmd, won ? 'win' : 'lose') || LINES[OFF[sd.cmd].pers][won ? 'win' : 'lose'])) : '';
     const flow = S.story.slice(-5).map(e => `<li class="${e.side === mySide ? 'me' : 'en'}">${e.text}</li>`).join('');
     el.innerHTML = `<div class="b-result ${won ? 'win' : 'lose'}"><h2>${won ? (up ? '大逆転' : '勝利') : S.timeout ? '時間切れ' : '敗北'}</h2>
       ${flow ? `<ul class="b-flow">${flow}</ul>` : ''}

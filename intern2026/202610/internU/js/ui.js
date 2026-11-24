@@ -19,6 +19,17 @@ const UI = (() => {
     const t = $('#toast'); t.innerHTML = msg; t.classList.add('show');
     clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms);
   }
+  // 士官のひと言（手で命令した時の返事）：顔と名前つきの吹き出し
+  function speak(k, text, expr = 'normal') {
+    if (!k || !OFF[k] || !text) return;
+    let el = document.getElementById('vbub');
+    if (!el) { el = document.createElement('div'); el.id = 'vbub'; el.className = 'vbub'; document.getElementById('app').appendChild(el); el.onclick = () => el.classList.remove('show'); }
+    const fac = G.officers[k] && typeof G.officers[k].fac === 'number' ? FACTIONS[G.officers[k].fac].col : '#8aa0c0';
+    el.innerHTML = `<img src="${Portrait.url(k, expr)}" style="border-color:${fac}"><div><b>${OFF[k].name}</b><p>${text}</p></div>`;
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    clearTimeout(el._h); el._h = setTimeout(() => el.classList.remove('show'), 2600 + text.length * 45);
+  }
+  const answer = (kind, k, target, expr) => { if (k) speak(k, WarRoom.reply(kind, k, target), expr); };
   function busy(msg) {
     const b = $('#busy');
     if (msg) { b.textContent = msg; b.classList.add('show'); } else b.classList.remove('show');
@@ -66,7 +77,7 @@ const UI = (() => {
     const rt = Game.researchTarget(f);
     $('#tbDate').textContent = Game.dateStr();
     $('#tbFac').innerHTML = `<span style="color:${F.col}">◆</span> ${F.name}`;
-    $('#tbRes').innerHTML = `<span title="資金">💰 ${num(f.funds)} <small class="${e.inc - e.up >= 0 ? 'up' : 'down'}">${e.inc - e.up >= 0 ? '+' : ''}${e.inc - e.up}</small></span><span title="研究">🔬 ${rt.name} ${Math.min(100, Math.floor(f.rp / rt.cost * 100))}%</span>`;
+    $('#tbRes').innerHTML = `<span title="資金">💰 ${num(f.funds)} <small class="${e.inc - e.up >= 0 ? 'up' : 'down'}">${e.inc - e.up >= 0 ? '+' : ''}${e.inc - e.up}</small></span><span title="研究中：${rt.name}${rt.gain ? '（' + rt.gain + '）' : ''}">🔬 ${rt.short || rt.name} ${Math.min(100, Math.floor(f.rp / rt.cost * 100))}%</span>`;
     $('#btnStaff').classList.toggle('on', Staff.active());
     const ecl = $('#tbEcl');
     if (G.eclipse.arrived && !G.eclipse.defeated) { ecl.textContent = '蝕 襲来中'; ecl.style.display = ''; }
@@ -90,6 +101,7 @@ const UI = (() => {
           const h = Game.path(mm.at, pid, n => Game.friendly(G.player, G.planets[n].owner)).length - 1;
           toast(`${Game.fleetName(mm)} → ${G.planets[pid].name}（${h}か月ほど）`);
           Sound.se('order');
+          answer(Game.friendly(G.player, G.planets[pid].owner) ? 'move' : 'attack', mm.cmd, G.planets[pid].name, Game.friendly(G.player, G.planets[pid].owner) ? 'normal' : 'angry');
         }
       } else toast('移動の指示をやめました');
       StarMap.moveMode = null;
@@ -122,7 +134,7 @@ const UI = (() => {
       const myFl = fls.filter(f => f.fac === G.player);
       q.innerHTML = `<div class="q-card" style="--c:${Game.ownerCol(p.owner)}">
         <canvas class="q-pl" width="88" height="88" data-pid="${pid}"></canvas>
-        <div class="q-info"><b>${p.name}</b><small>${Game.ownerName(p.owner)}・${PTYPES[p.type].name}・人口${Math.round(p.pop)}億・衛星${p.def}${fls.length ? `・艦隊${fls.length}` : ''}</small></div>
+        <div class="q-info"><b>${p.name}</b><small>${Game.ownerName(p.owner)}・${PTYPES[p.type].name}・人口${Math.round(p.pop)}億・防衛衛星${p.def}基${fls.length ? `・艦隊${fls.length}` : ''}</small></div>
         <div class="q-btns">${myFl.length ? `<button class="btn small primary" data-q="fsel">艦隊</button>` : ''}<button class="btn small" data-q="planet">詳細</button></div></div>`;
       q.classList.add('show');
       const c = $('.q-pl', q).getContext('2d'); c.scale(2, 2); Art.planet(c, 22, 22, 15, p.type, p.seed);
@@ -182,17 +194,17 @@ const UI = (() => {
       <p class="dim">${SYSTEMS[p.sys].name}・${PTYPES[p.type].name}${p.cap ? '・首都' : ''}</p><p>${p.desc}</p></div></div>`;
     h += `<div class="kv">
       <div><span>人口</span><b>${Math.round(p.pop)} / ${p.maxPop} 億</b></div>
-      <div><span>民心</span><b style="color:${p.stab < 30 ? '#ff7a6a' : p.stab > 70 ? '#8ae08a' : '#fff'}">${Math.round(p.stab)}</b></div>
+      <div><span>民心</span><b>${Gloss.tag(p.stab, Gloss.stab(p.stab))}</b></div>
       <div><span>防衛衛星</span><b>${p.def} 基</b></div>
       ${mine ? `<div><span>収入</span><b>${Math.round(inc)}</b></div><div><span>研究</span><b>${Math.round(rs)}</b></div>` : ''}
-      <div><span>造船所</span><b>${p.yard ? 'Lv' + p.yard : 'なし'}</b></div></div>`;
+      <div><span>造船所</span><b>${p.yard ? 'Lv' + p.yard : 'なし'}</b><small>${Gloss.dev('yard', p.yard)}</small></div></div>`;
     if (mine) {
       // 総督
       h += `<h3>総督</h3>${p.gov ? ofcCard(p.gov, '<button class="btn small" data-a="gov">替える</button>') : `<div class="empty">総督がいません（開発が遅く、民心が下がります）<button class="btn small primary" data-a="gov">任命</button></div>`}`;
       // 開発
       h += `<h3>開発</h3><div class="dev">${['ind', 'res', 'def', 'yard', 'pop'].map(k => {
         const lv = k === 'pop' ? '' : `Lv${p[k]}${p[k] >= Game.devCap(p, k) ? '（上限）' : ''}`;
-        return `<button class="dev-b ${p.focus === k ? 'on' : ''}" data-focus="${k}"><b>${Game.FOCUS[k]}</b><small>${lv || '人口・民心'}</small></button>`;
+        return `<button class="dev-b ${p.focus === k ? 'on' : ''}" data-focus="${k}"><b>${Game.FOCUS[k]}</b><small>${lv || '人口・民心'}</small><small class="dv">${Gloss.dev(k, k === 'pop' ? 0 : p[k], p)}</small></button>`;
       }).join('')}</div>`;
       if (p.focus !== 'pop') h += `<div class="prog">${bar(p.prog, 100, '#6ad0ff')}<small>${Game.FOCUS[p.focus]}の開発 ${Math.floor(p.prog)}%（毎月 +${Math.round(Game.devSpeed(p))}）</small><button class="btn small" data-a="invest">投資 ${Game.investCost(p)}</button></div>`;
       else h += `<p class="note">民生に力を注ぎ、人口の伸びと民心を高めます。</p>`;
@@ -224,13 +236,13 @@ const UI = (() => {
     }
     body.innerHTML = h;
     const c = $('.pl-art', body).getContext('2d'); Art.planet(c, 80, 80, 52, p.type, p.seed);
-    $$('[data-focus]', body).forEach(b => b.onclick = () => { if (p.focus !== b.dataset.focus) { p.focus = b.dataset.focus; p.prog = Math.floor(p.prog / 2); } Sound.se('click'); redraw(); });
+    $$('[data-focus]', body).forEach(b => b.onclick = () => { if (p.focus !== b.dataset.focus) { p.focus = b.dataset.focus; p.prog = Math.floor(p.prog / 2); answer('govern', p.gov, p.name); } Sound.se('click'); redraw(); });
     const on = (sel, fn) => { const el = $(sel, body); if (el) el.onclick = () => { Sound.se('click'); fn(); }; };
     on('[data-a=invest]', () => { if (Game.invest(pid)) { toast('投資しました（開発 +60%）'); Sound.se('good'); } else toast('資金が足りません'); redraw(); });
     on('[data-a=gov]', async () => {
       const list = Game.officersOf(G.player).filter(k => !G.officers[k].role || G.officers[k].role === 'gov:' + pid || G.officers[k].role.startsWith('gov:'));
       const k = await pickOfficer(`${p.name}の総督`, list, 'pol', '政治が高いほど開発が早く、収入と民心が上がります。ほかの星の総督を選ぶと、そちらは空きます。');
-      Game.setGov(pid, k); redraw();
+      Game.setGov(pid, k); if (k) answer('appoint', k, p.name, 'happy'); redraw();
     });
     on('[data-a=build]', () => openBuild(pid));
     on('[data-a=newfleet]', async () => {
@@ -259,17 +271,23 @@ const UI = (() => {
   function recruit(k) {
     const o = G.officers[k], S = OFF[k];
     const lead = G.facs[G.player].leader;
-    const p = AI.recruitChance(k, G.player) + (isMine(lead) ? (OFF[lead].dip - 50) / 200 : 0);
-    modal(`<div class="center">${ofcCard(k)}<p>登用に向かいますか？ 支度金 100。<br>見込み：<b>${Math.round(clamp(p, 0.05, 0.95) * 100)}%</b></p></div>`, [{ t: 'やめる', v: false }, { t: '登用する', v: true, cls: 'primary' }]).then(v => {
+    const p = AI.recruitChance(k, G.player) + (isMine(lead) ? (OFF[lead].dip - 50) / 200 : 0) + People.recruitBonus(k).v;
+    modal(`<div class="center">${ofcCard(k)}<p>登用に向かいますか？ 支度金 100。<br>見込み：<b>${Math.round(clamp(p, 0.05, 0.95) * 100)}%</b>${People.recruitBonus(k).who ? `<br><small>${OFF[People.recruitBonus(k).who.k].name}との縁がある（${People.recruitBonus(k).v > 0 ? '+' : ''}${Math.round(People.recruitBonus(k).v * 100)}%）</small>` : ''}</p></div>`, [{ t: 'やめる', v: false }, { t: '登用する', v: true, cls: 'primary' }]).then(async v => {
       if (!v) return;
       const f = G.facs[G.player];
       if (f.funds < 100) { toast('資金が足りません'); return; }
       f.funds -= 100;
-      if (Math.random() < p) {
+      const rb = People.recruitBonus(k);
+      const ok = Math.random() < clamp(p, 0.05, 0.95);
+      const sc = [];
+      if (rb.who) sc.push([rb.who.k, 'normal', rb.who.line]);
+      sc.push([k, ok ? 'happy' : 'normal', People.voice(k, ok ? 'join' : 'refuse') || (ok ? 'わかった。その誘い、受けよう。' : '悪いが、まだ仕える気はない。')]);
+      if (ok) {
         o.st = 'act'; o.fac = G.player; o.loyal = 65 + Math.random() * 20; if (o.ever === null || o.ever === undefined) o.ever = G.player; o.capBy = null;
         Game.log(`${S.name}が仕官した。`, 'good', G.player);
-        Sound.se('good'); toast(`${S.name}が仕官しました！`);
-      } else { o.loc = o.st === 'free' ? o.loc : o.loc; Sound.se('bad'); toast(`${S.name}に断られました…`); }
+        Sound.se('good');
+      } else Sound.se('bad');
+      await talk(ok ? '仕官' : '登用ならず', sc, null, 'palace');
       redraw();
       Story.run();
     });
@@ -308,7 +326,7 @@ const UI = (() => {
         <h3>船体</h3><div class="chips">${Object.keys(HULLS).map(h => `<button class="chip ${h === st0.hull ? 'on' : ''}" data-h="${h}" ${hulls.includes(h) ? '' : 'disabled'}>${HULLS[h].name}<small>枠${HULLS[h].slots}</small></button>`).join('')}</div>
         <h3>モジュール <small>${st0.mods.length} / ${H.slots}</small></h3>
         <div class="slots">${st0.mods.map((m, i) => `<button class="slot" data-rm="${i}">${MODULES[m].name} ✕</button>`).join('') || '<span class="dim">下から選んで載せます</span>'}</div>
-        <div class="mods">${Object.keys(MODULES).map(k => { const M = MODULES[k]; const ok = mods.includes(k); return `<button class="mod ${ok ? '' : 'lock'}" data-m="${k}" ${ok && st0.mods.length < H.slots ? '' : 'disabled'}><b>${M.name}</b><small>${ok ? M.desc : '未解放：' + Object.entries(M.req).map(([b, v]) => b === 'forb' ? FORBIDDEN[v].name : TECH_BRANCH[b].name + v).join('・')}</small></button>`; }).join('')}</div>
+        <div class="mods">${Object.keys(MODULES).map(k => { const M = MODULES[k]; const ok = mods.includes(k); return `<button class="mod ${ok ? '' : 'lock'}" data-m="${k}" ${ok && st0.mods.length < H.slots ? '' : 'disabled'}><b>${M.name}</b><small>${ok ? M.desc : '未解放：' + Object.entries(M.req).map(([b, v]) => b === 'forb' ? FORBIDDEN[v].name : Gloss.techLabel(b, v)).join('・')}</small></button>`; }).join('')}</div>
         <button class="btn primary wide" data-a="save" ${st0.mods.length ? '' : 'disabled'}>この設計を登録する</button>`;
       const c = $('.dz-art', body).getContext('2d'); Art.ship(c, st0.hull, 60, 60, 0, 80, FACTIONS[G.player].col);
       $('input', body).oninput = e => { st0.name = e.target.value; };
@@ -341,8 +359,8 @@ const UI = (() => {
     const on = (sel, fn) => { const el = $(sel, body); if (el) el.onclick = () => { Sound.se('click'); fn(); }; };
     on('[data-a=move]', () => { closeSheet(); StarMap.selFleet = fl; StarMap.moveMode = fl; StarMap.focus(fl.at); quick(); });
     on('[data-a=stay]', () => { fl.route = null; fl.dest = null; redraw(); });
-    on('[data-a=cmd]', async () => { const k = await pickOfficer('艦隊の司令', Game.officersOf(G.player).filter(k => !G.officers[k].role || G.officers[k].role === 'cmd:' + fl.id), 'ldr'); if (k) Game.setCmd(fl, k); redraw(); });
-    on('[data-a=sub]', async () => { const k = await pickOfficer('副官', Game.officersOf(G.player).filter(k => (!G.officers[k].role || G.officers[k].role === 'cmd:' + fl.id) && k !== fl.cmd), 'tac'); Game.setCmd(fl, k, 'sub'); redraw(); });
+    on('[data-a=cmd]', async () => { const k = await pickOfficer('艦隊の司令', Game.officersOf(G.player).filter(k => !G.officers[k].role || G.officers[k].role === 'cmd:' + fl.id), 'ldr'); if (k) { Game.setCmd(fl, k); answer('command', k, G.planets[fl.at].name, 'happy'); } redraw(); });
+    on('[data-a=sub]', async () => { const k = await pickOfficer('副官', Game.officersOf(G.player).filter(k => (!G.officers[k].role || G.officers[k].role === 'cmd:' + fl.id) && k !== fl.cmd), 'tac'); Game.setCmd(fl, k, 'sub'); if (k) { const t = fl.cmd ? People.tie(fl.cmd, k) : null; speak(k, t ? People.line(t, 'ally', k) : WarRoom.reply('command', k, G.planets[fl.at].name), 'happy'); } redraw(); });
     $$('[data-fm]', body).forEach(b => b.onclick = () => { fl.form = b.dataset.fm; Sound.se('click'); redraw(); });
     on('[data-a=take]', () => { if (fl.ships.length >= Game.fleetCap(fl)) { toast('司令の階級では、これ以上の艦は率いられません'); return; } while (p.dock.length && fl.ships.length < Game.fleetCap(fl)) fl.ships.push(p.dock.shift()); redraw(); });
     on('[data-a=drop]', () => { const hurt = fl.ships.filter(s => s.hp < Game.shipMaxHp(s) * 0.5); if (!hurt.length) { toast('半分以上傷ついた艦はありません'); return; } fl.ships = fl.ships.filter(s => !hurt.includes(s)); p.dock.push(...hurt); toast(`${hurt.length}隻を駐留させました`); redraw(); });
@@ -360,23 +378,24 @@ const UI = (() => {
   function tabPlanets(body) {
     const list = G.planets.filter(p => p.owner === G.player).sort((a, b) => b.pop - a.pop);
     const e = Game.economy(G.player);
-    body.innerHTML = `<p class="note">${list.length}の星・収入 ${e.inc}・維持費 ${e.up}・研究 ${e.rp}</p>` + list.map(p => `<div class="pl-row" data-p="${p.id}"><canvas width="56" height="56"></canvas><div><b>${p.name}${p.cap ? ' ★' : ''}</b><small>${Game.FOCUS[p.focus]}・人口${Math.round(p.pop)}・民心${Math.round(p.stab)}・衛星${p.def}${p.gov ? '' : '・<span class="warn">総督なし</span>'}${p.build.length ? '・造艦中' : ''}</small></div></div>`).join('');
+    body.innerHTML = `<p class="note">${list.length}の星・収入 ${e.inc}・維持費 ${e.up}・研究 ${e.rp}</p>` + list.map(p => `<div class="pl-row" data-p="${p.id}"><canvas width="56" height="56"></canvas><div><b>${p.name}${p.cap ? ' ★' : ''}</b><small>${Game.FOCUS[p.focus]}・人口${Math.round(p.pop)}・民心${Math.round(p.stab)}〈${Gloss.stab(p.stab).w}〉・防衛衛星${p.def}基${p.gov ? '' : '・<span class="warn">総督なし</span>'}${p.build.length ? '・造艦中' : ''}</small></div></div>`).join('');
     $$('.pl-row', body).forEach(el => { const p = G.planets[+el.dataset.p]; const c = $('canvas', el).getContext('2d'); c.scale(2, 2); Art.planet(c, 14, 14, 9, p.type, p.seed); el.onclick = () => { StarMap.focus(p.id); StarMap.selPlanet = p.id; openPlanet(p.id); }; });
   }
   function tabFleets(body) {
     const list = G.fleets.filter(f => f.fac === G.player);
     const docks = G.planets.filter(p => p.owner === G.player && p.dock.length);
-    body.innerHTML = (list.length ? list.map(fl => { const t = fl.route ?? fl.dest; return `<div class="fl-row" data-f="${fl.id}" style="--c:${FACTIONS[G.player].col}">${fl.cmd ? `<img src="${Portrait.url(fl.cmd)}">` : ''}<div><b>${Game.fleetName(fl)}</b><small>${G.planets[fl.at].name}${t !== null && t !== undefined ? ' → ' + G.planets[t].name : ''}・${fl.ships.length}隻・戦力${num(Game.fleetPower(fl))}・${Battle.FORMS[fl.form].name}</small></div></div>`; }).join('') : '<p class="dim">艦隊がありません。</p>')
+    body.innerHTML = (list.length ? list.map(fl => { const t = fl.route ?? fl.dest; return `<div class="fl-row" data-f="${fl.id}" style="--c:${FACTIONS[G.player].col}">${fl.cmd ? `<img src="${Portrait.url(fl.cmd)}">` : ''}<div><b>${Game.fleetName(fl)}</b><small>${G.planets[fl.at].name}${t !== null && t !== undefined ? ' → ' + G.planets[t].name : ''}・${fl.ships.length}隻・戦力${num(Game.fleetPower(fl))}〈${Gloss.power(Game.fleetPower(fl))}〉・${Battle.FORMS[fl.form].name}</small></div></div>`; }).join('') : '<p class="dim">艦隊がありません。</p>')
       + (docks.length ? `<h3>駐留艦のある星</h3>${docks.map(p => `<div class="pl-row" data-p="${p.id}"><div><b>${p.name}</b><small>駐留 ${p.dock.length}隻</small></div></div>`).join('')}` : '');
     $$('[data-f]', body).forEach(el => el.onclick = () => { const fl = G.fleets.find(x => x.id === +el.dataset.f); StarMap.focus(fl.at); StarMap.selFleet = fl; openFleet(fl); });
     $$('[data-p]', body).forEach(el => el.onclick = () => openPlanet(+el.dataset.p));
   }
   function tabTech(body) {
     const f = G.facs[G.player], rt = Game.researchTarget(f), e = Game.economy(G.player);
-    let h = `<div class="res-now"><b>研究中：${rt.name}</b>${bar(f.rp, rt.cost, rt.forb ? '#ff3070' : '#6ad0ff')}<small>${Math.floor(f.rp)} / ${rt.cost}（毎月 +${e.rp}）</small></div>`;
+    const left = Math.max(0, Math.ceil((rt.cost - f.rp) / Math.max(1, e.rp)));
+    let h = `<div class="res-now"><b>研究中：${rt.name}</b>${rt.gain ? `<small>完成すると：${rt.gain}</small>` : ''}${bar(f.rp, rt.cost, rt.forb ? '#ff3070' : '#6ad0ff')}<small>${Math.floor(f.rp)} / ${rt.cost}（毎月 +${e.rp}・あと${left}か月ほど）</small></div>`;
     h += `<div class="tech">${Object.entries(TECH_BRANCH).map(([k, B]) => {
       const lv = f.tech[k], next = TECH_UNLOCK[k][lv + 1];
-      return `<button class="tb ${f.researching === k ? 'on' : ''}" data-t="${k}" style="--c:${B.col}"><b>${B.name} <span>Lv${lv}</span></b><small>${B.desc}</small><small>次：${lv >= 8 ? '極めた' : (next || '強化') + '（' + techCost(lv + 1) + '）'}</small></button>`;
+      return `<button class="tb ${f.researching === k ? 'on' : ''}" data-t="${k}" style="--c:${B.col}"><b>${B.name} <span>Lv${lv}${lv ? '「' + Gloss.techName(k, lv) + '」' : ''}</span></b><small>いまの効果：${Gloss.techEffect(k, lv)}</small><small>次：${lv >= 8 ? '極めた' : `Lv${lv + 1}「${Gloss.techName(k, lv + 1)}」― ${Gloss.techGain(k, lv + 1)}（研究 ${techCost(lv + 1)}）`}</small></button>`;
     }).join('')}</div>`;
     const forb = Object.keys(FORBIDDEN).filter(k => Game.forbAvailable(f, k) || f.forb.includes(k));
     if (forb.length) h += `<h3 class="forb">禁忌の技術</h3>${forb.map(k => { const F = FORBIDDEN[k]; const done = f.forb.includes(k); return `<button class="tb forb ${f.researching === k ? 'on' : ''}" data-t="${k}" ${done ? 'disabled' : ''}><b>${F.name}${done ? '（修得済）' : ''}</b><small>${F.desc}</small><small class="warn">⚠ ${F.warn}${G.flags.knowForbidden ? '' : '（……と、星詠みたちは言う）'}・${F.cost}</small></button>`; }).join('')}`;
@@ -386,7 +405,11 @@ const UI = (() => {
     $$('canvas[data-hull]', body).forEach(cv => Art.ship(cv.getContext('2d'), cv.dataset.hull, 22, 22, 0, 34, FACTIONS[G.player].col));
     $$('[data-t]', body).forEach(b => b.onclick = () => {
       const k = b.dataset.t;
-      const go = () => { f.researching = k; Sound.se('click'); redraw(); };
+      const go = () => {
+        f.researching = k; Sound.se('click'); redraw();
+        const sci = Game.officersOf(G.player).sort((a, b) => OFF[b].sci - OFF[a].sci)[0];
+        if (sci) { const rt = Game.researchTarget(f); answer('research', sci, rt.short || rt.name); }
+      };
       if (FORBIDDEN[k] && !G.flags.forbWarned) confirm('禁忌の技術は強力ですが、研究するたびに「何か」が近づくと言われています。それでも研究しますか？', () => { G.flags.forbWarned = 1; go(); });
       else go();
     });
@@ -401,7 +424,7 @@ const UI = (() => {
     let h = `<p class="note">士官 ${act.length}名。顔をタップすると詳しく見られます。</p>`;
     h += `<div class="chips sortby">${[['ldr', '統率'], ['tac', '戦術'], ['pol', '政治'], ['dip', '交渉'], ['sci', '技術']].map(([k, n]) => `<button class="chip ${tabPeople.sort === k ? 'on' : ''}" data-sort="${k}">${n}順</button>`).join('')}</div>`;
     const sk = tabPeople.sort || 'ldr';
-    h += act.sort((a, b) => OFF[b][sk] - OFF[a][sk]).map(k => ofcCard(k, `<div class="loy" title="忠誠">${G.facs[me].leader === k ? '' : '忠' + Math.round(G.officers[k].loyal)}</div>`)).join('');
+    h += act.sort((a, b) => OFF[b][sk] - OFF[a][sk]).map(k => ofcCard(k, `<div class="loy" title="忠誠">${G.facs[me].leader === k ? '君主' : '忠誠' + Math.round(G.officers[k].loyal) + '<br>' + Gloss.loyal(G.officers[k].loyal).w}</div>`)).join('');
     if (free.length) h += `<h3>領内の在野の人材</h3>${free.map(k => ofcCard(k, `<button class="btn small primary" data-recruit="${k}">登用</button>`)).join('')}`;
     if (caps.length) h += `<h3>捕虜</h3>${caps.map(k => ofcCard(k, `<div class="col"><button class="btn small primary" data-recruit="${k}">登用</button><button class="btn small" data-free="${k}">解放</button></div>`)).join('')}`;
     body.innerHTML = h;
@@ -410,10 +433,12 @@ const UI = (() => {
     $$('[data-recruit]', body).forEach(b => b.onclick = () => recruit(b.dataset.recruit));
     $$('[data-free]', body).forEach(b => b.onclick = () => { const o = G.officers[b.dataset.free]; o.st = 'free'; o.fac = null; o.capBy = null; o.loc = R.pick(G.planets.filter(p => p.owner !== 'E')).id; if (Game.isMajor(o.ever)) FX.trust(o.ever, 8); toast(`${OFF[b.dataset.free].name}を解放しました（相手国の信頼 +8）`); drawSheet(); });
   }
+  const REWARD = { '猛進': 'おう、ありがたい！ 次の戦で返す！', '沈着': '恐縮です。期待に応えます。', '策士': 'あら、気前がいいのね。覚えておくわ。', '仁徳': 'ありがとうございます。皆のために使います。', '野心': 'ふふ、私の価値をよく分かっている。', '忠烈': 'もったいなきお言葉。この身、さらに捧げます。', '奔放': 'やった！ 今夜はごちそうだ！' };
+  const RELIEVE = { '猛進': 'なんだと？ ……まあいい、呼ばれたらすぐ戻る。', '沈着': '承知しました。次の務めをお待ちします。', '策士': 'しばらく、のんびり考え事でもするわ。', '仁徳': 'わかりました。少し休ませていただきます。', '野心': '……覚えておこう。', '忠烈': '御意。いつでもお呼びください。', '奔放': 'お休み？ やったー！' };
   function openOfficer(k) {
     sheet(body => {
       const S = OFF[k], o = G.officers[k];
-      const ties = OFFICER_TIES.filter(t => t[0] === k || t[1] === k);
+      const ties = People.tiesOf(k), pf = People.prof(k);
       const mine = o.fac === G.player && o.st === 'act';
       const sk = PERSONALITY[S.pers].skill;
       const ri = Game.rankIdx(k), lord = Game.isLeader(k);
@@ -421,15 +446,22 @@ const UI = (() => {
         : `<p class="rkline"><span class="rk ${ri >= 6 ? 'gen' : ''}">${OFFRANKS[ri]}</span>${ri < 10 ? `次の${OFFRANKS[ri + 1]}まで 武功 ${Math.max(0, Math.ceil(RANK_MERIT[ri + 1] - o.merit))}${ri === 9 ? '（元帥は国に一人）' : ''}` : '国でただ一人の元帥'}・艦隊は${RANK_CAP[ri]}隻まで</p>`;
       body.innerHTML = `<div class="ofc-big"><img src="${Portrait.url(k, 'normal')}"><div><h2>${S.name}</h2><p class="epi">${S.epi}</p>${rankHtml}
         <p>${S.age ? S.age + '歳・' : '年齢不詳・'}${S.pers}（${PERSONALITY[S.pers].desc}）</p><p>${roleText(k) || (o.st === 'dead' ? '戦死' : '')}</p></div></div>
-        <div class="stat-bars">${[['統率', 'ldr', '艦隊の被害を減らす'], ['戦術', 'tac', '艦隊の火力を上げる'], ['政治', 'pol', '総督として開発・収入'], ['交渉', 'dip', '外交の使者'], ['技術', 'sci', '総督として研究']].map(([n, s, d]) => `<div><span>${n}</span>${bar(S[s], 100, '#6ad0ff')}<b>${S[s]}</b><small>${d}</small></div>`).join('')}</div>
+        ${pf ? `<p class="bio">${pf.bio}</p>${pf.likes ? `<p class="note">好むもの：${pf.likes}</p>` : ''}` : ''}
+        <div class="stat-bars">${[['統率', 'ldr', '艦隊の被害を減らす'], ['戦術', 'tac', '艦隊の火力を上げる'], ['政治', 'pol', '総督として開発・収入'], ['交渉', 'dip', '外交の使者'], ['技術', 'sci', '総督として研究']].map(([n, s, d]) => `<div><span>${n}</span>${bar(S[s], 100, '#6ad0ff')}<b>${S[s]}</b><small><em class="gl ${Gloss.stat(S[s]).cls}">${Gloss.stat(S[s]).w}</em> ${d}</small></div>`).join('')}</div>
         <p class="note">奥の手：<b>${sk === 'random' ? '気まぐれ（毎回変わる）' : SKILLS[sk].name}</b>${sk !== 'random' ? ' ― ' + SKILLS[sk].desc : ''}</p>
-        <div class="kv"><div><span>忠誠</span><b>${Math.round(o.loyal)}</b></div><div><span>武功</span><b>${Math.round(o.merit)}</b></div><div><span>戦い</span><b>${o.battles}（勝${o.wins}）</b></div></div>
-        ${ties.length ? `<h3>因縁</h3>${ties.map(t => { const other = t[0] === k ? t[1] : t[0]; return `<div class="tie ${t[2]}"><img src="${Portrait.url(other)}"><div><b>${OFF[other].name}</b><small>${t[2] === 'bond' ? '絆' : '宿敵'}：${t[3]}</small></div></div>`; }).join('')}` : ''}
+        <div class="kv"><div><span>忠誠</span><b>${Gloss.tag(o.loyal, Gloss.loyal(o.loyal))}</b></div><div><span>武功</span><b>${Math.round(o.merit)}</b></div><div><span>戦い</span><b>${o.battles}（勝${o.wins}）</b></div></div>
+        ${ties.length ? `<h3>関係</h3>${ties.map(t => {
+          const ot = People.other(t, k), so = G.officers[ot], stg = People.state(t).stage;
+          const where = !so ? '' : so.st === 'dead' ? '故人' : so.st === 'cap' ? '捕虜' : so.st === 'free' ? '在野' : so.fac === G.player ? '自国' : Game.isMajor(so.fac) ? FACTIONS[so.fac].short : '小勢力';
+          return `<div class="tie ${People.WARM.has(t.kind) ? 'bond' : t.kind}" data-ofc2="${ot}"><img src="${Portrait.url(ot)}"><div><b>${OFF[ot].name}<em class="gl">${where}</em></b><small><b>${People.KIND_NAME[t.kind] || ''}・${t.label}</b>${t.talk ? `<span class="stg">${'◆'.repeat(stg)}${'◇'.repeat(3 - stg)}</span>` : ''}：${t.desc}</small></div></div>`;
+        }).join('')}<p class="note">◆は二人の物語の進み具合。絆・想い人・家族・師弟は同じ艦隊や戦場で力を高め合い、好敵手は戦場で燃え、遺恨は同じ国にいると忠誠を損ねます。</p>` : ''}
+        ${pf && pf.arc && mine ? `<p class="note">${S.name}の物語：${pf.arc.filter(ev => G.evDone[ev.id]).length} / ${pf.arc.length} 話</p>` : ''}
         ${mine && G.facs[G.player].leader !== k ? `<div class="row"><button class="btn" data-a="reward">褒美を与える（100）</button><button class="btn" data-a="relieve">役目を解く</button></div>` : ''}
         <div class="row">${[['happy', '喜'], ['angry', '怒'], ['sad', '憂'], ['shock', '驚']].map(([e, n]) => `<button class="chip" data-ex="${e}">${n}</button>`).join('')}</div>`;
       const on = (sel, fn) => { const el = $(sel, body); if (el) el.onclick = () => { Sound.se('click'); fn(); }; };
-      on('[data-a=reward]', () => { const f = G.facs[G.player]; if (f.funds < 100) { toast('資金が足りません'); return; } f.funds -= 100; o.loyal = Math.min(100, o.loyal + 15); toast(`${S.name}の忠誠が上がった`); drawSheet(); refreshTop(); });
-      on('[data-a=relieve]', () => { Game.freeOfficer(k); drawSheet(); });
+      $$('[data-ofc2]', body).forEach(el => el.onclick = () => { Sound.se('click'); openOfficer(el.dataset.ofc2); });
+      on('[data-a=reward]', () => { const f = G.facs[G.player]; if (f.funds < 100) { toast('資金が足りません'); return; } f.funds -= 100; o.loyal = Math.min(100, o.loyal + 15); toast(`${S.name}の忠誠が上がった`); speak(k, REWARD[S.pers] || 'ありがたく頂戴します。', 'happy'); drawSheet(); refreshTop(); });
+      on('[data-a=relieve]', () => { Game.freeOfficer(k); speak(k, RELIEVE[S.pers] || '承知しました。', 'normal'); drawSheet(); });
       $$('[data-ex]', body).forEach(b => b.onclick = () => { $('.ofc-big img', body).src = Portrait.url(k, b.dataset.ex); });
     }, OFF[k].name);
   }
@@ -442,7 +474,7 @@ const UI = (() => {
       if (!f.alive) { h += `<div class="dp-row dead"><b>${F.name}</b><small>滅亡</small></div>`; continue; }
       const r = Game.rel(me, f.id);
       const ratio = Diplo.power(me) / Diplo.power(f.id);
-      h += `<div class="dp-row" data-d="${f.id}" style="--c:${F.col}"><canvas width="64" height="64"></canvas><div><b>${F.name}</b><small><span style="color:${REL_COL[r.s]}">${REL_NAMES[r.s]}</span>・信頼 ${Math.round(r.t)}・国力比 ${ratio.toFixed(1)}・星${G.planets.filter(p => p.owner === f.id).length}</small>${bar(r.t + 100, 200, REL_COL[r.s])}</div></div>`;
+      h += `<div class="dp-row" data-d="${f.id}" style="--c:${F.col}"><canvas width="64" height="64"></canvas><div><b>${F.name}</b><small><span style="color:${REL_COL[r.s]}">${REL_NAMES[r.s]}</span>・信頼 ${Math.round(r.t)}〈${Gloss.trust(r.t).w}〉・国力 ${Gloss.ratio(ratio)}（${ratio.toFixed(1)}倍）・星${G.planets.filter(p => p.owner === f.id).length}</small>${bar(r.t + 100, 200, REL_COL[r.s])}</div></div>`;
     }
     h += `<h3>中立の小勢力</h3>`;
     for (const M of MINORS) {
@@ -465,7 +497,7 @@ const UI = (() => {
       openDiplo.envoy = envoys.includes(openDiplo.envoy) ? openDiplo.envoy : envoys[0];
       const ev = openDiplo.envoy;
       const kinds = Object.keys(Diplo.KINDS).filter(k => Diplo.KINDS[k].need.includes(r.s));
-      body.innerHTML = `<div class="dp-head" style="--c:${F.col}"><canvas width="90" height="90"></canvas><div><h2>${F.name}</h2><p class="dim">「${F.motto}」</p><p>関係：<b style="color:${REL_COL[r.s]}">${REL_NAMES[r.s]}</b>・信頼 ${Math.round(r.t)}・派閥 ${PARTIES[f.ruling].name}</p></div></div>
+      body.innerHTML = `<div class="dp-head" style="--c:${F.col}"><canvas width="90" height="90"></canvas><div><h2>${F.name}</h2><p class="dim">「${F.motto}」</p><p>関係：<b style="color:${REL_COL[r.s]}">${REL_NAMES[r.s]}</b>・信頼 ${Gloss.tag(r.t, Gloss.trust(r.t))}・主導 ${PARTIES[f.ruling].name}</p></div></div>
         ${f.leader && OFF[f.leader] && G.officers[f.leader].fac === fid ? ofcCard(f.leader) : ''}
         <h3>使者</h3>${ev ? ofcCard(ev, '<button class="btn small" data-a="envoy">替える</button>') : '<p class="dim">今月動ける士官がいません。</p>'}
         <h3>申し入れ</h3>${kinds.length ? kinds.map(k => { const c = Diplo.chance(me, fid, k, ev); return `<button class="dp-act" data-k="${k}" ${ev ? '' : 'disabled'}><b>${Diplo.KINDS[k].name}</b><small>${Diplo.KINDS[k].desc}</small><span class="pc">${Math.round(c.p * 100)}%</span><small class="why">${c.why.join('／')}</small></button>`; }).join('') : '<p class="dim">今の関係で申し込めるものはありません。</p>'}
@@ -475,6 +507,7 @@ const UI = (() => {
       on('[data-a=envoy]', async () => { const k = await pickOfficer('使者', envoys, 'dip', '交渉の高い士官ほど、申し入れが通りやすくなります。'); if (k) openDiplo.envoy = k; drawSheet(); });
       $$('[data-k]', body).forEach(b => b.onclick = async () => {
         const k = b.dataset.k;
+        if (ev) await talk(null, [[ev, 'normal', WarRoom.reply('envoy', ev, F.name)], [ev, 'normal', WarRoom.DIPLO.ask[k] || '申し入れに参りました。']], null, 'palace', true);
         const res = Diplo.propose(me, fid, k, ev);
         await talkReply(fid, res.ok, k);
         if (res.ok) { Game.log(`${F.name}と${Diplo.KINDS[k].name}${k === 'surrender' ? 'が成った' : 'を結んだ'}。`, 'good', me); Sound.se('fanfare'); }
@@ -1010,5 +1043,5 @@ const UI = (() => {
     $('#sheet .sh-bg').onclick = () => closeSheet();
   }
 
-  return { show, toast, busy, modal, confirm, wait, sheet, closeSheet, refresh, refreshTop, talk, battlePrompt, monthReport, pendingProposals, gameOver, boot, toTitle, howto, ofcCard, openPlanet, openFleet, openStaff, autoNext, autoReport, staffStop, watchBattle, raidAlert, raidResult, showRaid, get current() { return current; } };
+  return { show, toast, speak, busy, modal, confirm, wait, sheet, closeSheet, refresh, refreshTop, talk, battlePrompt, monthReport, pendingProposals, gameOver, boot, toTitle, howto, ofcCard, openPlanet, openFleet, openStaff, autoNext, autoReport, staffStop, watchBattle, raidAlert, raidResult, showRaid, get current() { return current; } };
 })();

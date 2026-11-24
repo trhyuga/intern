@@ -83,6 +83,7 @@ const AI = (() => {
     let p = 0.35 + (lead.dip - 50) / 200;
     if (S.pers === '忠烈' && G.officers[k].ever !== null && G.officers[k].ever !== fid && Game.isMajor(G.officers[k].ever) && G.facs[G.officers[k].ever].alive) p -= 0.3;
     if (S.pers === '野心') p += 0.1;
+    if (fid === G.player && typeof People !== 'undefined') p += People.recruitBonus(k).v;   // 縁のある人がいれば通りやすい
     return clamp(p, 0.05, 0.9);
   }
 
