@@ -46,6 +46,7 @@ const Diplo = (() => {
   // 銀河で抜きん出た国への警戒（0〜）
   function fear(b) { const share = G.planets.filter(p => p.owner === b).length / G.planets.length; return Math.max(0, share - 0.35); }
   function setRel(a, b, s) {
+    { const r0 = Game.rel(a, b); if (s === 'neutral' || s === 'nap') { r0.gainA = 0; r0.gainB = 0; r0.goalAt = 0; } }
     const r = Game.rel(a, b);
     const old = r.s;
     r.s = s; r.since = G.turn;
@@ -85,7 +86,8 @@ const Diplo = (() => {
       if (n) { sc -= n * 8; why.push(`ほかの同盟 ${n}つ −${n * 8}`); }
     }
     if (tf.ruling === 'war' && (kind === 'ally' || kind === 'trade')) { sc -= 6; why.push(`${T.short}の主戦派の反発 −6`); }
-    if (ff.ruling === 'peace') { sc += 15; why.push('融和派 +15'); }
+    if (ff.ruling === 'peace') { sc += 10; why.push('融和派 +10'); }
+    if (kind === 'peace') { const lostT = Game.warGain(from, to), lostF = Game.warGain(to, from); if (lostT >= 2) { sc += 12 + lostT * 4; why.push(`${T.short}は負けが込んでいる +${12 + lostT * 4}`); } if (lostF >= 3) { sc += 6; why.push('戦の目的は果たした +6'); } }
     if (tf.ruling === 'peace') { sc += 8; why.push(`${T.short}の融和派 +8`); }
     if (tf.ruling === 'war' && kind !== 'peace') { sc -= 10; why.push(`${T.short}の主戦派 −10`); }
     sc -= T.agg * 18; why.push(`${T.short}の気風 −${Math.round(T.agg * 18)}`);
@@ -124,8 +126,9 @@ const Diplo = (() => {
       if (kind === 'surrender') { annex(from, to); }
       else setRel(from, to, KINDS[kind].to);
       r.t = Math.min(100, r.t + 8);
-      if (envoy) Game.addMerit(envoy, 4);
+      if (envoy) { Game.addMerit(envoy, 4); if (typeof People !== 'undefined') People.addStat(envoy, 'dip', 0.12); }
     } else {
+      if (envoy && typeof People !== 'undefined') People.addStat(envoy, 'dip', 0.06);
       r.t = Math.max(-100, r.t - 4);
     }
     return { ok, p: c.p };
@@ -203,22 +206,35 @@ const Diplo = (() => {
         Game.log(`${F.name}は${FACTIONS[b].name}との同盟を解消した（信頼 ${Math.round(r.t)}）。`, b === G.player ? 'bad' : 'info', b === G.player ? G.player : fid);
         continue;
       }
-      if (Math.random() > 0.22) continue;
+      // 戦の目的を果たした戦は、毎月、手打ちを探る（新しい戦が始まる余地をつくる）
+      if (r.s === 'war' && Math.max(Game.warGain(fid, b), Game.warGain(b, fid)) >= Game.warGoal(Game.warGain(fid, b) >= Game.warGain(b, fid) ? fid : b)) {
+        r.goalAt = r.goalAt || G.turn;
+        if (G.turn - r.goalAt >= 2) {
+          if (b === G.player) { if (!G.pending.some(p => p.from === fid)) G.pending.push({ from: fid, kind: 'peace', turn: G.turn }); }
+          else { const ga = Game.warGain(fid, b), gb = Game.warGain(b, fid); setRel(fid, b, 'neutral'); r.goalAt = 0; Game.log(`${F.name}と${FACTIONS[b].name}が停戦した（奪った星 ${ga}対${gb}）。`, 'info', fid); }
+          continue;
+        }
+      }
+      if (Math.random() > 0.3) continue;
       let kind = null;
       const ratio = power(fid) / power(b);
       const hawk = f.ruling === 'war';
       if (r.s === 'war') {
-        if (G.turn - r.since > 5 && (ratio < (hawk ? 0.55 : 0.8) || f.warWeary > (hawk ? 9 : 5) || crisis || (G.turn - r.since > 20 && ratio < 1.6 && Math.random() < 0.35))) kind = 'peace';   // 長い戦は、決め手がなければ手打ちに
+        const gained = fid < b ? (r.gainA || 0) : (r.gainB || 0), lost = fid < b ? (r.gainB || 0) : (r.gainA || 0);
+        const goal = Game.warGoal(fid);
+        if (G.turn - r.since > 4 && ((gained >= goal && Math.random() < 0.35) || (lost >= 2 && Math.random() < 0.3))) kind = 'peace';
+        else if (G.turn - r.since > 5 && (ratio < (hawk ? 0.55 : 0.8) || f.warWeary > (hawk ? 9 : 5) || crisis || (G.turn - r.since > 24 && ratio < 1.4 && Math.random() < 0.2))) kind = 'peace';   // 長い戦は、決め手がなければ手打ちに
       } else if (r.s === 'neutral') {
         // 覇権を阻む：いちばん大きな国（とくにプレイヤー）を主戦派は狙う
         const biggest = G.facs.filter(x => x.alive).sort((x, y) => G.planets.filter(p => p.owner === y.id).length - G.planets.filter(p => p.owner === x.id).length)[0];
         const hegemon = biggest && biggest.id === b && fear(b) > 0;
-        const wantWar = agg > 0.45 && G.turn > 6 && (border || hegemon) && ratio > (hawk ? 1.1 : 1.35) * (hegemon ? 0.75 : 1) && r.t < (hawk ? 25 : 10) && f.ruling !== 'peace' && !crisis;
-        if (wantWar && G.turn > 12 && Math.random() < agg * 0.3 && !G.facs.some((x, i) => i !== fid && i !== b && x.alive && Game.rel(fid, i).s === 'war' && power(i) > power(fid) * 0.7)) { declareWar(fid, b, hegemon ? `${FACTIONS[b].name}の覇権を阻むと称して` : hawk ? '主戦派に押され' : ''); continue; }
+        const small = G.planets.filter(p => p.owner === b).length <= 4 || G.facs.filter((x, i) => i !== b && x.alive && Game.rel(b, i).s === 'war').length >= 2;   // 弱った国・多方面で戦っている国には、さらに宣戦しない
+        const wantWar = agg > 0.4 && G.turn > 6 && G.turn - (r.since || 0) > 6 && (!small || hegemon) && (border || hegemon) && ratio > (hawk ? 0.95 : 1.15) * (hegemon ? 0.75 : 1) * (b === G.player ? 0.85 : 1) && r.t < (hawk ? 35 : 20) && (f.ruling !== 'peace' || agg > 0.7) && !crisis;
+        if (wantWar && G.turn > 8 && Math.random() < agg * (b === G.player ? 0.75 : 0.6) && !G.facs.some((x, i) => i !== fid && i !== b && x.alive && Game.rel(fid, i).s === 'war' && power(i) > power(fid) * 0.7)) { declareWar(fid, b, hegemon ? `${FACTIONS[b].name}の覇権を阻むと称して` : hawk ? '主戦派に押され' : ''); continue; }
         if (r.t > -5) kind = 'nap';
       } else if (r.s === 'nap') {
         if (r.t > 10) kind = 'trade';
-        else if (agg > 0.6 && ratio > (hawk ? 1.4 : 1.8) && r.t < (hawk ? -15 : -30) && Math.random() < 0.3) { declareWar(fid, b, hawk ? '主戦派に押され、不可侵を破って' : ''); continue; }
+        else if (agg > 0.55 && ratio > (hawk ? 1.2 : 1.6) && r.t < (hawk ? -5 : -20) && Math.random() < 0.4) { declareWar(fid, b, hawk ? '主戦派に押され、不可侵を破って' : ''); continue; }
       } else if (r.s === 'trade') {
         if ((r.t > 45 && !hawk) || (commonEnemy(fid, b) && r.t > 15)) kind = 'ally';
       }

@@ -71,7 +71,7 @@ const Staff = (() => {
     const wars = G.facs.filter(x => x.alive && x.id !== me && Game.rel(me, x.id).s === 'war').length;
     const unsigned = G.facs.filter(x => x.alive && x.id !== me && ['neutral', 'nap'].includes(Game.rel(me, x.id).s)).length;
     const why = {
-      expand: targets ? '攻め取れる星がある' : '領土を広げる好機を探る',
+      expand: f.demand && f.demand.party === 'war' ? '主戦派が戦果を求めている' : targets ? '攻め取れる星がある' : '領土を広げる好機を探る',
       defend: threat ? '国境に敵の艦隊が迫っている' : '守りを固める',
       economy: poor ? '資金が乏しい' : stab < 50 ? '民心が揺らいでいる' : '国力を蓄える',
       research: '技術で先んじる',
@@ -79,18 +79,24 @@ const Staff = (() => {
       eclipse: '蝕を討つ',
     };
     const need = {
-      expand: (targets ? 1.3 : 0.25) * (threat ? 0.4 : 1),
+      expand: (targets ? 1.4 : 0.55) * (threat ? 0.5 : 1) * (wars ? 1.5 : 1),
       defend: threat ? 1.2 + threat * 0.8 : 0.35,
       economy: poor || stab < 50 ? 1.7 : 1,
       research: 1,
       diplomacy: wars && f.warWeary > 3 ? 1.7 : unsigned ? 0.9 : 0.4,
       eclipse: Eclipse.active() ? 3 : 0,
     };
+    // 国内の派閥の声：支持が多い派閥の望む方針ほど選ばれやすい（主導派閥はさらに）
+    const P0 = f.parties, rul = f.ruling;
+    const voice = { expand: 0.5 + P0.war / 28 + (rul === 'war' ? 0.6 : 0) + (f.demand && f.demand.party === 'war' ? 1.2 : 0),
+      research: 0.7 + P0.tech / 70 + (rul === 'tech' ? 0.3 : 0), economy: 0.7 + P0.trade / 70 + (rul === 'trade' ? 0.3 : 0),
+      diplomacy: 0.6 + P0.peace / 80 + (rul === 'peace' ? 0.3 : 0), defend: 1, eclipse: 1 };
+    s.partyWhy = P0.war >= 35 || rul === 'war' ? '主戦派の声が大きい' : null;
     let best = null, bv = -1;
     const w = {};
     for (const p of SUBS) {
       const sc = score(s.key, p) / 100;
-      let v = need[p] * Math.pow(sc, 1.6);       // 得意なほど選ばれやすい
+      let v = need[p] * Math.pow(sc, 1.6) * voice[p];       // 得意なほど・派閥が望むほど選ばれやすい
       if (p === s.cur) v *= s.curRun >= 4 ? 0.45 : 1.2;   // 続けすぎない・すぐ変えすぎない
       // しばらく手をつけていない分野にも目を配る
       s.last = s.last || {};
@@ -112,12 +118,14 @@ const Staff = (() => {
     const s = G.staff, k = curK(), S = OFF[s.key];
     const reckless = S.pers === '猛進' ? -0.15 : S.pers === '沈着' ? 0.1 : 0;
     const base = { mistake: 0.35 * Math.pow(1 - k, 2), noForb: true };
+    const f = G.facs[G.player], hawk = f.parties.war / 100 + (f.ruling === 'war' ? 0.15 : 0);
+    const calm = 0.3 + hawk * 0.6;   // 戦い以外の方針でも、主戦派が強ければ攻める
     switch (curPol()) {
-      case 'expand': return { ...base, agg: 0.92, need: 1.15 + (1 - k) * 0.5 + reckless, build: 1.25 };
-      case 'defend': return { ...base, agg: 0.05, noMajors: true, noIndep: true, focus: 'def', build: 1.1, research: { def: 1.6 } };
-      case 'economy': return { ...base, agg: 0.2, noMajors: true, focus: 'pop', build: 0.6, research: { eco: 1.7 } };
-      case 'research': return { ...base, agg: 0.2, noMajors: true, focus: 'res', build: 0.6, research: { eng: 1.2, def: 1.1 } };
-      case 'diplomacy': return { ...base, agg: 0.15, noMajors: true, build: 0.7, research: { eco: 1.3 } };
+      case 'expand': return { ...base, agg: 0.95, need: 1.05 + (1 - k) * 0.4 + reckless, build: 1.35 };
+      case 'defend': return { ...base, agg: 0.15 + hawk * 0.3, noIndep: true, focus: 'def', build: 1.15, research: { def: 1.6 } };
+      case 'economy': return { ...base, agg: calm, focus: 'pop', build: 0.8, research: { eco: 1.7 } };
+      case 'research': return { ...base, agg: calm, focus: 'res', build: 0.8, research: { eng: 1.2, def: 1.1 } };
+      case 'diplomacy': return { ...base, agg: calm * 0.6, noMajors: hawk < 0.3, build: 0.8, research: { eco: 1.3 } };
       case 'eclipse': return { ...base, agg: 0.95, onlyE: true, need: 1.1 + (1 - k) * 0.4, build: 1.4, research: { wep: 1.5, def: 1.3 } };
     }
     return base;
@@ -257,6 +265,7 @@ const Staff = (() => {
       loud.say(k, People.voice(k, ok ? 'join' : 'refuse') || WarRoom.pickL(ok ? WarRoom.RECRUIT.yes : WarRoom.RECRUIT.no), ok ? 'happy' : 'normal', at);
       loud.result(ok ? `${OFF[k].name}（${OFF[k].epi}）が仕官した` : `${OFF[k].name}に断られた（支度金100は戻らない）`, ok, at);
     }
+    warPlan();
     diplomacy();
     // 動いた後と比べて、したことを書く
     for (const p of mine) {
@@ -304,6 +313,31 @@ const Staff = (() => {
     return `資金 ${Math.round(f.funds).toLocaleString()}（${delta >= 0 ? '+' : ''}${delta}）・研究 ${rt.name} ${Math.min(100, Math.floor(f.rp / rt.cost * 100))}%`
       + (next ? `・次は${next.p.name}の${Game.FOCUS[next.p.focus]}Lv${(next.p[next.p.focus] || 0) + 1}（あと${next.m}か月）` : '');
   }
+  // 参謀の宣戦：拡張の月や、主戦派が強い時は、隣の大国に宣戦を進言する（蝕が攻めてきている間はしない）
+  function warPlan() {
+    const me = G.player, s = G.staff, f = G.facs[me];
+    if (G.turn < 8 || (Eclipse.active() && G.eclipse.phase !== 'lull')) return;
+    const pol = curPol(), hawk = f.parties.war / 100 + (f.ruling === 'war' ? 0.2 : 0) + (f.demand && f.demand.party === 'war' ? 0.3 : 0);
+    const wars = G.facs.filter(x => x.alive && x.id !== me && Game.rel(me, x.id).s === 'war').length;
+    if (wars >= (hawk > 0.4 ? 2 : 1)) return;
+    const want = (pol === 'expand' ? 0.5 : 0.08) + hawk * 0.6 - (pol === 'diplomacy' ? 0.3 : 0) - wars * 0.25;
+    if (Math.random() > want) return;
+    const k = curK(), myP = Diplo.power(me);
+    const cands = G.facs.filter(x => x.alive && x.id !== me && Game.isMajor(x.id)).map(x => {
+      const r = Game.rel(me, x.id), border = G.planets.some(p => p.owner === me && Game.ADJ[p.id].some(n => G.planets[n].owner === x.id));
+      const ratio = myP / Math.max(1, Diplo.power(x.id));
+      const breaking = ['nap', 'trade'].includes(r.s);
+      return { x, r, border, ratio, breaking, sc: ratio * 2 - r.t / 40 - (breaking ? 1.5 : 0) + (border ? 1 : -3) };
+    }).filter(c => c.border && c.r.s !== 'war' && c.r.s !== 'ally' && c.ratio >= 1.12 - k * 0.3 && (!c.breaking || hawk > 0.55));
+    if (!cands.length) return;
+    const c = cands.sort((a, b) => b.sc - a.sc)[0], F = FACTIONS[c.x.id];
+    const lead = f.leader && isMine(f.leader) ? f.leader : null;
+    WarRoom.say(s.key, `${lead ? HONOR[me] + '、' : ''}${hawk > 0.45 ? '主戦派の声も高まっております。' : ''}国力はこちらが${F.short}の${c.ratio.toFixed(1)}倍。今こそ${F.name}を討つべきかと。`, 'angry', G.facs[c.x.id].capital);
+    if (lead && lead !== s.key) WarRoom.say(lead, c.breaking ? '約束を破ることになるが……よかろう。責めは我が負う。' : 'よかろう。剣を抜け。', 'angry');
+    Diplo.declareWar(me, c.x.id, c.breaking ? '参謀の進言により、約束を破って' : '参謀の進言により');
+    WarRoom.result(`${F.name}に宣戦を布告した${c.breaking ? '（約束を破った。ほかの国の信頼と民心が下がる）' : ''}`, true, G.facs[c.x.id].capital);
+    s.month.push(`${F.name}に宣戦した。`);
+  }
   function envoy() { return Game.officersOf(G.player).filter(k => G.officers[k].busy !== G.turn).sort((a, b) => OFF[b].dip - OFF[a].dip)[0]; }
   // 参謀の外交
   function diplomacy() {
@@ -332,7 +366,7 @@ const Staff = (() => {
         WarRoom.say(s.key, ev === s.key ? `私が${FACTIONS[b].name}へ使者に立ちます。${KN}を申し入れます。見込みは${pc}%です。`
           : `${callName(ev)}、${FACTIONS[b].name}へ${T3(ev, `使者に立ってくれ。${KN}を申し入れる。見込みは${pc}%だ。`, `使者に立っていただけますか。${KN}を申し入れます。見込みは${pc}%です。`, `御自ら使者にお立ちいただけますでしょうか。${KN}を申し入れます。見込みは${pc}%にございます。`)}`, 'normal', G.facs[b].capital);
         WarRoom.order(`使者${OFF[ev].name} → ${FACTIONS[b].name}：${Diplo.KINDS[kind].name}`, G.facs[b].capital);
-        if (ev !== s.key) WarRoom.say(ev, reply('envoy', ev, FACTIONS[b].name), 'normal', G.facs[b].capital);
+        if (ev !== s.key) WarRoom.say(ev, WarRoom.reply('envoy', ev, FACTIONS[b].name), 'normal', G.facs[b].capital);
         WarRoom.say(ev, WarRoom.DIPLO.ask[kind], 'normal', G.facs[b].capital);
         const res = Diplo.propose(me, b, kind, ev);
         const lead = G.facs[b].leader;

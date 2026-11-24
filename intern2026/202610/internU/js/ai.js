@@ -23,7 +23,7 @@ const AI = (() => {
     if (FORBIDDEN[f.researching]) return;
     // 核の欠片がそろったら、蝕の根を断つ研究を急ぐ
     if (f.researching === 'seal' && !f.sealed) return;
-    if (Eclipse.canSeal(fid) && Math.random() < 0.5) { f.researching = 'seal'; return; }
+    if (Eclipse.canSeal(fid) && Math.random() < 0.3 + 0.4 * [0.75, 0.6, 0.4, 1.0, 0.55, 0.85][fid]) { f.researching = 'seal'; return; }
     // 禁忌に手を出すか
     if (!pol.noForb) for (const k of Object.keys(FORBIDDEN)) {
       if (Game.forbAvailable(f, k) && Math.random() < (F.agg > 0.6 || f.ruling === 'tech' ? 0.04 : 0.01)) { f.researching = k; return; }
@@ -120,8 +120,9 @@ const AI = (() => {
       let fl = G.fleets.find(x => x.fac === fid && x.at === p.id && x.cmd && x.ships.length < Game.fleetCap(x) && !x.dest);
       if (!fl) {
         const cmd = idle()[0];
-        if (!cmd) continue;
-        fl = Game.newFleet(fid, cmd, p.id);
+        // 司令官が足りなければ、司令のいない分艦隊（12隻まで）でも出す。港に眠らせない
+        if (!cmd && p.dock.length - keep < 4) continue;
+        fl = Game.newFleet(fid, cmd || null, p.id);
         fl.form = ['spindle', 'crane', 'circle', 'line'][Math.floor(Math.random() * 4)];
       }
       while (p.dock.length > keep && fl.ships.length < Game.fleetCap(fl)) fl.ships.push(p.dock.pop());
@@ -145,7 +146,7 @@ const AI = (() => {
 
   function military(fid, pol = {}) {
     const f = G.facs[fid], F = { agg: pol.agg ?? Diplo.aggOf(fid) };
-    const my = G.fleets.filter(x => x.fac === fid && x.cmd && x.ships.length);
+    const my = G.fleets.filter(x => x.fac === fid && x.ships.length && (x.cmd || x.ships.length >= 4));
     const busy = new Set();
     // 1. 守り：脅かされている星へ
     for (const p of G.planets.filter(p => p.owner === fid)) {
@@ -164,12 +165,16 @@ const AI = (() => {
       const mine = G.planets.filter(p => p.owner === fid);
       const targets = G.planets.filter(p => p.owner === 'E' && p.type === 'rift' && (!p.abyss || G.facs[fid].sealed));
       let plan = null;
+      // 蝕への熱意：国の気風（預言の聖教国・古の勅書の帝国・記録を継ぐ機巧院は熱心、企業連合は損得次第）と、主導する派閥で変わる
+      const ZEAL = [0.75, 0.6, 0.4, 1.0, 0.55, 0.85];
+      const zeal = clamp(ZEAL[fid] + (f.ruling === 'war' ? 0.2 : f.ruling === 'peace' ? 0.1 : f.ruling === 'trade' ? -0.15 : 0.05) + (G.flags.e0_oath && fid === 0 ? 0.15 : 0) + (G.eclipse.phase === 'ret' ? 0.15 : 0), 0.2, 1.2);
+      const reach = zeal >= 0.8 ? 6 : zeal >= 0.55 ? 4 : 2;
       for (const t0 of targets) {
         // いちばん近い自国の星を集結地に。隣でなければ、間にある星（蝕の星・独立惑星）から攻め取る
         const stage = mine.slice().sort((a, b) => Game.hops(a.id, t0.id) - Game.hops(b.id, t0.id))[0];
         if (!stage) continue;
         const d = Game.hops(stage.id, t0.id);
-        if (d > (t0.abyss ? 6 : 3)) continue;
+        if (d > (t0.abyss ? reach + 2 : reach)) continue;
         let t = t0;
         if (d > 1) { const path = Game.path(stage.id, t0.id, () => true); if (!path || path.length < 2) continue; t = G.planets[path[1]]; if (Game.friendly(fid, t.owner) || !Game.canAttack(fid, t.owner)) continue; }
         const sc = (t0.abyss ? 50 : 0) - d * 3 - Game.hops(f.capital, t0.id);
@@ -184,21 +189,23 @@ const AI = (() => {
         else {
           // 集結：半分ほどの艦隊を集結地へ（自国の守りは残す）
           const free = my.filter(x => !busy.has(x) && x.at !== stage.id && x.ships.length >= 3).sort((a, b) => Game.hops(a.at, stage.id) - Game.hops(b.at, stage.id));
-          free.slice(0, Math.max(1, Math.ceil(free.length * 0.6))).forEach(x => { const path = Game.path(x.at, stage.id, n => Game.friendly(fid, G.planets[n].owner)); if (path && path.length > 1) { x.dest = path[1]; busy.add(x); } });
+          free.slice(0, Math.max(1, Math.ceil(free.length * (0.3 + 0.55 * zeal)))).forEach(x => { const path = Game.path(x.at, stage.id, n => Game.friendly(fid, G.planets[n].owner)); if (path && path.length > 1) { x.dest = path[1]; busy.add(x); } });
           ready.forEach(x => busy.add(x));
         }
       }
     }
     // 2. 攻め：勝てそうな隣の星へ
+    const D = api.dbg && fid !== 'E' ? api.dbg : null;
     for (const fl of my) {
-      if (busy.has(fl)) continue;
+      if (D) D.fleets = (D.fleets || 0) + 1;
+      if (busy.has(fl)) { if (D) D.busy = (D.busy || 0) + 1; continue; }
       const hp = fl.ships.reduce((a, s) => a + s.hp / Game.shipMaxHp(s), 0) / fl.ships.length;
-      if (hp < 0.55) { // 傷ついたら造船所へ
+      if (hp < 0.55) { if (D) D.repair = (D.repair || 0) + 1; // 傷ついたら造船所へ
         const yard = G.planets.filter(p => p.owner === fid && p.yard).sort((a, b) => Game.hops(fl.at, a.id) - Game.hops(fl.at, b.id))[0];
         if (yard && yard.id !== fl.at) { const path = Game.path(fl.at, yard.id, n => Game.friendly(fid, G.planets[n].owner)); if (path) fl.dest = path[1]; }
         continue;
       }
-      if (fl.ships.length < 5) continue;
+      if (fl.ships.length < 3) continue;
       const mates = my.filter(x => x !== fl && x.at === fl.at && !busy.has(x) && x.ships.length >= 3);
       const myP = Game.fleetPower(fl) + mates.reduce((a, x) => a + Game.fleetPower(x), 0) * 0.9;
       let best = null, bs = -1e9;
@@ -210,10 +217,15 @@ const AI = (() => {
         if (typeof p.owner === 'string' && p.owner !== 'E' && (G.turn < 36 || F.agg < 0.55 || Math.random() < 0.7)) continue;
         const def = Game.planetDefense(p) + G.fleets.filter(x => x.at === n && Game.friendly(x.fac, p.owner)).reduce((a, x) => a + Game.fleetPower(x), 0);   // そこにいる艦隊も数える
         if (pol.onlyE && p.owner !== 'E') continue;
+        if (D && Game.isMajor(p.owner)) D.adjMajor = (D.adjMajor || 0) + 1;
+        if (Game.isMajor(p.owner) && Game.warGain(fid, p.owner) >= Game.warGoal(fid)) { if (D) D.goal = (D.goal || 0) + 1; continue; }
         if (pol.noMajors && Game.isMajor(p.owner)) continue;
         if (pol.noIndep && p.owner === null) continue;
-        const need = def * (pol.need || (1.25 + (1 - F.agg) * 0.4)) * (p.cap && Game.isMajor(p.owner) ? 1.5 : 1);   // 首都は落としにくい
-        if (myP < need) continue;
+        const need = def * (pol.need || (0.95 + (1 - F.agg) * 0.3)) * (G.turn < 14 && Game.isMajor(p.owner) ? 1.5 : 1) * (p.cap && Game.isMajor(p.owner) ? 1.5 : 1);   // 首都は落としにくい
+        // 足りなくても、ときに攻勢をかける（押し返されることも多い）
+        const probe = myP < need && myP >= need * 0.5 && (Game.isMajor(p.owner) || p.owner === null) && Math.random() < 0.3 + F.agg * 0.3;
+        if (D && Game.isMajor(p.owner)) { if (myP >= need) D.strong = (D.strong || 0) + 1; else if (probe) D.probe = (D.probe || 0) + 1; else D.weak = (D.weak || 0) + 1; }
+        if (myP < need && !probe) continue;
         let sc = (p.prev === fid ? 80 : 0) + p.pop * 1.2 + (p.cap ? 40 : 0) - def * 0.3 + (p.owner === null ? 15 : 0) + (p.owner === 'E' ? 25 : 0) + (p.type === 'rift' ? 200 : 0);
         if (Game.isMajor(p.owner) && p.owner === G.player) sc += 5;
         if (sc > bs) { bs = sc; best = p; }
@@ -221,14 +233,33 @@ const AI = (() => {
       // 自分の星を空けすぎない
       const home = G.planets[fl.at];
       if (best && home.owner === fid && threatened(home.id, fid) && my.filter(x => x.at === home.id).length <= 1 && !home.cap && Game.planetDefense(home) - myP < 40) { if (Math.random() < 0.6) best = null; }
-      if (best && Math.random() < 0.55 + F.agg * 0.4) {
+      if (best && Math.random() < 0.75 + F.agg * 0.25) {
+        if (D) D.attack = (D.attack || 0) + 1;
         fl.dest = best.id; busy.add(fl);
         // 一緒にいる艦隊も続く（守りに一つ残す）
         const keepOne = home.owner === fid && threatened(home.id, fid);
         mates.slice(keepOne ? 1 : 0).forEach(x => { x.dest = best.id; busy.add(x); });
         continue;
       }
-      // 3. 前線へ寄せる
+      // 3. 戦争中なのに隣に敵の星がなければ、敵の国へ向かう道を切り開く（間の独立惑星を取り、前へ進む）
+      if (!best && !pol.onlyE && !pol.noMajors) {
+        const foes = G.facs.filter(x => x.alive && x.id !== fid && Game.rel(fid, x.id).s === 'war' && Game.warGain(fid, x.id) < Game.warGoal(fid)).map(x => x.id);
+        if (foes.length && Math.random() < 0.5 + F.agg * 0.4) {
+          const tgt = G.planets.filter(p => foes.includes(p.owner)).sort((a, b) => Game.hops(fl.at, a.id) - Game.hops(fl.at, b.id))[0];
+          if (tgt) {
+            const path = Game.path(fl.at, tgt.id, () => true);
+            if (path && path.length > 1) {
+              const nx = G.planets[path[1]];
+              if (Game.friendly(fid, nx.owner)) { fl.dest = nx.id; busy.add(fl); continue; }
+              if (Game.canAttack(fid, nx.owner) && !(Game.isMajor(nx.owner) && Game.warGain(fid, nx.owner) >= Game.warGoal(fid))) {
+                const d2 = Game.planetDefense(nx) + G.fleets.filter(x => x.at === nx.id && Game.friendly(x.fac, nx.owner)).reduce((a, x) => a + Game.fleetPower(x), 0);
+                if (myP >= d2 * 0.95) { fl.dest = nx.id; busy.add(fl); mates.slice(1).forEach(x => { x.dest = nx.id; busy.add(x); }); continue; }
+              }
+            }
+          }
+        }
+      }
+      // 4. 前線へ寄せる
       if (!best && Math.random() < 0.5) {
         const front = G.planets.filter(p => p.owner === fid && Game.ADJ[p.id].some(n => { const o = G.planets[n].owner; return !Game.friendly(fid, o) && Game.canAttack(fid, o); }));
         if (front.length && !front.some(p => p.id === fl.at)) {
@@ -240,6 +271,6 @@ const AI = (() => {
     }
   }
 
-  const api = { turn, recruitChance, hook: null };
+  const api = { turn, recruitChance, hook: null, dbg: null };
   return api;
 })();

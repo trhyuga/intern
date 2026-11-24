@@ -106,7 +106,7 @@ const People = (() => {
       const S = OFF[k];
       if (!S._base) S._base = Object.fromEntries(STATS.map(s => [s, S[s]]));
       const b = (G && G.officers[k] && G.officers[k].bonus) || {};
-      STATS.forEach(s => { S[s] = clamp(S._base[s] + (b[s] || 0), 1, 120); });
+      STATS.forEach(s => { S[s] = clamp(Math.round(S._base[s] + (b[s] || 0)), 1, 120); });
     }
   }
   function addStat(k, s, n) {
@@ -278,6 +278,7 @@ const People = (() => {
       if (WARM.has(t.kind)) { FX.loyal(t.a, 0.3); FX.loyal(t.b, 0.3); }
       if (t.kind === 'grudge' && s.stage < 3) { FX.loyal(t.a, -0.4); FX.loyal(t.b, -0.4); }
     }
+    for (const p of G.planets) if (p.gov && Game.isMajor(p.owner)) addStat(p.gov, p.focus === 'res' ? 'sci' : 'pol', p.focus === 'res' ? 0.03 : 0.02);
     nations();
   }
   // 国家間の出来事：関係・星・首都の変化を見て積む

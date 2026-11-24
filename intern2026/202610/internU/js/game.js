@@ -163,7 +163,7 @@ const Game = (() => {
   function designCost(d, fid) {
     let c = designStats(d, fid).cost;
     const f = facOf(fid);
-    if (f && f.ruling === 'war') c *= 0.85;
+    if (f && f.ruling === 'war') c *= 0.8;
     return Math.round(c);
   }
   function designUnlocked(d, fid) {
@@ -197,7 +197,7 @@ const Game = (() => {
   function satPower(pl) {
     if (!pl.def) return 0;
     const f = facOf(pl.owner); const t = f ? f.tech.def : 1;
-    return pl.def * (18 + t * 3) * (pl.owner === 'E' && pl.type === 'rift' ? 4 : 1) * (pl.cap ? 1.8 : 1) * (isMajor(pl.owner) && G.facs[pl.owner].nPl !== undefined && G.facs[pl.owner].nPl <= 3 ? 1.5 : 1);   // 追い詰められた国の最後の抵抗
+    return pl.def * (18 + t * 3) * (pl.owner === 'E' && pl.type === 'rift' ? 4 : 1) * (pl.cap ? 2.2 : 1) * (isMajor(pl.owner) && G.facs[pl.owner].nPl !== undefined && G.facs[pl.owner].nPl <= 3 ? 2 : 1);   // 追い詰められた国の最後の抵抗
   }
   function planetDefense(pl) {
     let p = satPower(pl) + dockPower(pl);
@@ -348,7 +348,7 @@ const Game = (() => {
     const f = G.facs[p.owner], F = FACTIONS[p.owner];
     let v = p.pop * (0.32 + p.ind * 0.075) * PTYPES[p.type].ind;
     v *= (0.55 + p.stab / 220);
-    v *= 1 + f.tech.eco * 0.07 + (F.bonus.income || 0) + (f.ruling === 'trade' ? 0.15 : 0);
+    v *= 1 + f.tech.eco * 0.07 + (F.bonus.income || 0) + (f.ruling === 'trade' ? 0.12 : 0);
     if (G.minors.m0.ally === p.owner) v *= 1.1;
     let tr = 0; for (let b = 0; b < 6; b++) if (b !== p.owner && G.facs[b].alive && ['trade', 'ally'].includes(rel(p.owner, b).s)) tr++;
     v *= 1 + Math.min(0.25, tr * 0.05);
@@ -447,7 +447,7 @@ const Game = (() => {
         if (fid === G.player) log(`技術 ${t.name}を修めた。${t.gain ? '（' + t.gain + '）' : un ? '（' + un + '）' : ''}`, 'good', fid);
       }
       f.stats.techs++;
-      shiftParty(fid, 'tech', 2);
+      shiftParty(fid, 'tech', 1);
     }
     return done;
   }
@@ -467,7 +467,20 @@ const Game = (() => {
   const canBuildHull = (p, hull) => p.yard >= (hull === 'dn' ? 3 : HULLS[hull].size >= 15 ? 2 : 1);
 
   // ---------- ターンの経済処理（全勢力） ----------
+  function resistance() {
+    for (const p of G.planets) {
+      if (!isMajor(p.owner) || !isMajor(p.prev) || p.prev === p.owner || !p.captT || G.turn - p.captT > 30 || p.stab > 38 || p.cap) continue;
+      const pf = G.facs[p.prev]; if (!pf.alive) continue;
+      if (!ADJ[p.id].some(n => G.planets[n].owner === p.prev)) continue;
+      if (G.fleets.some(x => x.at === p.id && x.fac === p.owner && x.ships.length)) continue;   // 艦隊が駐留していれば抑えられる
+      if (Math.random() > 0.05) continue;
+      const was = p.owner;
+      p.owner = p.prev; p.prev = was; p.captT = G.turn; p.stab = 45; p.gov = null; p.build = []; p.dock = []; p.prog = 0;
+      log(`${p.name}の民が蜂起し、${FACTIONS[was].name}の支配を拒んで${FACTIONS[p.owner].name}へ戻った。`, was === G.player ? 'bad' : p.owner === G.player ? 'good' : 'info', p.owner);
+    }
+  }
   function economyTurn() {
+    resistance();
     for (const f of G.facs) {
       if (!f.alive) continue;
       const e = economy(f.id);
@@ -490,7 +503,7 @@ const Game = (() => {
       else p.pop = Math.min(p.maxPop, p.pop + (p.maxPop - p.pop) * grow * (p.stab / 100));
       // 民心
       if (f) {
-        let target = 62 + (FACTIONS[p.owner].bonus.stab || 0) + (f.ruling === 'peace' ? 5 : 0) + (p.gov ? (OFF[p.gov].pol - 50) / 5 : -8) + (p.focus === 'pop' ? 12 : 0);
+        let target = 62 + (FACTIONS[p.owner].bonus.stab || 0) + (f.ruling === 'peace' ? 3 : 0) + (p.gov ? (OFF[p.gov].pol - 50) / 5 : -8) + (p.focus === 'pop' ? 12 : 0);
         if (f.demandFail) target -= 10;
         if (f.warWeary > 6) target -= Math.min(15, f.warWeary - 6);
         if (f._nT !== G.turn) { f._nT = G.turn; f.nPl = G.planets.filter(x => x.owner === f.id).length; }
@@ -649,10 +662,19 @@ const Game = (() => {
       if (isMajor(newOwner) && R.chance(0.45)) { captureOfficer(k, newOwner); }
       else if (isMajor(old)) { const home = G.planets.filter(x => x.owner === old && x.id !== pid); if (!home.length) captureOfficer(k, newOwner); }
     }
+    if (isMajor(old) && isMajor(newOwner)) { const r = rel(newOwner, old); r.gainA = (r.gainA || 0) + (newOwner < old ? 1 : 0); r.gainB = (r.gainB || 0) + (newOwner < old ? 0 : 1); p.captT = G.turn; }
     p.prev = old; p.owner = newOwner; p.gov = null; p.build = []; p.dock = []; p.prog = 0;
     p.stab = newOwner === 'E' ? 0 : 32;
     p.def = Math.max(0, Math.min(p.def, 1));
-    if (isMajor(newOwner)) { G.facs[newOwner].stats.captured++; shiftParty(newOwner, 'war', 3); }
+    if (isMajor(newOwner)) {
+      G.facs[newOwner].stats.captured++; shiftParty(newOwner, 'war', 3);
+      if (isMajor(old) || old === null || old === 'E') {
+        const nf = G.facs[newOwner], k = (nf.ruling === 'war' ? 1.5 : 1) * (old === null ? 0.5 : 1);
+        const fu = Math.round((40 + p.pop * 2) * k), rp = Math.round((15 + p.pop * 0.8) * k);
+        nf.funds += fu; nf.rp += rp;
+        if (newOwner === G.player) log(`${p.name}を手に入れ、戦利品として資金 ${fu}・研究 ${rp} を得た。`, 'good', newOwner);
+      }
+    }
     // 小勢力の本拠を落とした
     const M = MINORS.find(m => m.planet === pid);
     if (M && old === M.id) {
@@ -699,6 +721,10 @@ const Game = (() => {
   }
 
   // ---------- 勝ち負け ----------
+  // この戦で a が b から奪った星の数
+  function warGain(a, b) { const r = rel(a, b); return a < b ? (r.gainA || 0) : (r.gainB || 0); }
+  // 戦の目的：この戦で奪う星の数（主戦派の強い国ほど欲張る。2〜3）
+  function warGoal(a) { return isMajor(a) && Diplo.aggOf(a) > 0.8 ? 3 : 2; }
   function checkVictory() {
     const me = G.player;
     if (!G.facs[me].alive || !G.planets.some(p => p.owner === me)) return { type: 'defeat' };
@@ -813,7 +839,7 @@ const Game = (() => {
 
   return {
     isLeader, rankIdx, rankName, fleetCap, checkPromotions, marshalOf,
-    newGame, save, load, hasSave, clearSave, slotInfo, SLOTS, buildLanes, log, dateStr,
+    warGain, warGoal, newGame, save, load, hasSave, clearSave, slotInfo, SLOTS, buildLanes, log, dateStr,
     facOf, isMajor, ownerName, ownerShort, ownerCol, rel, relKey, off, canAttack, canEnter, friendly,
     get LANES() { return LANES; }, get ADJ() { return ADJ; }, path, hops, dist,
     designStats, designCost, designUnlocked, newDesign, newShip, shipMaxHp, shipPower, fleetPower, dockPower, satPower, planetDefense, rankOf,

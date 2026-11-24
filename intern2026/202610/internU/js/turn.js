@@ -250,7 +250,7 @@ const Turn = (() => {
   function autoplay(n) {
     const out = [];
     for (let i = 0; i < n && !G.over; i++) {
-      for (const f of G.facs) if (f.alive) AI.turn(f.id);
+      for (const f of G.facs) if (f.alive) { if (f.id === G.player && Staff.active()) Staff.turnPlayer(); else AI.turn(f.id); }   // 参謀に任せていれば、自国は参謀が動かす
       Eclipse.turn();
       moveAll();
       for (const p of G.planets) {
@@ -270,6 +270,8 @@ const Turn = (() => {
       G.fleets.filter(f => !f.ships.length).forEach(f => Game.removeFleet(f));
       Game.economyTurn();
       for (const f of G.facs) if (f.alive) { Diplo.aiTurn(f.id); Game.demandTurn(f.id); }
+      // 申し入れへの返事（参謀に任せていれば参謀が、そうでなければ停戦は受ける）
+      while (G.pending.length) { const pd = G.pending.shift(); if (!G.facs[pd.from].alive || !Diplo.KINDS[pd.kind].need.includes(Game.rel(pd.from, G.player).s)) continue; Diplo.answer(pd, Staff.active() ? Staff.answer(pd) : pd.kind === 'peace' || Math.random() < 0.5); }
       G.turn++;
       const v = Game.checkVictory();
       if (v) { G.over = v.type; out.push(v.type); }

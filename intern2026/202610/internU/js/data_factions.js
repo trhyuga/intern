@@ -61,10 +61,10 @@ const AFFINITY = [
 ];
 
 const PARTIES = {
-  war:   { name: '主戦派', col: '#e0483c', bonus: '造艦の費用 −15%・艦の火力 +5%' },
-  trade: { name: '通商派', col: '#e8c050', bonus: '収入 +15%' },
+  war:   { name: '主戦派', col: '#e0483c', bonus: '造艦の費用 −20%・艦の火力 +10%・戦いの武功と戦利品 1.5倍' },
   tech:  { name: '技術派', col: '#40c8e8', bonus: '研究 +20%' },
-  peace: { name: '融和派', col: '#8ad070', bonus: '外交が通りやすい +15%・民心 +5' },
+  trade: { name: '通商派', col: '#e8c050', bonus: '収入 +12%' },
+  peace: { name: '融和派', col: '#8ad070', bonus: '外交が通りやすい +10%・民心 +3' },
 };
 
 const REL_NAMES = { war: '戦争', neutral: '中立', nap: '不可侵', trade: '通商', ally: '同盟' };

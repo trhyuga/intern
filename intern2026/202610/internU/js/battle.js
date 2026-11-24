@@ -225,7 +225,7 @@ const Battle = (() => {
     if (typeof People !== 'undefined' && sd.cmd) m.dmg *= People.avengeMul(sd.cmd, S.side[sd.key === 'A' ? 'D' : 'A'].fac);   // 仇討ち                          // 背後を取られた
     // 派閥・禁忌
     const f2 = Game.facOf(sd.fac);
-    if (f2 && f2.ruling === 'war') m.dmg *= 1.05;
+    if (f2 && f2.ruling === 'war') m.dmg *= 1.10;
     // 参謀の方針
     if (sd.fac === G.player) {
       const foe = S.side[sd.key === 'A' ? 'D' : 'A'].fac;
@@ -860,8 +860,10 @@ const Battle = (() => {
           const k = fl[slot]; if (!k) continue;
           const o = G.officers[k];
           o.battles++;
-          if (S.over === sk) { o.wins++; Game.addMerit(k, 5 + S.side[sk].sunk * 0.5 + (S.side[sk].p0 < S.side[other].p0 * 0.8 ? 6 : 0)); }
-          else Game.addMerit(k, 1.5);
+          const wf = Game.isMajor(S.side[sk].fac) && G.facs[S.side[sk].fac].ruling === 'war' ? 1.5 : 1;
+          if (S.over === sk) { o.wins++; Game.addMerit(k, (5 + S.side[sk].sunk * 0.5 + (S.side[sk].p0 < S.side[other].p0 * 0.8 ? 6 : 0)) * wf); }
+          else Game.addMerit(k, 1.5 * wf);
+          if (typeof People !== 'undefined') { const w = S.over === sk; People.addStat(k, 'tac', w ? 0.5 : 0.2); People.addStat(k, 'ldr', w ? 0.35 : 0.15); }
           // 旗艦が沈んだ司令官は、艦隊が残っていても命を落とすことがある
           if (slot === 'cmd' && fl.ships.length > 0 && S.side[sk].flagSunk && k === S.side[sk].cmd) {
             const r = Math.random();
