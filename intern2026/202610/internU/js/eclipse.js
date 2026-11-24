@@ -61,6 +61,7 @@ const Eclipse = (() => {
       if (e.omen < 1 && G.turn >= e.eta - 30) { e.omen = 1; e.phase = 'omen'; G.flags.omen1 = G.turn; Game.log('遠い星がひとつ、音もなく消えた。天文台は観測の誤りだと発表した。', 'warn'); }
       if (e.omen < 2 && G.turn >= e.eta - 12) { e.omen = 2; G.flags.omen2 = G.turn; Game.log('辺境の観測所が「星を覆う影」を報告したのち、通信を絶った。', 'warn'); }
       if (e.omen < 3 && G.turn >= e.eta - 4) { e.omen = 3; G.flags.omen3 = G.turn; Game.log('夜空の一角から、星がまとめて消えた。人々は空を見上げ、口をつぐんだ。', 'warn'); }
+      triggers();
       if (G.turn >= e.eta) { arrive(); out.push('first'); }
       return out;
     }
@@ -309,13 +310,42 @@ const Eclipse = (() => {
     return `蝕・${PHASE_NAME[e.phase]}${e.cycle > 1 ? e.cycle : ''}`;
   }
   // 誰かが銀河を一つにしかけた：蝕が早まる（統一も和平も、蝕を断たないかぎり終わらない）
-  function hasten() {
-    const e = E(); if (e.arrived || e.hastened) return;
-    e.hastened = true; e.eta = Math.min(e.eta, G.turn + 14);
-    Game.log('銀河が一つにまとまろうとしたその時、観測所という観測所が、同じ方角に「影」を捉えた。', 'warn');
+  function hasten() { early('unite', 14, '銀河が一つにまとまろうとしたその時、観測所という観測所が、同じ方角に「影」を捉えた。'); }
+  // 先触れを早める：理由ごとに一度だけ。早まるだけで、遅くはならない（正体には触れない文で知らせる）
+  function early(why, months, text) {
+    const e = E(); e.early = e.early || {};
+    if (e.arrived || e.early[why]) return false;
+    e.early[why] = G.turn;
+    if (why === 'unite') e.hastened = true;
+    const before = e.eta;
+    // 出来事ひとつで、先触れが months か月早まる（ただし、どんなに早まっても6年目より前・知らせから1年より前には来ない）
+    e.eta = why === 'unite' ? Math.min(e.eta, G.turn + months) : Math.max(72, G.turn + 12, e.eta - months);
+    G.flags['early_' + why] = G.turn;
+    Game.log(text, 'warn');
+    return e.eta < before;
+  }
+  // 早める出来事
+  //  ・大国が二つ滅んだ（銀河に血が流れすぎた）
+  //  ・どこかの国の技術が高みに達した（4系統の合計が24段、またはどれかが8段）
+  //  ・古代遺跡の研究が深まった（研究8段の遺跡の星が2つ・54か月目以降）
+  //  どんなに早まっても、先触れは72か月目（6年目）より前には来ない
+  //  ・禁忌の技術が銀河で4つ修められた（一つごとの前倒しとは別に）
+  //  ひとつにつき12か月早まる（銀河の統一だけは、14か月以内に来る）
+  function triggers() {
+    const e = E();
+    if (G.turn < 24) return;
+    const dead = G.facs.filter(f => !f.alive).length;
+    if (dead >= 2) early('fall', 12, '二つ目の国が滅んだ夜、辺境の観測所が、銀河の外から届く奇妙な重力の揺らぎを捉えた。まるで、流れた血の匂いを嗅ぎつけたかのように。');
+    const hi = G.facs.find(f => f.alive && (['wep', 'eng', 'def', 'eco'].reduce((a, k) => a + f.tech[k], 0) >= 24 || ['wep', 'eng', 'def', 'eco'].some(k => f.tech[k] >= 8)));
+    if (hi) early('tech', 12, `${FACTIONS[hi.id].name}の新しい観測網が、これまで誰にも見えなかった「銀河の外の何か」を捉えた。高みに達した技術は、見てはならないものまで見てしまったのかもしれない。`);
+    const ruins = G.planets.filter(p => p.type === 'ruin' && Game.isMajor(p.owner) && p.res >= 8), ruin = G.turn >= 54 && ruins.length >= 2 && ruins[0];
+    if (ruin) early('ruin', 12, `${ruin.name}の古代遺跡を調べていた学者たちが、演算塔の奥で「警告」とおぼしき記録を見つけた。そして、塔はその夜から止まらなくなった。`);
+    const forb = G.facs.reduce((a, f) => a + (f.forb ? f.forb.length : 0), 0);
+    if (forb >= 4) early('forb', 12, '禁じられた技術がまた一つ目を覚ました。観測所の計器が、一斉に同じ方角を指して震えている。');
   }
   const mainRift = () => { const r = openRifts()[0] || E().rifts[0]; return r ? r.id : 0; };
-  const forbHit = () => { const e = E(); if (!e.arrived) e.eta = Math.max(Math.max(104, G.turn + 14), e.eta - 4); else if (e.phase === 'receded') e.returnAt = Math.max(G.turn + 12, e.returnAt - 4); };
+  // 禁忌：先触れを早めるだけ（遅らせない）
+  const forbHit = () => { const e = E(); if (!e.arrived) { if (e.eta - G.turn > 14) e.eta = Math.max(Math.min(e.eta, 104), G.turn + 14, e.eta - 4); } else if (e.phase === 'receded') e.returnAt = Math.max(G.turn + 12, e.returnAt - 4); };
 
-  return { turn, arrive, hasten, spawn, onRiftTaken, sealDone, lanes, canEnterAbyss, keysOf, canSeal, active, openRifts, status, mainRift, forbHit, norm, SEAL, KEYS_NEEDED, PHASE_NAME, get RIFT_ID() { return mainRift(); } };
+  return { turn, arrive, hasten, early, spawn, onRiftTaken, sealDone, lanes, canEnterAbyss, keysOf, canSeal, active, openRifts, status, mainRift, forbHit, norm, SEAL, KEYS_NEEDED, PHASE_NAME, get RIFT_ID() { return mainRift(); } };
 })();
