@@ -470,3 +470,9 @@ em.gl.b1 { background: #4a3a14; color: #ffe0a0; } em.gl.b2 { background: #5a2018
 h3.seal { color: #ff7aa0; }
 .tb.seal { --c: #ff3070; }
 #tbEcl { cursor: pointer; }
+
+/* 作戦室をたたむ：見出しと最新の1件だけ残し、星図を広く見せる */
+.warroom.mini { height: auto; max-height: 34%; }
+.warroom.mini .wr-list { max-height: 58px; overflow-y: auto; }
+.warroom.mini .wr-e:not(:last-child) { display: none; }
+.wr-head .ab-b [data-ab=mini] { font-size: 13px; padding: 4px 9px; }

@@ -150,8 +150,8 @@ const WarRoom = (() => {
       list.appendChild(el);
       while (list.children.length > 160) list.removeChild(list.firstChild);
       list.scrollTop = list.scrollHeight;
-      if (e.k === 'raid' && G.planets[e.from] && G.planets[e.to]) { StarMap.raidFocus = { from: e.from, to: e.to }; StarMap.focusPair(e.from, e.to, 0.25); StarMap.selPlanet = e.to; }
-      else if (e.pid !== null && e.pid !== undefined && G.planets[e.pid]) { StarMap.raidFocus = null; StarMap.focus(e.pid, null, 0.25); StarMap.selPlanet = e.pid; }
+      if (e.k === 'raid' && G.planets[e.from] && G.planets[e.to]) { StarMap.raidFocus = { from: e.from, to: e.to }; StarMap.focusPair(e.from, e.to); StarMap.selPlanet = e.to; }
+      else if (e.pid !== null && e.pid !== undefined && G.planets[e.pid]) { StarMap.raidFocus = null; StarMap.focus(e.pid); StarMap.selPlanet = e.pid; }
       if (e.k === 'say' && !skipAll) Sound.se('type');
       if (e.k === 'result') Sound.se(e.ok ? 'good' : 'bad');
       if (e.k === 'raid') Sound.se(e.ok ? 'order' : 'alarm');

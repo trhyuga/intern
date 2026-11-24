@@ -29,11 +29,20 @@ const StarMap = (() => {
     clampCam();
   }
   const minZ = () => Math.min(vw / WW, vh / WH) * 0.95;
+  // 星図の上下に重なっているパネル（作戦室・選んだもののカード・会敵の帯・上の帯）の高さ
+  function insets() {
+    const h = sel => { const e = document.querySelector(sel); return e && e.offsetParent !== null && getComputedStyle(e).display !== 'none' ? e.offsetHeight : 0; };
+    const bottom = Math.max(h('#warroom.show'), h('#quick.show') ? h('#quick.show') + 16 : 0);
+    const top = Math.max(h('#raid.show') ? h('#raid.show') + 16 : 0, h('#autobar.show'));
+    return { top, bottom };
+  }
   function clampCam() {
     cam.z = clamp(cam.z, minZ(), 2.2);
-    const hw = vw / cam.z / 2, hh = vh / cam.z / 2;
+    const ins = insets();
+    const hw = vw / cam.z / 2, hh = vh / cam.z / 2, it = ins.top / cam.z, ib = ins.bottom / cam.z;
     cam.x = hw * 2 >= WW ? WW / 2 : clamp(cam.x, hw - 40, WW - hw + 40);
-    cam.y = hh * 2 >= WH ? WH / 2 : clamp(cam.y, hh - 40, WH - hh + 40);
+    // パネルに隠れる分だけ、上下へ余計に動かせる（いちばん下の星も、パネルの上に出せる）
+    cam.y = hh * 2 - it - ib >= WH ? WH / 2 + (ib - it) / 2 : clamp(cam.y, hh - 40 - it, WH - hh + 40 + ib);
   }
   const toScreen = (x, y) => [(x - cam.x) * cam.z + vw / 2, (y - cam.y) * cam.z + vh / 2];
   const toWorld = (sx, sy) => [(sx - vw / 2) / cam.z + cam.x, (sy - vh / 2) / cam.z + cam.y];
@@ -47,7 +56,9 @@ const StarMap = (() => {
   function focus(pid, z, yFrac) {
     const p = G.planets[pid]; if (!p) return;
     if (z) cam.z = z;
-    cam.x = p.x; cam.y = p.y + (yFrac ? (0.5 - yFrac) * vh / cam.z : 0); clampCam();
+    const ins = insets();
+    // 見えている範囲（パネルを除いた所）の真ん中に星を置く
+    cam.x = p.x; cam.y = p.y + (yFrac ? (0.5 - yFrac) * vh / cam.z : (ins.bottom - ins.top) / 2 / cam.z); clampCam();
   }
   // 2つの星がどちらも見えるように寄せる（侵攻の矢印を見せるとき）
   function focusPair(a, b, yFrac) {
@@ -55,7 +66,8 @@ const StarMap = (() => {
     const span = Math.max(Math.abs(A.x - B.x) + 160, (Math.abs(A.y - B.y) + 160) * (yFrac ? 2 : 1));
     cam.z = clamp(Math.min(vw / span, 1.1), minZ(), 1.1);
     const my = (A.y + B.y) / 2;
-    cam.x = (A.x + B.x) / 2; cam.y = my + (yFrac ? (0.5 - yFrac) * vh / cam.z : 0); clampCam();
+    const ins = insets();
+    cam.x = (A.x + B.x) / 2; cam.y = my + (yFrac ? (0.5 - yFrac) * vh / cam.z : (ins.bottom - ins.top) / 2 / cam.z); clampCam();
   }
   function down(e) {
     cv.setPointerCapture(e.pointerId);

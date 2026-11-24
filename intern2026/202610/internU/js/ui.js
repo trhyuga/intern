@@ -691,7 +691,7 @@ const UI = (() => {
     if (!r) return;
     const f = { from: r.from, to: r.to };
     StarMap.raidFocus = f;
-    StarMap.focusPair(r.from, r.to, Staff.active() ? 0.25 : null);
+    StarMap.focusPair(r.from, r.to, null);
     StarMap.selPlanet = r.to;
     setTimeout(() => { if (StarMap.raidFocus === f) StarMap.raidFocus = null; }, 7000);
   }
@@ -711,7 +711,7 @@ const UI = (() => {
         ? `わが${who || '艦隊'}（${n}隻）が<b>${from}</b>から<b>${p.name}</b>へ攻め込む`
         : `${facName}${who ? 'の' + who : ''}（${n}隻）が<b>${from || '近く'}</b>から<b>${p.name}</b>へ侵攻${o.def === G.player ? '' : `（${Game.ownerShort(o.def)}の星）`}`;
       const vs = o.free ? (attack ? '守りはいない' : '守りがいない！') : `戦力　攻 ${num(ap)} ／ 守 ${num(dp)}`;
-      if (r) showRaid(r); else StarMap.focus(p.id, null, Staff.active() ? 0.25 : null);
+      if (r) showRaid(r); else StarMap.focus(p.id, null, null);
       if (Staff.active() && r) WarRoom.raid(head, `${raidText(r)}　${facName}（${n}隻）`, kind === 'go', r.from, r.to);
       const el = $('#raid');
       el.className = `raid show ${kind}`;
@@ -902,12 +902,14 @@ const UI = (() => {
     if (!G || !Staff.active()) { wr.classList.remove('show'); refreshEnd(); return; }
     const s = G.staff, P0 = Staff.POLICIES[s.policy];
     const P = s.policy === 'balanced' && s.cur ? { icon: '⚖', name: `均衡→${Staff.POLICIES[s.cur].icon}${Staff.POLICIES[s.cur].name}` } : P0;
+    if (!was) { let m = false; try { m = localStorage.getItem('seisou_wr_mini') === '1'; } catch (x) { } wr.classList.toggle('mini', m); }
     wr.classList.add('show');
     const head = $('.wr-head', wr);
     head.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>作戦室｜参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}</b><small>${Game.dateStr()}・${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}・${esc(Staff.monthLine())}</small></div>
-      <div class="ab-b"><button data-ab="speed">${['ゆっくり', 'ふつう', '速い'][autoSpeed]}</button><button data-ab="skip">⏭</button><button data-ab="stop" class="stop">■</button></div>`;
+      <div class="ab-b"><button data-ab="mini" title="作戦室をたたむ／ひろげる">${wr.classList.contains('mini') ? '▴' : '▾'}</button><button data-ab="speed">${['ゆっくり', 'ふつう', '速い'][autoSpeed]}</button><button data-ab="skip">⏭</button><button data-ab="stop" class="stop">■</button></div>`;
     WarRoom.setSpeed(autoSpeed);
     head.querySelector('[data-ab=speed]').onclick = e => { e.stopPropagation(); autoSpeed = (autoSpeed + 1) % 3; drawAutobar(); };
+    head.querySelector('[data-ab=mini]').onclick = e => { e.stopPropagation(); Sound.se('click'); const m = !wr.classList.contains('mini'); wr.classList.toggle('mini', m); try { localStorage.setItem('seisou_wr_mini', m ? '1' : '0'); } catch (x) { } drawAutobar(); const l = $('.wr-list', wr); l.scrollTop = l.scrollHeight; };
     head.querySelector('[data-ab=skip]').onclick = e => { e.stopPropagation(); WarRoom.skip(); toast('今月の報告を一気に出します'); };
     head.querySelector('[data-ab=stop]').onclick = e => { e.stopPropagation(); stopAuto(); };
     head.querySelector('.ab-i').onclick = () => openStaff();

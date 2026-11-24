@@ -1041,11 +1041,16 @@ const Battle = (() => {
     if (!vis.length) return;
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     vis.forEach(u => { const m = unitR(u) + 50; x0 = Math.min(x0, u.x - m); y0 = Math.min(y0, u.y - m); x1 = Math.max(x1, u.x + m); y1 = Math.max(y1, u.y + m); });
-    // 上の帯・下の操作盤に隠れる分をあける
-    const top = 120, bot = 170, vh = Math.max(200, r.height - top - bot);
-    const want = clamp(Math.min(r.width / (x1 - x0), vh / (y1 - y0)), baseScale, baseScale * 2.2);
+    // 上の帯・下の操作盤に隠れる分をあける（実際の高さを測る）
+    const el = document.getElementById('battle');
+    const tb = el && el.querySelector('.b-top'), cb = el && el.querySelector('.b-ctrl');
+    const top = (tb ? tb.getBoundingClientRect().bottom - r.top : 60) + 8;
+    const bot = (cb ? r.bottom - cb.getBoundingClientRect().top : 160) + 6;
+    const vh = Math.max(160, r.height - top - bot);
+    const fit = Math.min(r.width / W, vh / H);   // 戦場ぜんぶが見える倍率（これより引かない）
+    const want = clamp(Math.min(r.width / (x1 - x0), vh / (y1 - y0)), fit, fit * 2.4);
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    if (!cam) cam = { s: baseScale, x: W / 2, y: H / 2 };
+    if (!cam) cam = { s: fit, x: W / 2, y: H / 2 };
     const k = 0.04;
     cam.s += (want - cam.s) * k; cam.x += (cx - cam.x) * k; cam.y += (cy - cam.y) * k;
     scale = cam.s;
