@@ -194,7 +194,8 @@ const AI = (() => {
       if (plan) {
         const { t, stage } = plan;   // 深淵へは、出せる艦隊を全て集める
         // 参謀が動かすプレイヤーの国は、ほぼ互角なら攻める（司令官と策で補う）
-        const need = (Game.planetDefense(t) + G.fleets.filter(x => x.at === t.id && x.fac === 'E').reduce((a, x) => a + Game.fleetPower(x), 0)) * (fid === G.player || plan.abyss ? 0.95 : 1.15);
+        // planetDefense は、そこに居座る群れの力も含む（二重に数えない）
+        const need = Game.planetDefense(t) * (fid === G.player || plan.abyss ? 0.95 : 1.15);
         const ready = my.filter(x => !busy.has(x) && x.at === stage.id && x.ships.length >= 3);
         const readyP = ready.reduce((a, x) => a + Game.fleetPower(x), 0);
         if (readyP >= need) { ready.forEach(x => { x.dest = t.id; busy.add(x); }); }
