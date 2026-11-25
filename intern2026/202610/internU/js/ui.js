@@ -664,6 +664,7 @@ const UI = (() => {
       const finish = () => {
         clearInterval(typing);
         if (choices && choices.length) {
+          el.querySelectorAll('canvas.talkfx').forEach(cv => cv.remove());   // 動く背景は TalkFX が付け直す（写しを残さない）
           el.innerHTML += `<div class="t-choices">${choices.map((c, k) => `<button class="btn" data-c="${k}">${c.t}</button>`).join('')}</div>`;
           $$('[data-c]', el).forEach(b => b.onclick = e => { e.stopPropagation(); Sound.se('click'); el.className = 'talk'; el.innerHTML = ''; if (typeof TalkFX !== 'undefined') TalkFX.stop(); el.onclick = null; res(+b.dataset.c); });
           el.onclick = null;

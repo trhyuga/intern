@@ -440,7 +440,9 @@ const StarMap = (() => {
     for (const n of warned) { const P = G.planets[n]; c.fillStyle = `rgba(255,90,70,${0.7 + Math.sin(t * 6) * 0.3})`; c.fillText('！', P.x + planetR(P) + 9, P.y + 5); }
     c.restore();
   }
-  function loop() { draw(); raf = requestAnimationFrame(loop); }
+  // 会話・艦隊戦で星図が隠れている間は描かない（iPhone の負担を減らす）
+  const hidden = () => { const t = document.getElementById('talk'), b = document.getElementById('battle'); return (t && t.classList.contains('show')) || (b && b.classList.contains('active')); };
+  function loop() { if (!hidden()) draw(); raf = requestAnimationFrame(loop); }
   function start() { if (!raf) { resize(); raf = requestAnimationFrame(loop); } }
   function stop() { if (raf) cancelAnimationFrame(raf); raf = null; }
 

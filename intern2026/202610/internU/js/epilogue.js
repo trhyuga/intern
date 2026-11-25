@@ -51,7 +51,7 @@ const Epilogue = (() => {
       : `${n}は統一銀河の初代の主として玉座に就いた。厳しくも公正な統治は、やがて戦の傷を少しずつ塞いでいった。`;
     const s = { tac: o.tac + o.ldr * 0.5, pol: o.pol + o.dip * 0.5, sci: o.sci * 1.2 };
     const best = Object.keys(s).sort((a, b) => s[b] - s[a])[0];
-    if (o.age >= 64) return pz
+    if ((o.age || 0) + Math.floor(G.turn / 12) >= 64) return pz
       ? `${n}は職を辞し、故郷の星で若い者たちに昔語りをして余生を過ごした。`
       : `${n}は統一を見届けて退いた。最後の航海日誌は、穏やかな一文で終わっている。`;
     return fresh(FATE[best][type], n);
@@ -125,7 +125,7 @@ const Epilogue = (() => {
       if (st(k) === 'dead') {
         const o = G.officers[k];
         const where = o.diedWhere ? `${o.diedWhere}で散った` : '戦に散った';
-        const mourn = tiesOf(k).map(t => other(t, k)).find(x => G.officers[x] && G.officers[x].st === 'act' && G.officers[x].fac === fid);
+        const mourn = tiesOf(k).filter(t => !People.WARM || People.WARM.has(t.kind)).map(t => other(t, k)).find(x => G.officers[x] && G.officers[x].st === 'act' && G.officers[x].fac === fid);
         out.push(['narr', '', mourn
           ? `${where}${nm(k)}の墓前には、今も${nm(mourn)}が花を手向けに訪れる。「${pick(['見ていてくれ', '終わったよ', 'お前の分まで生きる'])}」と、小さく呟いて。`
           : `${where}${nm(k)}の名は、${pz ? '和平の碑' : '統一の碑'}の最初の列に刻まれた。`]);
