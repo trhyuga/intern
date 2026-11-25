@@ -738,7 +738,7 @@ const UI = (() => {
       let done = false;
       const fin = () => { if (done) return; done = true; el.onclick = null; el.classList.remove('show'); res(); };
       el.onclick = fin;
-      const ms = Staff.active() ? [3200, 2500, 1400][WarRoom.speed ?? 1] : 3000;
+      const ms = Staff.active() ? [3200, 2500, 1400, 600][WarRoom.speed ?? 1] : 3000;
       setTimeout(fin, ms);
     });
   }
@@ -757,7 +757,7 @@ const UI = (() => {
 
   // 観戦（参謀や司令が指揮し、簡単な指示だけ出す）
   async function watchBattle(setup, side) {
-    const res = await Battle.run(setup, side, { watch: true });
+    const res = await Battle.run(setup, side, { watch: true, fast: Staff.active() && autoSpeed === 3 });   // 超速なら、観戦も速く
     show('main');
     Sound.bgm(Eclipse.active() ? 'crisis' : 'strategy');
     return res;
@@ -884,7 +884,8 @@ const UI = (() => {
   }
   // 自動で進む帯
   let autoSpeed = 1, autoTimer = null;
-  const AUTO_DELAY = [900, 450, 150];
+  try { const v = +localStorage.getItem('seisou_autospeed'); if (v >= 0 && v <= 3) autoSpeed = v; } catch (x) { }
+  const AUTO_DELAY = [900, 450, 150, 30];   // ゆっくり・ふつう・速い・超速
   function uiIdle() {
     return current === 'main' && !$('#sheet').classList.contains('show') && !$('#modal').classList.contains('show') && !$('#talk').classList.contains('show') && !Turn.running;
   }
@@ -924,9 +925,9 @@ const UI = (() => {
     wr.classList.add('show');
     const head = $('.wr-head', wr);
     head.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>作戦室｜参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}</b><small>${Game.dateStr()}・${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}・${esc(Staff.monthLine())}</small></div>
-      <div class="ab-b"><button data-ab="mini" title="作戦室をたたむ／ひろげる">${wr.classList.contains('mini') ? '▴' : '▾'}</button><button data-ab="speed">${['ゆっくり', 'ふつう', '速い'][autoSpeed]}</button><button data-ab="skip">⏭</button><button data-ab="stop" class="stop">■</button></div>`;
+      <div class="ab-b"><button data-ab="mini" title="作戦室をたたむ／ひろげる">${wr.classList.contains('mini') ? '▴' : '▾'}</button><button data-ab="speed">${['ゆっくり', 'ふつう', '速い', '超速'][autoSpeed]}</button><button data-ab="skip">⏭</button><button data-ab="stop" class="stop">■</button></div>`;
     WarRoom.setSpeed(autoSpeed);
-    head.querySelector('[data-ab=speed]').onclick = e => { e.stopPropagation(); autoSpeed = (autoSpeed + 1) % 3; drawAutobar(); };
+    head.querySelector('[data-ab=speed]').onclick = e => { e.stopPropagation(); autoSpeed = (autoSpeed + 1) % 4; try { localStorage.setItem('seisou_autospeed', autoSpeed); } catch (x) { } drawAutobar(); };
     head.querySelector('[data-ab=mini]').onclick = e => { e.stopPropagation(); Sound.se('click'); const m = !wr.classList.contains('mini'); wr.classList.toggle('mini', m); try { localStorage.setItem('seisou_wr_mini', m ? '1' : '0'); } catch (x) { } drawAutobar(); const l = $('.wr-list', wr); l.scrollTop = l.scrollHeight; };
     head.querySelector('[data-ab=skip]').onclick = e => { e.stopPropagation(); WarRoom.skip(); toast('今月の報告を一気に出します'); };
     head.querySelector('[data-ab=stop]').onclick = e => { e.stopPropagation(); stopAuto(); };

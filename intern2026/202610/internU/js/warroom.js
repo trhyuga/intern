@@ -111,7 +111,7 @@ const WarRoom = (() => {
   };
 
   // ---------- 見せる ----------
-  const SPEED = [{ base: 1700, per: 55 }, { base: 950, per: 32 }, { base: 380, per: 10 }];
+  const SPEED = [{ base: 1700, per: 55 }, { base: 950, per: 32 }, { base: 380, per: 10 }, { base: 70, per: 0 }];   // 最後が超速
   let speedIdx = 1, playing = false, skipAll = false;
   function setSpeed(i) { speedIdx = i; }
   function render(e, typing) {

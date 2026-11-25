@@ -929,7 +929,7 @@ const Battle = (() => {
   // ---------- 表示つきで戦う ----------
   let raf = null, last = 0, paused = false, hold = 0, speed = 1, resolveFn = null, mySide = 'A', cv = null, ctx = null, bg = null, sel = [], dpr = 1, scale = 1, ox = 0, oy = 0, msgs = [], cut = null, endShown = false;
   // opt.watch：観戦（参謀＝AI が指揮し、プレイヤーは簡単な指示だけ出す）
-  let watch = false, autoClose = null;
+  let watch = false, autoClose = null, fast = false;
   function run(setup, playerSide, opt = {}) {
     return new Promise(res => {
       resolveFn = res;
@@ -941,7 +941,7 @@ const Battle = (() => {
       if (!watch) S.units.forEach(u => { if (u.side === playerSide && u.reserve) { u.wait = false; u.reserve = false; u.y = playerSide === 'A' ? H - 110 : 230; } });
       S.side[playerSide === 'A' ? 'D' : 'A'].ctrl = 'ai';
       S.side[playerSide].force = null; S.side[playerSide].focus = null;
-      view = true; paused = !watch; hold = 0; speed = watch ? 2 : 1; sel = []; msgs = []; cut = null; endShown = false;
+      view = true; paused = !watch; hold = 0; speed = watch ? (opt.fast ? 4 : 2) : 1; fast = !!opt.fast; sel = []; msgs = []; cut = null; endShown = false;
       openView();
       intro();
     });
@@ -1174,7 +1174,7 @@ const Battle = (() => {
     let closed = false;
     const close = () => { if (closed) return; closed = true; if (watch) { hold = Math.max(0, hold - 1); last = performance.now(); } el.removeEventListener('click', close); if (!el.querySelector('.vs')) return; el.classList.remove('show'); el.innerHTML = ''; };
     el.addEventListener('click', close);
-    setTimeout(close, 3200);
+    setTimeout(close, fast ? 1000 : 3200);
   }
   function cutin(sk, s) {
     const sd = S.side[sk];
@@ -1197,7 +1197,7 @@ const Battle = (() => {
     el.classList.add('show');
     Sound.se(title === '潰走' || title === '旗艦、轟沈' ? 'bigboom' : 'skill');
     hold++;
-    setTimeout(() => { hold = Math.max(0, hold - 1); if (!hold && !endShown) { el.classList.remove('show'); el.innerHTML = ''; } last = performance.now(); }, 1700);
+    setTimeout(() => { hold = Math.max(0, hold - 1); if (!hold && !endShown) { el.classList.remove('show'); el.innerHTML = ''; } last = performance.now(); }, fast ? 800 : 1700);
   }
   function loop(now) {
     if (!S) return;
@@ -1228,7 +1228,7 @@ const Battle = (() => {
     el.classList.add('show');
     Sound.se(won ? 'fanfare' : 'lose');
     clearTimeout(autoClose);
-    if (watch) autoClose = setTimeout(() => { const b = el.querySelector('.b-result button'); if (b) b.click(); }, 8000);
+    if (watch) autoClose = setTimeout(() => { const b = el.querySelector('.b-result button'); if (b) b.click(); }, fast ? 2200 : 8000);
     el.querySelector('button').onclick = () => {
       clearTimeout(autoClose);
       cancelAnimationFrame(raf); raf = null;
