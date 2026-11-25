@@ -586,6 +586,7 @@ const UI = (() => {
       <button class="btn wide" data-m="save">セーブする</button>
       <button class="btn wide" data-m="howto">遊び方</button>
       <button class="btn wide" data-m="mute">音：${Sound.muted ? 'オフ' : 'オン'}</button>
+      <button class="btn wide" data-m="face">顔の絵：${Portrait.style === 'anime' ? 'アニメ調' : 'これまでの絵'}</button>
       ${Wake.supported() ? `<button class="btn wide" data-m="wake">画面を消さない：${Wake.on ? 'オン' : 'オフ'}</button>` : ''}
       <button class="btn wide danger" data-m="title">タイトルへ戻る</button></div>
       <p class="note">ひと月ごとに「自動」の枠へセーブされます。ほかに、好きなときに3つの枠へセーブできます。</p>`;
@@ -595,6 +596,7 @@ const UI = (() => {
       if (m === 'save') saveToSlot();
       if (m === 'howto') howto();
       if (m === 'mute') { Sound.toggleMute(); drawSheet(); }
+      if (m === 'face') { Portrait.setStyle(Portrait.style === 'anime' ? 'classic' : 'anime'); refresh(); drawSheet(); toast('顔の絵を切り替えました（会話などで描き直されます）'); }
       if (m === 'wake') { Wake.set(!Wake.on); toast(Wake.on ? '遊んでいる間、画面を消さないようにしました' : '画面の自動スリープを元に戻しました'); drawSheet(); }
       if (m === 'title') { Game.save(); closeSheet(); toTitle(); }
     });

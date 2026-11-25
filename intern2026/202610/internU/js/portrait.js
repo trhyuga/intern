@@ -80,6 +80,11 @@ const Portrait = (() => {
     if (typeof f.fac === 'number') { c.save(); c.globalAlpha = 0.09; Art.emblem(c, FACTIONS[f.fac].emblem, PW * 0.78, 46, 40, '#ffffff', '#ffffff'); c.restore(); }
     const g0 = c.createRadialGradient(PW / 2, 84, 10, PW / 2, 84, 130); g0.addColorStop(0, Art.hexA(f.col2, 0.22)); g0.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g0; c.fillRect(0, 0, PW, PH);
     const cx = PW / 2, cy = 92;
+    if (STYLE === 'anime') animeFigure(c, f, cx, cy, expr); else classicFigure(c, f, cx, cy, expr);
+    finishPortrait(c, f, cx, cy, expr);
+    return cv;
+  }
+  function classicFigure(c, f, cx, cy, expr) {
     backHair(c, f, cx, cy);
     body(c, f, cx);
     // 首と、あごの落とす影
@@ -124,28 +129,353 @@ const Portrait = (() => {
     frontHair(c, f, cx, cy, fw);
     accessories(c, f, cx, cy, fw, expr);
     crown(c, f, cx, cy);
+  }
+  function finishPortrait(c, f, cx, cy, expr) {
+    const fw = 38 * f.jaw, fh = 52 * f.faceL;
     // 縁の光（右から国の色の光が当たる）
+    if (STYLE !== 'anime') {
     c.save(); c.globalCompositeOperation = 'lighter';
     c.strokeStyle = Art.hexA(f.col2, 0.35); c.lineWidth = 2.2;
     c.beginPath(); c.ellipse(cx, cy - 30, 50, 52, 0, -1.3, 0.35); c.stroke();
     c.strokeStyle = Art.hexA(f.col, 0.3); c.lineWidth = 1.6;
     c.beginPath(); c.moveTo(cx + fw - 1, cy - 20); c.bezierCurveTo(cx + fw + 1, cy + 4, cx + fw * 0.78, cy + fh * 0.5, cx + fw * 0.3, cy + fh * 0.84); c.stroke();
     c.restore();
+    }
     // 表情の効果
-    if (expr === 'angry') { c.strokeStyle = 'rgba(255,60,40,.6)'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx + 44, cy - 52); c.lineTo(cx + 54, cy - 46); c.moveTo(cx + 48, cy - 56); c.lineTo(cx + 52, cy - 44); c.stroke(); }
+    if (expr === 'angry' && STYLE !== 'anime') { c.strokeStyle = 'rgba(255,60,40,.6)'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx + 44, cy - 52); c.lineTo(cx + 54, cy - 46); c.moveTo(cx + 48, cy - 56); c.lineTo(cx + 52, cy - 44); c.stroke(); }
     if (expr === 'sad') { const sg = c.createLinearGradient(0, 0, 0, 80); sg.addColorStop(0, 'rgba(30,50,120,.3)'); sg.addColorStop(1, 'rgba(30,50,120,0)'); c.fillStyle = sg; c.fillRect(0, 0, PW, 80); }
-    if (expr === 'shock') { c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.5; for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(cx - 58 + i * 5, cy - 50 + i * 3); c.lineTo(cx - 50 + i * 5, cy - 40 + i * 3); c.stroke(); } }
+    if (expr === 'shock' && STYLE !== 'anime') { c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.5; for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(cx - 58 + i * 5, cy - 50 + i * 3); c.lineTo(cx - 50 + i * 5, cy - 40 + i * 3); c.stroke(); } }
     // 周辺を少し暗く
     const vg = c.createRadialGradient(PW / 2, PH * 0.45, PH * 0.35, PW / 2, PH * 0.5, PH * 0.75);
-    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.45)');
+    vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, STYLE === 'anime' ? 'rgba(0,0,0,.3)' : 'rgba(0,0,0,.45)');
     c.fillStyle = vg; c.fillRect(0, 0, PW, PH);
-    // 粒子（フィルムのざらつき）
-    c.save(); c.globalAlpha = 0.07; c.globalCompositeOperation = 'overlay'; c.fillStyle = c.createPattern(grain(), 'repeat'); c.fillRect(0, 0, PW, PH); c.restore();
+    // 粒子（フィルムのざらつき）。アニメ調は塗りをきれいに見せるため、かけない
+    c.save(); c.globalAlpha = STYLE === 'anime' ? 0 : 0.07; c.globalCompositeOperation = 'overlay'; c.fillStyle = c.createPattern(grain(), 'repeat'); c.fillRect(0, 0, PW, PH); c.restore();
     // 縁
     c.strokeStyle = Art.hexA(f.col2, 0.7); c.lineWidth = 2; c.strokeRect(1, 1, PW - 2, PH - 2);
     c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1; c.strokeRect(3.5, 3.5, PW - 7, PH - 7);
-    return cv;
   }
+  // ============================================================
+  //  アニメ調の顔（大きな瞳・小さな鼻と口・とがったあご・くっきりした影・太い房の前髪）
+  // ============================================================
+  let STYLE = 'anime';
+  try { const v = localStorage.getItem('seisou_face'); if (v === 'classic' || v === 'anime') STYLE = v; } catch (e) { }
+  const lineCol = f => Art.mix(f.skin, '#2a1014', 0.72);
+  function animeFigure(c, f, cx, cy, expr) {
+    backHair(c, f, cx, cy);
+    body(c, f, cx);
+    const fem = f.female;
+    const fw = (fem ? 37 : 39) * (0.94 + (f.jaw - 0.86) * 0.5), chinY = cy + (fem ? 45 : 50) * f.faceL;
+    const LC = lineCol(f);
+    // 首と、あごの落とす影（くっきり）
+    c.fillStyle = shade(f.skin, 0.93);
+    c.beginPath(); c.moveTo(cx - 10, cy + 26); c.lineTo(cx - 11, cy + 72); c.lineTo(cx + 11, cy + 72); c.lineTo(cx + 10, cy + 26); c.fill();
+    c.fillStyle = shade(f.skin, 0.74);
+    c.beginPath(); c.moveTo(cx - 11, cy + 30); c.quadraticCurveTo(cx, chinY + 14, cx + 11, cy + 30); c.lineTo(cx + 11, cy + 26); c.lineTo(cx - 11, cy + 26); c.fill();
+    c.strokeStyle = LC; c.lineWidth = 1; c.beginPath(); c.moveTo(cx - 10, cy + 34); c.lineTo(cx - 11, cy + 66); c.moveTo(cx + 10, cy + 34); c.lineTo(cx + 11, cy + 66); c.stroke();
+    // 顔の形：ふっくらした頬と、小さくとがったあご
+    const facePath = () => {
+      c.beginPath();
+      c.moveTo(cx - fw, cy - 36);
+      c.bezierCurveTo(cx - fw - 2, cy - 80, cx + fw + 2, cy - 80, cx + fw, cy - 36);
+      c.bezierCurveTo(cx + fw + 1.5, cy - 6, cx + fw * 0.94, cy + 16, cx + fw * 0.6, cy + 31);
+      c.quadraticCurveTo(cx + fw * 0.26, chinY - 5, cx, chinY);
+      c.quadraticCurveTo(cx - fw * 0.26, chinY - 5, cx - fw * 0.6, cy + 31);
+      c.bezierCurveTo(cx - fw * 0.94, cy + 16, cx - fw - 1.5, cy - 6, cx - fw, cy - 36);
+      c.closePath();
+    };
+    // 耳（髪から少しのぞく）
+    [-1, 1].forEach(s => {
+      c.fillStyle = shade(f.skin, 0.95); c.beginPath(); c.ellipse(cx + s * (fw - 1), cy + 2, 4, 7.5, s * 0.2, 0, 7); c.fill();
+      c.strokeStyle = LC; c.lineWidth = 0.9; c.stroke();
+    });
+    const fg = c.createLinearGradient(0, cy - 40, 0, chinY);
+    fg.addColorStop(0, shade(f.skin, 1.03)); fg.addColorStop(1, f.skin);
+    c.fillStyle = fg; facePath(); c.fill();
+    // 影：右の頬の縁（くっきりした三日月）
+    c.save(); facePath(); c.clip();
+    c.fillStyle = Art.hexA(shade(f.skin, 0.72), 0.55);
+    c.beginPath(); c.ellipse(cx + fw * 1.32, cy + 4, fw * 0.62, 60, 0.12, 0, 7); c.fill();
+    c.restore();
+    c.strokeStyle = LC; c.lineWidth = 1.3; c.lineJoin = 'round';
+    c.beginPath();
+    c.moveTo(cx + fw, cy - 20);
+    c.bezierCurveTo(cx + fw + 1.5, cy - 6, cx + fw * 0.94, cy + 16, cx + fw * 0.6, cy + 31);
+    c.quadraticCurveTo(cx + fw * 0.26, chinY - 5, cx, chinY);
+    c.quadraticCurveTo(cx - fw * 0.26, chinY - 5, cx - fw * 0.6, cy + 31);
+    c.bezierCurveTo(cx - fw * 0.94, cy + 16, cx - fw - 1.5, cy - 6, cx - fw, cy - 20);
+    c.stroke();
+    // 頬の赤み（ふんわり）と、照れの斜線
+    const blush = fem ? 0.32 : expr === 'happy' ? 0.18 : 0.08;
+    [-1, 1].forEach(s => {
+      const bx = cx + s * fw * 0.6, by = cy + 16;
+      const g = c.createRadialGradient(bx, by, 0, bx, by, 12); g.addColorStop(0, `rgba(255,105,120,${blush})`); g.addColorStop(1, 'rgba(255,105,120,0)');
+      c.fillStyle = g; c.fillRect(bx - 13, by - 9, 26, 18);
+      if (fem || expr === 'happy') { c.strokeStyle = `rgba(230,80,95,${fem ? 0.5 : 0.35})`; c.lineWidth = 0.9; c.lineCap = 'round'; c.beginPath(); for (let i = 0; i < 3; i++) { const hx = bx - 5 + i * 4; c.moveTo(hx + 1.5, by - 2.5); c.lineTo(hx - 1.5, by + 2.5); } c.stroke(); c.lineCap = 'butt'; }
+    });
+    if (f.cyber) cyberFace(c, f, cx, cy + 6, fw);
+    const E = animeEyes(c, f, cx, cy, expr);
+    animeMouth(c, f, cx, cy, expr);
+    if (f.tags.includes('beard')) animeBeard(c, f, cx, cy, fw, chinY);
+    animeFrontHair(c, f, cx, cy, fw, facePath);
+    animeBrows(c, f, cx, E, expr);
+    animeAccessories(c, f, cx, cy, fw, expr, E);
+    animeMarks(c, f, cx, cy, fw, expr, E);
+    crown(c, f, cx, cy);
+  }
+  function animeEyes(c, f, cx, cy, expr) {
+    const fem = f.female, old = f.old;
+    const ey = cy + 3, ex = fem ? 19.5 : 19;
+    const W = (fem ? 13.5 : 12.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 16 : 11.5) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.15 : 1);
+    const LC = lineCol(f), lash = '#1a0e12';
+    const E = { ey, ex, W, H };
+    [-1, 1].forEach(s => {
+      const x = cx + s * ex;
+      if (f.tags.includes('visor')) return;
+      if (f.tags.includes('patch') && s === 1) return;
+      const inner = x - s * W, outer = x + s * W;
+      if (expr === 'happy') {
+        // にっこり：上に弓なりの線
+        c.strokeStyle = lash; c.lineWidth = fem ? 3.2 : 2.8; c.lineCap = 'round';
+        c.beginPath(); c.moveTo(inner, ey + 3); c.quadraticCurveTo(x, ey - H * 0.75, outer, ey + 3); c.stroke();
+        if (fem) { c.lineWidth = 1.6; c.beginPath(); c.moveTo(outer, ey + 2); c.lineTo(outer + s * 4, ey - 1); c.stroke(); }
+        c.lineCap = 'butt';
+        return;
+      }
+      // 上まぶたの線：表情で傾ける（怒り＝目頭が下がる、憂い＝目頭が上がる）
+      let iY = ey - H * 0.25, oY = ey - H * 0.42, cY = ey - H * 1.32;
+      if (expr === 'angry') { iY = ey - H * 0.02; oY = ey - H * 0.62; cY = ey - H * 0.82; }
+      if (expr === 'sad') { iY = ey - H * 0.6; oY = ey - H * 0.12; cY = ey - H * 1.05; }
+      if (!fem && expr === 'normal' && (f.pers === '猛進' || f.pers === '野心')) { iY = ey - H * 0.12; cY = ey - H * 1.1; }
+      const bY = ey + H * 0.95;
+      const shape = () => { c.beginPath(); c.moveTo(inner, iY); c.quadraticCurveTo(x, cY, outer, oY); c.quadraticCurveTo(outer + s * 0.5, ey + H * 0.6, x + s * W * 0.3, bY); c.quadraticCurveTo(inner + s * 1, ey + H * 0.9, inner, iY); c.closePath(); };
+      // 白目（上は影で青み）
+      c.fillStyle = '#ffffff'; shape(); c.fill();
+      c.save(); shape(); c.clip();
+      c.fillStyle = 'rgba(150,160,200,.45)'; c.beginPath(); c.moveTo(inner - 2, iY - 2); c.quadraticCurveTo(x, cY - 2, outer + 2, oY - 2); c.lineTo(outer + 2, oY + H * 0.4); c.quadraticCurveTo(x, cY + H * 0.75, inner - 2, iY + H * 0.4); c.fill();
+      // 瞳（大きく縦長）
+      const ir = { x: x + s * W * 0.04 * (expr === 'sad' ? 0 : 1), y: ey + H * 0.12, rx: W * (fem ? 0.72 : 0.66) * (expr === 'shock' ? 0.62 : 1), ry: H * (fem ? 0.86 : 0.92) * (expr === 'shock' ? 0.62 : 1) };
+      const g = c.createLinearGradient(0, ir.y - ir.ry, 0, ir.y + ir.ry);
+      g.addColorStop(0, shade(f.eye, 0.22)); g.addColorStop(0.45, shade(f.eye, 0.75)); g.addColorStop(0.8, f.eye); g.addColorStop(1, shade(f.eye, 1.75));
+      c.fillStyle = g; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx, ir.ry, 0, 0, 7); c.fill();
+      // 下の光の溜まり
+      c.save(); c.globalCompositeOperation = 'lighter';
+      const lg = c.createRadialGradient(ir.x, ir.y + ir.ry * 0.6, 0, ir.x, ir.y + ir.ry * 0.6, ir.rx * 0.9);
+      lg.addColorStop(0, Art.hexA(shade(f.eye, 1.6), 0.55)); lg.addColorStop(1, Art.hexA(shade(f.eye, 1.6), 0));
+      c.fillStyle = lg; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx, ir.ry, 0, 0, 7); c.fill();
+      c.restore();
+      // 瞳孔と縁
+      c.fillStyle = shade(f.eye, 0.12); c.beginPath(); c.ellipse(ir.x, ir.y - ir.ry * 0.05, ir.rx * (expr === 'shock' ? 0.3 : 0.42), ir.ry * (expr === 'shock' ? 0.3 : 0.48), 0, 0, 7); c.fill();
+      c.strokeStyle = shade(f.eye, 0.18); c.lineWidth = 1; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx - 0.4, ir.ry - 0.4, 0, 0, 7); c.stroke();
+      // 上まぶたの落とす影（くっきり）
+      c.fillStyle = 'rgba(30,15,40,.35)'; c.beginPath(); c.moveTo(inner - 2, iY - 3); c.quadraticCurveTo(x, cY - 3, outer + 2, oY - 3); c.lineTo(outer + 2, oY + H * 0.28); c.quadraticCurveTo(x, cY + H * 0.62, inner - 2, iY + H * 0.28); c.fill();
+      // ハイライト：大きな光・小さな光・下のきらめき
+      if (expr !== 'shock') {
+        c.fillStyle = '#ffffff'; c.beginPath(); c.ellipse(ir.x - s * ir.rx * 0.32, ir.y - ir.ry * 0.38, ir.rx * 0.36, ir.ry * 0.26, -0.4 * s, 0, 7); c.fill();
+        c.beginPath(); c.arc(ir.x + s * ir.rx * 0.38, ir.y + ir.ry * 0.3, ir.rx * 0.14, 0, 7); c.fill();
+        if (fem) { c.fillStyle = 'rgba(255,255,255,.7)'; c.beginPath(); c.arc(ir.x - s * ir.rx * 0.1, ir.y + ir.ry * 0.55, ir.rx * 0.09, 0, 7); c.fill(); }
+      } else { c.fillStyle = '#fff'; c.beginPath(); c.arc(ir.x - ir.rx * 0.3, ir.y - ir.ry * 0.3, ir.rx * 0.2, 0, 7); c.fill(); }
+      if (expr === 'sad') { c.fillStyle = 'rgba(255,255,255,.6)'; c.beginPath(); c.ellipse(ir.x, ir.y + ir.ry * 0.62, ir.rx * 0.7, ir.ry * 0.14, 0, 0, 7); c.fill(); }
+      if (f.cyber) { c.strokeStyle = 'rgba(200,255,255,.65)'; c.lineWidth = 0.6; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx * 0.65, ir.ry * 0.65, 0, 0, 7); c.stroke(); }
+      c.restore();
+      // 上まつげの太い線（目尻へ太く、外へはねる）
+      const th0 = fem ? 1.6 : 1.3, th1 = fem ? 4.2 : 2.8;
+      c.fillStyle = lash; c.beginPath();
+      const N = 16, P = [], Q = [];
+      for (let i = 0; i <= N; i++) {
+        const t = i / N, u = 1 - t;
+        const px = u * u * inner + 2 * u * t * x + t * t * outer, py = u * u * iY + 2 * u * t * cY + t * t * oY;
+        const th = th0 + (th1 - th0) * t * t;
+        P.push([px, py]); Q.push([px, py - th]);
+      }
+      c.moveTo(P[0][0], P[0][1]); P.forEach(p => c.lineTo(p[0], p[1]));
+      // 目尻のはね
+      const wing = fem ? 6 : 3.5;
+      c.lineTo(outer + s * wing, oY - (fem ? 4 : 2.5));
+      for (let i = N; i >= 0; i--) c.lineTo(Q[i][0], Q[i][1]);
+      c.closePath(); c.fill();
+      if (fem) {
+        c.strokeStyle = lash; c.lineWidth = 1.1; c.lineCap = 'round'; c.beginPath();
+        for (let i = 0; i < 3; i++) { const t = 0.62 + i * 0.14, u = 1 - t; const px = u * u * inner + 2 * u * t * x + t * t * outer, py = u * u * iY + 2 * u * t * cY + t * t * oY - (th0 + (th1 - th0) * t * t); c.moveTo(px, py); c.lineTo(px + s * (2.5 + i), py - 3 - i * 0.6); }
+        c.stroke(); c.lineCap = 'butt';
+      }
+      // 二重の線
+      c.strokeStyle = Art.hexA(LC, 0.6); c.lineWidth = 0.8; c.beginPath(); c.moveTo(inner + s * W * 0.2, iY - (fem ? 5 : 4)); c.quadraticCurveTo(x, cY - (fem ? 6 : 4), outer - s * 1, oY - (fem ? 6 : 4.5)); c.stroke();
+      // 下まつげ（目尻寄りに短く）
+      c.strokeStyle = Art.hexA(lash, 0.75); c.lineWidth = fem ? 1.1 : 0.9; c.beginPath(); c.moveTo(outer - s * 0.5, oY + H * 0.75); c.quadraticCurveTo(outer - s * W * 0.3, bY + 0.5, x + s * W * 0.05, bY + 0.6); c.stroke();
+      if (old) { c.strokeStyle = Art.hexA(LC, 0.45); c.lineWidth = 0.8; c.beginPath(); c.moveTo(outer + s * 3, ey + 2); c.lineTo(outer + s * 7, ey + 4); c.moveTo(outer + s * 3, ey + 6); c.lineTo(outer + s * 6, ey + 9); c.stroke(); }
+    });
+    return E;
+  }
+  function animeBrows(c, f, cx, E, expr) {
+    const fem = f.female;
+    c.save(); c.globalAlpha = 0.92;
+    c.fillStyle = shade(f.hair, f.hair === '#f0f0f4' || f.hair === '#d8d8e0' ? 0.6 : 0.55);
+    [-1, 1].forEach(s => {
+      const x = cx + s * E.ex, by = E.ey - E.H - (fem ? 9 : 7) - (expr === 'shock' ? 4 : 0);
+      let a = 0; if (expr === 'angry') a = 1; if (expr === 'sad') a = -1; if (!fem && expr === 'normal' && f.pers === '猛進') a = 0.5;
+      const iX = x - s * (E.W * 0.95), oX = x + s * (E.W * 1.05);
+      const iY = by + a * 5 + (a < 0 ? -1 : 0), oY = by - a * 3 + (a < 0 ? 2 : 0) + 1;
+      const t = fem ? 1.6 : 2.6 + f.brow;
+      c.beginPath(); c.moveTo(iX, iY); c.quadraticCurveTo(x, by - 3 - (a === 0 ? 1 : 0), oX, oY); c.quadraticCurveTo(x, by - 3 - t - (a === 0 ? 1 : 0), iX - s * 0.5, iY - t); c.closePath(); c.fill();
+    });
+    c.restore();
+  }
+  function animeMouth(c, f, cx, cy, expr) {
+    const fem = f.female, my = cy + (fem ? 30 : 32) * f.faceL, LC = lineCol(f);
+    // 鼻：小さな影と点
+    c.strokeStyle = Art.hexA(LC, 0.7); c.lineWidth = 1.1; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(cx + 2.2, cy + 16); c.quadraticCurveTo(cx + 2.6, cy + 19.5, cx + 0.2, cy + 20); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,.5)'; c.beginPath(); c.ellipse(cx - 0.8, cy + 15, 0.9, 2.4, 0, 0, 7); c.fill();
+    c.strokeStyle = LC; c.lineWidth = 1.3;
+    if (expr === 'happy') {
+      c.beginPath(); c.moveTo(cx - 8, my - 2); c.quadraticCurveTo(cx, my - 0.5, cx + 8, my - 2); c.quadraticCurveTo(cx + 5, my + 9, cx, my + 9); c.quadraticCurveTo(cx - 5, my + 9, cx - 8, my - 2); c.closePath();
+      c.fillStyle = '#8a2a3a'; c.fill();
+      c.save(); c.clip(); c.fillStyle = '#ee7a88'; c.beginPath(); c.ellipse(cx, my + 9, 6, 4, 0, 0, 7); c.fill(); c.restore();
+      c.stroke();
+    } else if (expr === 'angry') {
+      c.beginPath(); c.moveTo(cx - 7, my + 1); c.lineTo(cx + 7, my - 0.5); c.lineTo(cx + 5, my + 5); c.lineTo(cx - 5, my + 5.5); c.closePath();
+      c.fillStyle = '#6a1a26'; c.fill(); c.save(); c.clip(); c.fillStyle = '#fff'; c.fillRect(cx - 8, my - 1, 16, 2.6); c.restore(); c.stroke();
+    } else if (expr === 'sad') {
+      c.beginPath(); c.moveTo(cx - 6, my + 3); c.quadraticCurveTo(cx - 3, my - 0.5, cx, my + 1); c.quadraticCurveTo(cx + 3, my - 0.5, cx + 6, my + 3); c.stroke();
+    } else if (expr === 'shock') {
+      c.beginPath(); c.ellipse(cx, my + 2, 3.6, 4.8, 0, 0, 7); c.fillStyle = '#7a2232'; c.fill(); c.stroke();
+    } else {
+      const smile = f.pers === '奔放' || f.pers === '仁徳' || fem;
+      if (smile) { c.beginPath(); c.moveTo(cx - 5.5, my); c.quadraticCurveTo(cx, my + 3, cx + 5.5, my - 0.5); c.stroke(); }
+      else { c.beginPath(); c.moveTo(cx - 6, my + 0.5); c.quadraticCurveTo(cx, my + 1.2, cx + 6, my - (f.pers === '野心' ? 1.5 : 0)); c.stroke(); }
+    }
+    c.lineCap = 'butt';
+  }
+  function animeBeard(c, f, cx, cy, fw, chinY) {
+    const col = shade(f.hair, 0.8), LC = Art.hexA(shade(f.hair, 0.4), 0.8);
+    c.fillStyle = col; c.strokeStyle = LC; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(cx - fw * 0.92, cy + 4);
+    c.bezierCurveTo(cx - fw * 0.9, cy + 26, cx - fw * 0.5, chinY + 6, cx, chinY + 9);
+    c.bezierCurveTo(cx + fw * 0.5, chinY + 6, cx + fw * 0.9, cy + 26, cx + fw * 0.92, cy + 4);
+    c.lineTo(cx + fw * 0.7, cy + 18); c.quadraticCurveTo(cx + 10, cy + 40, cx, cy + 40); c.quadraticCurveTo(cx - 10, cy + 40, cx - fw * 0.7, cy + 18); c.closePath(); c.fill(); c.stroke();
+    c.beginPath(); c.moveTo(cx - 12, cy + 28); c.quadraticCurveTo(cx, cy + 22, cx + 12, cy + 28); c.lineTo(cx + 9, cy + 30); c.quadraticCurveTo(cx, cy + 26, cx - 9, cy + 30); c.closePath(); c.fill(); c.stroke();
+  }
+  // 前髪：太い房を先の尖った形で重ね、線で縁取る。額には房の形の影を落とす
+  function animeFrontHair(c, f, cx, cy, fw, facePath) {
+    const col = f.hair, r = Art.srand(hash(f.hair + f.style + 'a') + 11), HL = Art.hexA(shade(col, 0.42), 0.9);
+    const top = cy - 80;
+    const fem = f.female, st = f.style;
+    // 頭頂の塊
+    const dome = () => { c.beginPath(); c.moveTo(cx - fw - 10, cy - 2); c.bezierCurveTo(cx - fw - 19, cy - 108, cx + fw + 19, cy - 108, cx + fw + 10, cy - 2); c.quadraticCurveTo(cx + fw * 0.6, cy - 36, cx, cy - 40); c.quadraticCurveTo(cx - fw * 0.6, cy - 36, cx - fw - 10, cy - 2); c.closePath(); };
+    const g = c.createLinearGradient(0, top, 0, cy - 10); g.addColorStop(0, shade(col, 1.08)); g.addColorStop(1, shade(col, 0.9));
+    c.fillStyle = g; dome(); c.fill();
+    c.strokeStyle = HL; c.lineWidth = 1.1; c.beginPath(); c.moveTo(cx - fw - 10, cy - 4); c.bezierCurveTo(cx - fw - 19, cy - 108, cx + fw + 19, cy - 108, cx + fw + 10, cy - 4); c.stroke();
+    if (st === 'buzz') return;
+    // 房の並び
+    const swept = st === 'swept' || st === 'side' || st === 'slick';
+    const n = st === 'spiky' ? 8 : fem ? 12 : 10;
+    const part = swept ? cx - fw * 0.5 : cx + (r() - 0.5) * 10;
+    const locks = [];
+    for (let i = 0; i < n; i++) {
+      const k = (i + 0.5) / n;
+      const rx = cx - fw - 6 + (fw * 2 + 12) * k;
+      const ry = cy - 60 + Math.pow((rx - cx) / (fw + 10), 2) * 26;   // 房は生え際から（頭頂はなめらかな塊のまま）
+      const dir = swept ? 1 : (rx < part ? -1 : 1);
+      const edge = Math.abs(k - 0.5) > 0.36;
+      // 長さに強弱：3本ごとに長い房、その間は短い房（束になって見えるように）
+      const longL = i % 3 === 1, shortL = i % 3 === 2;
+      let tipY = cy + (st === 'slick' ? -40 : fem ? -12 : st === 'short' ? -24 : -17) + (edge ? (fem ? 16 : 10) : 0) + (longL ? 4 : shortL ? -9 : -3) + (r() - 0.5) * 5;
+      if (st === 'spiky') tipY -= 4 + (i % 2) * 6;
+      // 目にかからないように：顔の内側の房は、眉の少し下まで
+      if (!edge) tipY = Math.min(tipY, cy + 3 - (fem ? 16 : 11.5) * f.eyeS - (fem ? 3 : 4));
+      else tipY = Math.min(tipY, cy - 2);
+      const bend = swept ? 16 + k * 12 : 5 + Math.abs(rx - part) * 0.3;
+      const tipX = rx + dir * bend + (r() - 0.5) * 3;
+      const w = (fw * 2 + 12) / n * (st === 'spiky' ? 1.1 : 1.0) * (longL ? 1.15 : shortL ? 0.8 : 1);
+      locks.push({ p0: [rx, ry], p1: [rx + dir * 1, ry + 14], p2: [tipX - dir * (6 + bend * 0.2), tipY - 12], p3: [tipX, tipY], w: w * 1.25, dir, tone: 0.95 + r() * 0.1 });
+    }
+    // 額に落ちる房の影（くっきり、少し下へずらす）
+    c.save(); facePath(); c.clip();
+    locks.forEach(L => strand(c, [L.p0[0] + 1, L.p0[1] + 6], [L.p1[0] + 1, L.p1[1] + 6], [L.p2[0] + 1, L.p2[1] + 6], [L.p3[0] + 1.5, L.p3[1] + 6], L.w, shade(f.skin, 0.8), shade(f.skin, 0.8), 1, 0.8));
+    c.restore();
+    const order = [...locks.keys()].sort((a, b) => Math.abs(b - n / 2) - Math.abs(a - n / 2));
+    const HL2 = Art.hexA(shade(col, 0.38), 0.55);
+    for (const i of order) {
+      const L = locks[i];
+      strand(c, L.p0, L.p1, L.p2, L.p3, L.w, shade(col, 1.04 * L.tone), shade(col, 0.92 * L.tone), 1, 0.75, HL2);
+      // 房の片側のくっきりした影（細い暗い筋）
+      const o = L.dir * L.w * 0.42;
+      if (i % 2 === 0) strand(c, [L.p1[0] + o * 0.8, L.p1[1]], [L.p1[0] + o * 0.7, L.p1[1] + 8], [L.p2[0] + o * 0.5, L.p2[1] + 4], [L.p3[0] - L.dir * 0.5, L.p3[1] - 2], L.w * 0.3, shade(col, 0.76), shade(col, 0.72), 1, 0.7);
+    }
+    if (st === 'spiky') { for (let i = 0; i < 5; i++) { const x = cx - 36 + i * 18; strand(c, [x, top + 24], [x + (i - 2) * 3, top + 10], [x + (i - 2) * 8, top - 2], [x + (i - 2) * 11, top - 12 - (i % 2) * 5], 9, shade(col, 1.08), shade(col, 0.95), 1, 0.8, HL); } }
+    // 横髪（顔の脇に、先の尖った房）
+    if (fem || st === 'long' || st === 'bob') {
+      [-1, 1].forEach(s => {
+        const x0 = cx + s * (fw + 2), y0 = cy - 44;
+        const len = st === 'bob' ? 66 : fem ? 84 : 70;
+        strand(c, [x0, y0], [x0 + s * 9, y0 + 24], [x0 + s * 4, y0 + len * 0.75], [x0 - s * 3, y0 + len], 7.5, shade(col, 1.0), shade(col, 0.82), 1, 0.85, HL);
+        strand(c, [x0 - s * 4, y0 + 4], [x0 + s * 2, y0 + 26], [x0 + s * 1, y0 + len * 0.6], [x0 - s * 1, y0 + len * 0.78], 5, shade(col, 0.95), shade(col, 0.8), 1, 0.85, HL);
+      });
+    }
+    // つや：天使の輪（ぎざぎざの明るい帯）
+    c.save(); dome(); c.clip();
+    c.fillStyle = Art.hexA(shade(col, 1.5), col === '#1a1418' || col === '#2a1e1a' ? 0.3 : 0.32);
+    c.beginPath();
+    const ry0 = cy - 66, span = fw * 1.2;
+    c.moveTo(cx - span / 2 - 4, ry0 + 3);
+    c.quadraticCurveTo(cx - 4, ry0 - 8, cx + span / 2 - 4, ry0 + 3);
+    for (let i = 8; i >= 0; i--) { const x = cx - 4 - span / 2 + span * i / 8; c.lineTo(x, ry0 - 1 + (i % 2 ? 5 : 1) - Math.sin(i / 8 * Math.PI) * 6); }
+    c.closePath(); c.fill();
+    c.restore();
+    // アホ毛（奔放な者に）
+    if (f.pers === '奔放' || (fem && r() < 0.25)) { c.strokeStyle = shade(col, 0.95); c.lineWidth = 2.4; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx + 2, top + 6); c.bezierCurveTo(cx + 4, top - 12, cx + 18, top - 14, cx + 12, top - 4); c.stroke(); c.strokeStyle = HL; c.lineWidth = 0.7; c.stroke(); c.lineCap = 'butt'; }
+  }
+  function animeAccessories(c, f, cx, cy, fw, expr, E) {
+    const ey = E.ey, tags = f.tags;
+    if (tags.includes('scar')) { c.strokeStyle = 'rgba(170,70,75,.85)'; c.lineWidth = 1.8; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx - 30, ey - 18); c.lineTo(cx - 14, ey + 16); c.moveTo(cx - 27, ey - 8); c.lineTo(cx - 21, ey - 11); c.moveTo(cx - 22, ey + 4); c.lineTo(cx - 16, ey + 1); c.stroke(); c.lineCap = 'butt'; }
+    if (tags.includes('patch')) {
+      c.fillStyle = '#18121a'; c.beginPath(); c.ellipse(cx + E.ex, ey + 1, E.W + 2, E.H * 0.8 + 3, 0, 0, 7); c.fill();
+      c.strokeStyle = '#18121a'; c.lineWidth = 2.2; c.beginPath(); c.moveTo(cx - fw - 2, ey - 22); c.lineTo(cx + fw + 2, ey + 4); c.stroke();
+      c.fillStyle = 'rgba(255,255,255,.18)'; c.beginPath(); c.ellipse(cx + E.ex - 4, ey - 3, 4, 2, -0.4, 0, 7); c.fill();
+    }
+    if (tags.includes('glasses')) {
+      c.strokeStyle = '#2a2a38'; c.lineWidth = 1.4;
+      [-1, 1].forEach(s => { const x = cx + s * E.ex; c.beginPath(); c.roundRect ? c.roundRect(x - E.W - 3.5, ey - E.H * 0.75, E.W * 2 + 7, E.H * 1.6, 4) : c.rect(x - E.W - 3.5, ey - E.H * 0.75, E.W * 2 + 7, E.H * 1.6); c.stroke(); c.fillStyle = 'rgba(200,230,255,.12)'; c.fill(); c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(x - E.W, ey + E.H * 0.4); c.lineTo(x - E.W * 0.4, ey - E.H * 0.4); c.stroke(); c.restore(); });
+      c.beginPath(); c.moveTo(cx - E.ex + E.W + 3.5, ey - 2); c.quadraticCurveTo(cx, ey - 5, cx + E.ex - E.W - 3.5, ey - 2); c.stroke();
+    }
+    if (tags.includes('visor')) {
+      const g = c.createLinearGradient(cx - fw, 0, cx + fw, 0);
+      g.addColorStop(0, '#0a1a2a'); g.addColorStop(0.5, f.cyber ? '#1a4a6a' : '#3a1a2a'); g.addColorStop(1, '#0a1a2a');
+      c.fillStyle = g; c.beginPath(); c.moveTo(cx - fw - 4, ey - 12); c.lineTo(cx + fw + 4, ey - 12); c.lineTo(cx + fw, ey + 9); c.lineTo(cx - fw, ey + 9); c.closePath(); c.fill();
+      c.strokeStyle = lineCol(f); c.lineWidth = 1; c.stroke();
+      c.fillStyle = expr === 'angry' ? '#ff4060' : f.cyber ? '#40e8ff' : '#ff80a0';
+      c.fillRect(cx - fw * 0.7, ey - 2, fw * 1.4, 2.5);
+    }
+    if (f.cyber && !tags.includes('visor')) { c.fillStyle = 'rgba(80,230,255,.3)'; c.beginPath(); c.arc(cx + E.ex, ey + 2, E.W + 1, 0, 7); c.fill(); }
+    if (tags.includes('veil')) {
+      c.fillStyle = '#f8f4ff'; c.beginPath(); c.moveTo(cx - 56, cy - 30); c.bezierCurveTo(cx - 50, cy - 92, cx + 50, cy - 92, cx + 56, cy - 30); c.lineTo(cx + 46, cy - 42); c.bezierCurveTo(cx + 30, cy - 72, cx - 30, cy - 72, cx - 46, cy - 42); c.closePath(); c.fill();
+      c.strokeStyle = '#d4af37'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx - 46, cy - 44); c.bezierCurveTo(cx - 30, cy - 72, cx + 30, cy - 72, cx + 46, cy - 44); c.stroke();
+      c.fillStyle = '#d4af37'; c.beginPath(); c.arc(cx, cy - 64, 4, 0, 7); c.fill();
+    }
+  }
+  // 漫画の記号：怒りの筋・涙・冷や汗・青ざめの縦線
+  function animeMarks(c, f, cx, cy, fw, expr, E) {
+    if (expr === 'angry') {
+      const x = cx + fw + 4, y = cy - 52;
+      c.strokeStyle = '#e8303a'; c.lineWidth = 2.2; c.lineCap = 'round';
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([a, b]) => { c.beginPath(); c.moveTo(x + a * 2, y + b * 7); c.quadraticCurveTo(x + a * 2, y + b * 2, x + a * 7, y + b * 2); c.stroke(); });
+      c.lineCap = 'butt';
+    }
+    if (expr === 'sad' && !f.tags.includes('visor')) {
+      const tx = cx - E.ex - E.W * 0.2, ty = E.ey + E.H * 0.9;
+      c.fillStyle = 'rgba(170,220,255,.75)'; c.beginPath(); c.moveTo(tx, ty); c.quadraticCurveTo(tx - 2.6, ty + 9, tx - 1, ty + 18); c.quadraticCurveTo(tx + 1.8, ty + 10, tx + 1.6, ty); c.fill();
+      c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(tx - 0.6, ty + 14, 1, 0, 7); c.fill();
+    }
+    if (expr === 'shock') {
+      c.strokeStyle = 'rgba(70,100,190,.55)'; c.lineWidth = 1.1;
+      for (let i = 0; i < 6; i++) { const x = cx - 22 + i * 8; c.beginPath(); c.moveTo(x, cy - 40); c.lineTo(x, cy - 40 + 10 + (i % 2) * 6); c.stroke(); }
+      const sx = cx + fw + 2, sy = cy - 26;
+      c.fillStyle = 'rgba(190,230,255,.9)'; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(sx - 5, sy + 10, sx, sy + 13); c.quadraticCurveTo(sx + 5, sy + 10, sx, sy); c.fill();
+      c.strokeStyle = 'rgba(60,110,170,.7)'; c.lineWidth = 0.8; c.stroke();
+    }
+  }
+
 
   let grainCv = null;
   function grain() {
@@ -256,7 +586,7 @@ const Portrait = (() => {
 
   // ---------- 髪：根元から毛先へ細くなる房を、何十本も重ねて描く ----------
   // 3次ベジェ曲線に沿って、両側へ幅をつけた細長い形を作る（毛先ほど細い）
-  function strand(c, p0, p1, p2, p3, w, colA, colB, taperRoot = 0.6, ex = 0.85) {
+  function strand(c, p0, p1, p2, p3, w, colA, colB, taperRoot = 0.6, ex = 0.85, line = null) {
     const N = 12, L = [], Rr = [];
     const at = t => {
       const u = 1 - t;
@@ -277,6 +607,7 @@ const Portrait = (() => {
     const g = c.createLinearGradient(p0[0], p0[1], p3[0], p3[1]);
     g.addColorStop(0, colA); g.addColorStop(1, colB);
     c.fillStyle = g; c.fill();
+    if (line) { c.strokeStyle = line; c.lineWidth = 0.9; c.lineJoin = 'round'; c.stroke(); }
   }
   function backHair(c, f, cx, cy) {
     const base = shade(f.hair, 0.72), r = Art.srand(hash(f.hair + f.style) + 3);
@@ -619,5 +950,7 @@ const Portrait = (() => {
   }
   // メモリが足りない時など：覚えた顔をすべて捨てる（必要になれば描き直す）
   function purge() { cache.clear(); small.clear(); if (thumbCv) { free(thumbCv); thumbCv = null; } }
-  return { url, thumb, generic, purge };
+  // 顔の描き方（'anime' アニメ調 / 'classic' これまでの絵）
+  function setStyle(v) { if (v !== 'anime' && v !== 'classic') return; STYLE = v; try { localStorage.setItem('seisou_face', v); } catch (e) { } purge(); }
+  return { url, thumb, generic, purge, setStyle, get style() { return STYLE; } };
 })();
