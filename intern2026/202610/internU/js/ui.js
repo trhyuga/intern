@@ -643,6 +643,7 @@ const UI = (() => {
     return new Promise(res => {
       const el = $('#talk');
       el.className = 'talk show bg-' + (bg || 'space');
+      if (typeof TalkFX !== 'undefined') TalkFX.start(bg || 'space');
       let i = 0, typing = null, full = false;
       if (!noTitle && title) Sound.se('event');
       const prevMood = null;
@@ -664,11 +665,11 @@ const UI = (() => {
         clearInterval(typing);
         if (choices && choices.length) {
           el.innerHTML += `<div class="t-choices">${choices.map((c, k) => `<button class="btn" data-c="${k}">${c.t}</button>`).join('')}</div>`;
-          $$('[data-c]', el).forEach(b => b.onclick = e => { e.stopPropagation(); Sound.se('click'); el.className = 'talk'; el.innerHTML = ''; el.onclick = null; res(+b.dataset.c); });
+          $$('[data-c]', el).forEach(b => b.onclick = e => { e.stopPropagation(); Sound.se('click'); el.className = 'talk'; el.innerHTML = ''; if (typeof TalkFX !== 'undefined') TalkFX.stop(); el.onclick = null; res(+b.dataset.c); });
           el.onclick = null;
           return;
         }
-        el.className = 'talk'; el.innerHTML = ''; el.onclick = null; res(null);
+        el.className = 'talk'; el.innerHTML = ''; if (typeof TalkFX !== 'undefined') TalkFX.stop(); el.onclick = null; res(null);
       };
       el.onclick = () => {
         const tt = $('.t-text', el);
