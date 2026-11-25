@@ -494,3 +494,131 @@ h3.seal { color: #ff7aa0; }
 .decis { display: grid; gap: 4px; margin-bottom: 8px; }
 .decis div { background: #ffffff0a; border-left: 3px solid var(--gold); padding: 5px 8px; border-radius: 6px; font-size: 13px; }
 .decis small { float: right; color: #9aa4b8; }
+
+/* =========================================================
+   仕上げ：ガラス調パネル・光る縁・押した感触（見た目のみ）
+   金=重要 / 水色=情報 / 赤=危険
+   ========================================================= */
+:root {
+  --glass-a: #0f1a34f0;
+  --glass-b: #070c18f4;
+  --edge-hi: #8fc8ff;
+  --edge-lo: #2a3a5c;
+  --glow-c: #3a8aff;
+}
+
+/* ---- ボタン ---- */
+.btn { background: linear-gradient(180deg, #24365c 0%, #16223e 55%, #101a30 100%); border-color: #4f73a8; box-shadow: inset 0 1px 0 #ffffff22, inset 0 -1px 0 #00000055, 0 2px 8px #0007; transition: box-shadow .15s, filter .15s, transform .08s, border-color .15s; text-shadow: 0 1px 2px #0008; }
+.btn:hover:not(:disabled) { border-color: #7ab4ff; box-shadow: inset 0 1px 0 #ffffff2a, 0 0 12px #3a8aff55, 0 2px 8px #0007; }
+.btn:active:not(:disabled) { transform: translateY(1px) scale(.985); filter: brightness(1.15); box-shadow: inset 0 2px 6px #0008, 0 0 14px #3a8aff66; }
+.btn.primary { background: linear-gradient(180deg, #4a9af0 0%, #2a6ed0 45%, #1a4a9a 100%); border-color: #8ac4ff; box-shadow: 0 0 16px #3a8aff55, inset 0 1px 0 #ffffff45, inset 0 -1px 0 #0a2a6a; }
+.btn.primary:hover:not(:disabled) { box-shadow: 0 0 22px #5aa0ffaa, inset 0 1px 0 #ffffff45; }
+.btn.danger { background: linear-gradient(180deg, #8a2e3e 0%, #5a1a28 55%, #3a121c 100%); border-color: #e0707e; box-shadow: 0 0 12px #ff3a4a33, inset 0 1px 0 #ffffff22; }
+.btn.danger:hover:not(:disabled) { box-shadow: 0 0 18px #ff4a5a77, inset 0 1px 0 #ffffff22; }
+.btn.big { border-radius: 10px; }
+.back, .tb-menu, .sh-head button { background: linear-gradient(#ffffff10, #ffffff04); border-color: #3a5080; box-shadow: inset 0 1px 0 #ffffff14; transition: box-shadow .15s, border-color .15s; }
+.back:active, .tb-menu:active, .sh-head button:active { box-shadow: inset 0 2px 5px #0008, 0 0 10px #6ad0ff55; border-color: var(--accent); }
+
+/* ---- 上の帯・下の帯 ---- */
+.topbar { background: linear-gradient(180deg, #0e1a34f4, #070c18e8); border-bottom: 1px solid transparent; border-image: linear-gradient(90deg, transparent, #6ad0ff88 20%, #b48cff66 80%, transparent) 1; box-shadow: 0 4px 16px #0008, inset 0 -1px 8px #3a8aff14; }
+.tb-fac { text-shadow: 0 0 10px #6ab0ff55; }
+.tb-staff { box-shadow: inset 0 1px 0 #ffffff1c, 0 0 8px #8a6aff33; }
+.bottombar { background: linear-gradient(180deg, #0c1630, #050912); border-top: 1px solid transparent; border-image: linear-gradient(90deg, transparent, #6ad0ff77 15%, #6ad0ff77 85%, transparent) 1; box-shadow: 0 -6px 18px #0009, inset 0 1px 10px #3a8aff12; }
+.bottombar button { transition: background .15s, color .15s; position: relative; }
+.bottombar button:not(.end):active { background: radial-gradient(ellipse at 50% 100%, #3a8aff40, transparent 70%); color: #fff; }
+.bottombar i { text-shadow: 0 0 8px #6ad0ff88; }
+.bottombar .end { background: linear-gradient(180deg, #4a9af0, #2a6ed0 50%, #1a4a9a); border-left: 1px solid #8ac4ff; box-shadow: inset 0 1px 0 #ffffff40, 0 0 14px #3a8aff55; text-shadow: 0 1px 2px #0008; }
+.bottombar .end:active { filter: brightness(1.15); box-shadow: inset 0 2px 6px #0008; }
+.bottombar .end.stopper { box-shadow: inset 0 1px 0 #ffffff30, 0 0 14px #ff4a5a55; }
+
+/* ---- シート ---- */
+.sh-bg { background: radial-gradient(ellipse at 50% 100%, #0a142a99, #000a 70%); }
+.sh-panel { background: linear-gradient(180deg, #101c3a, #070c18) padding-box, linear-gradient(180deg, #8fc8ffaa, #3a5a9a55 30%, #1a2a4a22) border-box; border: 1px solid transparent; border-bottom: 0; box-shadow: 0 -12px 34px #000b, inset 0 1px 18px #3a8aff1a; animation: shin .26s cubic-bezier(.2,.8,.25,1); }
+@keyframes shin { from { transform: translateY(40px); opacity: 0; } }
+.sh-head { border-bottom: 1px solid transparent; border-image: linear-gradient(90deg, transparent, #6ad0ff66 25%, #6ad0ff66 75%, transparent) 1; }
+.sh-head b { text-shadow: 0 0 12px #6ab0ff66; color: #f2f6ff; }
+.sh-body h3 { border-bottom: none; padding-bottom: 6px; background: linear-gradient(90deg, #6ad0ffcc, #6ad0ff33 45%, transparent) left bottom / 100% 1px no-repeat; text-shadow: 0 0 10px #6ab0ff33; }
+.sh-body h3::before { content: ''; display: inline-block; width: 3px; height: .95em; margin-right: 7px; vertical-align: -1px; border-radius: 2px; background: linear-gradient(#9ae0ff, #3a8aff); box-shadow: 0 0 6px #6ad0ff; }
+.sh-body h3.forb, .sh-body h3.seal { background-image: linear-gradient(90deg, #ff3070cc, #ff307033 45%, transparent); }
+.sh-body h3.forb::before, .sh-body h3.seal::before { background: linear-gradient(#ff8ab0, #ff3070); box-shadow: 0 0 6px #ff3070; }
+
+/* ---- カード類 ---- */
+.kv div, .ofc, .fl-row, .pl-row, .dp-row, .mn-row, .tie, .res-now, .recs .rec, .decis div { background: linear-gradient(160deg, #ffffff0f, #ffffff04 60%); box-shadow: inset 0 1px 0 #ffffff0e, 0 2px 6px #0004; }
+.kv div { border-color: #ffffff18; }
+.kv b { color: #f2f6ff; }
+.fl-row, .pl-row, .dp-row, .ofc { transition: background .15s, border-color .15s; }
+.fl-row:active, .pl-row:active, .dp-row:active, .ofc:active { background: linear-gradient(160deg, #3a8aff22, #ffffff06); border-color: #6ad0ff55; }
+.dev-b, .mod, .tb, .pol, .dp-act { background: linear-gradient(170deg, #ffffff0e, #ffffff03); box-shadow: inset 0 1px 0 #ffffff10; transition: box-shadow .15s, border-color .15s; }
+.dev-b:active, .mod:active, .tb:active, .pol:active:not(:disabled), .dp-act:active:not(:disabled) { box-shadow: inset 0 2px 6px #0008, 0 0 10px #6ad0ff44; }
+.dev-b.on, .tb.on { background: linear-gradient(170deg, #3a8aff44, #2f7ad818); box-shadow: 0 0 12px #3a8aff55, inset 0 1px 0 #ffffff22; }
+.pol.on { background: linear-gradient(170deg, #8a6aff40, #6a4ad814); }
+.dp-act .pc { text-shadow: 0 0 10px #6ad0ff88; }
+.mbar { background: #ffffff12; box-shadow: inset 0 1px 2px #0008; }
+.mbar i { box-shadow: 0 0 6px currentColor; }
+.demand { background: linear-gradient(160deg, #4a3a0a55, #2a1a0a30); box-shadow: 0 0 14px #f0d27a22, inset 0 1px 0 #f0d27a22; }
+.eclbox { box-shadow: 0 0 16px #ff307033, inset 0 1px 0 #ff70a022; }
+
+/* ---- チップ ---- */
+.chip { background: linear-gradient(170deg, #ffffff12, #ffffff04); border-color: #34507e; border-radius: 12px; box-shadow: inset 0 1px 0 #ffffff12; transition: box-shadow .15s, border-color .15s, background .15s; }
+.chip:active:not(:disabled) { box-shadow: inset 0 2px 5px #0008, 0 0 8px #6ad0ff44; }
+.chip.on { background: linear-gradient(170deg, #3a8aff55, #2f7ad822); border-color: var(--accent); box-shadow: 0 0 10px #3a8aff55, inset 0 1px 0 #ffffff22; }
+.fc-bot span { background: linear-gradient(#ffffff16, #ffffff08); border: 1px solid #ffffff14; }
+.tag { box-shadow: inset 0 1px 0 #ffffff30, 0 1px 4px #0006; }
+.rk { box-shadow: inset 0 1px 0 #ffffff18; }
+.rk.gen, .rk.lord { box-shadow: 0 0 6px #f0c06044, inset 0 1px 0 #ffffff22; }
+
+/* ---- 窓 ---- */
+.modal { background: radial-gradient(ellipse at 50% 45%, #0a1430aa, #000c 70%); }
+.m-box { background: linear-gradient(180deg, #13214a, #080e1c) padding-box, linear-gradient(160deg, #9ad0ffcc, #3a5a9a66 40%, #b48cff88) border-box; border: 1px solid transparent; box-shadow: 0 0 44px #3a6aff40, 0 12px 40px #000c, inset 0 1px 20px #3a8aff18; animation: mpop .22s cubic-bezier(.2,.8,.25,1.1); }
+@keyframes mpop { from { transform: translateY(10px) scale(.95); opacity: 0; } }
+.m-body h2 { text-shadow: 0 0 14px #6ab0ff66; padding-bottom: 8px; background: linear-gradient(90deg, transparent, #6ad0ffaa, transparent) center bottom / 70% 1px no-repeat; }
+.m-body h3 { text-shadow: 0 0 8px #6ad0ff55; }
+.m-btns { padding-top: 4px; }
+
+/* ---- 小さな通知 ---- */
+.toast { background: linear-gradient(180deg, #13214af4, #0a1226f4); box-shadow: 0 0 22px #3a8aff55, 0 6px 20px #000a, inset 0 1px 0 #ffffff1c; transform: translate(-50%, 10px) scale(.97); transition: opacity .25s, transform .25s cubic-bezier(.2,.8,.25,1); }
+.toast.show { transform: translate(-50%, 0) scale(1); }
+.busy { background: linear-gradient(#101a34f0, #060a16f0); box-shadow: 0 0 20px #3a8aff44; }
+
+/* ---- 選んだもの・参謀の帯・作戦室 ---- */
+.q-card, .q-move { background: linear-gradient(170deg, #12203ef0, #0a1222f0); box-shadow: 0 0 18px #000a, inset 0 1px 0 #ffffff14; }
+.autobar { box-shadow: 0 0 18px #6a4ad855, inset 0 1px 0 #ffffff14; }
+.ab-b button, .wr-head .ab-b button { background: linear-gradient(#24365c, #16223e); box-shadow: inset 0 1px 0 #ffffff1a; }
+.ab-b .stop, .wr-head .ab-b .stop { background: linear-gradient(#7a2434, #4a1420); }
+.ab-b button:active, .wr-head .ab-b button:active { box-shadow: inset 0 2px 5px #0009; filter: brightness(1.15); }
+.warroom { background: linear-gradient(180deg, #0d1430ec, #05070ff6); border-top: 1px solid transparent; border-image: linear-gradient(90deg, transparent, #b48cffaa 20%, #6ad0ff88 80%, transparent) 1; box-shadow: 0 -10px 26px #000b, inset 0 1px 14px #8a6aff18; }
+.wr-head { background: linear-gradient(180deg, #1a1440, #100c26); border-bottom-color: #3a3a6a; }
+.wr-b { box-shadow: inset 0 1px 0 #ffffff0e; }
+.raid { box-shadow: 0 0 24px #ff3a2a60, inset 0 1px 0 #ffffff14; }
+
+/* ---- 会話 ---- */
+.t-box { background: linear-gradient(180deg, #0e1a38f4, #060b18f6) padding-box, linear-gradient(170deg, color-mix(in srgb, var(--c, #6ad0ff) 85%, #fff), color-mix(in srgb, var(--c, #6ad0ff) 30%, transparent) 45%, color-mix(in srgb, var(--c, #6ad0ff) 70%, transparent)) border-box; border: 1px solid transparent; box-shadow: 0 0 26px #000c, 0 0 18px color-mix(in srgb, var(--c, #6ad0ff) 22%, transparent), inset 0 1px 22px color-mix(in srgb, var(--c, #6ad0ff) 10%, transparent); animation: tbin .28s ease-out; }
+.t-box::before { content: ''; position: absolute; left: 14px; right: 14px; top: 0; height: 1px; background: linear-gradient(90deg, transparent, #ffffffaa, transparent); opacity: .5; pointer-events: none; }
+@keyframes tbin { from { opacity: 0; transform: translateY(10px); } }
+.t-box.narr { background: linear-gradient(180deg, #0c1428f2, #05080ff4) padding-box, linear-gradient(90deg, #ffffff10, #ffffff66, #ffffff10) border-box; }
+.t-name { display: inline-block; padding: 2px 14px 3px 10px; margin-left: -4px; border-left: 3px solid var(--c, var(--gold)); border-radius: 2px 8px 8px 2px; background: linear-gradient(90deg, color-mix(in srgb, var(--c, #6ad0ff) 30%, transparent), transparent); text-shadow: 0 0 10px color-mix(in srgb, var(--c, #6ad0ff) 70%, transparent); letter-spacing: .06em; }
+.t-name small { text-shadow: none; }
+.t-por img { box-shadow: 0 0 40px color-mix(in srgb, var(--c) 50%, transparent), 0 10px 30px #000a; }
+.t-title span { background: linear-gradient(90deg, transparent, #ffffff10, transparent); border-image: linear-gradient(90deg, transparent, #ffffffaa, transparent) 1; }
+.t-choices .btn { background: linear-gradient(180deg, #24467e, #142a52 60%, #0e1e3c); border-color: #6ad0ffaa; box-shadow: 0 0 12px #3a8aff33, inset 0 1px 0 #ffffff22; padding-left: 16px; position: relative; }
+.t-choices .btn::before { content: '◆'; color: var(--gold); font-size: 10px; margin-right: 8px; vertical-align: 2px; text-shadow: 0 0 6px #f0d27a; }
+.t-choices .btn:active { box-shadow: inset 0 2px 6px #0009, 0 0 16px #6ad0ff66; }
+
+/* ---- 艦隊戦の操作盤 ---- */
+.b-row button { background: linear-gradient(180deg, #18264aeb, #0e1830eb); box-shadow: inset 0 1px 0 #ffffff14; transition: box-shadow .12s, border-color .12s; }
+.b-row button:active:not(:disabled) { box-shadow: inset 0 2px 5px #0009, 0 0 10px #6ad0ff55; }
+.b-row button.on { background: linear-gradient(180deg, #3a8aff66, #2f7ad833); box-shadow: 0 0 10px #3a8aff55, inset 0 1px 0 #ffffff22; }
+.b-skill { box-shadow: 0 0 10px #f0d27a44, inset 0 1px 0 #ffe0a033; }
+.b-side, .b-time { box-shadow: inset 0 1px 0 #ffffff12; border: 1px solid #ffffff12; }
+
+/* ---- 勢力選び・セーブ ---- */
+.fc { box-shadow: 0 0 20px color-mix(in srgb, var(--c) 25%, transparent), inset 0 1px 0 #ffffff14; }
+.slot { box-shadow: inset 0 1px 0 #ffffff10; }
+.hdr { border-bottom: 1px solid transparent; border-image: linear-gradient(90deg, transparent, #6ad0ff77 20%, #6ad0ff77 80%, transparent) 1; }
+
+/* ---- 動きを減らす設定 ---- */
+@media (prefers-reduced-motion: reduce) {
+  .sh-panel, .m-box, .t-box, .t-choices, .quick.show, .autobar.show, .warroom.show, .vbub.show, .raid.show, .wr-e, .t-por, .t-title { animation: none !important; }
+  .toast, .btn, .chip { transition: none !important; }
+  .tap-hint, .tb-ecl, .tb-staff.on, .logo, .t-next, .b-play.hot { animation: none !important; }
+}
