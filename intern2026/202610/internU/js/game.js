@@ -155,7 +155,7 @@ const Game = (() => {
     const hpMul = 1 + t.def * 0.08 + (f && f.forb.includes('f2') ? 0.1 : 0);
     const dmgMul = 1 + t.wep * 0.07 + (fb.dmg || 0);
     hp = Math.round(hp * hpMul); shield = Math.round(shield * (1 + t.def * 0.08));
-    speed = speed * (1 + t.eng * 0.04 + (fb.speed || 0));
+    speed = speed * (1 + t.eng * 0.04 + (fb.speed || 0) + (G.minors && G.minors.m4 && G.minors.m4.ally === fid ? 0.1 + ((G.minors.m4.guideUntil || 0) >= G.turn ? 0.15 : 0) : 0));
     weapons.forEach(w => w.dmg *= dmgMul);
     const dps = weapons.reduce((s, w) => s + w.dmg / w.cd * (w.n || 1), 0);
     return { hp, armor, shield, regen, pd, ecm: Math.min(0.4, ecm), speed, repair, command, weapons, cost, turns: h.turns, size: h.size, dps, hull: d.hull };
@@ -362,6 +362,7 @@ const Game = (() => {
     let v = p.pop * (0.09 + p.res * 0.045) * PTYPES[p.type].res;
     v *= 1 + (F.bonus.research || 0) + (f.ruling === 'tech' ? 0.2 : 0);
     if (G.minors.m1.ally === p.owner) v *= 1.15;
+    if (G.minors.m3 && G.minors.m3.ally === p.owner) v *= 1.05;
     if (p.gov) v *= 1 + (OFF[p.gov].sci - 50) / 300;
     if (p.owner === G.player) v *= 1 + Staff.bonus('research', 0.25);
     return v;
@@ -635,6 +636,8 @@ const Game = (() => {
     if (M.quest.kind === 'trade') return Object.keys(G.rel).filter(k => { const [a, b] = k.split('|').map(Number); return (a === fid || b === fid) && ['trade', 'ally'].includes(G.rel[k].s); }).length;
     if (M.quest.kind === 'tech') return Object.values(f.tech).reduce((a, b) => a + b, 0);
     if (M.quest.kind === 'victory') return m.paid ? 99 : (m.wins[fid] || 0);
+    if (M.quest.kind === 'ruin') return G.planets.filter(p => p.owner === fid && p.type === 'ruin' && p.res >= 4).length;
+    if (M.quest.kind === 'reach') return new Set(G.planets.filter(p => p.owner === fid).map(p => p.sys)).size;
     return 0;
   }
   function minorJoin(mid, fid) {
@@ -648,6 +651,7 @@ const Game = (() => {
       for (let i = 0; i < 6; i++) fl.ships.push(newShip(did));
       if (OFF.raven && G.officers.raven.fac === fid) setCmd(fl, 'raven', 'sub');
     }
+    if (mid === 'm3' && G.eclipse.arrived) { G.facs[fid].ekeys = (G.facs[fid].ekeys || 0) + 1; G.flags.towerKey = G.turn; }
     G.facs[fid].stats.treaties++;
     shiftParty(fid, 'peace', 4);
     log(`${M.name}が${FACTIONS[fid].name}と盟約を結んだ。`, fid === G.player ? 'big' : 'info', fid);
@@ -828,6 +832,8 @@ const Game = (() => {
       const s = localStorage.getItem(slotKey(slot));
       if (!s) return false;
       G = JSON.parse(s);
+      MINORS.forEach(m => { if (!G.minors[m.id]) G.minors[m.id] = { id: m.id, ally: null, paid: false, wins: {} }; });
+      OFFICERS.forEach(o => { if (!G.officers[o.key]) { const M = MINORS.find(m => m.id === o.fac0); G.officers[o.key] = { fac: null, st: 'free', loc: M ? M.planet : o.loc, loyal: 0, merit: initMerit(o), battles: 0, wins: 0, kills: 0, busy: 0, role: null, ever: null }; } });
       buildLanes();
       if (typeof People !== 'undefined') People.init();
       return true;

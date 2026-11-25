@@ -476,3 +476,8 @@ h3.seal { color: #ff7aa0; }
 .warroom.mini .wr-list { max-height: 58px; overflow-y: auto; }
 .warroom.mini .wr-e:not(:last-child) { display: none; }
 .wr-head .ab-b [data-ab=mini] { font-size: 13px; padding: 4px 9px; }
+.story-prog { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 10px; }
+.story-prog div { display: flex; align-items: baseline; gap: 8px; font-size: 13px; padding: 4px 8px; border-left: 2px solid var(--gold); background: #ffffff06; border-radius: 4px; font-family: var(--mincho); }
+.story-prog span { color: var(--gold); font-size: 11px; min-width: 18px; }
+.story-prog small { margin-left: auto; color: var(--dim); font-family: var(--sans); }
+.story-prog .next { opacity: .5; border-left-style: dashed; }

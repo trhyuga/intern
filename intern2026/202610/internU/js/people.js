@@ -6,9 +6,11 @@
 //  - 国の幕間・国家間の出来事
 // ============================================================
 const PEOPLE = (() => {
-  const P = {}, TIES = [], EVS = [];
+  const P = {}, TIES = [], EVS = [], MAIN = [];
   return {
-    P, TIES, EVS,
+    P, TIES, EVS, MAIN,
+    // メインストーリー：連なる出来事の列（chain ごと）。前の出来事を終えると次が起こる
+    main: (chain, list) => list.forEach((ev, i) => MAIN.push(Object.assign({ chain, idx: i }, ev))),
     add: o => Object.assign(P, o),
     ties: a => TIES.push(...a),
     events: a => EVS.push(...a),
@@ -148,6 +150,19 @@ const People = (() => {
     if (c.omen !== undefined && !((G.eclipse.omen || 0) >= c.omen || G.eclipse.arrived)) return false;
     if (c.eclipse === true && !G.eclipse.arrived) return false;
     if (c.eclipse === false && G.eclipse.arrived) return false;
+    // 国内の派閥：主導する派閥・支持の強さ
+    if (c.ruling && f.ruling !== c.ruling) return false;
+    if (c.notRuling && f.ruling === c.notRuling) return false;
+    if (c.partyMin && !Object.entries(c.partyMin).every(([p, n]) => (f.parties[p] || 0) >= n)) return false;
+    if (c.partyMax && !Object.entries(c.partyMax).every(([p, n]) => (f.parties[p] || 0) <= n)) return false;
+    // 蝕の段階（そこまで進んだら）
+    if (c.ecl) { const ok = { omen1: G.flags.omen1, omen2: G.flags.omen2, first: G.flags.eclipse, lull: G.flags.eclipseLull, great: G.flags.eclipseGreat, recede: G.flags.eclipseRecede, ret: G.flags.eclipseRet, key: G.flags.myKey || G.flags.towerKey, seal: f.sealed, abyss: G.flags.abyss, solved: G.flags.eclipseDown }[c.ecl]; if (!ok) return false; }
+    // 小勢力
+    if (c.minorAlly && !(G.minors[c.minorAlly] && G.minors[c.minorAlly].ally === me)) return false;
+    if (c.minorOther && !(G.minors[c.minorOther] && G.minors[c.minorOther].ally !== null && G.minors[c.minorOther].ally !== me)) return false;
+    if (c.minorFree && !(G.minors[c.minorFree] && G.minors[c.minorFree].ally === null && G.planets[MINORS.find(m => m.id === c.minorFree).planet].owner === c.minorFree)) return false;
+    if (c.minorGone && G.planets[MINORS.find(m => m.id === c.minorGone).planet].owner === c.minorGone) return false;
+    if (c.anyFlag && !c.anyFlag.some(x => G.flags[x])) return false;
     if (c.chance !== undefined && Math.random() > c.chance) return false;
     return true;
   }
@@ -168,8 +183,8 @@ const People = (() => {
     const lines = sc => (sc || []).map(([w, e, t]) => [w, e, sub(t, ctx)]);
     return {
       id: ev.id, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0,
-      scenes: () => lines(ctx.useB && ev.sceneB ? ev.sceneB : ev.scenes),
-      choices: ev.choices ? ev.choices.map(c => ({ t: sub(c.t, ctx), fx: () => { fx(c.fx, ctx); if (extra.onChoice) extra.onChoice(c); }, after: c.after ? () => lines(c.after) : null })) : undefined,
+      scenes: () => lines(ctx.win && ev[ctx.win] ? ev[ctx.win] : ctx.useB && ev.sceneB ? ev.sceneB : (ev.scenesBy && ev.scenesBy[G.facs[G.player].ruling]) || ev.scenes),
+      choices: (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices) ? (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices).map(c => ({ t: sub(c.t, ctx), fx: () => { fx(c.fx, ctx); if (extra.onChoice) extra.onChoice(c); }, after: c.after ? () => lines(c.after) : null })) : undefined,
       fx: () => { fx(ev.fx, ctx); if (extra.onPlay) extra.onPlay(); },
     };
   }
@@ -189,6 +204,21 @@ const People = (() => {
     if (!G || G.over) return [];
     const out = [];
     const me = G.player;
+    // 0) メインストーリー（自国の章の列・小勢力の列）：前の出来事を終えたものだけ。分岐（group）は一つ選ばれたら他は消える
+    const chains = {};
+    for (const ev of PEOPLE.MAIN) {
+      if (ev.finale || G.evDone[ev.id]) continue;
+      if (ev.fac !== undefined && ev.fac !== me) continue;
+      if (ev.group && PEOPLE.MAIN.some(x => x.group === ev.group && G.evDone[x.id])) continue;
+      const prev = ev.after !== undefined ? [].concat(ev.after) : (ev.idx > 0 ? [PEOPLE.MAIN.find(x => x.chain === ev.chain && x.idx === ev.idx - 1 && !x.finale)].filter(Boolean).map(x => x.group ? '@' + x.group : x.id) : []);
+      const done = id => id.startsWith('@') ? PEOPLE.MAIN.some(x => x.group === id.slice(1) && G.evDone[x.id]) : !!G.evDone[id];
+      if (!prev.every(done)) continue;
+      const lastT = Math.max(0, ...prev.map(id => id.startsWith('@') ? Math.max(0, ...PEOPLE.MAIN.filter(x => x.group === id.slice(1)).map(x => G.evDone[x.id] || 0)) : G.evDone[id] || 0));
+      if (prev.length && G.turn - lastT < (ev.gap ?? 4)) continue;   // 前の出来事から間をあける
+      if (chains[ev.chain] || !cond(ev.cond)) continue;
+      chains[ev.chain] = 1;
+      out.push(wrap(ev, {}, { pr: ev.pr ?? 7 }));
+    }
     // 1) 国の幕間
     for (const ev of PEOPLE.EVS) {
       if (G.evDone[ev.id] || !ev.cond || ev.cond.fac !== me) continue;
@@ -385,5 +415,15 @@ const People = (() => {
     return null;
   }
 
-  return { init, applyStats, addStat, voice, reply, staffLine, cond, fx, wrap, pending, monthTick, battleTie, fleetMul, avengeMul, recruitBonus, enemyComment, allyComment, tiesOf, tie, state, line, other, prof, KIND_NAME, WARM, HONOR, sub, all: () => all() };
+  // 自国のメインストーリーの進み（見た話の題）
+  function mainProgress() {
+    const me = G.player, list = PEOPLE.MAIN.filter(x => x.fac === me && !x.finale);
+    return { done: list.filter(x => G.evDone[x.id]).sort((a, b) => G.evDone[a.id] - G.evDone[b.id]).map(x => ({ title: x.title, t: G.evDone[x.id] })), total: new Set(list.map(x => x.group || x.id)).size };
+  }
+  function finale(win) {
+    const me = G.player;
+    const ev = PEOPLE.MAIN.find(x => x.finale && (x.fac === undefined || x.fac === me) && (!x.win || x.win === win) && cond(Object.assign({}, x.cond || {}, { chance: undefined })));
+    return ev ? wrap(ev, { win }, { pr: 99 }) : null;
+  }
+  return { init, finale, mainProgress, applyStats, addStat, voice, reply, staffLine, cond, fx, wrap, pending, monthTick, battleTie, fleetMul, avengeMul, recruitBonus, enemyComment, allyComment, tiesOf, tie, state, line, other, prof, KIND_NAME, WARM, HONOR, sub, all: () => all() };
 })();

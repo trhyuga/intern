@@ -483,14 +483,28 @@ const UI = (() => {
       const gone = p.owner !== M.id;
       const prog = Game.minorProgress(M.id, me);
       h += `<div class="mn-row" style="--c:${M.col}"><b>◆ ${M.name}</b><small>${M.desc}</small>
-        ${gone ? `<small class="dim">本拠は${Game.ownerName(p.owner)}のもの</small>` : m.ally !== null ? `<small>盟約：${Game.ownerName(m.ally)}</small>` : `<small>依頼：${M.quest.text}（いま ${Math.min(prog, M.quest.need)} / ${M.quest.need}）・お礼：${M.reward}</small>
+        ${gone ? `<small class="dim">本拠は${Game.ownerName(p.owner)}のもの</small>` : m.ally !== null ? `<small>盟約：${Game.ownerName(m.ally)}${m.ally === me ? '・お礼：' + M.reward : ''}</small>${m.ally === me && MINOR_SVC[M.id] ? `<div class="row"><button class="btn small" data-svc="${M.id}" ${G.turn - (m.svcAt || -99) < MINOR_SVC[M.id].cool ? 'disabled' : ''}>${MINOR_SVC[M.id].name}</button><small class="dim">${MINOR_SVC[M.id].desc}${G.turn - (m.svcAt || -99) < MINOR_SVC[M.id].cool ? `（あと${MINOR_SVC[M.id].cool - (G.turn - m.svcAt)}か月）` : ''}</small></div>` : ''}` : `<small>依頼：${M.quest.text}（いま ${Math.min(prog, M.quest.need)} / ${M.quest.need}）・お礼：${M.reward}</small>
         <div class="row"><button class="btn small primary" data-mn="${M.id}" ${prog >= M.quest.need ? '' : 'disabled'}>盟約を結ぶ</button>${M.id === 'm2' ? `<button class="btn small" data-pay="m2">1500 払って雇う</button>` : ''}</div>`}</div>`;
     }
     body.innerHTML = h;
     $$('.dp-row[data-d]', body).forEach(el => { const fid = +el.dataset.d; const F = FACTIONS[fid]; Art.emblem($('canvas', el).getContext('2d'), F.emblem, 32, 32, 26, F.col, F.col2); el.onclick = () => openDiplo(fid); });
     $$('[data-mn]', body).forEach(b => b.onclick = () => { Game.minorJoin(b.dataset.mn, me); Sound.se('fanfare'); toast(`${MINORS.find(m => m.id === b.dataset.mn).name}と盟約を結びました！`); drawSheet(); });
+    $$('[data-svc]', body).forEach(b => b.onclick = async () => { Sound.se('click'); const id = b.dataset.svc, S = MINOR_SVC[id], m = G.minors[id]; const r = S.run(); if (!r) { toast('資金が足りません'); return; } m.svcAt = G.turn; drawSheet(); refreshTop(); if (r.who && OFF[r.who] && G.officers[r.who].st !== 'dead') await talk(S.name, [[r.who, 'normal', r.line]], null, 'palace'); toast(r.msg); });
     $$('[data-pay]', body).forEach(b => b.onclick = () => { const f = G.facs[me]; if (f.funds < 1500) { toast('資金が足りません'); return; } f.funds -= 1500; G.minors.m2.paid = true; Game.minorJoin('m2', me); Sound.se('fanfare'); drawSheet(); refreshTop(); });
   }
+  // 小勢力に頼めること（盟約を結んだ相手だけ）
+  const MINOR_SVC = {
+    m0: { name: '相場に乗る（資金 300）', cool: 6, desc: '港の商人と組んで一山当てる。300が、150〜700になって戻る。',
+      run: () => { const f = G.facs[G.player]; if (f.funds < 300) return null; const v = Math.round(150 + Math.random() * 550); f.funds += v - 300; return { who: 'rico', line: v >= 300 ? '風が良かった。儲けは、港の流儀で山分けだ。' : '……相場は気まぐれでね。次はきっと取り返す。', msg: `相場の結果：資金 ${v - 300 >= 0 ? '+' : ''}${v - 300}` }; } },
+    m1: { name: '学者を招く（資金 400）', cool: 6, desc: '学術都市の学者を招き、研究を手伝ってもらう。研究 +320。',
+      run: () => { const f = G.facs[G.player]; if (f.funds < 400) return null; f.funds -= 400; f.rp += 320; return { who: 'sophos', line: '知は分け合うほど増える。存分に使いなされ。', msg: '研究 +320' }; } },
+    m2: { name: '傭兵を増やす（資金 600）', cool: 8, desc: '黒鴉傭兵団から、強襲艦を4隻まわしてもらう（首都に駐留）。',
+      run: () => { const f = G.facs[G.player]; if (f.funds < 600) return null; f.funds -= 600; const d = f.designs.map(id => G.designs[id]).filter(x => Game.designUnlocked(x, G.player)).sort((a, b) => Game.designStats(b, G.player).cost - Game.designStats(a, G.player).cost)[0]; if (d) for (let i = 0; i < 4; i++) G.planets[f.capital].dock.push(Game.newShip(d.id)); return { who: 'crow', line: '金の分だけは働く。それが鴉の流儀だ。', msg: `首都に艦が4隻届いた` }; } },
+    m3: { name: '塔の記録を読む', cool: 12, desc: '塔守に頼み、古い記録を読み解いてもらう。研究 +200。何かが分かるかもしれない。',
+      run: () => { const f = G.facs[G.player]; f.rp += 200; G.flags.towerRead = (G.flags.towerRead || 0) + 1; const e = G.eclipse; const line = !e.arrived ? (e.omen ? '記録の欠けた頁が、また一つ埋まった。……星が消える前に、同じことが書かれている。' : '記録には、遠い昔に「空が欠けた」とだけある。続きは、まだ読めぬ。') : e.phase === 'solved' ? '塔の記録は、ここで終わっている。もう、続きを書く必要はない。' : '裂け目はみな、ひとつの根から伸びる枝だと、記録は言う。根を断たねば、枝はまた生える。'; return { who: 'naja', line, msg: '研究 +200（塔の記録）' }; } },
+    m4: { name: '抜け道の案内を雇う（資金 250）', cool: 8, desc: '漂泊民の案内で、半年のあいだ艦の速さ +15%。',
+      run: () => { const f = G.facs[G.player]; if (f.funds < 250) return null; f.funds -= 250; G.minors.m4.guideUntil = G.turn + 6; return { who: 'tahir', line: '星図にない道を教えてやる。ただし、通った道は誰にも言うなよ。', msg: '半年のあいだ、艦の速さ +15%' }; } },
+  };
   function openDiplo(fid) {
     sheet(body => {
       const me = G.player, F = FACTIONS[fid], f = G.facs[fid], r = Game.rel(me, fid);
@@ -549,6 +563,8 @@ const UI = (() => {
     const v = (() => { const others = G.facs.filter(x => x.alive && x.id !== G.player); return { allies: others.filter(x => Game.rel(G.player, x.id).s === 'ally').length, others: others.length, mine: G.planets.filter(p => p.owner === G.player || Game.friendly(G.player, p.owner)).length, total: G.planets.length }; })();
     let h = `<button class="btn primary wide" data-a="staff">参謀に任せる（オートモード）${Staff.active() ? '：実行中' : ''}</button><h3>勝利への道</h3><div class="kv"><div><span>武力統一</span><b>${v.mine} / ${v.total} 星</b></div><div><span>和平</span><b>同盟 ${v.allies} / ${v.others} 国</b></div></div>`;
     h += eclipseBox();
+    // 物語の進み（メインストーリー）
+    { const mp = People.mainProgress(); if (mp.total) h += `<h3>${FACTIONS[G.player].short}の物語 <small>${mp.done.length} / ${mp.total} 話</small></h3><div class="story-prog">${mp.done.map((x, i) => `<div><span>${i + 1}</span>${x.title}<small>${Game.dateStr(x.t)}</small></div>`).join('')}${mp.done.length < mp.total ? `<div class="next"><span>${mp.done.length + 1}</span>……</div>` : ''}</div>`; }
     h += `<h3>国内の派閥 <small>主導：${PARTIES[f.ruling].name}</small></h3>`;
     h += Object.entries(PARTIES).map(([k, P]) => `<div class="party"><b style="color:${P.col}">${P.name}</b>${bar(f.parties[k], 100, P.col)}<span>${Math.round(f.parties[k])}%</span><small>${P.bonus}</small></div>`).join('');
     h += `<p class="note">戦えば主戦派、条約を結べば通商派・融和派、研究すれば技術派が伸びます。毎年1月の評議で、いちばん支持の多い派閥が主導権を握ります。</p>`;
@@ -943,6 +959,8 @@ const UI = (() => {
       await modal(`<div class="center"><h2 class="lose">${FACTIONS[G.player].name}　滅亡</h2><p>星々は、ほかの者たちの物語を紡いでいく。</p></div>`, [{ t: 'タイトルへ', v: null }]);
       Game.clearSave(); toTitle(); return;
     }
+    // 自国の物語の終幕（メインストーリーの締めくくり）
+    try { const fe = People.finale(type); if (fe) await Story.play(fe); } catch (e) { console.error(e); }
     const rec = Ending.record(type);
     Game.clearSave();
     await Cinema.ending(rec);
