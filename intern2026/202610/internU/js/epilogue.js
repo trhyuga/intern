@@ -133,7 +133,7 @@ const Epilogue = (() => {
       }
       const isLd = k === leader;
       const pool = isLd ? LEADER_SAY[type] : (SAY[type][OFF[k].pers] || SAY[type]['沈着']);
-      out.push([k, pz ? 'happy' : 'normal', fresh(pool, '').replace(/\{me\}/g, me(k))]);
+      { const ln = fresh(pool, ''), m0 = me(k), polite = /(です|ます|ません|でしょう|ください)[。！]?$/.test(ln); out.push([k, pz ? 'happy' : 'normal', ln.replace(/\{me\}/g, polite && /^(俺|おれ|あたし|僕)$/.test(m0) ? '私' : m0)]); }
       out.push(['narr', '', fate(k, type, isLd)]);
     }
 
