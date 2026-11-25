@@ -470,7 +470,8 @@ const Portrait = (() => {
     const k = 'gen:' + seed + ':' + expr;
     if (!cache.has(k)) {
       const r = Art.srand(hash(seed));
-      const S0 = { name: seed, fac0: fac, tags: [r() < 0.3 ? 'beard' : r() < 0.2 ? 'scar' : ''].filter(Boolean), age: 25 + Math.floor(r() * 30), female: r() < 0.35, pers: '沈着' };
+      const fem = r() < 0.35, t = r();
+      const S0 = { name: seed, fac0: fac, female: fem, age: 25 + Math.floor(r() * 30), pers: '沈着', tags: [!fem && t < 0.3 ? 'beard' : t > 0.82 ? 'scar' : ''].filter(Boolean) };
       cache.set(k, draw('gen' + seed, expr, 1, S0));
     }
     return cache.get(k);

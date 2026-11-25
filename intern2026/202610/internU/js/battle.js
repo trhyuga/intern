@@ -161,8 +161,8 @@ const Battle = (() => {
     const groups = [];
     // 2つ目以降の艦隊は、遅れて戦場に着くことがある（援軍：横から現れる）
     const late = new Map();
-    sd.fleets.forEach((fl, i) => { if (i > 0 && fl.fac !== 'E' && Math.random() < 0.42) late.set(fl, 10 + Math.random() * 20); });
     const lead = sd.fleets.find(f => f.cmd) || null;
+    sd.fleets.forEach((fl, i) => { if (i > 0 && fl !== lead && fl.fac !== 'E' && Math.random() < 0.42) late.set(fl, 10 + Math.random() * 20); });
     sd.fleets.forEach(fl => squads(fl.ships).slice(0, 6).forEach(g => { if (!late.has(fl)) groups.push({ fl, g }); }));
     if (sd.dock && S.planet) squads(S.planet.dock).slice(0, 3).forEach(g => groups.push({ fl: null, g }));
     const n = groups.length;
@@ -376,7 +376,8 @@ const Battle = (() => {
       const sd = S.side[u.side];
       u.aiT -= dt;
       if (sd.ctrl === 'ai' && u.aiT <= 0) { u.aiT = 0.6; ai(u); }
-      if (sd.ctrl === 'player' && u.aiT <= 0) { u.aiT = 0.5; autoTarget(u); }
+      if (sd.ctrl === 'player' && sd.routed && !u.sat) { u.stance = 'retreat'; u.order = null; }   // 潰走した軍は、指揮しても止まらない
+      else if (sd.ctrl === 'player' && u.aiT <= 0) { u.aiT = 0.5; autoTarget(u); }
     }
     for (const sk of ['A', 'D']) if (S.side[sk].ctrl === 'ai') aiSkill(sk);
     tactics(dt);
@@ -392,7 +393,7 @@ const Battle = (() => {
         if (Math.hypot(tx - u.x, ty - u.y) < 8) { u.order = null; tx = null; }
       } else if (u.order && u.order.type === 'attack') {
         const e = u.order.target;
-        if (!alive(e)) u.order = null;
+        if (!alive(e) || (e.hidden && e.side !== u.side)) u.order = null;
         else {
           const want = u.stance === 'assault' ? minRange(u) * 0.55 : mainRange(u) * unitMods(u).range * 0.85;
           const d = Math.hypot(e.x - u.x, e.y - u.y);
@@ -431,7 +432,7 @@ const Battle = (() => {
         if (s.smax && !inTerrain(u.x, u.y, 'neb')) s.shield = Math.min(s.smax, s.shield + s.regen * dt);
         if (s.hit > 0) s.hit -= dt;
       });
-      const tgt0 = u.order && u.order.type === 'attack' && alive(u.order.target) ? u.order.target : null;
+      const tgt0 = u.order && u.order.type === 'attack' && alive(u.order.target) && !(u.order.target.hidden && u.order.target.side !== u.side) ? u.order.target : null;
       let engaged = false;
       live.forEach((s, si) => {
         for (const w of s.weapons) {
@@ -551,7 +552,7 @@ const Battle = (() => {
     if (sd.routed) { u.stance = 'retreat'; u.order = null; return; }
     if (u.role && sd.plan && !sd.plan.done && !sd.force) return;   // 策の最中は、策の指図に従う
     if (sd.force === 'retreat') { u.stance = 'retreat'; u.order = null; return; }
-    if (sd.focus && !alive(sd.focus)) sd.focus = null;
+    if (sd.focus && (!alive(sd.focus) || sd.focus.hidden)) sd.focus = null;
     if (sd.force === 'guard') { u.stance = 'guard'; u.order = null; return; }
     aiBase(u);
     if (u.stance === 'retreat' && sd.force) u.stance = sd.force;
@@ -620,7 +621,7 @@ const Battle = (() => {
   }
   function useSkill(sk) {
     const sd = S.side[sk];
-    if (sd.skillUsed || !sd.cmd) return false;
+    if (sd.skillUsed || !sd.cmd || sd.cmdLost) return false;
     sd.skillUsed = true;
     const s = skillOf(sd.cmd);
     sd.morale = Math.min(sd.mMax, sd.morale + 8);
@@ -1117,7 +1118,7 @@ const Battle = (() => {
     if (S.over) return;
     const [x, y] = toWorld(e);
     let hitU = null, bd = 40;
-    for (const u of S.units) { if (!alive(u)) continue; const d = Math.hypot(u.x - x, u.y - y) - unitR(u) * 0.5; if (d < bd) { bd = d; hitU = u; } }
+    for (const u of S.units) { if (!alive(u) || (u.hidden && u.side !== mySide)) continue; const d = Math.hypot(u.x - x, u.y - y) - unitR(u) * 0.5; if (d < bd) { bd = d; hitU = u; } }
     if (watch) {
       if (hitU && hitU.side !== mySide) {
         S.side[mySide].focus = hitU;
@@ -1183,7 +1184,7 @@ const Battle = (() => {
     el.querySelectorAll('[data-force]').forEach(b => b.classList.toggle('on', (sd.force || '') === b.dataset.force));
     el.querySelectorAll('[data-tac]').forEach(b => { b.disabled = !sd.cmd || sd.cmdLost || sd.planUsed || mob(mySide).length < TACTICS[b.dataset.tac].min; b.classList.toggle('on', !!(sd.plan && sd.plan.type === b.dataset.tac && !sd.plan.done)); });
     const skb = el.querySelector('[data-a=skill]');
-    if (sd.cmd) { skb.textContent = sd.skillUsed ? '奥の手（済）' : SKILLS[skillOf(sd.cmd)].name; skb.disabled = sd.skillUsed; }
+    if (sd.cmd) { skb.textContent = sd.skillUsed ? '奥の手（済）' : SKILLS[skillOf(sd.cmd)].name; skb.disabled = sd.skillUsed || sd.cmdLost; }
     else { skb.textContent = '奥の手なし'; skb.disabled = true; }
     const info = el.querySelector('.b-sel');
     if (watch) {
@@ -1242,7 +1243,7 @@ const Battle = (() => {
     Sound.se('skill');
     // カットインの間だけ時間を止める（一時停止ボタンの状態とは別に数える）
     hold++;
-    setTimeout(() => { hold--; if (!hold && !endShown) { el.classList.remove('show'); el.innerHTML = ''; } last = performance.now(); }, 1600);
+    setTimeout(() => { hold = Math.max(0, hold - 1); if (!hold && !endShown) { el.classList.remove('show'); el.innerHTML = ''; } last = performance.now(); }, 1600);
   }
   // 戦いの山場：司令官の顔と台詞を短く出す（その間、時間を止める）
   function dramaCut(sk, who, title, line, expr) {
@@ -1342,7 +1343,7 @@ const Battle = (() => {
       if (!alive(u) || u.side !== mySide || !u.order) continue;
       c.strokeStyle = u.order.type === 'attack' ? 'rgba(255,110,90,.45)' : 'rgba(120,200,255,.4)';
       c.lineWidth = 1.5; c.setLineDash([5, 6]); c.beginPath(); c.moveTo(u.x, u.y);
-      const t = u.order.type === 'attack' ? u.order.target : u.order; c.lineTo(t.x, t.y); c.stroke(); c.setLineDash([]);
+      const t = u.order.type === 'attack' ? u.order.target : u.order; if (u.order.type === 'attack' && t.hidden && t.side !== mySide) { c.setLineDash([]); continue; } c.lineTo(t.x, t.y); c.stroke(); c.setLineDash([]);
     }
     // 策の動き（味方の分隊の行き先を、太い矢印で）
     for (const u of S.units) {
