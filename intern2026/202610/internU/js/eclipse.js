@@ -76,6 +76,17 @@ const Eclipse = (() => {
     if (['first', 'great', 'ret'].includes(e.phase)) {
       const every = e.phase === 'first' ? 3 : 2;
       for (const r of openRifts()) { garrison(r); if ((G.turn - (r.openedAt || 0)) % every === 0) spawn(r); }
+      // 4年以上だれも討てずに残った裂け目は、いちばん近い国が、長い包囲の末に討つ（筋が止まらないための備え）
+      for (const r of openRifts()) {
+        const P = G.planets[r.id];
+        if (!P || P.abyss || P.owner !== 'E' || G.turn - (r.openedAt || 0) < 48) continue;
+        const near = G.facs.filter(f => f.alive).map(f => ({ f, d: Math.min(99, ...G.planets.filter(x => x.owner === f.id).map(x => Game.hops(x.id, r.id))) })).sort((a, b) => a.d - b.d)[0];
+        if (!near || near.d > 6) continue;
+        G.fleets = G.fleets.filter(fl => !(fl.fac === 'E' && fl.at === r.id));
+        Game.log(`${FACTIONS[near.f.id].name}の艦隊が、長い包囲の末に${P.name}を討った。`, 'big');
+        Game.capture(r.id, near.f.id, 'siege');
+        break;
+      }
     }
     // 深淵の守り
     if (e.abyss !== undefined && e.abyss !== null && G.planets[e.abyss].owner === 'E') guard();
@@ -176,8 +187,8 @@ const Eclipse = (() => {
   }
   // 銀河の国々を合わせた艦隊の力（蝕の群れ全体の上限に使う）
   function allPower() { let S = 0; G.facs.forEach(f => { if (f.alive) S += G.fleets.filter(x => x.fac === f.id).reduce((a, x) => a + Game.fleetPower(x), 0); }); return Math.max(2000, S); }
-  function capShare() { const e = E(); return e.phase === 'first' ? 0.25 : e.phase === 'great' ? 0.55 : 0.45 + 0.1 * e.cycle; }
-  function share() { const e = E(); return e.phase === 'first' ? 0.12 : e.phase === 'great' ? 0.09 : 0.07 + 0.02 * e.cycle; }
+  function capShare() { const e = E(); return e.phase === 'first' ? 0.25 : e.phase === 'great' ? 0.4 : Math.min(0.6, 0.32 + 0.07 * e.cycle); }
+  function share() { const e = E(); return e.phase === 'first' ? 0.12 : e.phase === 'great' ? 0.075 : Math.min(0.11, 0.06 + 0.015 * e.cycle); }
   const ship = k => ({ ecl: k, hp: ECLIPSE_SHIPS[k].hp, xp: 0, m: 1 });
   // 群れの艦の数はそのままに、一体ごとの強さ m を合わせて、狙った強さにする
   function scaleTo(fl, target) {
