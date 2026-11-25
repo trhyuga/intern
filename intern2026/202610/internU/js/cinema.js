@@ -87,6 +87,115 @@ const Cinema = (() => {
     c.restore();
   }
 
+  // ---------------- 共通の飾り（静的な層はキャッシュ） ----------------
+  // 渦巻銀河の一枚絵（色 col の腕）。回すだけで動いて見える
+  const galCache = new Map();
+  function galaxyCanvas(size, seed, col, col2) {
+    const key = size + '|' + seed + '|' + col + '|' + col2;
+    if (galCache.has(key)) return galCache.get(key);
+    const cv = document.createElement('canvas'); cv.width = cv.height = size;
+    const c = cv.getContext('2d'), R = size / 2, r = Art.srand(seed);
+    c.globalCompositeOperation = 'lighter';
+    // 核
+    const g = c.createRadialGradient(R, R, 0, R, R, R * 0.35);
+    g.addColorStop(0, 'rgba(255,248,230,.9)'); g.addColorStop(0.25, Art.hexA(col2, 0.45)); g.addColorStop(1, Art.hexA(col, 0));
+    c.fillStyle = g; c.fillRect(0, 0, size, size);
+    // 腕（4本の対数螺旋に沿った星と靄）
+    const arms = 4;
+    for (let i = 0; i < 5200; i++) {
+      const arm = i % arms, d = Math.pow(r(), 0.7);
+      const th = arm * Math.PI * 2 / arms + d * 5.2 + (r() - 0.5) * (0.5 + (1 - d) * 0.6);
+      const rr = d * R * 0.96, x = R + Math.cos(th) * rr, y = R + Math.sin(th) * rr;
+      const big = r() < 0.06;
+      if (big) {
+        const gg = c.createRadialGradient(x, y, 0, x, y, 6 + r() * 10);
+        gg.addColorStop(0, Art.hexA(r() < 0.5 ? col : col2, 0.12)); gg.addColorStop(1, Art.hexA(col, 0));
+        c.fillStyle = gg; c.beginPath(); c.arc(x, y, 16, 0, 7); c.fill();
+      } else {
+        const w = r() < 0.2 ? '255,255,255' : null;
+        c.fillStyle = w ? `rgba(${w},${0.35 + r() * 0.5})` : Art.hexA(r() < 0.6 ? col2 : col, 0.25 + r() * 0.5);
+        const sz = 0.6 + r() * 1.3; c.fillRect(x, y, sz, sz);
+      }
+    }
+    galCache.set(key, cv);
+    return cv;
+  }
+  // 光のにじみ（加算の円）
+  function bloom(c, x, y, r, col, a) {
+    if (a <= 0.01 || r <= 0) return;
+    const g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(0.25, Art.hexA(col, a * 0.6)); g.addColorStop(1, Art.hexA(col, 0));
+    c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+  }
+  // 花火（時間 t から決定的に描く：毎フレーム同じ結果）
+  function fireworks(c, W, H, t, cols, rate = 1.2, yMax = 0.6, seed = 1) {
+    const life = 2.6, step = 1 / rate;
+    c.save(); c.globalCompositeOperation = 'lighter';
+    for (let n = Math.floor((t - life) / step); n <= Math.floor(t / step); n++) {
+      if (n < 0) continue;
+      const r = Art.srand(n * 977 + seed), born = n * step + r() * step * 0.8, k = (t - born) / life;
+      if (k < 0 || k > 1) continue;
+      const x = W * (0.12 + r() * 0.76), y = H * (0.08 + r() * (yMax - 0.08)), col = cols[Math.floor(r() * cols.length)];
+      const R = Math.min(W, H) * (0.12 + r() * 0.14), N = 26 + Math.floor(r() * 18), e = easeOut(k * 1.6);
+      const a = Math.pow(1 - k, 1.5);
+      if (k < 0.12) bloom(c, x, y, R * 0.7, col, (1 - k / 0.12) * 0.8);
+      c.fillStyle = Art.hexA(col, a);
+      for (let i = 0; i < N; i++) {
+        const an = i / N * Math.PI * 2 + r() * 0.1, dx = Math.cos(an) * R * e, dy = Math.sin(an) * R * e + k * k * R * 0.5;
+        const sz = 1.2 + (1 - k) * 1.8;
+        c.fillRect(x + dx - sz / 2, y + dy - sz / 2, sz, sz);
+        c.fillRect(x + dx * 0.85 - 0.5, y + dy * 0.85 - 0.5, 1, 1);
+      }
+    }
+    c.restore();
+  }
+  // 流れ星
+  function shootingStars(c, W, H, t, seed = 5) {
+    c.save(); c.globalCompositeOperation = 'lighter'; c.lineCap = 'round';
+    for (let n = Math.floor(t / 2.2) - 1; n <= Math.floor(t / 2.2); n++) {
+      if (n < 0) continue;
+      const r = Art.srand(n * 131 + seed), born = n * 2.2 + r() * 2, k = (t - born) / 0.9;
+      if (k < 0 || k > 1 || r() < 0.3) continue;
+      const x0 = W * (0.1 + r() * 0.9), y0 = H * r() * 0.45, ang = Math.PI * (0.72 + r() * 0.12), L = 60 + r() * 90, sp = W * 0.6;
+      const x = x0 + Math.cos(ang) * sp * k, y = y0 + Math.sin(ang) * sp * k, a = Math.sin(k * Math.PI);
+      const gr = c.createLinearGradient(x, y, x - Math.cos(ang) * L, y - Math.sin(ang) * L);
+      gr.addColorStop(0, `rgba(255,255,255,${a})`); gr.addColorStop(1, 'rgba(160,200,255,0)');
+      c.strokeStyle = gr; c.lineWidth = 1.6; c.beginPath(); c.moveTo(x, y); c.lineTo(x - Math.cos(ang) * L, y - Math.sin(ang) * L); c.stroke();
+    }
+    c.restore();
+  }
+  // 黒い太陽（大きな蝕と光冠）。光冠はキャッシュした画像を回す
+  let coronaCv = null;
+  function coronaSprite() {
+    if (coronaCv) return coronaCv;
+    const S = 512, R = S / 2, cv = document.createElement('canvas'); cv.width = cv.height = S;
+    const c = cv.getContext('2d'), r = Art.srand(42); c.globalCompositeOperation = 'lighter';
+    const g = c.createRadialGradient(R, R, R * 0.2, R, R, R);
+    g.addColorStop(0, 'rgba(255,230,240,.9)'); g.addColorStop(0.24, 'rgba(255,90,140,.55)'); g.addColorStop(0.45, 'rgba(200,40,120,.18)'); g.addColorStop(1, 'rgba(120,20,90,0)');
+    c.fillStyle = g; c.fillRect(0, 0, S, S);
+    for (let i = 0; i < 90; i++) {
+      const a = r() * Math.PI * 2, L = R * (0.3 + r() * 0.65), w = 0.01 + r() * 0.03;
+      const gg = c.createRadialGradient(R, R, R * 0.2, R, R, L);
+      gg.addColorStop(0, `rgba(255,${150 + r() * 80},${180 + r() * 60},.35)`); gg.addColorStop(1, 'rgba(255,60,120,0)');
+      c.fillStyle = gg; c.beginPath(); c.moveTo(R, R); c.arc(R, R, L, a - w, a + w); c.closePath(); c.fill();
+    }
+    coronaCv = cv; return cv;
+  }
+  function blackSun(c, x, y, r, k, t) {
+    const sp = coronaSprite(), s = r * 4.6 * (1 + Math.sin(t * 0.7) * 0.02);
+    c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = k;
+    c.translate(x, y); c.rotate(t * 0.02); c.drawImage(sp, -s / 2, -s / 2, s, s);
+    c.rotate(-t * 0.05); c.globalAlpha = k * 0.5; c.drawImage(sp, -s * 0.4, -s * 0.4, s * 0.8, s * 0.8);
+    c.restore();
+    // 縁の細い光（ダイヤモンドリング風）
+    c.save(); c.globalCompositeOperation = 'lighter';
+    c.strokeStyle = `rgba(255,220,235,${0.8 * k})`; c.lineWidth = 1.5; c.beginPath(); c.arc(x, y, r * 1.01, 0, 7); c.stroke();
+    const da = -Math.PI * 0.25 + Math.sin(t * 0.2) * 0.3;
+    bloom(c, x + Math.cos(da) * r, y + Math.sin(da) * r, r * 0.5, '#ffd0e0', 0.7 * k);
+    c.restore();
+    c.fillStyle = '#000'; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill();
+  }
+
   // ---------------- タイトル背景 ----------------
   let titleRaf = null;
   function title() {
@@ -94,18 +203,53 @@ const Cinema = (() => {
     const cv = document.getElementById('titlecv');
     let { c, W, H } = fit(cv);
     const neb = Art.nebulaCanvas(420, 760, 777, [230, 270, 330, 200], { alpha: 0.1, stars: 500 });
+    // 手前を漂う靄（縁の柔らかい色の雲をひとつの画像に）
+    const neb2 = document.createElement('canvas'); neb2.width = 256; neb2.height = 256;
+    { const q = neb2.getContext('2d'), r = Art.srand(4242); q.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 26; i++) { const x = 40 + r() * 176, y = 40 + r() * 176, rr = 20 + r() * 50, h = [300, 200, 330, 260][i % 4];
+        const g = q.createRadialGradient(x, y, 0, x, y, rr); g.addColorStop(0, `hsla(${h},80%,60%,.10)`); g.addColorStop(1, `hsla(${h},80%,50%,0)`);
+        q.fillStyle = g; q.beginPath(); q.arc(x, y, rr, 0, 7); q.fill(); } }
+    const gal = galaxyCanvas(640, 77, '#6a7cff', '#c8b0ff');
     const stars = makeStars(260, 3);
     const t0 = performance.now();
     const onR = () => ({ c, W, H } = fit(cv));
     window.addEventListener('resize', onR);
     const loop = () => {
       const t = (performance.now() - t0) / 1000;
+      const M = Math.min(W, H);
       c.fillStyle = '#01020a'; c.fillRect(0, 0, W, H);
-      const z = 1.08 + Math.sin(t * 0.05) * 0.04;
+      // 奥：星雲（ゆっくり視差）
+      const z = 1.1 + Math.sin(t * 0.05) * 0.04;
       c.drawImage(neb, -W * (z - 1) / 2 + Math.sin(t * 0.03) * 10, -H * (z - 1) / 2, W * z, H * z);
       starfield(c, W, H, stars, t, 0.012);
-      // 遠くの蝕
-      eclipse(c, W * 0.72, H * 0.2, Math.min(W, H) * 0.07, 0.75, t);
+      // 渦巻銀河（傾けて、ゆっくり回す）
+      c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.75 * ease(t / 3);
+      c.translate(W * 0.5 + Math.sin(t * 0.04) * 14, H * 0.5 + Math.cos(t * 0.05) * 8); c.rotate(-0.35); c.scale(1, 0.42); c.rotate(t * 0.025);
+      const gs = M * 1.9; c.drawImage(gal, -gs / 2, -gs / 2, gs, gs);
+      c.restore();
+      // 手前を漂う星雲（逆向きの視差）
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) {
+        const sp = 5 + i * 3, ww = W * (1.1 + i * 0.3), xx = ((t * sp + i * W * 0.7) % (W + ww)) - ww, yy = H * (0.05 + i * 0.3) + Math.sin(t * 0.1 + i) * 20;
+        c.globalAlpha = 0.8; c.drawImage(neb2, W - xx - ww, yy, ww, ww * 0.8);
+      }
+      c.restore();
+      shootingStars(c, W, H, t);
+      // 黒い太陽が題字の後ろから昇る
+      const sunY = H * 0.31 + (1 - easeOut(t / 7)) * H * 0.22, sunR = M * 0.16;
+      // 紋章が太陽のまわりを巡る（奥側）
+      const orb = (front) => FACTIONS.forEach((F, i) => {
+        const an = t * 0.12 + i * Math.PI / 3, sn = Math.sin(an);
+        if ((sn > 0) !== front) return;
+        const x = W / 2 + Math.cos(an) * M * 0.44, y = sunY + sn * M * 0.12, d = 0.65 + sn * 0.35;
+        c.save(); c.globalAlpha = (front ? 0.6 : 0.35 + d * 0.4) * ease((t - 1.5 - i * 0.3) / 1.5);
+        bloom(c, x, y, M * 0.07 * d, F.col, 0.35);
+        Art.emblem(c, F.emblem, x, y, M * 0.036 * d, F.col, F.col2);
+        c.restore();
+      });
+      orb(false);
+      blackSun(c, W / 2, sunY, sunR, ease(t / 2.5), t);
+      orb(true);
       // 惑星の地平
       const pr = W * 1.4;
       const g = c.createRadialGradient(W / 2, H + pr * 0.82, pr * 0.9, W / 2, H + pr * 0.82, pr * 1.05);
@@ -364,6 +508,21 @@ const Cinema = (() => {
     const F = FACTIONS[rec.fac];
     const neb = Art.nebulaCanvas(480, 860, 31 + rec.fac, [F.col === '#e0483c' ? 8 : 220, 260, 40], { alpha: 0.1, stars: 600 });
     const stars = makeStars(320, 17);
+    const galGrey = galaxyCanvas(560, 31, '#5a6a88', '#a8b4cc');
+    const galF = galaxyCanvas(560, 31, F.col, F.col2);
+    const fwCols = [F.col, F.col2, '#fff2c0', '#ffffff'];
+    // 銀河（色が勢力の色へ移っていく）
+    const drawGalaxy = (c, W, H, t, a, uni, cy = 0.45, sc = 1.7) => {
+      if (a <= 0.01) return;
+      const M = Math.min(W, H), gs = M * sc;
+      c.save(); c.globalCompositeOperation = 'lighter';
+      c.translate(W / 2, H * cy); c.rotate(-0.3); c.scale(1, 0.45); c.rotate(t * 0.03);
+      if (uni < 1) { c.globalAlpha = a * (1 - uni); c.drawImage(galGrey, -gs / 2, -gs / 2, gs, gs); }
+      if (uni > 0) { c.globalAlpha = a * uni; c.drawImage(galF, -gs / 2, -gs / 2, gs, gs); }
+      c.restore();
+    };
+    // 帰還する艦隊（地平の光へ向かって小さくなっていく）
+    const homeward = Array.from({ length: 22 }, (_, i) => { const r = Art.srand(i * 71 + 3); return { sx: r() * 1.4 - 0.2, sy: -0.1 - r() * 0.3, d: r() * 9, sp: 0.09 + r() * 0.06, s: 0.6 + r() * 0.8, h: ['dd', 'cl', 'bb', 'cv', 'cl'][i % 5] }; });[rec.fac][rec.type === 'conquest' ? 'conquest' : 'peace'];
     const T = ENDING_TEXT[rec.fac][rec.type === 'conquest' ? 'conquest' : 'peace'];
     const cards = rec.epi || [];
     const t1 = 22, t2 = t1 + 20, perCard = 5.2, t3 = t2 + cards.length * perCard;
@@ -382,12 +541,16 @@ const Cinema = (() => {
         const a = fade(t, 0, t1, 1.5);
         c.globalAlpha = a; c.drawImage(neb, 0, 0, W, H); c.globalAlpha = 1;
         starfield(c, W, H, stars, t, 0.01);
+        const uni = ease((t - 3) / 10);
+        drawGalaxy(c, W, H, t, a * 0.8, uni, rec.type === 'conquest' ? 0.3 : 0.45);
+        if (t > 9) fireworks(c, W, H, t, fwCols, 1.1 * a, rec.type === 'conquest' ? 0.3 : 0.55, rec.fac + 1);
         if (rec.type === 'conquest') {
           // 覇道：首都の上に旗艦と艦隊が並ぶ
           const pr = W * 1.1;
           Art.planet(c, W / 2, H + pr * 0.6, pr, PTYPES[rec.capType] ? rec.capType : 'terra', 5);
           const k = easeOut(t / 10);
           fleet(c, W / 2, H * 0.45 + (1 - k) * 80, 16, 0, 26, F.col, 9, 1.8);
+          c.save(); c.globalCompositeOperation = 'lighter'; bloom(c, W / 2, H * 0.36 + (1 - k) * 60, M * 0.45, F.col, 0.35 * a * k); c.restore();
           Art.ship(c, 'dn', W / 2, H * 0.36 + (1 - k) * 60, 0, M * 0.32, F.col);
           Art.emblem(c, F.emblem, W / 2, H * 0.16, M * 0.08 * a, F.col, F.col2);
         } else {
@@ -399,16 +562,19 @@ const Cinema = (() => {
             const lk = clamp(k * nodes.lanes.length / 1.2 - n * 0.6, 0, 1);
             if (lk <= 0) return;
             const A = nodes.pts[i], B = nodes.pts[j];
-            c.strokeStyle = `rgba(160,220,255,${lk * 0.8})`;
+            c.strokeStyle = uni > 0.02 ? Art.hexA(Art.mix('#a0dcff', F.col2, uni), lk * 0.85) : `rgba(160,220,255,${lk * 0.8})`;
             c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(A.x + (B.x - A.x) * lk, A.y + (B.y - A.y) * lk); c.stroke();
           });
           nodes.pts.forEach((p, i) => {
             const pk = clamp(k * 2 - i * 0.04, 0, 1);
             const g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, 14 * pk + 2);
-            g.addColorStop(0, `rgba(255,255,255,${pk})`); g.addColorStop(1, `rgba(140,200,255,0)`);
+            g.addColorStop(0, `rgba(255,255,255,${pk})`); g.addColorStop(1, Art.hexA(Art.mix('#8cc8ff', F.col, uni), 0));
             c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y, 16, 0, 7); c.fill();
           });
-          FACTIONS.forEach((FF, i) => { if (!rec.alive.includes(FF.id)) return; const ang = -Math.PI / 2 + i * Math.PI / 3, x = W / 2 + Math.cos(ang) * M * 0.36, y = H * 0.45 + Math.sin(ang) * M * 0.42; Art.emblem(c, FF.emblem, x, y, M * 0.05 * ease((t - 4 - i * 0.6) / 1.5), FF.col, FF.col2); });
+          // 六つの紋章が中央に寄り添い、ひとつの光になる
+          const gather = ease((t - 13) / 5);
+          c.save(); c.globalCompositeOperation = 'lighter'; bloom(c, W / 2, H * 0.45, M * (0.2 + gather * 0.35), F.col, 0.5 * gather * a); c.restore();
+          FACTIONS.forEach((FF, i) => { if (!rec.alive.includes(FF.id)) return; const ang = -Math.PI / 2 + i * Math.PI / 3 + gather * 0.6, R = 1 - gather * 0.55, x = W / 2 + Math.cos(ang) * M * 0.36 * R, y = H * 0.45 + Math.sin(ang) * M * 0.42 * R; c.save(); c.globalCompositeOperation = 'lighter'; bloom(c, x, y, M * 0.1, FF.col, 0.4 * ease((t - 4 - i * 0.6) / 1.5) * a); c.restore(); Art.emblem(c, FF.emblem, x, y, M * 0.05 * ease((t - 4 - i * 0.6) / 1.5), FF.col, FF.col2); });
         }
         textC(c, rec.type === 'conquest' ? '― 覇　道 ―' : '― 和　平 ―', W / 2, H * 0.08, 20, fade(t, 1, t1 - 1, 1), { ls: 8, col: '#fff4d0', glow: rec.type === 'conquest' ? F.col : 'rgba(140,200,255,1)' });
         T.forEach((line, i) => textBlock(c, line, W / 2, H * 0.82, 16, fade(t, 3 + i * 6, 9 + i * 6, 1), W * 0.88));
@@ -426,6 +592,18 @@ const Cinema = (() => {
         const sg = c.createRadialGradient(W / 2, sunY, 0, W / 2, sunY, M * 0.6);
         sg.addColorStop(0, 'rgba(255,250,230,.95)'); sg.addColorStop(0.1, Art.hexA(F.col2, 0.7)); sg.addColorStop(1, Art.hexA(F.col, 0));
         c.fillStyle = sg; c.beginPath(); c.arc(W / 2, sunY, M * 0.6, 0, 7); c.fill();
+        // 帰還する艦隊
+        c.globalAlpha = a;
+        for (const f of homeward) {
+          const q = (k - f.d) * f.sp; if (q < 0 || q > 1) continue;
+          const e = easeOut(q), x = W * f.sx + (W / 2 - W * f.sx) * e, y = H * f.sy + (sunY - H * f.sy) * e;
+          const ang = Math.atan2(sunY - H * f.sy, W / 2 - W * f.sx) + Math.PI / 2;
+          c.globalAlpha = a * Math.min(1, (1 - q) * 3);
+          Art.ship(c, f.h, x, y, ang, M * 0.05 * f.s * (1 - e * 0.85), Art.mix(F.col, '#000000', 0.35));
+          if (q > 0.85) { c.save(); c.globalCompositeOperation = 'lighter'; bloom(c, x, y, 10, F.col2, (q - 0.85) * 4 * a); c.restore(); }
+        }
+        c.globalAlpha = a;
+        if (k > 6) fireworks(c, W, H * 0.75, k, fwCols, 0.9, 0.45, rec.fac + 7);
         // 地平（惑星の弧）
         const pr = W * 2.2;
         c.fillStyle = '#04050c'; c.beginPath(); c.arc(W / 2, H * 0.8 + pr, pr, 0, 7); c.fill();
@@ -448,6 +626,7 @@ const Cinema = (() => {
       if (t >= t2 && t < t3) {
         c.globalAlpha = 0.5; c.drawImage(neb, 0, 0, W, H); c.globalAlpha = 1;
         starfield(c, W, H, stars, t, 0.006);
+        drawGalaxy(c, W, H, t, 0.35, 1, 0.5, 2.2);
         const i = Math.floor((t - t2) / perCard), k = t - t2 - i * perCard, cd = cards[i];
         if (cd) {
           const a = fade(k, 0, perCard, 0.6);
@@ -470,6 +649,12 @@ const Cinema = (() => {
         const k = t - t3;
         c.globalAlpha = 0.6; c.drawImage(neb, 0, 0, W, H); c.globalAlpha = 1;
         starfield(c, W, H, stars, t, 0.02);
+        drawGalaxy(c, W, H, t, 0.55, 1, 0.5, 2.0);
+        shootingStars(c, W, H, k, 9);
+        // 名前の通り道を少し暗くして読みやすく
+        const sh = c.createLinearGradient(0, 0, W, 0); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(0.5, 'rgba(0,0,0,.35)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = sh; c.fillRect(0, 0, W, H);
+        if (k > rollDur - 2) { fireworks(c, W, H, k, fwCols, 1.6, 0.42, 99); c.save(); c.globalCompositeOperation = 'lighter'; bloom(c, W / 2, H / 2, M * 0.7, F.col, 0.35 * ease((k - rollDur) / 2)); c.restore(); }
         const y0 = H + 20 - k * 46;
         rollLines.forEach((l, i) => {
           const y = y0 + i * 34;
@@ -507,6 +692,14 @@ const Cinema = (() => {
     gap();
     if (rec.big && rec.big.length) { h('主な会戦'); rec.big.slice(0, 6).forEach(b => n(`${b.name}（${b.won ? '勝利' : '敗北'}）`)); gap(); }
     h('功臣'); (rec.epi || []).slice(0, 8).forEach(e => n(OFF[e.k].name)); gap();
+    // 共に戦った士官たち（いま遊んでいる記録のときだけ）
+    try {
+      if (typeof G !== 'undefined' && G && G.player === rec.fac && typeof Game !== 'undefined' && Game.officersOf) {
+        const seen = new Set((rec.epi || []).map(e => e.k));
+        const rest = Game.officersOf(rec.fac).filter(k => OFF[k] && !seen.has(k)).sort((a, b) => ((G.officers[b] && G.officers[b].merit) || 0) - ((G.officers[a] && G.officers[a].merit) || 0)).slice(0, 16);
+        if (rest.length) { h('共に戦った士官たち'); for (let i = 0; i < rest.length; i += 2) n(rest.slice(i, i + 2).map(k => OFF[k].name).join('　・　')); gap(); }
+      }
+    } catch (e) { }
     if (rec.fallen && rec.fallen.length) { h('星になった者たち'); rec.fallen.slice(0, 8).forEach(k => n(OFF[k].name)); gap(); }
     gap();
     h('企画・制作'); n(CONFIG.credit); gap();

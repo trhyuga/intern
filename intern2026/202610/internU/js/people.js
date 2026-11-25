@@ -361,7 +361,7 @@ const People = (() => {
           }
         }
         // 星の開発（首都や国境に資源を注ぐ）
-        if (a.dev) { const p = a.where === 'border' ? borderP() : capOf(); const k = a.dev.k || 'ind'; p[k] = Math.min(10, (p[k] || 0) + (a.dev.n || 1)); note(`${p.name}の${({ ind: '産業', res: '研究', yard: '造船所' })[k] || k} +${a.dev.n || 1}`); }
+        if (a.dev) { const p = (a.where || a.dev.where) === 'border' ? borderP() : capOf(); const k = a.dev.k || 'ind'; p[k] = Math.min(10, (p[k] || 0) + (a.dev.n || 1)); note(`${p.name}の${({ ind: '産業', res: '研究', yard: '造船所' })[k] || k} +${a.dev.n || 1}`); }
       } catch (e) { console.warn('act', a, e); }
     }
   }
