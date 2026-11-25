@@ -136,7 +136,7 @@ PEOPLE.add({
           ['freya', 'normal', '帰る場所がある船。……帰って来いって、今度は私が言う番だから。'],
         ],
         choices: [
-          { t: '旗を認め、精鋭を預ける（フレイヤの統率 +2・武功 +5）', fx: { stat: { freya: { ldr: 2 } }, merit: { freya: 5 }, flag: 'p4_freya_banner' },
+          { t: '旗を認め、精鋭を預ける（フレイヤが主力艦隊の司令に・フレイヤの統率 +2・武功 +5）', fx: { stat: { freya: { ldr: 2 } }, merit: { freya: 5 }, act: [{ officer: 'freya', do: 'command' }], flag: 'p4_freya_banner' },
             after: [['freya', 'happy', 'ありがとう。この旗、一隻も欠けさせない。']] },
           { t: '旗を同盟全体の祝いにする（民心 +4・フレイヤの忠誠 +10）', fx: { stab: 4, loyal: { freya: 10 } },
             after: [['freya', 'shock', '港中の船が、同じ旗を……？ もう、泣かせないでよ。']] },
@@ -203,7 +203,7 @@ PEOPLE.add({
           ['bjorn', 'happy', 'だから決めた。跪きはしねえ。その代わり、あんたの前を歩く。弾除けの、いちばん前をな。'],
         ],
         choices: [
-          { t: '先陣を託す（ビョルンの統率 +2・武功 +6・主戦派が伸びる）', fx: { stat: { bjorn: { ldr: 2 } }, merit: { bjorn: 6 }, party: { war: 4 }, flag: 'p4_bjorn_van' },
+          { t: '先陣を託す（ビョルンが主力艦隊の司令に・ビョルンの統率 +2・武功 +6・主戦派が伸びる）', fx: { stat: { bjorn: { ldr: 2 } }, merit: { bjorn: 6 }, party: { war: 4 }, act: [{ officer: 'bjorn', do: 'command' }], flag: 'p4_bjorn_van' },
             after: [['bjorn', 'happy', 'がはは！ 話が早え！ 野郎ども、戦歌を歌え！']] },
           { t: '若い兵を鍛える役を頼む（民心 +3・ビョルンの忠誠 +15）', fx: { stab: 3, loyal: { bjorn: 15 } },
             after: [['bjorn', 'shock', '俺様が先生か？ ……弟にしてやれなかったことを、あいつらにしてやるか。']] },
@@ -454,7 +454,7 @@ PEOPLE.add({
           ['sigrid', 'normal', '辺境の船は、継ぎ接ぎだらけです。だからこそ、一枚一枚の鋼に命を預けている。'],
         ],
         choices: [
-          { t: '工房に資金を回す（資金 −150・研究 +150・シグリッドの忠誠 +10）', fx: { funds: -150, rp: 150, loyal: { sigrid: 10 } },
+          { t: '工房に資金を回す（首都の造船所 +1・資金 −150・研究 +80・シグリッドの忠誠 +10）', fx: { funds: -150, rp: 80, loyal: { sigrid: 10 }, act: [{ dev: { k: 'yard', n: 1 } }] },
             after: [['sigrid', 'happy', 'まあ！ 新しい炉が組めますわ。見ていてくださいまし。']] },
           { t: '職人たちを労う宴を開く（民心 +3・技術派が伸びる）', fx: { stab: 3, party: { tech: 4 } },
             after: [['sigrid', 'happy', '皆さん、きっと喜びます。……わたくしも、焼き菓子を焼かなくては。']] },
@@ -476,7 +476,7 @@ PEOPLE.add({
           ['sigrid', 'normal', '父の配合を、さらに一歩進めました。今度は、誰にも盗ませません。'],
         ],
         choices: [
-          { t: '同盟の全工房に配る（研究 +180・技術派が伸びる）', fx: { rp: 180, party: { tech: 6 }, flag: 'p4_sigrid_hull' },
+          { t: '同盟の全工房に配る（造艦の費用 −10%（18か月）・研究 +100・技術派が伸びる）', fx: { rp: 100, party: { tech: 6 }, act: [{ buff: 'build', v: 0.1, months: 18, name: '辺境の船殻' }], flag: 'p4_sigrid_hull' },
             after: [['sigrid', 'happy', '皆で打てば、技は盗まれません。広まるだけですもの。']] },
           { t: '彼女の工房で磨き続けさせる（シグリッドの技術 +2・忠誠 +10）', fx: { stat: { sigrid: { sci: 2 } }, loyal: { sigrid: 10 } },
             after: [['sigrid', 'normal', 'では、もう一歩先まで。父が見られなかった鋼を、打ってみせます。']] },
@@ -619,9 +619,9 @@ PEOPLE.add({
         ],
         fx: { rp: 100, stat: { mira: { tac: 1, dip: 1 } }, merit: { mira: 4 } },
         choices: [
-          { t: '地図を写させ、辺境じゅうの船に配る（民心 +4・ミラの交渉 +1）', fx: { stab: 4, stat: { mira: { dip: 1 } }, flag: 'p4_mira_map' },
+          { t: '地図を写させ、辺境じゅうの船に配る（収入 +5%（12か月）・民心 +4・ミラの交渉 +1）', fx: { stab: 4, stat: { mira: { dip: 1 } }, act: [{ buff: 'income', v: 0.05, months: 12, name: '星渡りの地図' }], flag: 'p4_mira_map' },
             after: [['mira', 'happy', '漁船の操舵席にも貼ってもらおう！ 迷ったら、歌いながら見てね。']] },
-          { t: '地図は同盟の艦隊だけが持つ（ミラの忠誠 +10・研究 +80）', fx: { loyal: { mira: 10 }, rp: 80 },
+          { t: '地図は同盟の艦隊だけが持つ（艦の速さ +10%（12か月）・ミラの忠誠 +10）', fx: { loyal: { mira: 10 }, act: [{ buff: 'speed', v: 0.1, months: 12, name: '案内人の地図' }] },
             after: [['mira', 'normal', 'そっか……そうだね。悪い人の手に渡ったら困るもんね。大事にしまっておく。']] },
         ] },
     ],
@@ -751,9 +751,9 @@ PEOPLE.add({
           ['ingrid', 'normal', 'なあ。あたしは、これからも子どもらを戦場に送り出さなきゃならないのかい。'],
         ],
         choices: [
-          { t: '「生きて帰る術を、あなたが教えてくれ」（イングリッドの統率 +2・戦術 +1）', fx: { stat: { ingrid: { ldr: 2, tac: 1 } } },
+          { t: '「生きて帰る術を、あなたが教えてくれ」（艦の守り +5%（12か月）・イングリッドの統率 +2・戦術 +1）', fx: { stat: { ingrid: { ldr: 2, tac: 1 } }, act: [{ buff: 'def', v: 0.05, months: 12, name: '生きて帰る術' }] },
             after: [['ingrid', 'normal', '……そうだね。泣いてる暇はない。帰ってくる子を、一人でも増やすよ。']] },
-          { t: '戦の孤児を出さぬ世を誓う（融和派が伸びる・民心 +4・忠誠 +10）', fx: { party: { peace: 6 }, stab: 4, loyal: { ingrid: 10 }, flag: 'p4_ingrid_vow' },
+          { t: '戦の孤児を出さぬ世を誓う（民心 毎月 +1（12か月）・融和派が伸びる・忠誠 +10）', fx: { party: { peace: 6 }, loyal: { ingrid: 10 }, act: [{ buff: 'stab', v: 0.1, months: 12, name: '母との誓い' }], flag: 'p4_ingrid_vow' },
             after: [['ingrid', 'sad', '誓ったね。あたしは忘れないよ。……忘れないから、頼んだよ。']] },
         ] },
     ],
@@ -803,7 +803,7 @@ PEOPLE.add({
           ['eskil', 'normal', 'おいらの歌、艦隊ぜんぶで使ってみるかい？ それとも、おいらの砲座だけの秘密にしとく？'],
         ],
         choices: [
-          { t: '全艦の砲手に歌を教えさせる（エスキルの統率 +2・主戦派が伸びる）', fx: { stat: { eskil: { ldr: 2 } }, party: { war: 3 } },
+          { t: '全艦の砲手に歌を教えさせる（艦の火力 +5%（12か月）・エスキルの統率 +2・主戦派が伸びる）', fx: { stat: { eskil: { ldr: 2 } }, party: { war: 3 }, act: [{ buff: 'dmg', v: 0.05, months: 12, name: '歌う砲塔' }] },
             after: [['eskil', 'happy', 'よっしゃ！ 銀河一うるさい艦隊にしてやるよ！']] },
           { t: '彼の砲座で磨き続けさせる（エスキルの戦術 +2）', fx: { stat: { eskil: { tac: 2 } } },
             after: [['eskil', 'happy', '秘伝の歌ってやつだね。いいねえ、燃えてきた。']] },
@@ -861,7 +861,7 @@ PEOPLE.add({
           ['helga', 'normal', '……速さってのは、そういうもんだと思ってる。'],
         ],
         choices: [
-          { t: '「なら、隊ごと速くしよう」（ヘルガの統率 +2）', fx: { stat: { helga: { ldr: 2 } } },
+          { t: '「なら、隊ごと速くしよう」（艦の速さ +5%（12か月）・ヘルガの統率 +2）', fx: { stat: { helga: { ldr: 2 } }, act: [{ buff: 'speed', v: 0.05, months: 12, name: '戦乙女の突撃隊' }] },
             after: [['helga', 'happy', 'へえ、話が分かるじゃないか。隊ごと燃やしてやるよ。']] },
           { t: '「先に着いて、お前が燃えるな」（ヘルガの忠誠 +15）', fx: { loyal: { helga: 15 } },
             after: [['helga', 'shock', '……あたいの心配かい。変わった奴だね。……覚えとくよ。']] },
@@ -949,7 +949,7 @@ PEOPLE.add({
           ['ulf', 'normal', 'その娘御が、今この同盟におられる。……手前は、どう償えばよろしいのでしょうな。'],
         ],
         choices: [
-          { t: '稼ぎをエルンの工房に返させる（資金 −200・研究 +150・ウルフの忠誠 +10）', fx: { funds: -200, rp: 150, loyal: { ulf: 10 }, flag: 'p4_ulf_atone' },
+          { t: '稼ぎをエルンの工房に返させる（首都の産業 +1・資金 −200・研究 +80・ウルフの忠誠 +10）', fx: { funds: -200, rp: 80, loyal: { ulf: 10 }, act: [{ dev: { k: 'ind', n: 1 } }], flag: 'p4_ulf_atone' },
             after: [['ulf', 'normal', '金で償えるものではありませんが……炉の火を絶やさぬ足しにはなりましょう。']] },
           { t: '「償いは、これからの働きで示せ」（ウルフの交渉 +2）', fx: { stat: { ulf: { dip: 2 } } },
             after: [['ulf', 'normal', '働きで、ですか。……では、帳簿の続きを、きれいな字で書くといたしましょう。']] },
@@ -1505,9 +1505,9 @@ PEOPLE.events([
       ['@leader', 'normal', '流れ者が寄り集まって、この同盟はできた。……それを忘れた奴から、大国と同じになる。'],
     ],
     choices: [
-      { t: '同盟の民として受け入れる（資金 −150・融和派が伸びる）', fx: { funds: -150, party: { peace: 6 }, stab: -2, flag: 'p4_haven' },
+      { t: '同盟の民として受け入れる（首都に避難民 +10・資金 −150・融和派が伸びる・民心 −2）', fx: { funds: -150, party: { peace: 6 }, stab: -2, act: [{ refugees: 10 }], flag: 'p4_haven' },
         after: [['@pol', 'normal', '承知しました。氏族には、盟主の名で備蓄を開かせます。'], ['narr', '', '難民の子どもが、港の氏族の子どもと雪玉を投げ合うのに、ひと月もかからなかった。']] },
-      { t: '採掘基地の働き手として雇う（資金 +150・通商派が伸びる）', fx: { funds: 150, party: { trade: 5 }, flag: 'p4_labor' },
+      { t: '採掘基地の働き手として雇う（首都に人口 +5・資金 +100・通商派が伸びる）', fx: { funds: 100, party: { trade: 5 }, act: [{ refugees: 5 }], flag: 'p4_labor' },
         after: [['@mil', 'normal', 'ワンダラーの採掘基地へ送ります。食い扶持は、自分で稼いでもらう。']] },
       { t: '燃料と食料を渡し、セレスの共和国へ送り出す（共和国の信頼 +8・民心 +2）', fx: { trust: { 1: 8 }, stab: 2 },
         after: [['@leader', 'sad', '……自由を名乗る国なら、拾ってくれるだろう。そう願うしかねえ。']] },
@@ -1526,7 +1526,7 @@ PEOPLE.events([
         after: [['ulf', 'happy', '話の早い盟主様で、助かります。帳簿は二冊、きちんとつけておきますよ。']] },
       { t: '密輸を取り締まる（企業連合の信頼 +12・ウルフの忠誠 −15）', fx: { trust: { 2: 12 }, loyal: { ulf: -15 }, flag: 'p4_smug_ban' },
         after: [['ulf', 'sad', '……かしこまりました。抜け道を塞ぐのは、少々もったいない気もしますがね。']] },
-      { t: '同盟公認の交易船団に仕立てる（資金 +120・通商派が伸びる・ウルフの忠誠 +10）', fx: { funds: 120, party: { trade: 6 }, loyal: { ulf: 10 }, flag: 'p4_charter' },
+      { t: '同盟公認の交易船団に仕立てる（収入 +5%（12か月）・資金 +60・通商派が伸びる・ウルフの忠誠 +10）', fx: { funds: 60, party: { trade: 6 }, loyal: { ulf: 10 }, act: [{ buff: 'income', v: 0.05, months: 12, name: '公認の交易船団' }], flag: 'p4_charter' },
         after: [['ulf', 'shock', '密輸王に、旗を持たせると？ ……ふふ、これは面白い。表の商いも、悪くないかもしれませんな。']] },
     ] },
 
@@ -1556,7 +1556,7 @@ PEOPLE.events([
       ['@leader', 'normal', '金は要る。艦も、飯も、金で買う。……だが、炉の火まで売っていいもんか。'],
     ],
     choices: [
-      { t: '契約を結ぶ（資金 +400・通商派が伸びる・企業連合の信頼 +10）', fx: { funds: 400, party: { trade: 6 }, trust: { 2: 10 }, flag: 'p4_contract' },
+      { t: '契約を結ぶ（企業連合と通商を結ぶ・資金 +300・通商派が伸びる・企業連合の信頼 +10）', fx: { funds: 300, party: { trade: 6 }, trust: { 2: 10 }, act: [{ treaty: { to: 2, s: 'trade' } }], flag: 'p4_contract' },
         after: [['@pol', 'normal', '署名は済みました。……工房の職人たちには、私から説明しておきます。']] },
       { t: '炉は売らぬと突っぱねる（研究 +150・技術派が伸びる・企業連合の信頼 −6）', fx: { rp: 150, party: { tech: 6 }, trust: { 2: -6 }, flag: 'p4_forge' },
         after: [['@sci', 'happy', '職人たちが沸いています。「辺境の鋼は、辺境で打つ」と。'], ['@leader', 'normal', '金で買えねえもんが一つくらい無けりゃ、自由なんて名乗れねえさ。']] },
@@ -1569,9 +1569,9 @@ PEOPLE.events([
       ['@leader', 'normal', '抜け荷を締めた礼が、これか。商人ってのは、本当に抜け目がねえな。'],
     ],
     choices: [
-      { t: '交易だけ結び、配合は渡さない（資金 +250・通商派が伸びる・企業連合の信頼 +6）', fx: { funds: 250, party: { trade: 5 }, trust: { 2: 6 }, flag: 'p4_forge' },
+      { t: '交易だけ結び、配合は渡さない（企業連合と通商を結ぶ・資金 +200・通商派が伸びる・企業連合の信頼 +6）', fx: { funds: 200, party: { trade: 5 }, trust: { 2: 6 }, act: [{ treaty: { to: 2, s: 'trade' } }], flag: 'p4_forge' },
         after: [['@pol', 'happy', '向こうは渋い顔でしたが、署名はしました。こちらの足元を、少しは認めたようです。']] },
-      { t: '共同研究も受ける（研究 +200・資金 +150・技術派が伸びる・企業連合の信頼 +12）', fx: { rp: 200, funds: 150, party: { tech: 4 }, trust: { 2: 12 }, flag: 'p4_contract' },
+      { t: '共同研究も受ける（企業連合と通商を結ぶ・企業連合に研究 +150 分の記録を渡す・研究 +200・資金 +100・技術派が伸びる・企業連合の信頼 +12）', fx: { rp: 200, funds: 100, party: { tech: 4 }, trust: { 2: 12 }, act: [{ treaty: { to: 2, s: 'trade' } }, { share: 150, shareTo: 2 }], flag: 'p4_contract' },
         after: [['@sci', 'normal', '企業の工房の設備は、確かに一流です。……盗まれる前に、こちらも盗んでおきます。']] },
     ] },
 
@@ -1651,7 +1651,7 @@ PEOPLE.events([
     choices: [
       { t: '盟主の取り分を削り、配給に回す（資金 −150・民心 +5・融和派が伸びる）', fx: { funds: -150, stab: 5, party: { peace: 3 } },
         after: [['@leader', 'normal', '俺の酒が減るだけだ。安いもんさ。']] },
-      { t: '流れてきた志願兵で艦を増やす（主戦派が伸びる・資金 −80）', fx: { party: { war: 4 }, funds: -80, flag: 'p4_volunteers' },
+      { t: '流れてきた志願兵で艦を増やす（艦 +2・資金 −200・主戦派が伸びる）', fx: { party: { war: 4 }, funds: -200, act: [{ ships: 2 }], flag: 'p4_volunteers' },
         after: [['@mil', 'happy', '寄せ集めの艦隊がまた増えました。辺境らしいでしょう。']] },
     ] },
 
@@ -1666,7 +1666,7 @@ PEOPLE.events([
     choices: [
       { t: 'ハンセンの家族を同盟の民として守ると布告する（民心 +4・融和派が伸びる）', fx: { stab: 4, party: { peace: 3 }, flag: 'p4_hansen_kin' },
         after: [['@leader', 'normal', '旗を割ったのは俺と赤髭だ。家族は関係ねえ。……いつか、あいつが戻る港も残しておけ。']] },
-      { t: '噂の真偽を探らせ、海賊なら討つ（主戦派が伸びる・資金 +100）', fx: { party: { war: 3 }, funds: 100 },
+      { t: '噂の真偽を探らせ、海賊なら討つ（主力艦隊が国境へ・主戦派が伸びる・資金 +100）', fx: { party: { war: 3 }, funds: 100, act: [{ fleet: 'border', months: 6 }] },
         after: [['@mil', 'normal', '承知しました。……できれば、討たずに済む報せを持ち帰りたいもんです。']] },
     ] },
 
