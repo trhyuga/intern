@@ -563,6 +563,7 @@ const UI = (() => {
       <button class="btn wide" data-m="save">セーブする</button>
       <button class="btn wide" data-m="howto">遊び方</button>
       <button class="btn wide" data-m="mute">音：${Sound.muted ? 'オフ' : 'オン'}</button>
+      ${Wake.supported() ? `<button class="btn wide" data-m="wake">画面を消さない：${Wake.on ? 'オン' : 'オフ'}</button>` : ''}
       <button class="btn wide danger" data-m="title">タイトルへ戻る</button></div>
       <p class="note">ひと月ごとに「自動」の枠へセーブされます。ほかに、好きなときに3つの枠へセーブできます。</p>`;
     $$('[data-m]', body).forEach(b => b.onclick = () => {
@@ -571,6 +572,7 @@ const UI = (() => {
       if (m === 'save') saveToSlot();
       if (m === 'howto') howto();
       if (m === 'mute') { Sound.toggleMute(); drawSheet(); }
+      if (m === 'wake') { Wake.set(!Wake.on); toast(Wake.on ? '遊んでいる間、画面を消さないようにしました' : '画面の自動スリープを元に戻しました'); drawSheet(); }
       if (m === 'title') { Game.save(); closeSheet(); toTitle(); }
     });
   }
@@ -1030,6 +1032,7 @@ const UI = (() => {
     StarMap.init($('#mapcv'), onMapTap);
     // どこを触っても、止まった音を戻す（iPhone でアプリを切り替えた後など）
     ['pointerdown', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, () => Sound.init(true), { capture: true, passive: true }));
+    Wake.init();   // 遊んでいる間、画面を消さない
     $('#tap').onclick = () => {
       Sound.init();
       let seen = false; try { seen = localStorage.getItem('seisou_seen_op') === '1'; } catch (e) { }
