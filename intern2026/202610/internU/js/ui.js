@@ -159,7 +159,8 @@ const UI = (() => {
     const S = OFF[k], o = G.officers[k];
     const role = roleText(k);
     const rk = o && o.st === 'act' ? `<span class="rk ${Game.isLeader(k) ? 'lord' : Game.rankIdx(k) >= 6 ? 'gen' : ''}">${Game.rankName(k)}</span>` : '';
-    return `<div class="ofc" data-ofc="${k}"><img src="${Portrait.url(k)}"><div class="ofc-i"><b>${rk}${S.name}</b><small>${S.epi}・${S.pers}${role ? '・' + role : ''}</small>
+    const fcol = o && o.fac !== null && o.fac !== undefined ? Game.ownerCol(o.fac) : '#8a93a6';
+    return `<div class="ofc" data-ofc="${k}" style="--fc:${fcol}"><img src="${Portrait.url(k)}"><div class="ofc-i"><b>${rk}${S.name}</b><small>${S.epi}・${S.pers}${role ? '・' + role : ''}</small>
       <div class="st"><span>統${S.ldr}</span><span>戦${S.tac}</span><span>政${S.pol}</span><span>交${S.dip}</span><span>技${S.sci}</span></div></div>${extra}</div>`;
   }
   function roleText(k) {
@@ -446,7 +447,7 @@ const UI = (() => {
       const ri = Game.rankIdx(k), lord = Game.isLeader(k);
       const rankHtml = o.st !== 'act' ? '' : lord ? `<p class="rkline"><span class="rk lord">${Game.rankName(k)}</span>艦隊は30隻まで率いる</p>`
         : `<p class="rkline"><span class="rk ${ri >= 6 ? 'gen' : ''}">${OFFRANKS[ri]}</span>${ri < 10 ? `次の${OFFRANKS[ri + 1]}まで 武功 ${Math.max(0, Math.ceil(RANK_MERIT[ri + 1] - o.merit))}${ri === 9 ? '（元帥は国に一人）' : ''}` : '国でただ一人の元帥'}・艦隊は${RANK_CAP[ri]}隻まで</p>`;
-      body.innerHTML = `<div class="ofc-big"><img src="${Portrait.url(k, 'normal')}"><div><h2>${S.name}</h2><p class="epi">${S.epi}</p>${rankHtml}
+      body.innerHTML = `<div class="ofc-big" style="--fc:${o.fac !== null && o.fac !== undefined ? Game.ownerCol(o.fac) : '#8a93a6'}"><img src="${Portrait.url(k, 'normal')}"><div><h2>${S.name}</h2><p class="epi">${S.epi}</p>${rankHtml}
         <p>${S.age ? S.age + '歳・' : '年齢不詳・'}${S.pers}（${PERSONALITY[S.pers].desc}）</p><p>${roleText(k) || (o.st === 'dead' ? '戦死' : '')}</p></div></div>
         ${pf ? `<p class="bio">${pf.bio}</p>${pf.likes ? `<p class="note">好むもの：${pf.likes}</p>` : ''}` : ''}
         ${(() => { const st = Battle.styleOf(k); return st ? `<div class="st-style">戦い方：<em class="vs-style s-${st.type}">${st.name}</em> <small class="dim">${st.desc}</small></div>` : ''; })()}
