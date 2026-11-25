@@ -57,9 +57,9 @@ PEOPLE.add({
           ['leo', 'normal', '……知ってるよ。だから僕も、守られる側じゃなく、姉さんの隣に立ちたいんだ。'],
         ],
         choices: [
-          { t: 'レオに議会の仕事を任せる（レオの政治 +2・レオの忠誠 +10）', fx: { stat: { leo: { pol: 2 } }, loyal: { leo: 10 } },
+          { t: 'レオに議会の仕事を任せる（レオを首都の総督にする・レオの政治 +2・レオの忠誠 +10）', fx: { stat: { leo: { pol: 2 } }, loyal: { leo: 10 }, act: [{ officer: 'leo', do: 'govern' }] },
             after: [['leo', 'happy', '任せて。……姉さんの坂道は、今度は僕が半分持つよ。']] },
-          { t: '弟を矢面から遠ざける（民心 +3・レオの忠誠 −5）', fx: { stab: 3, loyal: { leo: -5 } },
+          { t: '弟を矢面から遠ざける（レオの役を解く・民心 +3・レオの忠誠 −5）', fx: { stab: 3, loyal: { leo: -5 }, act: [{ officer: 'leo', do: 'dismiss' }] },
             after: [['eliza', 'sad', 'ごめんなさい。あなたまで汚れるのは、見たくないの。'], ['leo', 'sad', '……姉さんは、ずるいよ。']] },
         ] },
       { id: 'p1_eliza_3', title: '引き出しの辞表', bg: 'palace', cond: { turn: 40, flag: 'm1_crisis' },
@@ -73,7 +73,7 @@ PEOPLE.add({
           ['eliza', 'sad', '……最近、読み返す回数が増えたわ。'],
         ],
         choices: [
-          { t: '戦が終われば退くと民に誓う（民心 +6・融和派が伸びる）', fx: { stab: 6, party: { peace: 5 }, flag: 'p1_eliza_vow' },
+          { t: '戦が終われば退くと民に誓う（首相の誓い：民心 毎月 +1・12か月・民心 +3・融和派が伸びる）', fx: { act: [{ buff: 'stab', v: 0.1, months: 12, name: '首相の誓い' }], stab: 3, party: { peace: 5 }, flag: 'p1_eliza_vow' },
             after: [['eliza', 'happy', '誓いは、口にした方が重くなる。それでいいの。']] },
           { t: '辞表を引き出しに戻す（エリザの統率 +2・主戦派が伸びる）', fx: { stat: { eliza: { ldr: 2 } }, party: { war: 3 } },
             after: [['eliza', 'normal', '今はまだ、この椅子から降りられない。……でも、引き出しは開けておくわ。']] },
@@ -151,7 +151,7 @@ PEOPLE.add({
         choices: [
           { t: '書状を二人で燃やす（ユリウスの忠誠 +15・融和派が伸びる）', fx: { loyal: { julius: 15 }, party: { peace: 4 }, flag: 'p1_julius_sheath' },
             after: [['julius', 'normal', '……温かいものですね、紙の燃える火は。剣は、鞘に収めておきます。']] },
-          { t: '軍を退き、選挙で問えと勧める（ユリウスの交渉 +2・政治 +1・主戦派が伸びる）', fx: { stat: { julius: { dip: 2, pol: 1 } }, party: { war: 4 }, flag: 'p1_julius_politics' },
+          { t: '軍を退き、選挙で問えと勧める（ユリウスの任を解く・ユリウスの交渉 +2・政治 +1・主戦派が伸びる）', fx: { stat: { julius: { dip: 2, pol: 1 } }, party: { war: 4 }, act: [{ officer: 'julius', do: 'dismiss' }], flag: 'p1_julius_politics' },
             after: [['julius', 'shock', '剣を置いて、言葉で戦えと。……あなたは、本当に恐ろしい人だ。']] },
         ] },
     ],
@@ -224,9 +224,9 @@ PEOPLE.add({
           ['ryan', 'sad', '……退きたくはない。だが、俺が場所を空けなきゃ、誰も育たん。'],
         ],
         choices: [
-          { t: '前線で背中を見せてもらう（ライアンの統率 +2・武功 +3）', fx: { stat: { ryan: { ldr: 2 } }, merit: { ryan: 3 } },
+          { t: '前線で背中を見せてもらう（ライアンが主力艦隊の司令に就く・ライアンの統率 +2・武功 +3）', fx: { stat: { ryan: { ldr: 2 } }, merit: { ryan: 3 }, act: [{ officer: 'ryan', do: 'command' }] },
             after: [['ryan', 'normal', '分かった。なら、戦場で教える。背中で見せるさ。']] },
-          { t: '戦の合間に教官を兼ねてもらう（ライアンの忠誠 +15・民心 +2）', fx: { loyal: { ryan: 15 }, stab: 2, flag: 'p1_ryan_teach' },
+          { t: '戦の合間に教官を兼ねてもらう（艦の守り +5%・12か月・ライアンの忠誠 +15・民心 +2）', fx: { loyal: { ryan: 15 }, stab: 2, act: [{ buff: 'def', v: 0.05, months: 12, name: 'ブレイクの教え' }], flag: 'p1_ryan_teach' },
             after: [['ryan', 'happy', '……ありがとう。帳面に、新しい名前を書き足せる。']] },
         ] },
     ],
@@ -432,7 +432,7 @@ PEOPLE.add({
           ['nadia', 'angry', 'くそっ、こんなの、あたしじゃない……！ 突っ込むしか能がないのに、それもできなくなったら……！'],
         ],
         choices: [
-          { t: '休養を命じる（ナディアの忠誠 +10・統率 +1）', fx: { loyal: { nadia: 10 }, stat: { nadia: { ldr: 1 } } },
+          { t: '休養を命じる（ナディアの役を解く・ナディアの忠誠 +10・統率 +1）', fx: { loyal: { nadia: 10 }, stat: { nadia: { ldr: 1 } }, act: [{ officer: 'nadia', do: 'dismiss' }] },
             after: [['nadia', 'sad', '……休むのって、突撃より怖いね。でも、やってみる。']] },
           { t: '恐れを抱えたまま戦えと励ます（ナディアの戦術 +2・忠誠 −5）', fx: { stat: { nadia: { tac: 2 } }, loyal: { nadia: -5 } },
             after: [['nadia', 'angry', '……分かった。怖いまま突っ込んでやる。それが、あたしの意地だ。']] },
@@ -445,9 +445,9 @@ PEOPLE.add({
           ['nadia', 'normal', '首相。あたし、どう戦えばいい？'],
         ],
         choices: [
-          { t: '先頭に立つ勇気で率いよと言う（ナディアの統率 +2・武功 +3）', fx: { stat: { nadia: { ldr: 2 } }, merit: { nadia: 3 } },
+          { t: '先頭に立つ勇気で率いよと言う（ナディアが主力艦隊の司令に就く・ナディアの統率 +2・武功 +3）', fx: { stat: { nadia: { ldr: 2 } }, merit: { nadia: 3 }, act: [{ officer: 'nadia', do: 'command' }] },
             after: [['nadia', 'happy', '……そっか。先頭に立つのは、みんなの代わりに一番最初に怖がる役なんだね。']] },
-          { t: '退き際を見極めよと言う（ナディアの戦術 +2・忠誠 +5）', fx: { stat: { nadia: { tac: 2 } }, loyal: { nadia: 5 } },
+          { t: '退き際を見極めよと言う（ナディアが主力艦隊の司令に就く・ナディアの戦術 +2・忠誠 +5）', fx: { stat: { nadia: { tac: 2 } }, loyal: { nadia: 5 }, act: [{ officer: 'nadia', do: 'command' }] },
             after: [['nadia', 'normal', '突っ込む前に、帰り道を見とく。……地味だけど、やってみる。']] },
         ] },
     ],
@@ -587,9 +587,9 @@ PEOPLE.add({
           ['grace', 'sad', '新しいものに替えても、私には同じ白衣よ。脱いだら、何のために艦橋に立っているのか分からなくなる。'],
         ],
         choices: [
-          { t: '白衣のままでよいと伝え、病院船団を増やす（グレースの忠誠 +15・民心 +3・資金 −100）', fx: { loyal: { grace: 15 }, stab: 3, funds: -100, flag: 'p1_grace_fleet' },
+          { t: '白衣のままでよいと伝え、病院船団を増やす（首都に避難民を迎える：人口 +6・グレースの忠誠 +15・民心 +3・資金 −100）', fx: { loyal: { grace: 15 }, stab: 3, funds: -100, act: [{ refugees: 6 }], flag: 'p1_grace_fleet' },
             after: [['grace', 'happy', '……ありがとう。白衣の提督のまま、最後まで。次の夜が来ても、船の灯は消さないわ。']] },
-          { t: '提督としての覚悟を求める（グレースの統率 +2・戦術 +1）', fx: { stat: { grace: { ldr: 2, tac: 1 } } },
+          { t: '提督としての覚悟を求める（グレースが主力艦隊の司令に就く・グレースの統率 +2・戦術 +1）', fx: { stat: { grace: { ldr: 2, tac: 1 } }, act: [{ officer: 'grace', do: 'command' }] },
             after: [['grace', 'normal', '……分かったわ。白衣はたたんで、胸の中に着ることにする。']] },
         ] },
     ],
@@ -702,7 +702,7 @@ PEOPLE.add({
           ['iris', 'sad', '……船団には、四千人が乗っています。'],
         ],
         choices: [
-          { t: '船団を救う（民心 +4・アイリスの忠誠 +5・暗号の優位を失う）', fx: { stab: 4, loyal: { iris: 5 } },
+          { t: '船団を救う（主力艦隊が護衛に国境へ向かう・民心 +4・アイリスの忠誠 +5・暗号の優位を失う）', fx: { stab: 4, loyal: { iris: 5 }, act: [{ fleet: 'border', months: 3 }] },
             after: [['iris', 'normal', '……帝国は、明日には暗号を変えるでしょう。また、一から解きます。']] },
           { t: '暗号の秘密を守る（研究 +120・アイリスの忠誠 −10）', fx: { rp: 120, loyal: { iris: -10 } },
             after: [['iris', 'sad', '了解しました。……四千人の名前を、私は報告書に書けません。']] },
@@ -801,7 +801,7 @@ PEOPLE.add({
           ['thomas', 'normal', '……でも、死ぬために残るんじゃない。全員連れて、帰ってきます。'],
         ],
         choices: [
-          { t: '殿を任せる（トマスの統率 +2・武功 +4）', fx: { stat: { thomas: { ldr: 2 } }, merit: { thomas: 4 }, flag: 'p1_thomas_rear' },
+          { t: '殿を任せる（トマスが主力艦隊の司令に就く・首都に避難民を迎える：人口 +8・トマスの統率 +2・武功 +4）', fx: { stat: { thomas: { ldr: 2 } }, merit: { thomas: 4 }, act: [{ officer: 'thomas', do: 'command' }, { refugees: 8 }], flag: 'p1_thomas_rear' },
             after: [['narr', '', 'トマスの艦隊は、一隻も欠けずに帰還した。エオスの名簿に、新しい名は加わらなかった。'], ['thomas', 'happy', '……帰りました。みんなで。']] },
           { t: '殿は無人艦に任せる（研究 +60・トマスの忠誠 +10）', fx: { rp: 60, loyal: { thomas: 10 } },
             after: [['thomas', 'sad', '……そうですね。誰も残さないやり方も、あったんですね。']] },
@@ -997,7 +997,7 @@ PEOPLE.add({
         choices: [
           { t: '留まらせる（民心 −2・レオの忠誠 +10）', fx: { stab: -2, loyal: { leo: 10 } },
             after: [['leo', 'happy', '……いいの？ じゃあ、縁故だなんて言わせないくらい働いてみせるよ。']] },
-          { t: '一士官として前線へ送る（レオの統率 +2・戦術 +1）', fx: { stat: { leo: { ldr: 2, tac: 1 } } },
+          { t: '一士官として前線へ送る（レオの役を解く・レオの統率 +2・戦術 +1）', fx: { stat: { leo: { ldr: 2, tac: 1 } }, act: [{ officer: 'leo', do: 'dismiss' }] },
             after: [['leo', 'normal', '前線か。……肩書きの無い場所で、自分を試してくる。']] },
         ] },
       { id: 'p1_leo_3', title: '姉さんの背中', bg: 'palace', cond: { turn: 42, with: ['eliza'], flag: 'm1_crisis' },
@@ -1542,7 +1542,7 @@ PEOPLE.events([
       ['@pol', 'sad', '断れば、利率は倍になります。……議員の何人かは、もう向こうと話をつけているようです。'],
     ],
     choices: [
-      { t: '契約を回す（資金 +250・通商派が伸びる・企業連合の信頼 +5・民心 −3）', fx: { funds: 250, party: { trade: 5 }, trust: { 2: 5 }, stab: -3, flag: 'p1_shipyard_sold' },
+      { t: '契約を回す（企業連合と通商を結ぶ・資金 +250・通商派が伸びる・企業連合の信頼 +5・民心 −3）', fx: { funds: 250, party: { trade: 5 }, trust: { 2: 5 }, stab: -3, act: [{ treaty: { to: 2, s: 'trade' } }], flag: 'p1_shipyard_sold' },
         after: [['@leader', 'sad', '……借りた金の重さを、ようやく知ったわ。']] },
       { t: '突っぱね、議員の癒着を調べさせる（民心 +3・融和派が伸びる・企業連合の信頼 −10）', fx: { stab: 3, party: { peace: 4 }, trust: { 2: -10 } },
         after: [['@leader', 'normal', '利息は払います。でも、この国の港は売り物ではないわ。']] },
@@ -1571,7 +1571,7 @@ PEOPLE.events([
       ['@mil', 'normal', '……ですが首相。兵たちも、もう二百年目の戦に疲れています。'],
     ],
     choices: [
-      { t: '密使と会う（帝国の信頼 +15・融和派が伸びる・主戦派が下がる）', fx: { trust: { 0: 15 }, party: { peace: 6, war: -4 }, flag: 'p1_truce_talks' },
+      { t: '密使と会い、休戦を結ぶ（帝国と停戦する・帝国の信頼 +15・融和派が伸びる・主戦派が下がる）', fx: { trust: { 0: 15 }, party: { peace: 6, war: -4 }, act: [{ peace: 0 }], flag: 'p1_truce_talks' },
         after: [['@leader', 'normal', '二百年前、私たちは帝国と離れることで自由になった。今度は、向き合うことで自由になれるかもしれない。']] },
       { t: '追い返す（主戦派が伸びる・民心 +2・帝国の信頼 −5）', fx: { party: { war: 4 }, stab: 2, trust: { 0: -5 } },
         after: [['@leader', 'sad', '……まだ早いわ。この国の傷は、言葉で塞ぐには深すぎる。']] },

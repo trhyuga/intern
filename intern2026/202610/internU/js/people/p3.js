@@ -134,9 +134,9 @@ PEOPLE.add({
           ['aurelio', 'sad', '親方の鍛えた剣が、どちらを向けと言っているのか。……迷っている。'],
         ],
         choices: [
-          { t: '前線の全艦隊を率いさせる（アウレリオの戦術 +2・武功 +5）', fx: { stat: { aurelio: { tac: 2 } }, merit: { aurelio: 5 }, flag: 'p3_aur_front' },
+          { t: '前線の全艦隊を率いさせる（アウレリオが主力艦隊の司令に・全艦隊が裂け目へ出撃・アウレリオの戦術 +2・武功 +5）', fx: { act: [{ officer: 'aurelio', do: 'command' }, { fleet: 'rift', size: 'all' }], stat: { aurelio: { tac: 2 } }, merit: { aurelio: 5 }, flag: 'p3_aur_front' },
             after: [['aurelio', 'normal', '聖女様の道は、我が先に歩く。蝕の牙が届く前に、すべて斬り払っておく。']] },
-          { t: '聖女の傍らに残らせる（アウレリオの忠誠 +20・統率 +2）', fx: { loyal: { aurelio: 20 }, stat: { aurelio: { ldr: 2 } }, flag: 'p3_aur_side' },
+          { t: '聖女の傍らに残らせる（アウレリオが首都の総督に・忠誠 +20・統率 +2）', fx: { act: [{ officer: 'aurelio', do: 'govern' }], loyal: { aurelio: 20 }, stat: { aurelio: { ldr: 2 } }, flag: 'p3_aur_side' },
             after: [['aurelio', 'happy', '我は聖女様の剣。三歩後ろの足音を、最後まで絶やさぬ。']] },
         ] },
     ],
@@ -450,7 +450,7 @@ PEOPLE.add({
           ['matteo', 'sad', '十五年前、俺はその計算をして、一隻をゲヘナの嵐に置いてきた。今でも夢に見る。'],
         ],
         choices: [
-          { t: '全船を守らせる（マッテオの統率 +2・民心 +3・資金 −100）', fx: { stat: { matteo: { ldr: 2 } }, stab: 3, funds: -100 },
+          { t: '全船を守らせる（主力艦隊が国境で巡礼船を守る・マッテオの統率 +2・民心 +3・資金 −100）', fx: { act: [{ fleet: 'border', months: 6 }], stat: { matteo: { ldr: 2 } }, stab: 3, funds: -100 },
             after: [['narr', '', '護衛艦が二隻傷ついた。だが、巡礼船は一隻も欠けずにサンクタへ着いた。'], ['matteo', 'happy', '……ああ。こういう日のために、俺は船に乗ってるんだ。']] },
           { t: '計算どおり大型船を優先させる（マッテオの戦術 +2・資金 +100）', fx: { stat: { matteo: { tac: 2 } }, funds: 100, loyal: { matteo: -5 } },
             after: [['matteo', 'sad', '……了解した。正しい判断だ。正しいってのは、時々ひどく重い。']] },
@@ -475,7 +475,7 @@ PEOPLE.add({
         choices: [
           { t: '白鳩を引き揚げさせる（マッテオの忠誠 +20・資金 −200・民心 +4）', fx: { loyal: { matteo: 20 }, funds: -200, stab: 4, flag: 'p3_hakubato' },
             after: [['narr', '', '百二十人の巡礼は、十五年ぶりにサンクタの土に眠った。'], ['matteo', 'sad', '……おかえり。待たせたな。']] },
-          { t: '嵐の縁に灯台を建て、祈りを捧げる（マッテオの政治 +2・融和派が伸びる）', fx: { stat: { matteo: { pol: 2 } }, party: { peace: 4 }, flag: 'p3_lighthouse' },
+          { t: '嵐の縁に灯台を建て、祈りを捧げる（艦の速さ +5%が12か月・マッテオの政治 +2・融和派が伸びる）', fx: { act: [{ buff: 'speed', v: 0.05, months: 12, name: 'ゲヘナの灯台' }], stat: { matteo: { pol: 2 } }, party: { peace: 4 }, flag: 'p3_lighthouse' },
             after: [['matteo', 'normal', 'あの灯が、次の船を導く。……あいつも、そう言うだろうさ。']] },
         ] },
     ],
@@ -518,7 +518,7 @@ PEOPLE.add({
           ['serena', 'sad', '……ただ、ここを開ければ、枢機卿方は師の業が戻ってきたと騒ぐでしょう。'],
         ],
         choices: [
-          { t: '星見台を開く（研究 +120・セレーナの技術 +2・ベネデットの忠誠 −5）', fx: { rp: 120, stat: { serena: { sci: 2 } }, loyal: { benedetto: -5 }, flag: 'p3_tower' },
+          { t: '星見台を開く（首都の研究 +1・研究 +60・セレーナの技術 +2・ベネデットの忠誠 −5）', fx: { act: [{ dev: { k: 'res', n: 1 } }], rp: 60, stat: { serena: { sci: 2 } }, loyal: { benedetto: -5 }, flag: 'p3_tower' },
             after: [['serena', 'happy', '……十五年ぶりの空です。師の見ていた空です。']] },
           { t: '今はまだ閉ざしておく（民心 +2・セレーナの忠誠 −5）', fx: { stab: 2, loyal: { serena: -5 } },
             after: [['serena', 'normal', '承知しました。小さな窓からでも、星は見えますから。']] },
@@ -608,9 +608,9 @@ PEOPLE.add({
           ['gabriel', 'sad', '十一人なら、どう言うでしょう。……きっと、笑うでしょうね。いつまで後ろにいる気だ、と。'],
         ],
         choices: [
-          { t: '盾を掲げて前へ出させる（ガブリエルの戦術 +3・武功 +5）', fx: { stat: { gabriel: { tac: 3 } }, merit: { gabriel: 5 } },
+          { t: '盾を掲げて前へ出させる（ガブリエルが主力艦隊の司令となり、敵の星を攻める・ガブリエルの戦術 +3・武功 +5）', fx: { act: [{ officer: 'gabriel', do: 'command' }, { fleet: 'front' }], stat: { gabriel: { tac: 3 } }, merit: { gabriel: 5 } },
             after: [['gabriel', 'happy', '盾は、前に進みながらでも掲げられる。……ようやく、分かりました。']] },
-          { t: '守りの要に据え続ける（ガブリエルの統率 +2・忠誠 +15）', fx: { stat: { gabriel: { ldr: 2 } }, loyal: { gabriel: 15 } },
+          { t: '守りの要に据え続ける（ガブリエルが国境の星の総督に・統率 +2・忠誠 +15）', fx: { act: [{ officer: 'gabriel', do: 'govern', where: 'border' }], stat: { gabriel: { ldr: 2 } }, loyal: { gabriel: 15 } },
             after: [['gabriel', 'normal', '承知しました。それなら自分は、誰よりも硬い城門になります。']] },
         ] },
     ],
@@ -863,7 +863,7 @@ PEOPLE.add({
           ['paola', 'normal', '私は門番です。門を開けるのも、閉じるのも、私の務め。……ご判断を。'],
         ],
         choices: [
-          { t: '門を開けて迎え入れる（民心 +3・融和派が伸びる・資金 −80）', fx: { stab: 3, party: { peace: 4 }, funds: -80 },
+          { t: '門を開けて迎え入れる（首都に避難民 +5・民心 +3・融和派が伸びる・資金 −80）', fx: { act: [{ refugees: 5 }], stab: 3, party: { peace: 4 }, funds: -80 },
             after: [['paola', 'normal', '開門。……熱のある子から先に、施療院へ。走りなさい！']] },
           { t: '夜明けまで門外で検める（パオラの統率 +2・主戦派が伸びる）', fx: { stat: { paola: { ldr: 2 } }, party: { war: 3 } },
             after: [['paola', 'sad', '……毛布と湯を、門の外へ。せめて、それくらいは。'], ['narr', '', '夜明けに門は開いた。パオラは一晩中、門の外で難民と共に立っていた。']] },
@@ -887,7 +887,7 @@ PEOPLE.add({
         choices: [
           { t: '聖女に付き従う守り手となる（パオラの戦術 +2・統率 +1・忠誠 +10）', fx: { stat: { paola: { tac: 2, ldr: 1 } }, loyal: { paola: 10 }, flag: 'p3_paola_follow' },
             after: [['paola', 'happy', '門番は、門ごと動けばいいのね。……荷造りをします。焼き林檎の鍋も。']] },
-          { t: '聖都に残り、帰る場所を守る（民心 +5・パオラの政治 +2）', fx: { stab: 5, stat: { paola: { pol: 2 } }, flag: 'p3_paola_gate' },
+          { t: '聖都に残り、帰る場所を守る（パオラが首都の総督に・民心 +5・パオラの政治 +2）', fx: { act: [{ officer: 'paola', do: 'govern' }], stab: 5, stat: { paola: { pol: 2 } }, flag: 'p3_paola_gate' },
             after: [['paola', 'normal', '帰る門が開いていなければ、旅人は迷う。私は、ここで灯を守ります。']] },
         ] },
     ],
@@ -1366,9 +1366,9 @@ PEOPLE.events([
       ['@leader', 'normal', '……'],
     ],
     choices: [
-      { t: '商会の船を借りる（資金 +250・通商派が伸びる・企業連合の信頼 +10）', fx: { funds: 250, party: { trade: 6 }, trust: { 2: 10 }, flag: 'p3_gold' },
+      { t: '商会の船を借りる（企業連合と通商を結ぶ・資金 +250・通商派が伸びる・企業連合の信頼 +10）', fx: { act: [{ treaty: { to: 2, s: 'trade' } }], funds: 250, party: { trade: 6 }, trust: { 2: 10 }, flag: 'p3_gold' },
         after: [['narr', '', '金の紋章を描いた船が、巡礼者を満載してサンクタへ向かった。港の老人たちは、黙ってそれを見送った。'], ['benedetto', 'happy', '祈りは、どの船に乗っても届きますよ。']] },
-      { t: '借りずに、聖騎士団の艦を巡礼に回す（民心 +5・融和派が伸びる・資金 −100）', fx: { stab: 5, party: { peace: 5 }, funds: -100, loyal: { matteo: 10 } },
+      { t: '借りずに、聖騎士団の艦を巡礼に回す（主力艦隊が国境で巡礼路を守る・民心 +5・融和派が伸びる・資金 −100）', fx: { act: [{ fleet: 'border', months: 4 }], stab: 5, party: { peace: 5 }, funds: -100, loyal: { matteo: 10 } },
         after: [['matteo', 'happy', '騎士団の艦で巡礼か。……窮屈だが、誰も置いていかずに済む。']] },
     ] },
 
@@ -1422,7 +1422,7 @@ PEOPLE.events([
       ['@leader', 'normal', '……民を飢えさせるわけにはいかない。'],
     ],
     choices: [
-      { t: '自前の護送船団で交易を守る（資金 −150・主戦派が伸びる・民心 +3）', fx: { funds: -150, party: { war: 4 }, stab: 3 },
+      { t: '自前の護送船団で交易を守る（主力艦隊が国境で交易路を守る・資金 −150・主戦派が伸びる・民心 +3）', fx: { act: [{ fleet: 'border', months: 6 }], funds: -150, party: { war: 4 }, stab: 3 },
         after: [['narr', '', '聖騎士団の艦に守られた輸送船が、ポルト・リベラとの間を行き来し始めた。']] },
       { t: '共和国に仲介を頼む（共和国の信頼 +10・融和派が伸びる・資金 −50）', fx: { trust: { 1: 10 }, party: { peace: 4 }, funds: -50 },
         after: [['narr', '', '共和国の議員たちが動き、商会はしぶしぶ保険を戻した。'], ['@pol', 'normal', '自由と信仰の友誼、というわけですな。']] },
@@ -1437,7 +1437,7 @@ PEOPLE.events([
       ['@pol', 'angry', '聖なる地に、機械を踏み入らせるおつもりですか！'],
     ],
     choices: [
-      { t: '共同調査を受け入れる（研究 +150・技術派が伸びる・機巧院の信頼 +12・民心 −3）', fx: { rp: 150, party: { tech: 6 }, trust: { 5: 12 }, stab: -3, flag: 'p3_xenoa' },
+      { t: '共同調査を受け入れる（機巧院に研究 150 分の記録を渡す・研究 +150・技術派が伸びる・機巧院の信頼 +12・民心 −3）', fx: { act: [{ share: 150, shareTo: 5 }], rp: 150, party: { tech: 6 }, trust: { 5: 12 }, stab: -3, flag: 'p3_xenoa' },
         after: [['narr', '', '聖職者と機械が、同じ遺跡の床に膝をついた。祈る者と、測る者。その姿は、どこか似ていた。']] },
       { t: '聖地として封じる（民心 +4・主戦派が伸びる・機巧院の信頼 −10）', fx: { stab: 4, party: { war: 4 }, trust: { 5: -10 } },
         after: [['narr', '', '聖騎士団の艦が、カテドラルの周りに封鎖線を引いた。機巧院の調査船は、何も言わずに引き返した。']] },
@@ -1516,7 +1516,7 @@ PEOPLE.events([
     choices: [
       { t: '各国の巡礼者を聖都に招き返す（全国の信頼 +5・融和派が伸びる）', fx: { trust: { 0: 5, 1: 5, 2: 5, 4: 5, 5: 5 }, party: { peace: 6 }, flag: 'p3_pilgrims_back' },
         after: [['narr', '', '翌年、大聖堂の扉の前には、さまざまな国の言葉で祈る人々の列ができた。']] },
-      { t: '巡礼の見聞を国の守りに生かす（主戦派が伸びる・資金 +150・研究 +60）', fx: { party: { war: 4 }, funds: 150, rp: 60 },
+      { t: '巡礼の見聞を国の守りに生かす（国境の防衛衛星 +1・主戦派が伸びる・資金 +150・研究 +60）', fx: { act: [{ fort: 1, where: 'border' }], party: { war: 4 }, funds: 150, rp: 60 },
         after: [['narr', '', '巡礼者の見聞は、作戦室の星図に細かく書き込まれた。祈りの旅は、静かな偵察の旅にもなった。']] },
     ] },
 

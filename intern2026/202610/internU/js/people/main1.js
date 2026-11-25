@@ -41,7 +41,7 @@ PEOPLE.main('main1', [
       ['leo', 'sad', '一年で返すと言った剣を、二年目も握らせる。三年目には、誰も返せと言わなくなるよ。'],
     ],
     choices: [
-      { t: '大権を延長する（主戦派が伸びる・ユリウスの忠誠 +10・民心 −2）', fx: { party: { war: 6 }, loyal: { julius: 10 }, stab: -2, flag: 'm1_power_ext' },
+      { t: '大権を延長する（ユリウスが主力艦隊の司令に就く・主戦派が伸びる・ユリウスの忠誠 +10・民心 −2）', fx: { party: { war: 6 }, loyal: { julius: 10 }, stab: -2, act: [{ officer: 'julius', do: 'command' }], flag: 'm1_power_ext' },
         after: [['julius', 'happy', '感謝します。一年後には、勝利の報告を。'], ['eliza', 'sad', '（期限を延ばしたのは、剣ではなく私の迷いかもしれない）']] },
       { t: '期限どおり大権を返させる（融和派が伸びる・民心 +4・ユリウスの忠誠 −12）', fx: { party: { peace: 6 }, stab: 4, loyal: { julius: -12 }, flag: 'm1_civil' },
         after: [['julius', 'normal', '……承知しました。剣は鞘に戻します。抜く時は、またご命令を。'], ['eliza', 'normal', '鞘を作るのは議会の仕事よ。あなたを信じていないわけではないの。']] },
@@ -114,7 +114,7 @@ PEOPLE.main('main1', [
     ],
     choicesBy: {
       war: [
-        { t: '戦時財務局を置く（資金 +300・主戦派が伸びる・ユリウスの忠誠 +10・民心 −3）', fx: { funds: 300, party: { war: 6 }, loyal: { julius: 10 }, stab: -3, flag: 'm1_purse_given' },
+        { t: '戦時財務局を置く（造艦の費用 −10%・12か月・資金 +150・主戦派が伸びる・ユリウスの忠誠 +10・民心 −3）', fx: { act: [{ buff: 'build', v: 0.1, months: 12, name: '戦時財務局' }], funds: 150, party: { war: 6 }, loyal: { julius: 10 }, stab: -3, flag: 'm1_purse_given' },
           after: [['julius', 'happy', '感謝します。財布は前線のために。'], ['sophia', 'sad', '……裏口の鍵が、今日ひとつ外れました。']] },
         { t: '財布は議会に残す（融和派が伸びる・民心 +3・ユリウスの忠誠 −8）', fx: { party: { peace: 5 }, stab: 3, loyal: { julius: -8 }, flag: 'm1_purse_parl' },
           after: [['eliza', 'normal', '戦の財布は、毎月この議場で開けて閉める。面倒でも、それが共和国よ。'], ['julius', 'normal', '……面倒の分だけ、兵が死なぬことを祈ります。']] },
@@ -126,7 +126,7 @@ PEOPLE.main('main1', [
           after: [['marcus', 'sad', '商人どもが拗ねるな。……まあ、拗ねた商人を宥めるのは私の得手だ。']] },
       ],
       tech: [
-        { t: '大学と工廠に投資する（研究 +150・技術派が伸びる・民心 +2）', fx: { rp: 150, party: { tech: 6 }, stab: 2, flag: 'm1_purse_parl' },
+        { t: '大学と工廠に投資する（首都の研究 +1・研究 +80・技術派が伸びる・民心 +2）', fx: { act: [{ dev: { k: 'res', n: 1 } }], rp: 80, party: { tech: 6 }, stab: 2, flag: 'm1_purse_parl' },
           after: [['oliver', 'happy', '五年後の兵たちが、今日の議決に礼を言うよ。……言えるように、生かしてみせる。']] },
         { t: '今日の艦を優先し、裁量を前線に渡す（資金 +250・主戦派が伸びる・技術派が下がる）', fx: { funds: 250, party: { war: 5, tech: -3 }, flag: 'm1_purse_given' },
           after: [['julius', 'normal', '未来は、今日を生き延びた者のものです。']] },
@@ -223,9 +223,9 @@ PEOPLE.main('main1', [
       ['eliza', 'normal', 'ユリウス。私の前に来て。あなたの口から、何があったのか聞かせて。'],
     ],
     choices: [
-      { t: 'ユリウスを公に赦し、指揮に戻す（ユリウスの忠誠 +15・主戦派が伸びる・民心 −2）', fx: { loyal: { julius: 15 }, party: { war: 4 }, stab: -2, flag: ['m1_coup_stopped', 'm1_julius_pardon'] },
+      { t: 'ユリウスを公に赦し、指揮に戻す（ユリウスが主力艦隊の司令に戻る・ユリウスの忠誠 +15・主戦派が伸びる・民心 −2）', fx: { loyal: { julius: 15 }, party: { war: 4 }, stab: -2, act: [{ officer: 'julius', do: 'command' }], flag: ['m1_coup_stopped', 'm1_julius_pardon'] },
         after: [['julius', 'sad', '……赦されるより、裁かれる方が楽でした。'], ['cecil', 'normal', '赦しは、罰より重い荷ですよ、英雄殿。']] },
-      { t: 'ユリウスを軍法会議にかける（融和派が伸びる・民心 +4・ユリウスの忠誠 −10）', fx: { party: { peace: 6 }, stab: 4, loyal: { julius: -10 }, flag: ['m1_coup_stopped', 'm1_julius_tried'] },
+      { t: 'ユリウスを軍法会議にかける（ユリウスの任を解く・融和派が伸びる・民心 +4・ユリウスの忠誠 −10）', fx: { party: { peace: 6 }, stab: 4, loyal: { julius: -10 }, act: [{ officer: 'julius', do: 'dismiss' }], flag: ['m1_coup_stopped', 'm1_julius_tried'] },
         after: [['julius', 'normal', '当然です。……逃げも隠れもしません。法廷で、自分の言葉で話します。'], ['cecil', 'sad', '私の作戦案は、英雄を救ったのか、殺したのか。……まだ盤面が読めません。']] },
     ] },
   { id: 'm1_05w', fac: 1, group: 'm1_05', after: 'm1_04', title: '政争・英雄を担ぐ議会', bg: 'crisis', gap: 5,
@@ -240,7 +240,7 @@ PEOPLE.main('main1', [
       ['eliza', 'sad', '民が選んだ議会が、民の自由を手放すと決めた。……それでも止めるのは、私の傲慢かしら。'],
     ],
     choices: [
-      { t: '動議を受け、ユリウスを任期つきの統帥とする（主戦派が伸びる・資金 +200・民心 −4）', fx: { party: { war: 6 }, funds: 200, stab: -4, flag: 'm1_hero_crown' },
+      { t: '動議を受け、ユリウスを任期つきの統帥とする（ユリウスが主力艦隊の司令に就く・主戦派が伸びる・資金 +200・民心 −4）', fx: { party: { war: 6 }, funds: 200, stab: -4, act: [{ officer: 'julius', do: 'command' }], flag: 'm1_hero_crown' },
         after: [['julius', 'normal', '任期つき、ですか。……鞘ではなく、砂時計を渡されたわけだ。'], ['eliza', 'sad', '（砂が落ちきった時、彼は返してくれるだろうか）']] },
       { t: '動議を国民投票に回す（融和派が伸びる・民心 +5・ユリウスの忠誠 −10）', fx: { party: { peace: 6 }, stab: 5, loyal: { julius: -10 }, flag: 'm1_hero_sheathed' },
         after: [['narr', '', '国民投票は、僅差で動議を退けた。英雄の肖像の前で、泣き崩れる者も、歓声を上げる者もいた。'], ['julius', 'normal', '……民は、私を選ばなかった。それでいいのです。たぶん。']] },
@@ -257,7 +257,7 @@ PEOPLE.main('main1', [
       ['leo', 'sad', '第零条を開かなくても、扉はもう半分開いてる。……一歩ずつ、僕らが開けてきたんだ。'],
     ],
     choices: [
-      { t: '全権を委ねる（主戦派が伸びる・ユリウスの忠誠 +15・民心 −5）', fx: { party: { war: 8 }, loyal: { julius: 15 }, stab: -5, flag: 'm1_hero_crown' },
+      { t: '全権を委ねる（ユリウスが主力艦隊の司令に就く・主戦派が伸びる・ユリウスの忠誠 +15・民心 −5）', fx: { party: { war: 8 }, loyal: { julius: 15 }, stab: -5, act: [{ officer: 'julius', do: 'command' }], flag: 'm1_hero_crown' },
         after: [['julius', 'happy', '必ず、勝利で応えます。……あの日と同じように。'], ['eliza', 'sad', '（あの日と同じ言葉。私は、何を手放したのだろう）']] },
       { t: '大権そのものを廃する（融和派が伸びる・民心 +4・ユリウスの忠誠 −20）', fx: { party: { peace: 6 }, stab: 4, loyal: { julius: -20 }, flag: 'm1_hero_sheathed' },
         after: [['julius', 'angry', '……この国は、勝ち方を知らないまま負けるつもりですか。'], ['eliza', 'normal', '負けないわ。ただ、議会と一緒に勝つの。']] },
@@ -273,9 +273,9 @@ PEOPLE.main('main1', [
       ['julius', 'sad', '……分かりません。勝つことしか、考えてこなかった。'],
     ],
     choices: [
-      { t: '国防大臣に迎える（ユリウスの政治 +2・交渉 +1・主戦派が伸びる）', fx: { stat: { julius: { pol: 2, dip: 1 } }, party: { war: 4 }, flag: 'm1_julius_minister' },
+      { t: '国防大臣に迎える（ユリウスが艦橋を降り、首都の総督に就く・ユリウスの政治 +2・交渉 +1・主戦派が伸びる）', fx: { stat: { julius: { pol: 2, dip: 1 } }, party: { war: 4 }, act: [{ officer: 'julius', do: 'govern' }], flag: 'm1_julius_minister' },
         after: [['julius', 'normal', '剣を置いて、書類を持てと。……慣れるまで、議会には迷惑をかけます。']] },
-      { t: '前線の提督に留める（ユリウスの忠誠 +10・武功 +3）', fx: { loyal: { julius: 10 }, merit: { julius: 3 }, flag: 'm1_julius_front' },
+      { t: '前線の提督に留める（ユリウスが主力艦隊の司令に就く・ユリウスの忠誠 +10・武功 +3）', fx: { loyal: { julius: 10 }, merit: { julius: 3 }, act: [{ officer: 'julius', do: 'command' }], flag: 'm1_julius_front' },
         after: [['julius', 'happy', '感謝します。私は、艦橋でしか嘘をつかずにいられない。']] },
     ] },
   { id: 'm1_05e', fac: 1, group: 'm1_05', after: 'm1_04', title: '政争・英雄のいない夜', bg: 'crisis', gap: 5,
@@ -408,7 +408,7 @@ PEOPLE.main('main1', [
       ['eliza', 'normal', '……影が来る前に、私たちはどちらの準備をするのかしら。'],
     ],
     choices: [
-      { t: '帝国と共同の観測網を結ぶ（帝国の信頼 +15・融和派が伸びる）', fx: { trust: { 0: 15 }, party: { peace: 5 }, flag: ['m1_shadow_joint', 'm1_zero_refuse'] },
+      { t: '帝国と共同の観測網を結ぶ（帝国と不可侵を結ぶ・帝国に研究 150 分の観測記録を渡す・帝国の信頼 +15・融和派が伸びる）', fx: { trust: { 0: 15 }, party: { peace: 5 }, act: [{ treaty: { to: 0, s: 'nap' } }, { share: 150, shareTo: 0 }], flag: ['m1_shadow_joint', 'm1_zero_refuse'] },
         after: [['eliza', 'normal', '敵の目を借りて、空を見る。……二百年で、初めてのことね。']] },
       { t: '第零条の発動手順を整えておく（主戦派が伸びる・資金 +150）', fx: { party: { war: 5 }, funds: 150, flag: 'm1_zero_ready' },
         after: [['julius', 'normal', '鍵の在処と、回し方。知っておくだけです。……知っておくだけ。']] },
@@ -488,7 +488,7 @@ PEOPLE.main('main1', [
       ],
     },
     choices: [
-      { t: '第零条を発動し、護国官を引き受ける（資金 +300・主戦派が伸びる・民心 +3・ソフィアの忠誠 −10）', fx: { funds: 300, party: { war: 6 }, stab: 3, loyal: { sophia: -10 }, flag: 'm1_protector' },
+      { t: '第零条を発動し、護国官を引き受ける（艦隊の半分が裂け目へ出撃・造艦の費用 −10%・12か月・資金 +150・主戦派が伸びる・民心 +3・ソフィアの忠誠 −10）', fx: { act: [{ fleet: 'rift', size: 'half' }, { buff: 'build', v: 0.1, months: 12, name: '護国官の大権' }], funds: 150, party: { war: 6 }, stab: 3, loyal: { sophia: -10 }, flag: 'm1_protector' },
         after: [['eliza', 'normal', '鍵は私が回す。だから、閉じるのも私よ。……誰か、それを覚えていて。'], ['leo', 'sad', '覚えてるよ、姉さん。忘れたら、僕が言う。']] },
       { t: '議会を止めず、非常会期で戦う（融和派が伸びる・民心 −3・ソフィアの忠誠 +10）', fx: { party: { peace: 6 }, stab: -3, loyal: { sophia: 10 }, flag: 'm1_assembly' },
         after: [['eliza', 'normal', '議会は地下で開く。眠らずに開く。……遅い国の強さを、見せてやりましょう。'], ['@mil', 'sad', '……承知しました。その遅さの分は、前線で埋めます。']] },
@@ -533,9 +533,9 @@ PEOPLE.main('main1', [
       ],
     },
     choices: [
-      { t: '全ての港を開く（全ての国の信頼 +8・融和派が伸びる・民心 −3）', fx: { trust: { 0: 8, 2: 8, 3: 8, 4: 8, 5: 8 }, party: { peace: 5 }, stab: -3, flag: 'm1_open_door' },
+      { t: '全ての港を開く（首都に避難民を迎える：人口 +12・全ての国の信頼 +8・融和派が伸びる・民心 −3）', fx: { trust: { 0: 8, 2: 8, 3: 8, 4: 8, 5: 8 }, party: { peace: 5 }, stab: -3, act: [{ refugees: 12 }], flag: 'm1_open_door' },
         after: [['narr', '', 'アルテミアの港に、色とりどりの旗の船が入っていった。降ろされる旗は、一つもなかった。'], ['eliza', 'normal', '二百年前、私たちも誰かの港に逃げ込んだ民だったのよ。']] },
-      { t: '港を絞り、審査の上で受け入れる（民心 +4・主戦派が伸びる・資金 +100）', fx: { stab: 4, party: { war: 4 }, funds: 100, flag: 'm1_closed' },
+      { t: '港を絞り、審査の上で受け入れる（首都に避難民を迎える：人口 +5・民心 +4・主戦派が伸びる・資金 +100）', fx: { stab: 4, party: { war: 4 }, funds: 100, act: [{ refugees: 5 }], flag: 'm1_closed' },
         after: [['grace', 'sad', '……審査の列で、熱を出した子がいたわ。名前を、書き留めておいたの。']] },
     ] },
 
@@ -551,9 +551,9 @@ PEOPLE.main('main1', [
       ['eliza', 'normal', '……ありがとう、レオ。では、言って。私は、どちらを選ぶべき？'],
     ],
     choices: [
-      { t: '艦隊を割き、他国を救う（全ての国の信頼 +12・融和派が伸びる・民心 −3）', fx: { trust: { 0: 12, 2: 12, 3: 12, 4: 12, 5: 12 }, party: { peace: 5 }, stab: -3, flag: 'm1_aid' },
+      { t: '艦隊を割き、他国を救う（艦隊の半分が、いちばん弱った国の救援に出る・全ての国の信頼 +12・融和派が伸びる・民心 −3）', fx: { trust: { 0: 12, 2: 12, 3: 12, 4: 12, 5: 12 }, party: { peace: 5 }, stab: -3, act: [{ fleet: 'aid', to: 'weakest', size: 'half' }], flag: 'm1_aid' },
         after: [['eliza', 'normal', '護国官の権限で、議会なら選ばなかったかもしれない道を選ぶ。……その責めも、私が負うわ。']] },
-      { t: '自国の民を守ることに全てを注ぐ（民心 +5・資金 +200・主戦派が伸びる）', fx: { stab: 5, funds: 200, party: { war: 5 }, flag: 'm1_home' },
+      { t: '自国の民を守ることに全てを注ぐ（主力艦隊が首都の守りに就く・国境の防衛衛星 +2・民心 +5・資金 +50・主戦派が伸びる）', fx: { act: [{ fleet: 'home' }, { fort: 2, where: 'border' }], stab: 5, funds: 50, party: { war: 5 }, flag: 'm1_home' },
         after: [['leo', 'sad', '……反対だよ、姉さん。でも、議事録には「護国官は民を選んだ」と書いておく。']] },
     ] },
   { id: 'm1_11b', fac: 1, group: 'm1_11', after: 'm1_09', title: '大侵攻・眠らない議会', bg: 'crisis', gap: 1,
@@ -568,9 +568,9 @@ PEOPLE.main('main1', [
       ['eliza', 'sad', '……分かっているわ。だから、この一票は軽くないの。'],
     ],
     choices: [
-      { t: '救援を可決させる（全ての国の信頼 +12・融和派が伸びる・民心 −3）', fx: { trust: { 0: 12, 2: 12, 3: 12, 4: 12, 5: 12 }, party: { peace: 5 }, stab: -3, flag: 'm1_aid' },
+      { t: '救援を可決させる（艦隊の半分が、いちばん弱った国の救援に出る・全ての国の信頼 +12・融和派が伸びる・民心 −3）', fx: { trust: { 0: 12, 2: 12, 3: 12, 4: 12, 5: 12 }, party: { peace: 5 }, stab: -3, act: [{ fleet: 'aid', to: 'weakest', size: 'half' }], flag: 'm1_aid' },
         after: [['narr', '', '賛成多数。議場の誰も、拍手をしなかった。皆、すぐに次の議題へ移った。']] },
-      { t: '自国防衛を優先させる（民心 +5・資金 +200・主戦派が伸びる）', fx: { stab: 5, funds: 200, party: { war: 5 }, flag: 'm1_home' },
+      { t: '自国防衛を優先させる（主力艦隊が国境の守りに就く・国境の防衛衛星 +2・民心 +5・資金 +50・主戦派が伸びる）', fx: { act: [{ fleet: 'border' }, { fort: 2, where: 'border' }], stab: 5, funds: 50, party: { war: 5 }, flag: 'm1_home' },
         after: [['sophia', 'sad', '……議会が決めたことです。私は反対しました。それも、記録に残ります。']] },
     ] },
 
@@ -585,9 +585,9 @@ PEOPLE.main('main1', [
       ['eliza', 'sad', '……この椅子は、驚くほど座り心地がいいの。だから、怖いのよ。'],
     ],
     choices: [
-      { t: '今、全権を議会に返す（民心 +5・融和派が伸びる・ソフィアの忠誠 +10）', fx: { stab: 5, party: { peace: 6 }, loyal: { sophia: 10 }, flag: 'm1_return' },
+      { t: '今、全権を議会に返す（議会の帰還：民心 毎月 +1・12か月・民心 +3・融和派が伸びる・ソフィアの忠誠 +10）', fx: { act: [{ buff: 'stab', v: 0.1, months: 12, name: '議会の帰還' }], stab: 3, party: { peace: 6 }, loyal: { sophia: 10 }, flag: 'm1_return' },
         after: [['narr', '', '護国官エリザ・ハルフォードは、議場の扉を自ら開け、空席だった議長席に鍵を置いた。'], ['eliza', 'happy', '閉じたわ。……次に開く人のために、閉じ方を残しておく。']] },
-      { t: '根を断つまで全権を預かる（主戦派が伸びる・資金 +200・民心 −3）', fx: { party: { war: 6 }, funds: 200, stab: -3, flag: 'm1_keep' },
+      { t: '根を断つまで全権を預かる（造艦の費用 −10%・12か月・主戦派が伸びる・資金 +100・民心 −3）', fx: { act: [{ buff: 'build', v: 0.1, months: 12, name: '護国官の工廠' }], party: { war: 6 }, funds: 100, stab: -3, flag: 'm1_keep' },
         after: [['eliza', 'normal', '根を断ったら、必ず返す。……その日まで、私を疑い続けて。'], ['leo', 'sad', '疑うよ、毎日。それが、弟の役目なんだろ。']] },
     ] },
   { id: 'm1_12b', fac: 1, group: 'm1_12', after: '@m1_11', title: '退潮・鐘の鳴る日', bg: 'palace', gap: 1,
@@ -600,9 +600,9 @@ PEOPLE.main('main1', [
       ['marcus', 'normal', '議会は二つに割れている。街を建て直すか、艦を造り続けるか。……どちらも正しい時が、一番難しい。'],
     ],
     choices: [
-      { t: '街と暮らしを建て直す（民心 +6・融和派が伸びる）', fx: { stab: 6, party: { peace: 4 }, flag: 'm1_rebuild' },
+      { t: '街と暮らしを建て直す（首都の産業 +1・民心 +4・融和派が伸びる）', fx: { act: [{ dev: { k: 'ind', n: 1 } }], stab: 4, party: { peace: 4 }, flag: 'm1_rebuild' },
         after: [['eliza', 'normal', '民を休ませましょう。次の夜を越えるには、まず今夜眠れなければ。']] },
-      { t: '次の夜に備え、艦を造り続ける（資金 −150・主戦派が伸びる・研究 +100）', fx: { funds: -150, party: { war: 5 }, rp: 100, flag: 'm1_rearm' },
+      { t: '次の夜に備え、艦を造り続ける（艦 +3・資金 −300・主戦派が伸びる・研究 +50）', fx: { act: [{ ships: 3 }], funds: -300, party: { war: 5 }, rp: 50, flag: 'm1_rearm' },
         after: [['@mil', 'normal', '鐘が鳴りやむ前に、工廠の火を入れ直します。'], ['eliza', 'sad', '（祝いの鐘を、半分だけ鳴らす国。……でも、それが私の選んだ国よ）']] },
     ] },
 
@@ -616,9 +616,9 @@ PEOPLE.main('main1', [
       ['ryan', 'normal', '盾を継いだ者が、盾として割れた。……それでも、教えたことは間違っていない。そうだろう、首相。'],
     ],
     choices: [
-      { t: 'ライアン自ら前線に立ってもらう（ライアンの統率 +2・武功 +4）', fx: { stat: { ryan: { ldr: 2 } }, merit: { ryan: 4 } },
+      { t: 'ライアン自ら前線に立ってもらう（ライアンが主力艦隊の司令となり、裂け目へ出撃・ライアンの統率 +2・武功 +4）', fx: { stat: { ryan: { ldr: 2 } }, merit: { ryan: 4 }, act: [{ officer: 'ryan', do: 'command' }, { fleet: 'rift' }] },
         after: [['ryan', 'normal', '教え子の穴は、師が埋める。……当たり前のことだ。']] },
-      { t: '残った教え子たちを、さらに鍛えてもらう（ライアンの忠誠 +15・民心 +3）', fx: { loyal: { ryan: 15 }, stab: 3 },
+      { t: '残った教え子たちを、さらに鍛えてもらう（艦の守り +10%・12か月・ライアンの忠誠 +15・民心 +3）', fx: { loyal: { ryan: 15 }, stab: 3, act: [{ buff: 'def', v: 0.1, months: 12, name: '盾の教え子たち' }] },
         after: [['ryan', 'sad', '線を引いた六人の分、六十人を育てる。……それが、俺の釣り合いの取り方だ。']] },
     ] },
   { id: 'm1_13b', fac: 1, group: 'm1_13', after: '@m1_12', title: '再来・備えていた者たち', bg: 'crisis', gap: 1,
@@ -631,9 +631,9 @@ PEOPLE.main('main1', [
       ['eliza', 'normal', '備えは、勝つためではなく、失わないためにあるのね。……でも、失ったものも数えて。'],
     ],
     choices: [
-      { t: '避難した民に、住む場所と仕事を約束する（資金 −200・民心 +6）', fx: { funds: -200, stab: 6 },
+      { t: '避難した民に、住む場所と仕事を約束する（首都に避難民を迎える：人口 +8・資金 −200・民心 +6）', fx: { funds: -200, stab: 6, act: [{ refugees: 8 }] },
         after: [['eliza', 'normal', '家を失った人に、まず鍵を渡すの。……扉の鍵よ。第零条ではなく。']] },
-      { t: '勢いのまま、裂け目へ攻め上がる（主戦派が伸びる・研究 +100）', fx: { party: { war: 5 }, rp: 100 },
+      { t: '勢いのまま、裂け目へ攻め上がる（艦隊の半分が裂け目へ出撃・主戦派が伸びる・研究 +100）', fx: { party: { war: 5 }, rp: 100, act: [{ fleet: 'rift', size: 'half' }] },
         after: [['@mil', 'happy', '備えた分だけ、前に出られる。……今度は、こちらから行きます。']] },
     ] },
   { id: 'm1_13c', fac: 1, group: 'm1_13', after: '@m1_12', title: '再来・備えなき夜', bg: 'crisis', gap: 1,
@@ -646,9 +646,9 @@ PEOPLE.main('main1', [
       ['leo', 'normal', '姉さん。泣くのは後だ。……今度こそ、根を断つ方法を見つけよう。'],
     ],
     choices: [
-      { t: '全ての国に、根を断つ共同研究を呼びかける（全ての国の信頼 +10・研究 +120）', fx: { trust: { 0: 10, 2: 10, 3: 10, 4: 10, 5: 10 }, rp: 120 },
+      { t: '全ての国に、根を断つ共同研究を呼びかける（各国に研究 200 分の記録を渡す・全ての国の信頼 +10・研究 +120）', fx: { trust: { 0: 10, 2: 10, 3: 10, 4: 10, 5: 10 }, rp: 120, act: [{ share: 200 }] },
         after: [['eliza', 'normal', '一つの国では足りないなら、全部の国で考えるの。……手を取り合うことを、自分で選ぶのよ。']] },
-      { t: '工廠を総動員する（資金 +250・主戦派が伸びる・民心 −3）', fx: { funds: 250, party: { war: 5 }, stab: -3 },
+      { t: '工廠を総動員する（艦 +3・資金 −200・主戦派が伸びる・民心 −3）', fx: { act: [{ ships: 3 }], funds: -200, party: { war: 5 }, stab: -3 },
         after: [['@mil', 'normal', '鐘の代わりに、槌の音を鳴らします。']] },
     ] },
 
@@ -663,9 +663,9 @@ PEOPLE.main('main1', [
       ['eliza', 'normal', '欠片を握る手が、鍵を握る手に変わる。……第零条と同じ問いね、銀河の大きさになっただけで。'],
     ],
     choices: [
-      { t: '解析の記録を全ての国に渡す（全ての国の信頼 +15・融和派が伸びる）', fx: { trust: { 0: 15, 2: 15, 3: 15, 4: 15, 5: 15 }, party: { peace: 5 }, flag: 'm1_share' },
+      { t: '解析の記録を全ての国に渡す（各国に研究 300 分の記録を渡す・全ての国の信頼 +15・融和派が伸びる）', fx: { trust: { 0: 15, 2: 15, 3: 15, 4: 15, 5: 15 }, party: { peace: 5 }, act: [{ share: 300 }], flag: 'm1_share' },
         after: [['eliza', 'normal', '鍵を一人で持たない。……それが、この国が二百年かけて覚えたことよ。']] },
-      { t: '記録は自国に留め、解析を急ぐ（研究 +200・技術派が伸びる）', fx: { rp: 200, party: { tech: 5 }, flag: 'm1_hold' },
+      { t: '記録は自国に留め、解析を急ぐ（研究 +10%・12か月・研究 +100・技術派が伸びる）', fx: { act: [{ buff: 'research', v: 0.1, months: 12, name: '欠片の解析' }], rp: 100, party: { tech: 5 }, flag: 'm1_hold' },
         after: [['iris', 'normal', '了解しました。……解いた後で、渡すかどうか決めましょう。']] },
     ] },
 
@@ -680,7 +680,7 @@ PEOPLE.main('main1', [
       ['thomas', 'normal', '……でも提督。死ぬために残るんじゃない。全員連れて、帰るんです。エオスの分まで。'],
     ],
     choices: [
-      { t: '二人に深淵の門を任せる（ユリウスの統率 +2・トマスの武功 +4・ユリウスの忠誠 +10）', fx: { stat: { julius: { ldr: 2 } }, merit: { thomas: 4 }, loyal: { julius: 10 } },
+      { t: '二人に深淵の門を任せる（ユリウスが主力艦隊の司令となり、深淵へ出撃・ユリウスの統率 +2・トマスの武功 +4・ユリウスの忠誠 +10）', fx: { stat: { julius: { ldr: 2 } }, merit: { thomas: 4 }, loyal: { julius: 10 }, act: [{ officer: 'julius', do: 'command' }, { fleet: 'abyss' }] },
         after: [['julius', 'normal', '全艦に告げよ。殿は英雄ではない。帰ってくる者だ、と。'], ['thomas', 'happy', '……はい。今度は、名簿に新しい名を書かずに済むように。']] },
       { t: '英雄に、生きて語れと命じる（ユリウスの交渉 +2・民心 +4）', fx: { stat: { julius: { dip: 2 } }, stab: 4 },
         after: [['eliza', 'normal', 'ユリウス。死んで償うのは、いちばん楽な道よ。生きて帰って、自分の口で話しなさい。'], ['julius', 'sad', '……あなたは最後まで、私に楽をさせてくれない。']] },
@@ -695,9 +695,9 @@ PEOPLE.main('main1', [
       ['leo', 'normal', '……英雄が、自分から剣を手放す話をしてる。姉さん、聞いてるかい。'],
     ],
     choices: [
-      { t: '深淵の艦隊を預ける（ユリウスの統率 +2・忠誠 +15）', fx: { stat: { julius: { ldr: 2 } }, loyal: { julius: 15 } },
+      { t: '深淵の艦隊を預ける（ユリウスが主力艦隊の司令となり、深淵へ出撃・ユリウスの統率 +2・忠誠 +15）', fx: { stat: { julius: { ldr: 2 } }, loyal: { julius: 15 }, act: [{ officer: 'julius', do: 'command' }, { fleet: 'abyss' }] },
         after: [['julius', 'happy', '必ず、勝利で応えます。……そして、帰ってきて剣を返します。']] },
-      { t: '艦隊は議会の任じた提督たちと分けて率いさせる（民心 +4・融和派が伸びる）', fx: { stab: 4, party: { peace: 4 } },
+      { t: '艦隊は議会の任じた提督たちと分けて率いさせる（全ての艦隊が深淵へ出撃・民心 +4・融和派が伸びる）', fx: { stab: 4, party: { peace: 4 }, act: [{ fleet: 'abyss', size: 'all' }] },
         after: [['julius', 'normal', '一人の英雄ではなく、何人もの提督で。……共和国らしい最後の戦ですね。']] },
     ] },
   { id: 'm1_15c', fac: 1, group: 'm1_15', after: '@m1_11', title: '根絶・深淵への志願', bg: 'bridge', gap: 1,
@@ -709,9 +709,9 @@ PEOPLE.main('main1', [
       ['@mil', 'normal', '首相。英雄はいません。ですが、名前のある兵なら、山ほどいます。'],
     ],
     choices: [
-      { t: '志願者だけで深淵へ向かわせる（民心 +5・融和派が伸びる）', fx: { stab: 5, party: { peace: 4 } },
+      { t: '志願者だけで深淵へ向かわせる（艦隊の半分が深淵へ出撃・民心 +5・融和派が伸びる）', fx: { stab: 5, party: { peace: 4 }, act: [{ fleet: 'abyss', size: 'half' }] },
         after: [['eliza', 'normal', '名簿を全部、議事堂に掲げて。帰ってきた人の名に、印をつけるために。']] },
-      { t: '最精鋭を選び抜いて向かわせる（研究 +100・主戦派が伸びる）', fx: { rp: 100, party: { war: 4 } },
+      { t: '最精鋭を選び抜いて向かわせる（主力艦隊が深淵へ出撃・蝕への火力 +10%・8か月・主戦派が伸びる）', fx: { party: { war: 4 }, act: [{ fleet: 'abyss' }, { buff: 'eclDmg', v: 0.1, months: 8, name: '選び抜かれた精鋭' }] },
         after: [['@mil', 'normal', '選ばれなかった者たちは、港で待つと言っています。……帰りを迎える役だ、と。']] },
     ] },
 
