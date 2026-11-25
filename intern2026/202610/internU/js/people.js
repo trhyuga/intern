@@ -204,6 +204,7 @@ const People = (() => {
     if (c.minorFree && !(G.minors[c.minorFree] && G.minors[c.minorFree].ally === null && G.planets[MINORS.find(m => m.id === c.minorFree).planet].owner === c.minorFree)) return false;
     if (c.minorGone && G.planets[MINORS.find(m => m.id === c.minorGone).planet].owner === c.minorGone) return false;
     if (c.anyFlag && !c.anyFlag.some(x => G.flags[x])) return false;
+    if (c.month !== undefined && (G.turn - 1) % 12 + 1 !== c.month) return false;   // 何月か（年の初め＝1 など）
     if (c.chance !== undefined && Math.random() > c.chance) return false;
     return true;
   }
