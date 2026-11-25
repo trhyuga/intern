@@ -25,6 +25,7 @@ const Portrait = (() => {
     return { big, sm };
   }
   function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  const ANIME_SKINS = ['#fde9dd', '#fbe1d0', '#f8dac6', '#f3d0b8', '#e9c1a2', '#d8a882', '#bf8c68', '#fff1e8'];
   const SKINS = ['#f6dcc4', '#f0cfb0', '#e8bf98', '#d8a880', '#c28c62', '#9c6a48', '#7a5038', '#f8e4d4'];
   const HAIRS = ['#1a1418', '#2a1e1a', '#4a2e1e', '#7a4a28', '#c89858', '#e8d090', '#d8d8e0', '#8a2a22', '#283a6a', '#3a6a7a', '#f0f0f4', '#5a3a6a'];
   const EYES = ['#3a5a8a', '#4a7a4a', '#7a4a2a', '#2a2a32', '#8a6a2a', '#5a3a8a', '#2a8a9a', '#a03030', '#6a7a8a'];
@@ -42,7 +43,7 @@ const Portrait = (() => {
     const styleF = ['long', 'bob', 'pony', 'long', 'side', 'bun'], styleM = ['short', 'swept', 'spiky', 'slick', 'short', 'long', 'buzz'];
     return {
       female: S.female, old, cyber,
-      skin: cyber && r() < 0.5 ? '#e8eef4' : SKINS[Math.floor(r() * SKINS.length)],
+      skin: cyber && r() < 0.5 ? '#e8eef4' : (STYLE === 'anime' ? ANIME_SKINS : SKINS)[Math.floor(r() * SKINS.length)],
       hair, eye: cyber ? '#40e8ff' : EYES[Math.floor(r() * EYES.length)],
       style: (S.female ? styleF : styleM)[Math.floor(r() * (S.female ? styleF : styleM).length)],
       jaw: S.female ? 0.86 + r() * 0.06 : 0.92 + r() * 0.12,
@@ -194,10 +195,10 @@ const Portrait = (() => {
     c.fillStyle = fg; facePath(); c.fill();
     // 影：右の頬の縁（くっきりした三日月）
     c.save(); facePath(); c.clip();
-    c.fillStyle = Art.hexA(shade(f.skin, 0.72), 0.55);
-    c.beginPath(); c.ellipse(cx + fw * 1.32, cy + 4, fw * 0.62, 60, 0.12, 0, 7); c.fill();
+    c.fillStyle = Art.hexA(shade(f.skin, 0.8), 0.5);
+    c.beginPath(); c.ellipse(cx + fw * 1.38, cy + 4, fw * 0.6, 60, 0.12, 0, 7); c.fill();
     c.restore();
-    c.strokeStyle = LC; c.lineWidth = 1.3; c.lineJoin = 'round';
+    c.strokeStyle = LC; c.lineWidth = 1.05; c.lineJoin = 'round';
     c.beginPath();
     c.moveTo(cx + fw, cy - 20);
     c.bezierCurveTo(cx + fw + 1.5, cy - 6, cx + fw * 0.94, cy + 16, cx + fw * 0.6, cy + 31);
@@ -226,7 +227,7 @@ const Portrait = (() => {
   function animeEyes(c, f, cx, cy, expr) {
     const fem = f.female, old = f.old;
     const ey = cy + 3, ex = fem ? 19.5 : 19;
-    const W = (fem ? 13.5 : 12.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 16 : 11.5) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.15 : 1);
+    const W = (fem ? 14 : 13) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 14.5 : 10) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.25 : 1);
     const LC = lineCol(f), lash = '#1a0e12';
     const E = { ey, ex, W, H };
     [-1, 1].forEach(s => {
@@ -243,7 +244,7 @@ const Portrait = (() => {
         return;
       }
       // 上まぶたの線：表情で傾ける（怒り＝目頭が下がる、憂い＝目頭が上がる）
-      let iY = ey - H * 0.25, oY = ey - H * 0.42, cY = ey - H * 1.32;
+      let iY = ey - H * 0.32, oY = ey - H * (f.female ? 0.22 : 0.3), cY = ey - H * 1.12;   // ほぼ水平（目尻を上げるときつく見える）
       if (expr === 'angry') { iY = ey - H * 0.02; oY = ey - H * 0.62; cY = ey - H * 0.82; }
       if (expr === 'sad') { iY = ey - H * 0.6; oY = ey - H * 0.12; cY = ey - H * 1.05; }
       if (!fem && expr === 'normal' && (f.pers === '猛進' || f.pers === '野心')) { iY = ey - H * 0.12; cY = ey - H * 1.1; }
@@ -254,7 +255,7 @@ const Portrait = (() => {
       c.save(); shape(); c.clip();
       c.fillStyle = 'rgba(150,160,200,.45)'; c.beginPath(); c.moveTo(inner - 2, iY - 2); c.quadraticCurveTo(x, cY - 2, outer + 2, oY - 2); c.lineTo(outer + 2, oY + H * 0.4); c.quadraticCurveTo(x, cY + H * 0.75, inner - 2, iY + H * 0.4); c.fill();
       // 瞳（大きく縦長）
-      const ir = { x: x + s * W * 0.04 * (expr === 'sad' ? 0 : 1), y: ey + H * 0.12, rx: W * (fem ? 0.72 : 0.66) * (expr === 'shock' ? 0.62 : 1), ry: H * (fem ? 0.86 : 0.92) * (expr === 'shock' ? 0.62 : 1) };
+      const ir = { x: x + s * W * 0.05 * (expr === 'sad' ? 0 : 1), y: ey + H * 0.2, rx: W * (fem ? 0.66 : 0.6) * (expr === 'shock' ? 0.6 : 1), ry: H * (fem ? 1.08 : 1.15) * (expr === 'shock' ? 0.55 : 1) };
       const g = c.createLinearGradient(0, ir.y - ir.ry, 0, ir.y + ir.ry);
       g.addColorStop(0, shade(f.eye, 0.22)); g.addColorStop(0.45, shade(f.eye, 0.75)); g.addColorStop(0.8, f.eye); g.addColorStop(1, shade(f.eye, 1.75));
       c.fillStyle = g; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx, ir.ry, 0, 0, 7); c.fill();
@@ -268,7 +269,7 @@ const Portrait = (() => {
       c.fillStyle = shade(f.eye, 0.12); c.beginPath(); c.ellipse(ir.x, ir.y - ir.ry * 0.05, ir.rx * (expr === 'shock' ? 0.3 : 0.42), ir.ry * (expr === 'shock' ? 0.3 : 0.48), 0, 0, 7); c.fill();
       c.strokeStyle = shade(f.eye, 0.18); c.lineWidth = 1; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx - 0.4, ir.ry - 0.4, 0, 0, 7); c.stroke();
       // 上まぶたの落とす影（くっきり）
-      c.fillStyle = 'rgba(30,15,40,.35)'; c.beginPath(); c.moveTo(inner - 2, iY - 3); c.quadraticCurveTo(x, cY - 3, outer + 2, oY - 3); c.lineTo(outer + 2, oY + H * 0.28); c.quadraticCurveTo(x, cY + H * 0.62, inner - 2, iY + H * 0.28); c.fill();
+      c.fillStyle = 'rgba(30,15,40,.2)'; c.beginPath(); c.moveTo(inner - 2, iY - 3); c.quadraticCurveTo(x, cY - 3, outer + 2, oY - 3); c.lineTo(outer + 2, oY + H * 0.28); c.quadraticCurveTo(x, cY + H * 0.62, inner - 2, iY + H * 0.28); c.fill();
       // ハイライト：大きな光・小さな光・下のきらめき
       if (expr !== 'shock') {
         c.fillStyle = '#ffffff'; c.beginPath(); c.ellipse(ir.x - s * ir.rx * 0.32, ir.y - ir.ry * 0.38, ir.rx * 0.36, ir.ry * 0.26, -0.4 * s, 0, 7); c.fill();
@@ -324,9 +325,8 @@ const Portrait = (() => {
   function animeMouth(c, f, cx, cy, expr) {
     const fem = f.female, my = cy + (fem ? 30 : 32) * f.faceL, LC = lineCol(f);
     // 鼻：小さな影と点
-    c.strokeStyle = Art.hexA(LC, 0.7); c.lineWidth = 1.1; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(cx + 2.2, cy + 16); c.quadraticCurveTo(cx + 2.6, cy + 19.5, cx + 0.2, cy + 20); c.stroke();
-    c.fillStyle = 'rgba(255,255,255,.5)'; c.beginPath(); c.ellipse(cx - 0.8, cy + 15, 0.9, 2.4, 0, 0, 7); c.fill();
+    c.strokeStyle = Art.hexA(LC, 0.45); c.lineWidth = 1; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(cx + 1.6, cy + 18); c.lineTo(cx + 0.4, cy + 19.5); c.stroke();
     c.strokeStyle = LC; c.lineWidth = 1.3;
     if (expr === 'happy') {
       c.beginPath(); c.moveTo(cx - 8, my - 2); c.quadraticCurveTo(cx, my - 0.5, cx + 8, my - 2); c.quadraticCurveTo(cx + 5, my + 9, cx, my + 9); c.quadraticCurveTo(cx - 5, my + 9, cx - 8, my - 2); c.closePath();
@@ -365,17 +365,17 @@ const Portrait = (() => {
     const dome = () => { c.beginPath(); c.moveTo(cx - fw - 10, cy - 2); c.bezierCurveTo(cx - fw - 19, cy - 108, cx + fw + 19, cy - 108, cx + fw + 10, cy - 2); c.quadraticCurveTo(cx + fw * 0.6, cy - 36, cx, cy - 40); c.quadraticCurveTo(cx - fw * 0.6, cy - 36, cx - fw - 10, cy - 2); c.closePath(); };
     const g = c.createLinearGradient(0, top, 0, cy - 10); g.addColorStop(0, shade(col, 1.08)); g.addColorStop(1, shade(col, 0.9));
     c.fillStyle = g; dome(); c.fill();
-    c.strokeStyle = HL; c.lineWidth = 1.1; c.beginPath(); c.moveTo(cx - fw - 10, cy - 4); c.bezierCurveTo(cx - fw - 19, cy - 108, cx + fw + 19, cy - 108, cx + fw + 10, cy - 4); c.stroke();
+    c.strokeStyle = Art.hexA(shade(col, 0.4), 0.6); c.lineWidth = 0.9; c.beginPath(); c.moveTo(cx - fw - 10, cy - 4); c.bezierCurveTo(cx - fw - 19, cy - 108, cx + fw + 19, cy - 108, cx + fw + 10, cy - 4); c.stroke();
     if (st === 'buzz') return;
     // 房の並び
     const swept = st === 'swept' || st === 'side' || st === 'slick';
-    const n = st === 'spiky' ? 8 : fem ? 12 : 10;
+    const n = st === 'spiky' ? 7 : fem ? 9 : 8;
     const part = swept ? cx - fw * 0.5 : cx + (r() - 0.5) * 10;
     const locks = [];
     for (let i = 0; i < n; i++) {
       const k = (i + 0.5) / n;
       const rx = cx - fw - 6 + (fw * 2 + 12) * k;
-      const ry = cy - 60 + Math.pow((rx - cx) / (fw + 10), 2) * 26;   // 房は生え際から（頭頂はなめらかな塊のまま）
+      const ry = cy - 74 + Math.pow((rx - cx) / (fw + 10), 2) * 30;   // 房は生え際から（頭頂はなめらかな塊のまま）
       const dir = swept ? 1 : (rx < part ? -1 : 1);
       const edge = Math.abs(k - 0.5) > 0.36;
       // 長さに強弱：3本ごとに長い房、その間は短い房（束になって見えるように）
@@ -390,27 +390,35 @@ const Portrait = (() => {
       const w = (fw * 2 + 12) / n * (st === 'spiky' ? 1.1 : 1.0) * (longL ? 1.15 : shortL ? 0.8 : 1);
       locks.push({ p0: [rx, ry], p1: [rx + dir * 1, ry + 14], p2: [tipX - dir * (6 + bend * 0.2), tipY - 12], p3: [tipX, tipY], w: w * 1.25, dir, tone: 0.95 + r() * 0.1 });
     }
+    if (!swept && st !== 'slick') {
+      const tY = cy + 3 - (fem ? 14.5 : 10) * f.eyeS - (fem ? 5 : 6);
+      locks.push({ p0: [part, cy - 76], p1: [part, cy - 52], p2: [part + 1, tY - 12], p3: [part + 2, tY], w: (fw * 2 + 12) / n * 1.3, dir: 1, tone: 1.02 });
+    }
     // 額に落ちる房の影（くっきり、少し下へずらす）
     c.save(); facePath(); c.clip();
     locks.forEach(L => strand(c, [L.p0[0] + 1, L.p0[1] + 6], [L.p1[0] + 1, L.p1[1] + 6], [L.p2[0] + 1, L.p2[1] + 6], [L.p3[0] + 1.5, L.p3[1] + 6], L.w, shade(f.skin, 0.8), shade(f.skin, 0.8), 1, 0.8));
     c.restore();
-    const order = [...locks.keys()].sort((a, b) => Math.abs(b - n / 2) - Math.abs(a - n / 2));
-    const HL2 = Art.hexA(shade(col, 0.38), 0.55);
+    const order = [...locks.keys()].sort((a, b) => Math.abs(b - n / 2) - Math.abs(a - n / 2));   // 分け目の房（最後の番号）は真ん中に重ねる
+    const HL2 = Art.hexA(shade(col, 0.4), 0.32);
     for (const i of order) {
       const L = locks[i];
-      strand(c, L.p0, L.p1, L.p2, L.p3, L.w, shade(col, 1.04 * L.tone), shade(col, 0.92 * L.tone), 1, 0.75, HL2);
+      // 付け根は頭頂の色（塊に溶け込む）、毛先へやや明るく。縁の線は描かない（塊の大きな形を見せる）
+      strand(c, L.p0, L.p1, L.p2, L.p3, L.w, shade(col, 1.06), shade(col, 0.97 * L.tone), 1, 0.75);
       // 房の片側のくっきりした影（細い暗い筋）
       const o = L.dir * L.w * 0.42;
-      if (i % 2 === 0) strand(c, [L.p1[0] + o * 0.8, L.p1[1]], [L.p1[0] + o * 0.7, L.p1[1] + 8], [L.p2[0] + o * 0.5, L.p2[1] + 4], [L.p3[0] - L.dir * 0.5, L.p3[1] - 2], L.w * 0.3, shade(col, 0.76), shade(col, 0.72), 1, 0.7);
+      if (i % 3 === 1) strand(c, [L.p1[0] + o * 0.8, L.p1[1]], [L.p1[0] + o * 0.7, L.p1[1] + 8], [L.p2[0] + o * 0.5, L.p2[1] + 4], [L.p3[0] - L.dir * 0.5, L.p3[1] - 2], L.w * 0.3, shade(col, 0.76), shade(col, 0.72), 1, 0.7);
     }
+    c.save(); c.strokeStyle = HL2; c.lineWidth = 0.8; c.lineCap = 'round';
+    locks.forEach(L => { c.beginPath(); c.moveTo(L.p3[0] - L.dir * L.w * 0.18, L.p3[1] - 12); c.quadraticCurveTo(L.p3[0] - L.dir * L.w * 0.05, L.p3[1] - 4, L.p3[0], L.p3[1]); c.stroke(); });
+    c.restore();
     if (st === 'spiky') { for (let i = 0; i < 5; i++) { const x = cx - 36 + i * 18; strand(c, [x, top + 24], [x + (i - 2) * 3, top + 10], [x + (i - 2) * 8, top - 2], [x + (i - 2) * 11, top - 12 - (i % 2) * 5], 9, shade(col, 1.08), shade(col, 0.95), 1, 0.8, HL); } }
     // 横髪（顔の脇に、先の尖った房）
     if (fem || st === 'long' || st === 'bob') {
       [-1, 1].forEach(s => {
-        const x0 = cx + s * (fw + 2), y0 = cy - 44;
-        const len = st === 'bob' ? 66 : fem ? 84 : 70;
-        strand(c, [x0, y0], [x0 + s * 9, y0 + 24], [x0 + s * 4, y0 + len * 0.75], [x0 - s * 3, y0 + len], 7.5, shade(col, 1.0), shade(col, 0.82), 1, 0.85, HL);
-        strand(c, [x0 - s * 4, y0 + 4], [x0 + s * 2, y0 + 26], [x0 + s * 1, y0 + len * 0.6], [x0 - s * 1, y0 + len * 0.78], 5, shade(col, 0.95), shade(col, 0.8), 1, 0.85, HL);
+        const x0 = cx + s * (fw + 2), y0 = cy - 56;
+        const len = st === 'bob' ? 78 : fem ? 96 : 82;
+        strand(c, [x0, y0], [x0 + s * 9, y0 + 24], [x0 + s * 4, y0 + len * 0.75], [x0 - s * 3, y0 + len], 7.5, shade(col, 1.0), shade(col, 0.82), 1, 0.85, Art.hexA(shade(col, 0.4), 0.32));
+        strand(c, [x0 - s * 4, y0 + 4], [x0 + s * 2, y0 + 26], [x0 + s * 1, y0 + len * 0.6], [x0 - s * 1, y0 + len * 0.78], 5, shade(col, 0.95), shade(col, 0.8), 1, 0.85, Art.hexA(shade(col, 0.4), 0.32));
       });
     }
     // つや：天使の輪（ぎざぎざの明るい帯）
