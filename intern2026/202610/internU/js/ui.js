@@ -970,6 +970,8 @@ const UI = (() => {
     }
     // 自国の物語の終幕（メインストーリーの締めくくり）
     try { const fe = People.finale(type); if (fe) await Story.play(fe); } catch (e) { console.error(e); }
+    // 人物たちのその後
+    try { if (typeof Epilogue !== 'undefined') { const sc = Epilogue.scenes(type); if (sc && sc.length) await talk('その後', sc, null, 'space'); } } catch (e) { console.error(e); }
     const rec = Ending.record(type);
     Game.clearSave();
     await Cinema.ending(rec);
