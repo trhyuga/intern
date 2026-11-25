@@ -97,7 +97,7 @@ const UI = (() => {
         else if (!Game.canEnter(G.player, pid)) toast('その星には入れません（戦争中の相手か、独立惑星・味方の星だけ）');
         else if (!Game.path(mm.at, pid, n => Game.friendly(G.player, G.planets[n].owner))) toast('そこまでの道がありません（敵の星を通り抜けることはできません）');
         else {
-          mm.route = pid; mm.dest = null;
+          mm.route = pid; mm.dest = null; mm.mission = null;
           const h = Game.path(mm.at, pid, n => Game.friendly(G.player, G.planets[n].owner)).length - 1;
           toast(`${Game.fleetName(mm)} → ${G.planets[pid].name}（${h}か月ほど）`);
           Sound.se('order');
@@ -346,6 +346,7 @@ const UI = (() => {
     const p = G.planets[fl.at];
     const tgt = fl.route ?? fl.dest;
     let h = `<div class="kv"><div><span>現在地</span><b>${p.name}</b></div><div><span>行き先</span><b>${tgt !== null && tgt !== undefined ? G.planets[tgt].name : '待機'}</b></div><div><span>艦（上限は司令の階級）</span><b>${fl.ships.length} / ${Game.fleetCap(fl)}</b></div><div><span>戦力</span><b>${num(Game.fleetPower(fl))}</b></div></div>`;
+    if (fl.mission && fl.mission.until >= G.turn) h += `<p class="note">出来事の命：${G.planets[fl.mission.at].name}へ（${fl.mission.why}）。あと${fl.mission.until - G.turn + 1}か月、参謀もこの命を守る。移動や待機を指示すると、命は解ける。</p>`;
     h += `<div class="row"><button class="btn primary" data-a="move">移動を指示</button><button class="btn" data-a="stay">待機</button></div>`;
     h += `<h3>司令</h3>${fl.cmd ? ofcCard(fl.cmd, '<button class="btn small" data-a="cmd">替える</button>') : `<div class="empty">司令がいません（奥の手が使えず、弱くなります）<button class="btn small primary" data-a="cmd">任命</button></div>`}`;
     if (fl.cmd) h += `<p class="note">奥の手：<b>${SKILLS[skillName(fl.cmd)].name}</b> ― ${SKILLS[skillName(fl.cmd)].desc}</p>`;
@@ -358,7 +359,7 @@ const UI = (() => {
     body.innerHTML = h;
     const on = (sel, fn) => { const el = $(sel, body); if (el) el.onclick = () => { Sound.se('click'); fn(); }; };
     on('[data-a=move]', () => { closeSheet(); StarMap.selFleet = fl; StarMap.moveMode = fl; StarMap.focus(fl.at); quick(); });
-    on('[data-a=stay]', () => { fl.route = null; fl.dest = null; redraw(); });
+    on('[data-a=stay]', () => { fl.route = null; fl.dest = null; fl.mission = null; redraw(); });
     on('[data-a=cmd]', async () => { const k = await pickOfficer('艦隊の司令', Game.officersOf(G.player).filter(k => !G.officers[k].role || G.officers[k].role === 'cmd:' + fl.id), 'ldr'); if (k) { Game.setCmd(fl, k); answer('command', k, G.planets[fl.at].name, 'happy'); } redraw(); });
     on('[data-a=sub]', async () => { const k = await pickOfficer('副官', Game.officersOf(G.player).filter(k => (!G.officers[k].role || G.officers[k].role === 'cmd:' + fl.id) && k !== fl.cmd), 'tac'); Game.setCmd(fl, k, 'sub'); if (k) { const t = fl.cmd ? People.tie(fl.cmd, k) : null; speak(k, t ? People.line(t, 'ally', k) : WarRoom.reply('command', k, G.planets[fl.at].name), 'happy'); } redraw(); });
     $$('[data-fm]', body).forEach(b => b.onclick = () => { fl.form = b.dataset.fm; Sound.se('click'); redraw(); });
@@ -564,6 +565,10 @@ const UI = (() => {
     const v = (() => { const others = G.facs.filter(x => x.alive && x.id !== G.player); return { allies: others.filter(x => Game.rel(G.player, x.id).s === 'ally').length, others: others.length, mine: G.planets.filter(p => p.owner === G.player || Game.friendly(G.player, p.owner)).length, total: G.planets.length }; })();
     let h = `<button class="btn primary wide" data-a="staff">参謀に任せる（オートモード）${Staff.active() ? '：実行中' : ''}</button><h3>勝利への道</h3><div class="kv"><div><span>武力統一</span><b>${v.mine} / ${v.total} 星</b></div><div><span>和平</span><b>同盟 ${v.allies} / ${v.others} 国</b></div></div>`;
     h += eclipseBox();
+    { // 出来事で決めたことの、続いている効き目と、命を受けた艦隊
+      const bf = (G.facs[G.player].buffs || []).filter(x => x.until >= G.turn), ms = G.fleets.filter(x => x.fac === G.player && x.mission && x.mission.until >= G.turn);
+      if (bf.length || ms.length) h += `<h3>続いている決定</h3><div class="decis">${bf.map(x => `<div>${x.name ? `<b>${x.name}</b>：` : ''}${x.k === 'stab' ? `民心 毎月 +${Math.round(x.v * 10)}` : `${People.BUFF_NAME[x.k] || x.k} ${x.k === 'build' ? '−' : '+'}${Math.round(x.v * 100)}%`}<small>あと${x.until - G.turn + 1}か月</small></div>`).join('')}${ms.map(x => `<div><b>${Game.fleetName(x)}</b>：${G.planets[x.mission.at].name}へ（${x.mission.why}）<small>あと${x.mission.until - G.turn + 1}か月</small></div>`).join('')}</div>`;
+    }
     // 物語の進み（メインストーリー）
     { const mp = People.mainProgress(); if (mp.total) h += `<h3>${FACTIONS[G.player].short}の物語 <small>${mp.done.length} / ${mp.total} 話</small></h3><div class="story-prog">${mp.done.map((x, i) => `<div><span>${i + 1}</span>${x.title}<small>${Game.dateStr(x.t)}</small></div>`).join('')}${mp.done.length < mp.total ? `<div class="next"><span>${mp.done.length + 1}</span>……</div>` : ''}</div>`; }
     h += `<h3>国内の派閥 <small>主導：${PARTIES[f.ruling].name}</small></h3>`;

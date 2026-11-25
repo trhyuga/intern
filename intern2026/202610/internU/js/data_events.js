@@ -27,8 +27,8 @@ const EVENTS = [
       ['alexis', 'angry', '……余は、何をもって皇帝たるかを示さねばならぬ。'],
     ],
     choices: [
-      { t: 'まず国を固める（民心 +6・融和派が伸びる）', fx: () => { FX.stab(6); FX.party('peace', 6); FX.loyal('gerhard', 8); }, after: () => [['gerhard', 'happy', '賢明なご判断です。根の深い木こそ、嵐に倒れませぬ。']] },
-      { t: '共和国を討ち、武威を示す（資金 +250・主戦派が伸びる）', fx: () => { FX.funds(250); FX.party('war', 8); FX.loyal('viktor', 10); }, after: () => [['viktor', 'happy', 'そう来なくては！ 帝国の紅き艦隊、陛下に勝利を捧げます！']] },
+      { t: 'まず国を固める（民心 +6・首都の防衛衛星 +1・融和派が伸びる）', fx: () => { People.act([{ fort: 1, where: 'capital' }]); FX.stab(6); FX.party('peace', 6); FX.loyal('gerhard', 8); }, after: () => [['gerhard', 'happy', '賢明なご判断です。根の深い木こそ、嵐に倒れませぬ。']] },
+      { t: '共和国を討ち、武威を示す（共和国に宣戦・主力艦隊が出撃・資金 +250・主戦派が伸びる）', fx: () => { People.act([{ war: 1, why: '武威を示すため' }, { fleet: 'front', to: 1 }]); FX.funds(250); FX.party('war', 8); FX.loyal('viktor', 10); }, after: () => [['viktor', 'happy', 'そう来なくては！ 帝国の紅き艦隊、陛下に勝利を捧げます！']] },
     ] },
   { id: 'e0_2', fac: 0, cond: () => G.turn >= 9 && allMine('alexis', 'gerhard', 'mathilde'), bg: 'palace', title: '第二章　宮廷の毒',
     scenes: () => [
@@ -40,7 +40,7 @@ const EVENTS = [
     ],
     choices: [
       { t: '摂政を信じる（ゲルハルトの忠誠が最大に・民心 +4）', fx: () => { FX.loyal('gerhard', 100); FX.stab(4); FX.loyal('mathilde', -15); FX.flag('e0_trust'); }, after: () => [['gerhard', 'sad', '……もったいなきお言葉。この老骨、最後の一息まで陛下のために。'], ['alexis', 'normal', '記録は余が自ら読む。これからは、余の目で確かめる。']] },
-      { t: '摂政の権を取り上げる（技術・研究 +120・ゲルハルトの忠誠が下がる）', fx: () => { FX.loyal('gerhard', -25); FX.rp(120); FX.loyal('mathilde', 10); FX.flag('e0_alone'); }, after: () => [['gerhard', 'sad', '……御意に。陛下が自ら立たれる日が、思いのほか早く来たのですな。'], ['mathilde', 'happy', '（ふふ……これで宮廷は、わたくしのもの）']] },
+      { t: '摂政の権を取り上げる（ゲルハルトの役を解く・研究 +120・ゲルハルトの忠誠が下がる）', fx: () => { People.act([{ officer: 'gerhard', do: 'dismiss' }]); FX.loyal('gerhard', -25); FX.rp(120); FX.loyal('mathilde', 10); FX.flag('e0_alone'); }, after: () => [['gerhard', 'sad', '……御意に。陛下が自ら立たれる日が、思いのほか早く来たのですな。'], ['mathilde', 'happy', '（ふふ……これで宮廷は、わたくしのもの）']] },
     ] },
   { id: 'e0_3', fac: 0, cond: () => G.turn >= 18 && G.facs[0].stats.wins >= 2 && allMine('alexis', 'sieg'), bg: 'bridge', title: '第三章　黒騎士の誓い',
     scenes: () => [
@@ -82,7 +82,7 @@ const EVENTS = [
       ['eliza', 'sad', '……自由を守るために、自由を手放すのか。'],
     ],
     choices: [
-      { t: '大権を与える（資金 +200・主戦派が伸びる・ユリウスの忠誠 +）', fx: () => { FX.funds(200); FX.party('war', 8); FX.loyal('julius', 15); FX.flag('e1_power'); }, after: () => [['julius', 'happy', '必ず、勝利で応えます。'], ['leo', 'sad', '（……本当に、これでいいのか）']] },
+      { t: '大権を与える（ユリウスが主力艦隊の司令に・艦の火力 +5%（1年）・資金 +200・主戦派が伸びる・ユリウスの忠誠 +）', fx: () => { People.act([{ officer: 'julius', do: 'command' }, { buff: 'dmg', v: 0.05, months: 12, name: '提督の大権' }]); FX.funds(200); FX.party('war', 8); FX.loyal('julius', 15); FX.flag('e1_power'); }, after: () => [['julius', 'happy', '必ず、勝利で応えます。'], ['leo', 'sad', '（……本当に、これでいいのか）']] },
       { t: '議会に従う（民心 +6・融和派が伸びる・ユリウスの忠誠 −）', fx: () => { FX.stab(6); FX.party('peace', 6); FX.loyal('julius', -10); }, after: () => [['julius', 'normal', '……承知しました。私は軍人です。命じられたことをするだけです。'], ['eliza', 'normal', 'ありがとう、ユリウス。この国は、まだ議会のものよ。']] },
     ] },
   { id: 'e1_2', fac: 1, cond: () => G.turn >= 10 && allMine('eliza', 'sophia', 'marcus'), bg: 'palace', title: '第二章　白い議事堂の影',
@@ -134,8 +134,8 @@ const EVENTS = [
       ['magnus', 'normal', 'ふん。金は、使い方で正義にも悪にもなる。さて――どこに張るか。'],
     ],
     choices: [
-      { t: '軍備に投資する（資金 −150・艦の費用を払うと主戦派が伸びる）', fx: () => { FX.funds(-150); FX.party('war', 8); G.facs[G.player].tech.wep++; }, after: () => [['magnus', 'happy', '兵器部門の新型だ。……兵器技術が一段上がった。']] },
-      { t: '研究に投資する（研究 +220・技術派が伸びる）', fx: () => { FX.rp(220); FX.party('tech', 8); FX.loyal('yuki', 15); }, after: () => [['yuki', 'happy', 'ありがとうございます。必ず、利益にしてみせます。']] },
+      { t: '軍備に投資する（資金 −150・兵器技術 +1・艦 +2・主戦派が伸びる）', fx: () => { People.act([{ ships: 2 }]); FX.funds(-150); FX.party('war', 8); G.facs[G.player].tech.wep++; }, after: () => [['magnus', 'happy', '兵器部門の新型だ。……兵器技術が一段上がった。']] },
+      { t: '研究に投資する（研究 +220・研究 +10%（1年）・技術派が伸びる）', fx: () => { People.act([{ buff: 'research', v: 0.1, months: 12, name: '研究への投資' }]); FX.rp(220); FX.party('tech', 8); FX.loyal('yuki', 15); }, after: () => [['yuki', 'happy', 'ありがとうございます。必ず、利益にしてみせます。']] },
     ] },
   { id: 'e2_2', fac: 2, cond: () => G.turn >= 10 && allMine('magnus', 'lin'), bg: 'palace', title: '第二章　取締役会の亀裂',
     scenes: () => [
@@ -145,7 +145,7 @@ const EVENTS = [
       ['vera', 'shock', '（……面白くなってきたわね）'],
     ],
     choices: [
-      { t: 'リンを重く用いる（リンの忠誠 +25・通商派が伸びる）', fx: () => { FX.loyal('lin', 25); FX.party('trade', 6); FX.flag('e2_lin'); }, after: () => [['magnus', 'normal', 'いいだろう。席が欲しければ、まず数字で示せ。'], ['lin', 'happy', '望むところです。']] },
+      { t: 'リンを重く用いる（リンを首都の総督に・リンの忠誠 +25・通商派が伸びる）', fx: () => { People.act([{ officer: 'lin', do: 'govern' }]); FX.loyal('lin', 25); FX.party('trade', 6); FX.flag('e2_lin'); }, after: () => [['magnus', 'normal', 'いいだろう。席が欲しければ、まず数字で示せ。'], ['lin', 'happy', '望むところです。']] },
       { t: 'リンを抑えつける（資金 +200・リンの忠誠 −25）', fx: () => { FX.funds(200); FX.loyal('lin', -25); }, after: () => [['lin', 'angry', '……覚えておきますよ、総裁。']] },
     ] },
   { id: 'e2_3', fac: 2, cond: () => G.turn >= 16 && isMine('kane'), bg: 'bridge', title: '第三章　傭兵の矜持',
@@ -183,8 +183,8 @@ const EVENTS = [
       ['celestina', 'normal', '……私たちは、何のために光を掲げるのでしょう。'],
     ],
     choices: [
-      { t: '祈りと備えを（民心 +6・融和派が伸びる）', fx: () => { FX.stab(6); FX.party('peace', 6); FX.loyal('aurelio', 10); }, after: () => [['aurelio', 'happy', '聖女様のお心のままに。我が剣は、守るためにあります。']] },
-      { t: '聖戦を宣する（資金 +200・主戦派が伸びる）', fx: () => { FX.funds(200); FX.party('war', 8); FX.loyal('benedetto', 15); }, after: () => [['benedetto', 'happy', '光あれ。……さあ、忙しくなりますぞ。'], ['celestina', 'sad', '（本当に、これでよかったのでしょうか）']] },
+      { t: '祈りと備えを（全ての星の防衛衛星 +1・民心 +6・融和派が伸びる）', fx: () => { People.act([{ fort: 1, where: 'all' }]); FX.stab(6); FX.party('peace', 6); FX.loyal('aurelio', 10); }, after: () => [['aurelio', 'happy', '聖女様のお心のままに。我が剣は、守るためにあります。']] },
+      { t: '聖戦を宣する（いちばん仲の悪い国に宣戦・主力艦隊が出撃・資金 +200・主戦派が伸びる）', fx: () => { People.act([{ war: 'rival', why: '聖戦を宣して' }, { fleet: 'front' }]); FX.funds(200); FX.party('war', 8); FX.loyal('benedetto', 15); }, after: () => [['benedetto', 'happy', '光あれ。……さあ、忙しくなりますぞ。'], ['celestina', 'sad', '（本当に、これでよかったのでしょうか）']] },
     ] },
   { id: 'e3_2', fac: 3, cond: () => G.turn >= 9 && allMine('celestina', 'benedetto', 'aurelio'), bg: 'palace', title: '第二章　枢機卿の影',
     scenes: () => [
@@ -194,7 +194,7 @@ const EVENTS = [
       ['celestina', 'normal', 'ベネデット様。私が間違っているなら、どうか正面からそう仰ってください。私は、逃げません。'],
     ],
     choices: [
-      { t: '枢機卿を退ける（ベネデットの忠誠 −30・民心 +5）', fx: () => { FX.loyal('benedetto', -30); FX.stab(5); FX.loyal('aurelio', 10); }, after: () => [['benedetto', 'angry', '……若い聖女に、何が分かる。']] },
+      { t: '枢機卿を退ける（ベネデットの役を解く・ベネデットの忠誠 −30・民心 +5）', fx: () => { People.act([{ officer: 'benedetto', do: 'dismiss' }]); FX.loyal('benedetto', -30); FX.stab(5); FX.loyal('aurelio', 10); }, after: () => [['benedetto', 'angry', '……若い聖女に、何が分かる。']] },
       { t: '枢機卿と語り合う（ベネデットの忠誠 +15・政治の助け：研究 +100）', fx: () => { FX.loyal('benedetto', 15); FX.rp(100); FX.flag('e3_bene'); }, after: () => [['benedetto', 'sad', '……あなたは、本当に逃げないのですな。前の聖女様も、そうでした。']] },
     ] },
   { id: 'e3_3', fac: 3, cond: () => G.turn >= 16 && allMine('celestina', 'serena'), bg: 'space', title: '第三章　星詠み',
@@ -232,8 +232,8 @@ const EVENTS = [
       ['freya', 'normal', '父さん。束ねるなら、やり方を決めて。'],
     ],
     choices: [
-      { t: '力で束ねる（主戦派が伸びる・ビョルンの忠誠 +）', fx: () => { FX.party('war', 8); FX.loyal('bjorn', 20); FX.funds(120); }, after: () => [['gard', 'angry', '文句がある奴は、俺を殴り倒してから言え！'], ['bjorn', 'happy', 'がはは！ いいぜ盟主、その心意気に乗った！']] },
-      { t: '盟約で束ねる（融和派が伸びる・民心 +6・ラグナルの忠誠 +）', fx: () => { FX.party('peace', 6); FX.stab(6); FX.loyal('ragnar', 20); }, after: () => [['ragnar', 'happy', '酒を酌み交わして誓う。辺境のやり方じゃな。'], ['gard', 'happy', '……ああ。跪かず、並んで立つ。それが同盟だ。']] },
+      { t: '力で束ねる（艦の火力 +8%（1年）・資金 +120・主戦派が伸びる・ビョルンの忠誠 +）', fx: () => { People.act([{ buff: 'dmg', v: 0.08, months: 12, name: '拳の盟' }]); FX.party('war', 8); FX.loyal('bjorn', 20); FX.funds(120); }, after: () => [['gard', 'angry', '文句がある奴は、俺を殴り倒してから言え！'], ['bjorn', 'happy', 'がはは！ いいぜ盟主、その心意気に乗った！']] },
+      { t: '盟約で束ねる（民心 +6・民心 毎月 +1（1年）・融和派が伸びる・ラグナルの忠誠 +）', fx: () => { People.act([{ buff: 'stab', v: 0.1, months: 12, name: '酒杯の盟約' }]); FX.party('peace', 6); FX.stab(6); FX.loyal('ragnar', 20); }, after: () => [['ragnar', 'happy', '酒を酌み交わして誓う。辺境のやり方じゃな。'], ['gard', 'happy', '……ああ。跪かず、並んで立つ。それが同盟だ。']] },
     ] },
   { id: 'e4_2', fac: 4, cond: () => G.turn >= 8 && allMine('gard', 'freya'), bg: 'bridge', title: '第二章　風読みの娘',
     scenes: () => [
@@ -279,7 +279,7 @@ const EVENTS = [
     ],
     choices: [
       { t: '演算を戦に向ける（兵器技術 +1・主戦派が伸びる）', fx: () => { G.facs[G.player].tech.wep++; FX.party('war', 8); FX.loyal('theta', 10); }, after: () => [['theta', 'normal', '了解。最適化を開始します。']] },
-      { t: '演算を備えに向ける（研究 +250・技術派が伸びる）', fx: () => { FX.rp(250); FX.party('tech', 8); FX.loyal('kronos', 15); }, after: () => [['idea', 'happy', '記録の解読を急ぎます。……何かが、私たちに急げと言っている気がするのです。']] },
+      { t: '演算を備えに向ける（研究 +250・研究 +10%（1年）・技術派が伸びる）', fx: () => { People.act([{ buff: 'research', v: 0.1, months: 12, name: '演算塔の備え' }]); FX.rp(250); FX.party('tech', 8); FX.loyal('kronos', 15); }, after: () => [['idea', 'happy', '記録の解読を急ぎます。……何かが、私たちに急げと言っている気がするのです。']] },
     ] },
   { id: 'e5_2', fac: 5, cond: () => G.turn >= 9 && allMine('silas', 'theta'), bg: 'space', title: '第二章　人と機械',
     scenes: () => [
@@ -414,9 +414,9 @@ const EVENTS = [
       ['@leader', 'angry', '……ここが、歴史の分かれ目だ。'],
     ],
     choices: [
-      { t: '全ての国に共闘を呼びかける（全ての国の信頼 +15・融和派が伸びる）', fx: () => { G.facs.forEach(f => { if (f.alive && f.id !== G.player) FX.trust(f.id, 15); }); FX.party('peace', 8); },
+      { t: '全ての国に共闘を呼びかける（戦っていない国と不可侵・主力艦隊が裂け目へ・全ての国の信頼 +15・融和派が伸びる）', fx: () => { People.act([{ treaty: { to: 'all', s: 'nap' } }, { fleet: 'rift' }]); G.facs.forEach(f => { if (f.alive && f.id !== G.player) FX.trust(f.id, 15); }); FX.party('peace', 8); },
         after: () => [['@leader', 'normal', '人の国の争いは、いったん脇に置く。生き残った後で、また好きなだけ争えばよい。']] },
-      { t: '自国の民を守ることに全てを注ぐ（民心 +8・資金 +300・主戦派が伸びる）', fx: () => { FX.stab(8); FX.funds(300); FX.party('war', 6); },
+      { t: '自国の民を守ることに全てを注ぐ（全ての星の防衛衛星 +1・艦隊の半分が首都へ・民心 +8・資金 +300・主戦派が伸びる）', fx: () => { People.act([{ fort: 1, where: 'all' }, { fleet: 'home', size: 'half' }]); FX.stab(8); FX.funds(300); FX.party('war', 6); },
         after: () => [['@leader', 'angry', '他国のことは他国が守れ。我らは、我らの民を一人も喰わせぬ。']] },
     ],
     fx: () => { FX.stab(-8); } },

@@ -48,6 +48,9 @@ const Story = (() => {
       c.fx();
       if (c.after) { const s2 = c.after().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead'))); if (s2.length) await UI.talk(null, s2, null, ev.bg, true); }
     }
+    // 選んだことが、実際に動いた（艦隊の出撃・宣戦・造艦など）
+    const acts = typeof People !== 'undefined' ? People.takeActs() : [];
+    if (acts.length) { await UI.talk('実行', acts.map(t => ['narr', 'normal', '▶ ' + t]), null, ev.bg, true); if (typeof WarRoom !== 'undefined' && WarRoom.say) acts.forEach(t => { try { WarRoom.order('出来事の決定：' + t); } catch (e) { } }); UI.refresh && UI.refresh(); }
     Game.save();
   }
   return { run, play, resolve };

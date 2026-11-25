@@ -133,7 +133,7 @@ const AI = (() => {
     for (const fl of G.fleets.filter(x => x.fac === fid && x.cmd && !x.sub && x.ships.length >= 12)) { const k = idle().find(x => OFF[x].tac >= 65); if (k) Game.setCmd(fl, k, 'sub'); }
     // 同じ星にいる小さな艦隊はまとめる
     const byP = new Map();
-    for (const fl of G.fleets.filter(x => x.fac === fid && x.ships.length && (x.dest === null || x.dest === undefined))) { if (!byP.has(fl.at)) byP.set(fl.at, []); byP.get(fl.at).push(fl); }
+    for (const fl of G.fleets.filter(x => x.fac === fid && x.ships.length && (x.dest === null || x.dest === undefined) && !(x.mission && x.mission.until >= G.turn))) { if (!byP.has(fl.at)) byP.set(fl.at, []); byP.get(fl.at).push(fl); }
     for (const list of byP.values()) {
       if (list.length < 2) continue;
       list.sort((a, b) => b.ships.length - a.ships.length);
@@ -148,6 +148,7 @@ const AI = (() => {
     const f = G.facs[fid], F = { agg: pol.agg ?? Diplo.aggOf(fid) };
     const my = G.fleets.filter(x => x.fac === fid && x.ships.length && (x.cmd || x.ships.length >= 4));
     const busy = new Set();
+    G.fleets.forEach(x => { if (x.fac === fid && x.mission && x.mission.until >= G.turn) busy.add(x); });   // 出来事の命を受けた艦隊
     // 1. 守り：脅かされている星へ
     for (const p of G.planets.filter(p => p.owner === fid)) {
       let threat = 0;

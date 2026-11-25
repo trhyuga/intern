@@ -166,8 +166,170 @@ const People = (() => {
     if (c.chance !== undefined && Math.random() > c.chance) return false;
     return true;
   }
+
+  // ---------- 選択を、実際のゲームの動きにする（act） ----------
+  //  fx.act = [ {...}, ... ]。書き方は spec/ACT_FORMAT.md
+  let ACTS = [];
+  const takeActs = () => { const a = ACTS; ACTS = []; return a; };
+  const note = t => { ACTS.push(t); Game.log(t, 'big', G.player); };
+  const BUFF_NAME = { dmg: '艦の火力', eclDmg: '蝕への火力', def: '艦の守り', speed: '艦の速さ', income: '収入', research: '研究', build: '造艦の費用（安く）', stab: '民心（毎月）' };
+  // 相手の国を決める：数字・'other'（国家間の出来事の相手）・'rival'（いちばん仲の悪い国）・'strongest'・'weakest'・'all'
+  function facTarget(t, ctx) {
+    const me = G.player, alive = [0, 1, 2, 3, 4, 5].filter(i => i !== me && G.facs[i].alive);
+    if (t === 'all') return alive;
+    if (t === 'other') return ctx.other !== undefined && ctx.other !== null && G.facs[ctx.other] && G.facs[ctx.other].alive ? [ctx.other] : [];
+    if (typeof t === 'number') return G.facs[t] && G.facs[t].alive && t !== me ? [t] : [];
+    const pw = i => G.fleets.filter(f => f.fac === i).reduce((a, f) => a + Game.fleetPower(f), 0) + G.planets.filter(p => p.owner === i).length * 50;
+    if (t === 'rival') return alive.filter(i => Game.rel(me, i).s !== 'ally').sort((a, b) => Game.rel(me, a).t - Game.rel(me, b).t).slice(0, 1);
+    if (t === 'strongest') return alive.sort((a, b) => pw(b) - pw(a)).slice(0, 1);
+    if (t === 'weakest') return alive.sort((a, b) => pw(a) - pw(b)).slice(0, 1);
+    return [];
+  }
+  const mineP = () => G.planets.filter(p => p.owner === G.player);
+  const capOf = () => G.planets[G.facs[G.player].capital];
+  // 自国の星からの近さ
+  const nearMine = pid => Math.min(99, ...mineP().map(p => Game.hops(p.id, pid)));
+  function borderP() {   // 外の星にいちばん多く接している自国の星
+    const me = G.player;
+    return mineP().map(p => ({ p, n: Game.ADJ[p.id].filter(n => !Game.friendly(me, G.planets[n].owner)).length })).sort((a, b) => b.n - a.n)[0]?.p || capOf();
+  }
+  // 艦隊の行き先
+  function fleetTarget(kind, ctx, to) {
+    const me = G.player;
+    const rifts = G.planets.filter(p => p.owner === 'E' && Game.canEnter(me, p.id));
+    if (kind === 'home') return { p: capOf(), why: '首都の守り' };
+    if (kind === 'border' || kind === 'fort') return { p: borderP(), why: '国境の守り' };
+    if (kind === 'rift' || kind === 'abyss') {
+      const ab = rifts.filter(p => p.abyss);
+      const list = kind === 'abyss' && ab.length ? ab : rifts.filter(p => !p.abyss).length ? rifts.filter(p => !p.abyss) : ab;
+      if (list.length) return { p: list.sort((a, b) => nearMine(a.id) - nearMine(b.id))[0], why: kind === 'abyss' && list[0].abyss ? '深淵へ' : '裂け目を討つ' };
+      return { p: borderP(), why: '国境で備える', fb: true };
+    }
+    if (kind === 'aid') {
+      const f = facTarget(to ?? 'other', ctx)[0];
+      if (f === undefined) return { p: borderP(), why: '国境で備える', fb: true };
+      const theirs = G.planets.filter(p => p.owner === f);
+      const near = pid => Math.min(99, ...theirs.map(p => Game.hops(p.id, pid)));
+      // その国を脅かす裂け目か、その国の敵の星。なければ、その国にいちばん近い自国の星
+      const thr = rifts.filter(p => near(p.id) <= 2).sort((a, b) => near(a.id) - near(b.id))[0];
+      if (thr) return { p: thr, why: `${Game.ownerShort(f)}を救いに` };
+      const mp = mineP().sort((a, b) => near(a.id) - near(b.id))[0];
+      return { p: mp || capOf(), why: `${Game.ownerShort(f)}の近くへ` };
+    }
+    if (kind === 'front') {
+      const foes = G.planets.filter(p => Game.isMajor(p.owner) && p.owner !== me && Game.rel(me, p.owner).s === 'war' && nearMine(p.id) === 1);
+      const pick = to !== undefined ? foes.filter(p => facTarget(to, ctx).includes(p.owner)) : foes;
+      if (pick.length) return { p: pick.sort((a, b) => Game.planetDefense(a) - Game.planetDefense(b))[0], why: '敵の星を攻める' };
+      return { p: borderP(), why: '国境で備える', fb: true };
+    }
+    return null;
+  }
+  function pickFleets(size) {
+    const me = G.player, list = G.fleets.filter(f => f.fac === me && f.ships.length).sort((a, b) => Game.fleetPower(b) - Game.fleetPower(a));
+    if (!list.length) return [];
+    if (size === 'all') return list;
+    if (size === 'half') return list.slice(0, Math.max(1, Math.ceil(list.length / 2)));
+    return list.slice(0, 1);
+  }
+  function bestDesign() {
+    const f = G.facs[G.player];
+    return f.designs.map(id => G.designs[id]).filter(x => Game.designUnlocked(x, G.player)).sort((a, b) => Game.designStats(b, G.player).cost - Game.designStats(a, G.player).cost)[0];
+  }
+  function act(list, ctx = {}) {
+    if (!list || typeof G === 'undefined' || !G) return;
+    const me = G.player, f = G.facs[me];
+    for (const a of [].concat(list)) {
+      try {
+        // 艦隊を出す
+        if (a.fleet) {
+          const tg = fleetTarget(a.fleet, ctx, a.to), fls = pickFleets(a.size || 'main');
+          if (!tg || !fls.length) { note('動かせる艦隊がなかった。'); continue; }
+          const months = a.months || 8;
+          fls.forEach(fl => { fl.route = tg.p.id === fl.at ? null : tg.p.id; fl.dest = null; fl.mission = { kind: a.fleet, at: tg.p.id, until: G.turn + months, why: tg.why }; });
+          note(`${fls.map(x => Game.fleetName(x)).join('・')}が、${tg.p.name}へ向かう（${tg.why}${tg.fb ? '・向かう先がまだないため' : ''}。${months}か月のあいだ、参謀もこの命を守る）`);
+          if (typeof StarMap !== 'undefined' && StarMap.focus) try { StarMap.focus(tg.p.id); } catch (e) { }
+        }
+        // 艦を造る（首都の港に届く）
+        if (a.ships) {
+          const d = bestDesign(); if (!d) continue;
+          for (let i = 0; i < a.ships; i++) capOf().dock.push(Game.newShip(d.id));
+          note(`${capOf().name}の港に、${d.name}が${a.ships}隻届いた。`);
+        }
+        // 防衛衛星（砦）
+        if (a.fort) {
+          const where = a.where === 'capital' ? [capOf()] : a.where === 'all' ? mineP() : [borderP()];
+          where.forEach(p => p.def = Math.min(20, p.def + a.fort));
+          note(`${where.length > 2 ? '全ての星' : where.map(p => p.name).join('・')}の防衛衛星 +${a.fort}`);
+        }
+        // 宣戦・停戦・条約
+        if (a.war !== undefined) {
+          for (const t of facTarget(a.war, ctx)) { if (Game.rel(me, t).s === 'war') continue; Diplo.declareWar(me, t, a.why || ''); note(`${FACTIONS[t].name}に宣戦した。`); }
+        }
+        if (a.peace !== undefined) {
+          for (const t of facTarget(a.peace, ctx)) { if (Game.rel(me, t).s !== 'war') continue; Diplo.setRel(me, t, 'neutral'); Game.rel(me, t).t = Math.min(100, Game.rel(me, t).t + 10); note(`${FACTIONS[t].name}と停戦した。`); }
+        }
+        if (a.treaty) {
+          const lv = { neutral: 0, nap: 1, trade: 2, ally: 3 }, s = a.treaty.s || 'nap';
+          for (const t of facTarget(a.treaty.to ?? 'other', ctx)) {
+            const r = Game.rel(me, t);
+            if (r.s === 'war' || lv[r.s] >= lv[s]) continue;
+            Diplo.setRel(me, t, s); note(`${FACTIONS[t].name}と${({ nap: '不可侵', trade: '通商', ally: '同盟' })[s]}を結んだ。`);
+          }
+        }
+        // 贈り物（資金を相手に渡す）
+        if (a.gift) {
+          for (const t of facTarget(a.gift.to ?? 'other', ctx)) { if (Diplo.gift(me, t, a.gift.funds || 100)) note(`${FACTIONS[t].name}へ資金 ${a.gift.funds || 100} を贈った。`); }
+        }
+        // 他国に研究を分ける（解析の記録を渡す など）
+        if (a.share) {
+          const ts = facTarget(a.shareTo ?? 'all', ctx); ts.forEach(t => G.facs[t].rp += a.share);
+          if (ts.length) note(`${ts.length > 1 ? '各国' : FACTIONS[ts[0]].name}に研究 ${a.share} 分の記録を渡した。`);
+        }
+        // 小勢力と盟約を結ぶ／手を切る
+        if (a.minor) {
+          const m = G.minors[a.minor], M = MINORS.find(x => x.id === a.minor);
+          if (!m || G.planets[M.planet].owner !== a.minor) continue;
+          if (a.join === false) { if (m.ally === me) { m.ally = null; note(`${M.name}との盟約を解いた。`); } }
+          else if (m.ally === null) { Game.minorJoin(a.minor, me); note(`${M.name}と盟約を結んだ（お礼：${M.reward}）。`); }
+        }
+        // 民を受け入れる（避難民）
+        if (a.refugees) { const p = capOf(); p.pop = Math.min(p.maxPop + 20, p.pop + a.refugees); p.maxPop += Math.round(a.refugees / 2); note(`${p.name}に避難民を迎え入れた（人口 +${a.refugees}）。`); }
+        // 研究の向きを変える
+        if (a.research) { const b = a.research; if (['wep', 'eng', 'def', 'eco'].includes(b)) { f.researching = b; note(`研究の重点を「${TECH_BRANCH[b].name}」に切り替えた。`); } }
+        // 国の力（しばらく続く）
+        if (a.buff) {
+          f.buffs = (f.buffs || []).filter(x => x.until >= G.turn);
+          const months = a.months || 12;
+          f.buffs.push({ k: a.buff, v: a.v || 0.1, until: G.turn + months, name: a.name || '' });
+          note(`${a.name ? a.name + '：' : ''}${a.buff === 'stab' ? `民心 毎月 +${Math.round((a.v || 0.1) * 10)}` : `${BUFF_NAME[a.buff] || a.buff} ${a.buff === 'build' ? '−' : '+'}${Math.round((a.v || 0.1) * 100)}%`}（${months}か月）`);
+        }
+        // 人を動かす
+        if (a.officer) {
+          const k = a.officer === '@leader' ? FACTIONS[me].leader : a.officer, o = G.officers[k];
+          if (!o || o.st !== 'act' || o.fac !== me) continue;
+          const nm = OFF[k].name;
+          if (a.do === 'command') {
+            const fl = G.fleets.filter(x => x.fac === me && x.ships.length).sort((a2, b2) => Game.fleetPower(b2) - Game.fleetPower(a2)).find(x => x.cmd !== k) ;
+            if (fl && !(o.role || '').startsWith('cmd:')) { Game.freeOfficer(k); Game.setCmd(fl, k); note(`${nm}が${Game.fleetName(fl)}の司令になった。`); }
+          } else if (a.do === 'govern') {
+            const p = a.where === 'border' ? borderP() : capOf();
+            Game.freeOfficer(k); Game.setGov(p.id, k); note(`${nm}を${p.name}の総督にした。`);
+          } else if (a.do === 'dismiss') {
+            if (o.role) { Game.freeOfficer(k); note(`${nm}の任を解いた。`); }
+          } else if (a.do === 'exile') {
+            Game.freeOfficer(k); o.st = 'free'; o.fac = null; o.loc = R.pick(G.planets.filter(p => p.owner !== 'E')).id; note(`${nm}は国を去った。`);
+          }
+        }
+        // 星の開発（首都や国境に資源を注ぐ）
+        if (a.dev) { const p = a.where === 'border' ? borderP() : capOf(); const k = a.dev.k || 'ind'; p[k] = Math.min(10, (p[k] || 0) + (a.dev.n || 1)); note(`${p.name}の${({ ind: '産業', res: '研究', yard: '造船所' })[k] || k} +${a.dev.n || 1}`); }
+      } catch (e) { console.warn('act', a, e); }
+    }
+  }
+  // 続く国の力（buff）の合計
+  function buff(fid, k) { const f = G.facs[fid]; if (!f || !f.buffs) return 0; return f.buffs.reduce((s, x) => s + (x.k === k && x.until >= G.turn ? x.v : 0), 0); }
   function fx(x, ctx = {}) {
     if (!x) return;
+    if (x.act) act(x.act, ctx);
     if (x.loyal) Object.entries(x.loyal).forEach(([k, n]) => FX.loyal(k, n));
     if (x.stat) Object.entries(x.stat).forEach(([k, v]) => Object.entries(v).forEach(([s, n]) => addStat(k, s, n)));
     if (x.merit) Object.entries(x.merit).forEach(([k, n]) => G.officers[k] && Game.addMerit(k, n));
@@ -325,6 +487,9 @@ const People = (() => {
 
   // ---------- 月の変わり目 ----------
   function monthTick() {
+    // 出来事の命：期限が来たら解く。民心の buff は毎月効く
+    G.fleets.forEach(fl => { if (fl.mission && fl.mission.until < G.turn) { fl.mission = null; if (fl.fac === G.player && Staff.active()) fl.route = null; } });
+    for (const fct of G.facs) if (fct.alive && fct.buffs) { fct.buffs = fct.buffs.filter(x => x.until >= G.turn); const sb = buff(fct.id, 'stab'); if (sb) G.planets.forEach(p => { if (p.owner === fct.id) p.stab = Math.min(100, p.stab + sb * 10); }); }
     if (!G) return;
     // 関係による忠誠の揺れ
     for (const t of all()) {
@@ -434,5 +599,5 @@ const People = (() => {
     const ev = PEOPLE.MAIN.find(x => x.finale && (x.fac === undefined || x.fac === me) && (!x.win || x.win === win) && cond(Object.assign({}, x.cond || {}, { chance: undefined })));
     return ev ? wrap(ev, { win }, { pr: 99 }) : null;
   }
-  return { init, finale, mainProgress, applyStats, addStat, voice, reply, staffLine, cond, fx, wrap, pending, monthTick, battleTie, fleetMul, avengeMul, recruitBonus, enemyComment, allyComment, tiesOf, tie, state, line, other, prof, KIND_NAME, WARM, HONOR, sub, all: () => all() };
+  return { act, takeActs, buff, BUFF_NAME, init, finale, mainProgress, applyStats, addStat, voice, reply, staffLine, cond, fx, wrap, pending, monthTick, battleTie, fleetMul, avengeMul, recruitBonus, enemyComment, allyComment, tiesOf, tie, state, line, other, prof, KIND_NAME, WARM, HONOR, sub, all: () => all() };
 })();

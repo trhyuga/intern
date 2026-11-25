@@ -155,7 +155,7 @@ const Game = (() => {
     const hpMul = 1 + t.def * 0.08 + (f && f.forb.includes('f2') ? 0.1 : 0);
     const dmgMul = 1 + t.wep * 0.07 + (fb.dmg || 0);
     hp = Math.round(hp * hpMul); shield = Math.round(shield * (1 + t.def * 0.08));
-    speed = speed * (1 + t.eng * 0.04 + (fb.speed || 0) + (G.minors && G.minors.m4 && G.minors.m4.ally === fid ? 0.1 + ((G.minors.m4.guideUntil || 0) >= G.turn ? 0.15 : 0) : 0));
+    speed = speed * (1 + t.eng * 0.04 + (fb.speed || 0) + (typeof People !== 'undefined' && G && f ? People.buff(fid, 'speed') : 0) + (G.minors && G.minors.m4 && G.minors.m4.ally === fid ? 0.1 + ((G.minors.m4.guideUntil || 0) >= G.turn ? 0.15 : 0) : 0));
     weapons.forEach(w => w.dmg *= dmgMul);
     const dps = weapons.reduce((s, w) => s + w.dmg / w.cd * (w.n || 1), 0);
     return { hp, armor, shield, regen, pd, ecm: Math.min(0.4, ecm), speed, repair, command, weapons, cost, turns: h.turns, size: h.size, dps, hull: d.hull };
@@ -164,6 +164,7 @@ const Game = (() => {
     let c = designStats(d, fid).cost;
     const f = facOf(fid);
     if (f && f.ruling === 'war') c *= 0.8;
+    if (f && typeof People !== 'undefined' && G) c *= 1 - Math.min(0.4, People.buff(fid, 'build'));
     return Math.round(c);
   }
   function designUnlocked(d, fid) {
@@ -354,6 +355,7 @@ const Game = (() => {
     v *= 1 + Math.min(0.25, tr * 0.05);
     if (p.gov) v *= 1 + (OFF[p.gov].pol - 50) / 300;
     if (p.owner === G.player) v *= 1 + Staff.bonus('economy', 0.15);
+    v *= 1 + People.buff(p.owner, 'income');
     return v;
   }
   function planetResearch(p) {
@@ -365,6 +367,7 @@ const Game = (() => {
     if (G.minors.m3 && G.minors.m3.ally === p.owner) v *= 1.05;
     if (p.gov) v *= 1 + (OFF[p.gov].sci - 50) / 300;
     if (p.owner === G.player) v *= 1 + Staff.bonus('research', 0.25);
+    v *= 1 + People.buff(p.owner, 'research');
     return v;
   }
   function upkeep(fid) {

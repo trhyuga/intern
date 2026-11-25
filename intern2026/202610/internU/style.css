@@ -490,3 +490,7 @@ h3.seal { color: #ff7aa0; }
 .s-plain { color: #a8a8b4; }
 .vs-em.ecl { opacity: 1; background: radial-gradient(circle at 50% 45%, #ff2a6a 0 6px, #40001a 7px, #0a0008 60%); box-shadow: 0 0 14px #ff2a6a66 inset; }
 .st-style { margin: 6px 0; font-size: 13px; }
+/* 続いている決定 */
+.decis { display: grid; gap: 4px; margin-bottom: 8px; }
+.decis div { background: #ffffff0a; border-left: 3px solid var(--gold); padding: 5px 8px; border-radius: 6px; font-size: 13px; }
+.decis small { float: right; color: #9aa4b8; }

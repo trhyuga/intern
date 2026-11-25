@@ -248,6 +248,8 @@ const Battle = (() => {
     if (sd.rearUntil > S.t) m.taken *= 1.15;
     if (S.tie) m.dmg *= S.tie.mul;
     if (typeof People !== 'undefined' && sd.cmd) m.dmg *= People.avengeMul(sd.cmd, S.side[sd.key === 'A' ? 'D' : 'A'].fac);   // 仇討ち                          // 背後を取られた
+    // 出来事で選んだ国の力
+    if (Game.isMajor(sd.fac)) { const foeF = S.side[sd.key === 'A' ? 'D' : 'A'].fac; m.dmg *= 1 + People.buff(sd.fac, 'dmg') + (foeF === 'E' ? People.buff(sd.fac, 'eclDmg') : 0); m.taken *= 1 - Math.min(0.4, People.buff(sd.fac, 'def')); }
     // 派閥・禁忌
     const f2 = Game.facOf(sd.fac);
     if (f2 && f2.ruling === 'war') m.dmg *= 1.10;
