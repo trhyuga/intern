@@ -189,7 +189,7 @@ const UI = (() => {
   function renderPlanet(body, pid) {
     const p = G.planets[pid], mine = p.owner === G.player, f = G.facs[G.player];
     const inc = Game.planetIncome(p), rs = Game.planetResearch(p);
-    let h = `<div class="pl-head"><canvas width="160" height="160" class="pl-art"></canvas><div>
+    let h = `${typeof PlanetArt !== 'undefined' ? `<img class="pl-hero" alt="" src="${PlanetArt.url(p, 340, 150)}">` : ''}<div class="pl-head"><canvas width="160" height="160" class="pl-art"></canvas><div>
       <div class="tag" style="background:${Game.ownerCol(p.owner)}">${Game.ownerName(p.owner)}</div>
       <p class="dim">${SYSTEMS[p.sys].name}・${PTYPES[p.type].name}${p.cap ? '・首都' : ''}</p><p>${p.desc}</p></div></div>`;
     h += `<div class="kv">
