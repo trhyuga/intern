@@ -84,7 +84,7 @@ const Staff = (() => {
       economy: poor || stab < 50 ? 1.7 : 1,
       research: 1,
       diplomacy: wars && f.warWeary > 3 ? 1.7 : unsigned ? 0.9 : 0.4,
-      eclipse: Eclipse.active() ? 3 : 0,
+      eclipse: Eclipse.active() && G.planets.some(p => p.owner === 'E' && (!p.abyss || G.facs[G.player].sealed)) ? 3 : 0,
     };
     // 国内の派閥の声：支持が多い派閥の望む方針ほど選ばれやすい（主導派閥はさらに）
     const P0 = f.parties, rul = f.ruling;

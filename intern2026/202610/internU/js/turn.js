@@ -9,7 +9,7 @@ const Turn = (() => {
     if (fl.route === null || fl.route === undefined) return;
     if (fl.route === fl.at) { fl.route = null; return; }
     const path = Game.path(fl.at, fl.route, n => Game.friendly(fl.fac, G.planets[n].owner));
-    if (!path || !Game.canEnter(fl.fac, fl.route)) { fl.route = null; Game.log(`${Game.fleetName(fl)}は${G.planets[fl.at].name}で進めなくなった。`, 'warn', fl.fac); return; }
+    if (!path || !Game.canEnter(fl.fac, fl.route)) { fl.route = null; fl.mission = null; Game.log(`${Game.fleetName(fl)}は${G.planets[fl.at].name}で進めなくなった。`, 'warn', fl.fac); return; }
     fl.dest = path[1];
   }
 

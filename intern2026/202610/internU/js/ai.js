@@ -149,7 +149,7 @@ const AI = (() => {
     const my = G.fleets.filter(x => x.fac === fid && x.ships.length && (x.cmd || x.ships.length >= 4));
     const busy = new Set();
     const softM = [];
-    G.fleets.forEach(x => { if (x.fac === fid && x.mission && x.mission.until >= G.turn) { if (['home', 'border'].includes(x.mission.kind)) softM.push(x); else busy.add(x); } });   // 出来事の命を受けた艦隊
+    G.fleets.forEach(x => { if (x.fac === fid && x.mission && x.mission.until >= G.turn) softM.push(x); });   // 出来事の命を受けた艦隊（守りと蝕への対応には使う。攻めには使わない）
     // 1. 守り：脅かされている星へ
     for (const p of G.planets.filter(p => p.owner === fid)) {
       let threat = 0;
@@ -230,7 +230,7 @@ const AI = (() => {
         if (p.owner === null && G.turn < 3) continue;
         // 小勢力（頼まれごとの相手）は、しばらく攻めない
         if (typeof p.owner === 'string' && p.owner !== 'E' && (G.turn < 36 || F.agg < 0.55 || Math.random() < 0.7)) continue;
-        const def = Game.planetDefense(p) + G.fleets.filter(x => x.at === n && Game.friendly(x.fac, p.owner)).reduce((a, x) => a + Game.fleetPower(x), 0);   // そこにいる艦隊も数える
+        const def = Game.planetDefense(p);   // 防衛衛星・港の艦・そこに留まる艦隊（planetDefense が数える）
         if (pol.onlyE && p.owner !== 'E') continue;
         if (D && Game.isMajor(p.owner)) D.adjMajor = (D.adjMajor || 0) + 1;
         if (Game.isMajor(p.owner) && Game.warGain(fid, p.owner) >= Game.warGoal(fid)) { if (D) D.goal = (D.goal || 0) + 1; continue; }
@@ -267,7 +267,7 @@ const AI = (() => {
               const nx = G.planets[path[1]];
               if (Game.friendly(fid, nx.owner)) { fl.dest = nx.id; busy.add(fl); continue; }
               if (Game.canAttack(fid, nx.owner) && !(Game.isMajor(nx.owner) && Game.warGain(fid, nx.owner) >= Game.warGoal(fid))) {
-                const d2 = Game.planetDefense(nx) + G.fleets.filter(x => x.at === nx.id && Game.friendly(x.fac, nx.owner)).reduce((a, x) => a + Game.fleetPower(x), 0);
+                const d2 = Game.planetDefense(nx);
                 if (myP >= d2 * 0.95) { fl.dest = nx.id; busy.add(fl); mates.slice(1).forEach(x => { x.dest = nx.id; busy.add(x); }); continue; }
               }
             }

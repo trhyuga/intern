@@ -97,7 +97,7 @@ const Eclipse = (() => {
       let best = null, bd = 1e9;
       for (const p of targets) { const h = Game.hops(fl.at, p.id); const sc = h * 10 - p.pop * 0.05; if (h < 99 && sc < bd) { bd = sc; best = p; } }
       if (!best) continue;
-      const path = Game.path(fl.at, best.id, n => G.planets[n].owner === 'E');
+      const path = Game.path(fl.at, best.id, n => G.planets[n].owner === 'E' && !G.planets[n].abyss);
       if (path && path.length > 1) fl.dest = path[1];
     }
     // 6) 喰われた星は、民を失い、死んでいく
@@ -122,8 +122,11 @@ const Eclipse = (() => {
       garrison(r);
       e.rifts.push(r);
     } else {
-      const p = G.planets[r.id];
+      const p = G.planets[r.id], was = p.owner;
+      if (p.gov) Game.freeOfficer(p.gov);
+      if (Game.isMajor(was) && G.facs[was].capital === p.id) { const rest = G.planets.filter(x => x.owner === was && x.id !== p.id); if (rest.length) { const nc = rest.sort((a, b) => b.pop - a.pop)[0]; G.facs[was].capital = nc.id; nc.cap = true; p.cap = false; } }
       p.owner = 'E'; p.def = 8 + e.cycle * 2; p.closed = false; p.gov = null; p.build = []; p.dock = [];
+      if (Game.isMajor(was) && G.facs[was].alive && !G.planets.some(x => x.owner === was)) Game.destroyFaction(was, 'E');
       r.open = true; r.openedAt = G.turn;
       garrison(r);
     }

@@ -89,8 +89,9 @@ const People = (() => {
     const me = G.player, f = G.facs[fid];
     let k = f.killedBy;
     for (let i = 0; i < 6 && typeof k === 'number' && G.facs[k] && !G.facs[k].alive; i++) k = G.facs[k].killedBy;   // 滅ぼした国も滅んでいれば、さらにその先
-    if (typeof k === 'number' && k !== me && G.facs[k] && G.facs[k].alive) return k;
-    const alive = [0, 1, 2, 3, 4, 5].filter(i => i !== me && G.facs[i].alive);
+    if (typeof k === 'number' && k !== me && G.facs[k] && G.facs[k].alive && Game.rel(me, k).s !== 'ally') return k;
+    let alive = [0, 1, 2, 3, 4, 5].filter(i => i !== me && G.facs[i].alive);
+    if (alive.some(i => Game.rel(me, i).s !== 'ally')) alive = alive.filter(i => Game.rel(me, i).s !== 'ally');
     if (!alive.length) return null;
     return alive.sort((a, b) => Game.rel(me, a).t - Game.rel(me, b).t)[0];
   }
@@ -149,9 +150,10 @@ const People = (() => {
   // 新しいゲーム・読み込みの後
   function init() {
     applyStats();
+    const fresh = !G.ties;
     G.ties = G.ties || {};
-    // 最初から同じ国にいる組は「もう知り合い」
-    for (const t of all()) { const s = state(t); if (G.turn <= 1 && mine(t.a) && mine(t.b)) { s.met = true; s.last = 0; } }
+    // 最初から同じ国にいる組（古いセーブを読んだ時は、いま同じ国にいる組）は「もう知り合い」
+    for (const t of all()) { const s = state(t); if ((G.turn <= 1 || fresh) && mine(t.a) && mine(t.b)) { s.met = true; s.last = G.turn; } }
     G.natSnap = G.natSnap || null;
     G.natDone = G.natDone || {};
   }
@@ -186,7 +188,14 @@ const People = (() => {
     if (c.partyMin && !Object.entries(c.partyMin).every(([p, n]) => (f.parties[p] || 0) >= n)) return false;
     if (c.partyMax && !Object.entries(c.partyMax).every(([p, n]) => (f.parties[p] || 0) <= n)) return false;
     // 蝕の段階（そこまで進んだら）
-    if (c.ecl) { const ok = { omen1: G.flags.omen1, omen2: G.flags.omen2, first: G.flags.eclipse, lull: G.flags.eclipseLull, great: G.flags.eclipseGreat, recede: G.flags.eclipseRecede, ret: G.flags.eclipseRet, key: G.flags.myKey || G.flags.towerKey, seal: f.sealed, abyss: G.flags.abyss, solved: G.flags.eclipseDown }[c.ecl]; if (!ok) return false; }
+    if (c.ecl) {
+      const fl = G.flags, done = { omen1: fl.omen1, omen2: fl.omen2, first: fl.eclipse, lull: fl.eclipseLull, great: fl.eclipseGreat, recede: fl.eclipseRecede, ret: fl.eclipseRet, key: fl.myKey || fl.towerKey, seal: f.sealed, abyss: fl.abyss, solved: fl.eclipseDown };
+      // 段階は飛ぶことがある：後の段階まで来ていれば、前の段階は済んだものとする。根絶したら、どの段階も済み
+      const ORD = ['omen1', 'omen2', 'first', 'lull', 'great', 'recede', 'ret'];
+      const i = ORD.indexOf(c.ecl);
+      const ok = done[c.ecl] || done.solved || (i >= 0 && ORD.slice(i + 1).some(k => done[k]));
+      if (!ok) return false;
+    }
     // 小勢力
     if (c.minorAlly && !(G.minors[c.minorAlly] && G.minors[c.minorAlly].ally === me)) return false;
     if (c.minorOther && !(G.minors[c.minorOther] && G.minors[c.minorOther].ally !== null && G.minors[c.minorOther].ally !== me)) return false;
@@ -367,7 +376,12 @@ const People = (() => {
     if (x.funds) FX.funds(x.funds);
     if (x.rp) FX.rp(x.rp);
     if (x.party) Object.entries(x.party).forEach(([p, n]) => FX.party(p, n));
-    if (x.trust) { const done = new Set(); Object.entries(x.trust).forEach(([f, n]) => { let fid = f === 'other' ? ctx.other : +f; fid = liveFid(fid, ctx); if (fid !== undefined && fid !== null && !isNaN(fid) && !done.has(fid) && G.facs[fid].alive) { done.add(fid); FX.trust(fid, n); } }); }
+    if (x.trust) {
+      const ent = Object.entries(x.trust).map(([f, n]) => [f === 'other' ? ctx.other : +f, n]).filter(([fid]) => typeof fid === 'number' && !isNaN(fid));
+      const named = new Set(ent.filter(([fid]) => G.facs[fid] && G.facs[fid].alive).map(([fid]) => fid)), done = new Set();
+      ent.forEach(([fid, n]) => { if (named.has(fid)) { done.add(fid); FX.trust(fid, n); } });
+      ent.forEach(([fid, n]) => { if (named.has(fid)) return; const u = liveFid(fid, ctx); if (typeof u === 'number' && G.facs[u] && G.facs[u].alive && !done.has(u)) { done.add(u); FX.trust(u, n); } });
+    }
     if (x.flag) [].concat(x.flag).forEach(f => FX.flag(f));
   }
   // 宣言的な出来事を、Story.play が読める形にする
@@ -376,7 +390,7 @@ const People = (() => {
     const dead = deadIn(cs0.map(c => c.t), ctx);
     const lines = sc => (sc || []).map(([w, e, t]) => [w, e, dead.length ? fixNations(sub(t, ctx), ctx, dead) : sub(t, ctx)]);
     return {
-      id: ev.id, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0, home: typeof ev.fac === 'number' ? ev.fac : undefined,
+      id: ev.id, wrapped: true, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0, home: typeof ev.fac === 'number' ? ev.fac : undefined,
       scenes: () => lines(ctx.win && ev[ctx.win] ? ev[ctx.win] : ctx.useB && ev.sceneB ? ev.sceneB : (ev.scenesBy && ev.scenesBy[G.facs[G.player].ruling]) || ev.scenes),
       choices: (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices) ? (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices).map(c => ({ t: fixNations(sub(c.t, ctx), ctx), fx: () => { fx(c.fx, ctx); if (extra.onChoice) extra.onChoice(c); }, after: c.after ? () => lines(c.after) : null })) : undefined,
       fx: () => { fx(ev.fx, ctx); if (extra.onPlay) extra.onPlay(); },

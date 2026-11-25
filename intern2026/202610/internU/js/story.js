@@ -32,7 +32,15 @@ const Story = (() => {
     //  優先：蝕 > 国の章 > 死別 > 国家間・捕縛 > 幕間 > 個人の物語 > 関係 > その他
     const pr = e => e.id === 'c_eclipse' ? 10 : e.fac !== undefined ? 6 : (e.pr || 0);
     list.sort((x, y) => pr(y) - pr(x));
-    for (const ev of list.slice(0, 3)) await play(ev);
+    let n = 0;
+    for (const ev of list) {
+      if (n >= 3) break;
+      if (G.evDone[ev.id]) continue;
+      const still = EVENTS.includes(ev) ? eligible(ev) : dynamic().some(e => e.id === ev.id);
+      if (!still) continue;
+      n++;
+      try { await play(ev); } catch (e) { console.error('出来事', ev.id, e); if (typeof People !== 'undefined') People.takeActs(); }
+    }
   }
   // 自国の物語で、寝返った・捕まった自国の人物の台詞は飛ばす（他国の人物はそのまま）
   const away = (ev, w) => ev.home !== undefined && OFF[w].fac0 === ev.home && (G.officers[w].st !== 'act' || G.officers[w].fac !== ev.home);
@@ -40,10 +48,16 @@ const Story = (() => {
     G.evDone[ev.id] = G.turn;
     if (ev.valid && !ev.valid()) return;   // 前の出来事で、もう片づいた（取り戻した捕虜など）
     const scenes = ev.scenes().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead' && !away(ev, w))));
-    if (!scenes.length) { G.evDone[ev.id] = G.turn; return; }
-    const shown = ev.choices && typeof People !== 'undefined' ? ev.choices.map(c => Object.assign({}, c, { t: People.fixNations(c.t) })) : ev.choices;
+    if (!scenes.length) {
+      G.evDone[ev.id] = G.turn;
+      if (ev.fx) ev.fx();
+      if (ev.choices && ev.choices.length) ev.choices[0].fx();
+      if (typeof People !== 'undefined') People.takeActs();
+      return;
+    }
+    const shown = ev.choices && typeof People !== 'undefined' && !ev.wrapped ? ev.choices.map(c => Object.assign({}, c, { t: People.fixNations(c.t) })) : ev.choices;
     // 既存の章で、選択肢に滅んだ国が出るなら、場面の台詞のその国も置き換える
-    const deadN = ev.choices && typeof People !== 'undefined' ? People.deadIn(ev.choices.map(c => c.t)) : [];
+    const deadN = ev.choices && typeof People !== 'undefined' && !ev.wrapped ? People.deadIn(ev.choices.map(c => c.t)) : [];
     if (deadN.length) scenes.forEach(l => { l[2] = People.fixNations(l[2], {}, deadN); });
     const choice = await UI.talk(ev.title, scenes, shown, ev.bg);
     if (ev.fx) ev.fx();

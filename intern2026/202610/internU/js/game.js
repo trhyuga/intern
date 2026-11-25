@@ -63,7 +63,7 @@ const Game = (() => {
     const set = new Set(), lanes = [];
     const add = (a, b) => { const k = a < b ? a + '-' + b : b + '-' + a; if (!set.has(k) && a !== b) { set.add(k); lanes.push([a, b]); } };
     for (const s of SYSTEMS) {
-      const ids = P.filter(p => p.sys === s.id).map(p => p.id);
+      const ids = P.filter(p => p.sys === s.id && !p.abyss).map(p => p.id);
       // 最小全域木
       const inT = [ids[0]];
       while (inT.length < ids.length) {
@@ -479,6 +479,7 @@ const Game = (() => {
       if (G.fleets.some(x => x.at === p.id && x.fac === p.owner && x.ships.length)) continue;   // 艦隊が駐留していれば抑えられる
       if (Math.random() > 0.05) continue;
       const was = p.owner;
+      if (p.gov) freeOfficer(p.gov);
       p.owner = p.prev; p.prev = was; p.captT = G.turn; p.stab = 45; p.gov = null; p.build = []; p.dock = []; p.prog = 0;
       log(`${p.name}の民が蜂起し、${FACTIONS[was].name}の支配を拒んで${FACTIONS[p.owner].name}へ戻った。`, was === G.player ? 'bad' : p.owner === G.player ? 'good' : 'info', p.owner);
     }
@@ -546,6 +547,7 @@ const Game = (() => {
       if (f && p.stab < 18 && !p.cap && R.chance(0.12)) {
         const own = p.owner;
         if (p.gov) freeOfficer(p.gov);
+        if (p.gov) freeOfficer(p.gov);
         p.owner = null; p.dock = []; p.build = []; p.stab = 50; p.gov = null;
         log(`${p.name}で民衆が蜂起し、${FACTIONS[own].name}の支配を離れた。`, own === G.player ? 'bad' : 'info', own);
       }
@@ -577,6 +579,12 @@ const Game = (() => {
           o.loc = R.pick(pls).id;
           log(`${S.name}が${FACTIONS[o.ever !== null && isMajor(o.ever) ? o.ever : 0].short}を去った。`, o.ever === G.player ? 'bad' : 'info', o.ever);
         }
+      }
+      if (o.st === 'cap' && (!isMajor(o.capBy) || !G.facs[o.capBy] || !G.facs[o.capBy].alive)) {
+        const back = o.ever;
+        if (isMajor(back) && G.facs[back] && G.facs[back].alive) { o.st = 'act'; o.fac = back; o.capBy = null; }
+        else { o.st = 'free'; o.fac = null; o.capBy = null; const pl = G.planets.filter(p => p.owner !== 'E'); o.loc = pl.length ? R.pick(pl).id : null; }
+        continue;
       }
       if (o.st === 'cap' && R.chance(0.03)) {
         // 捕虜が逃げ出す
@@ -671,6 +679,7 @@ const Game = (() => {
     }
     if (isMajor(old) && isMajor(newOwner)) { const r = rel(newOwner, old); r.gainA = (r.gainA || 0) + (newOwner < old ? 1 : 0); r.gainB = (r.gainB || 0) + (newOwner < old ? 0 : 1); p.captT = G.turn; }
     p.prev = old; p.owner = newOwner; p.gov = null; p.build = []; p.dock = []; p.prog = 0;
+    if (typeof old === 'string' && old !== 'E' && G.minors[old]) G.minors[old].ally = null;
     p.stab = newOwner === 'E' ? 0 : 32;
     p.def = Math.max(0, Math.min(p.def, 1));
     if (isMajor(newOwner)) {
@@ -694,7 +703,7 @@ const Game = (() => {
       const rest = G.planets.filter(x => x.owner === old);
       if (!rest.length) destroyFaction(old, newOwner);
       else if (f.capital === pid) {
-        const nc = rest.sort((a, b) => b.pop - a.pop)[0];
+        const nc = rest.slice().sort((a, b) => (a.type === 'rift') - (b.type === 'rift') || b.pop - a.pop)[0];
         f.capital = nc.id; nc.cap = true; p.cap = false;
         rest.forEach(x => x.stab = clamp(x.stab - 15, 0, 100));
         log(`${FACTIONS[old].name}の首都${p.name}が陥落。${nc.name}へ遷都した。`, old === G.player ? 'bad' : 'big', old);
@@ -717,7 +726,7 @@ const Game = (() => {
       const o = G.officers[k];
       if (o.fac === fid && o.st === 'act') {
         freeOfficer(k);
-        if (isMajor(by) && R.chance(0.5)) { o.st = 'cap'; o.capBy = by; o.fac = by; }
+        if (isMajor(by) && R.chance(0.5)) { o.st = 'cap'; o.capBy = by; o.fac = by; o.capAt = G.turn; }
         else { o.st = 'free'; o.fac = null; const pl = G.planets.filter(p => p.owner !== 'E'); o.loc = pl.length ? R.pick(pl).id : null; }
       }
     });
