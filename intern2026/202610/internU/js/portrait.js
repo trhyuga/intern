@@ -164,30 +164,37 @@ const Portrait = (() => {
   const lineCol = f => Art.mix(f.skin, '#2a1014', 0.72);
   function animeFigure(c, f, cx, cy, expr) {
     backHair(c, f, cx, cy);
-    body(c, f, cx);
     const fem = f.female;
     const fw = (fem ? 37 : 39) * (0.94 + (f.jaw - 0.86) * 0.5), chinY = cy + (fem ? 45 : 50) * f.faceL;
     const LC = lineCol(f);
-    // 首と、あごの落とす影（くっきり）
+    // 首（描き方の講座の目安）：正面で頭の幅の約半分。女性は目の中心より少し内側の幅で細く、男性は太め。
+    //  肩の付け根へ少し外へ広がる。首筋の描き込みは控えめ（華奢に見える）。付け根は襟に隠す
+    const nw = fem ? 15 : 19;
     c.fillStyle = shade(f.skin, 0.93);
-    c.beginPath(); c.moveTo(cx - 10, cy + 26); c.lineTo(cx - 11, cy + 72); c.lineTo(cx + 11, cy + 72); c.lineTo(cx + 10, cy + 26); c.fill();
-    c.fillStyle = shade(f.skin, 0.74);
-    c.beginPath(); c.moveTo(cx - 11, cy + 30); c.quadraticCurveTo(cx, chinY + 14, cx + 11, cy + 30); c.lineTo(cx + 11, cy + 26); c.lineTo(cx - 11, cy + 26); c.fill();
-    c.strokeStyle = LC; c.lineWidth = 1; c.beginPath(); c.moveTo(cx - 10, cy + 34); c.lineTo(cx - 11, cy + 66); c.moveTo(cx + 10, cy + 34); c.lineTo(cx + 11, cy + 66); c.stroke();
+    c.beginPath(); c.moveTo(cx - nw, cy + 20); c.lineTo(cx - nw, cy + 58); c.quadraticCurveTo(cx - nw, cy + 66, cx - nw - 8, cy + 72); c.lineTo(cx + nw + 8, cy + 72); c.quadraticCurveTo(cx + nw, cy + 66, cx + nw, cy + 58); c.lineTo(cx + nw, cy + 20); c.fill();
+    c.strokeStyle = LC; c.lineWidth = 0.95; c.beginPath();
+    [-1, 1].forEach(s => { c.moveTo(cx + s * nw, cy + 32); c.lineTo(cx + s * nw, cy + 58); c.quadraticCurveTo(cx + s * nw, cy + 65, cx + s * (nw + 6), cy + 70); });
+    c.stroke();
+    if (!fem) { c.strokeStyle = Art.hexA(LC, 0.3); c.lineWidth = 0.8; c.beginPath(); [-1, 1].forEach(s => { c.moveTo(cx + s * (nw - 5), cy + 42); c.lineTo(cx + s * 4, cy + 64); }); c.stroke(); }
+    body(c, f, cx);
+    // あごの下の影（首の丸みに沿った弧）
+    c.fillStyle = shade(f.skin, 0.76);
+    c.beginPath(); c.moveTo(cx - nw - 0.5, cy + 26); c.quadraticCurveTo(cx, chinY + 14, cx + nw + 0.5, cy + 26); c.lineTo(cx + nw, cy + 20); c.lineTo(cx - nw, cy + 20); c.fill();
     // 顔の形：ふっくらした頬と、小さくとがったあご
     const facePath = () => {
       c.beginPath();
       c.moveTo(cx - fw, cy - 36);
       c.bezierCurveTo(cx - fw - 2, cy - 80, cx + fw + 2, cy - 80, cx + fw, cy - 36);
       c.bezierCurveTo(cx + fw + 1.5, cy - 6, cx + fw * 0.94, cy + 16, cx + fw * 0.6, cy + 31);
-      c.quadraticCurveTo(cx + fw * 0.26, chinY - 5, cx, chinY);
-      c.quadraticCurveTo(cx - fw * 0.26, chinY - 5, cx - fw * 0.6, cy + 31);
+      c.quadraticCurveTo(cx + fw * 0.28, chinY - 4, cx + fw * 0.1, chinY - 0.5);
+      c.quadraticCurveTo(cx, chinY + 0.7, cx - fw * 0.1, chinY - 0.5);
+      c.quadraticCurveTo(cx - fw * 0.28, chinY - 4, cx - fw * 0.6, cy + 31);
       c.bezierCurveTo(cx - fw * 0.94, cy + 16, cx - fw - 1.5, cy - 6, cx - fw, cy - 36);
       c.closePath();
     };
     // 耳（髪から少しのぞく）
     [-1, 1].forEach(s => {
-      c.fillStyle = shade(f.skin, 0.95); c.beginPath(); c.ellipse(cx + s * (fw - 1), cy + 2, 4, 7.5, s * 0.2, 0, 7); c.fill();
+      c.fillStyle = shade(f.skin, 0.95); c.beginPath(); c.ellipse(cx + s * (fw - 1), cy + 11, 4, 8, s * 0.2, 0, 7); c.fill();
       c.strokeStyle = LC; c.lineWidth = 0.9; c.stroke();
     });
     const fg = c.createLinearGradient(0, cy - 40, 0, chinY);
@@ -202,8 +209,9 @@ const Portrait = (() => {
     c.beginPath();
     c.moveTo(cx + fw, cy - 20);
     c.bezierCurveTo(cx + fw + 1.5, cy - 6, cx + fw * 0.94, cy + 16, cx + fw * 0.6, cy + 31);
-    c.quadraticCurveTo(cx + fw * 0.26, chinY - 5, cx, chinY);
-    c.quadraticCurveTo(cx - fw * 0.26, chinY - 5, cx - fw * 0.6, cy + 31);
+    c.quadraticCurveTo(cx + fw * 0.28, chinY - 4, cx + fw * 0.1, chinY - 0.5);
+    c.quadraticCurveTo(cx, chinY + 0.7, cx - fw * 0.1, chinY - 0.5);
+    c.quadraticCurveTo(cx - fw * 0.28, chinY - 4, cx - fw * 0.6, cy + 31);
     c.bezierCurveTo(cx - fw * 0.94, cy + 16, cx - fw - 1.5, cy - 6, cx - fw, cy - 20);
     c.stroke();
     // 頬の赤み（ふんわり）と、照れの斜線
@@ -226,8 +234,9 @@ const Portrait = (() => {
   }
   function animeEyes(c, f, cx, cy, expr) {
     const fem = f.female, old = f.old;
-    const ey = cy + 3, ex = fem ? 19.5 : 19;
-    const W = (fem ? 14 : 13) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 14.5 : 10) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.25 : 1);
+    // 目の大きさと間隔（描き方の講座の図から）：目と目の間は目1つ分、顔の幅はおよそ目尻から目尻まで
+    const W = (fem ? 11 : 10.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 10.5 : 7.5) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.25 : 1);
+    const ey = cy + 4, ex = W * 2;
     const LC = lineCol(f), lash = '#1a0e12';
     const E = { ey, ex, W, H };
     [-1, 1].forEach(s => {
@@ -313,7 +322,7 @@ const Portrait = (() => {
     c.save(); c.globalAlpha = 0.92;
     c.fillStyle = shade(f.hair, f.hair === '#f0f0f4' || f.hair === '#d8d8e0' ? 0.6 : 0.55);
     [-1, 1].forEach(s => {
-      const x = cx + s * E.ex, by = E.ey - E.H - (fem ? 9 : 7) - (expr === 'shock' ? 4 : 0);
+      const x = cx + s * E.ex, by = E.ey - E.H - (fem ? 11 : 8) - (expr === 'shock' ? 4 : 0);   // 眉と目を離すと柔らかくかわいく見える
       let a = 0; if (expr === 'angry') a = 1; if (expr === 'sad') a = -1; if (!fem && expr === 'normal' && f.pers === '猛進') a = 0.5;
       const iX = x - s * (E.W * 0.95), oX = x + s * (E.W * 1.05);
       const iY = by + a * 5 + (a < 0 ? -1 : 0), oY = by - a * 3 + (a < 0 ? 2 : 0) + 1;
@@ -323,10 +332,10 @@ const Portrait = (() => {
     c.restore();
   }
   function animeMouth(c, f, cx, cy, expr) {
-    const fem = f.female, my = cy + (fem ? 30 : 32) * f.faceL, LC = lineCol(f);
+    const fem = f.female, my = cy + (fem ? 31 : 33) * f.faceL, LC = lineCol(f);
     // 鼻：小さな影と点
     c.strokeStyle = Art.hexA(LC, 0.45); c.lineWidth = 1; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(cx + 1.6, cy + 18); c.lineTo(cx + 0.4, cy + 19.5); c.stroke();
+    c.beginPath(); c.moveTo(cx + 1.6, cy + 16.5); c.lineTo(cx + 0.4, cy + 18); c.stroke();
     c.strokeStyle = LC; c.lineWidth = 1.3;
     if (expr === 'happy') {
       c.beginPath(); c.moveTo(cx - 8, my - 2); c.quadraticCurveTo(cx, my - 0.5, cx + 8, my - 2); c.quadraticCurveTo(cx + 5, my + 9, cx, my + 9); c.quadraticCurveTo(cx - 5, my + 9, cx - 8, my - 2); c.closePath();
@@ -383,7 +392,7 @@ const Portrait = (() => {
       let tipY = cy + (st === 'slick' ? -40 : fem ? -12 : st === 'short' ? -24 : -17) + (edge ? (fem ? 16 : 10) : 0) + (longL ? 4 : shortL ? -9 : -3) + (r() - 0.5) * 5;
       if (st === 'spiky') tipY -= 4 + (i % 2) * 6;
       // 目にかからないように：顔の内側の房は、眉の少し下まで
-      if (!edge) tipY = Math.min(tipY, cy + 3 - (fem ? 16 : 11.5) * f.eyeS - (fem ? 3 : 4));
+      if (!edge) tipY = Math.min(tipY, cy + 4 - (fem ? 10.5 : 7.5) * f.eyeS * 1.15 - (fem ? 5 : 5));
       else tipY = Math.min(tipY, cy - 2);
       const bend = swept ? 16 + k * 12 : 5 + Math.abs(rx - part) * 0.3;
       const tipX = rx + dir * bend + (r() - 0.5) * 3;
@@ -391,7 +400,7 @@ const Portrait = (() => {
       locks.push({ p0: [rx, ry], p1: [rx + dir * 1, ry + 14], p2: [tipX - dir * (6 + bend * 0.2), tipY - 12], p3: [tipX, tipY], w: w * 1.25, dir, tone: 0.95 + r() * 0.1 });
     }
     if (!swept && st !== 'slick') {
-      const tY = cy + 3 - (fem ? 14.5 : 10) * f.eyeS - (fem ? 5 : 6);
+      const tY = cy + 4 - (fem ? 10.5 : 7.5) * f.eyeS * 1.15 - (fem ? 7 : 7);
       locks.push({ p0: [part, cy - 76], p1: [part, cy - 52], p2: [part + 1, tY - 12], p3: [part + 2, tY], w: (fw * 2 + 12) / n * 1.3, dir: 1, tone: 1.02 });
     }
     // 額に落ちる房の影（くっきり、少し下へずらす）
