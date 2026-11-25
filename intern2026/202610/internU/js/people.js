@@ -193,7 +193,8 @@ const People = (() => {
       // 段階は飛ぶことがある：後の段階まで来ていれば、前の段階は済んだものとする。根絶したら、どの段階も済み
       const ORD = ['omen1', 'omen2', 'first', 'lull', 'great', 'recede', 'ret'];
       const i = ORD.indexOf(c.ecl);
-      const ok = done[c.ecl] || done.solved || (i >= 0 && ORD.slice(i + 1).some(k => done[k]));
+      // 欠片・封印は、ほかの国が深淵を見つけた（封印を修めた）なら、筋の上では済んだものとして先へ進む（自国が手に入れられないまま止まらないように）
+      const ok = done[c.ecl] || done.solved || (i >= 0 && ORD.slice(i + 1).some(k => done[k])) || (['key', 'seal'].includes(c.ecl) && done.abyss);
       if (!ok) return false;
     }
     // 小勢力
@@ -424,7 +425,12 @@ const People = (() => {
       const ext = id => !id.startsWith('@') && typeof EVENTS !== 'undefined' && EVENTS.some(e => e.id === id);
       if (!prev.filter(id => !ext(id)).every(done)) continue;
       const lastT = Math.max(0, ...prev.filter(done).map(id => id.startsWith('@') ? Math.max(0, ...PEOPLE.MAIN.filter(x => x.group === id.slice(1)).map(x => G.evDone[x.id] || 0)) : G.evDone[id] || 0));
-      if (prev.length && G.turn - lastT < (ev.gap ?? 4)) continue;   // 前の出来事から間をあける
+      // 筋が遅れている時は、間を詰めて追いつく（蝕が来たのに、まだ蝕の前の話が残っている時など）
+      const ST = ['omen1', 'omen2', 'first', 'lull', 'great', 'recede', 'ret'];
+      const evSt = ev.cond && ev.cond.ecl ? ST.indexOf(ev.cond.ecl) : -1;
+      const curSt = Math.max(-1, ...ST.map((k, i) => (cond({ ecl: k }) ? i : -1)));
+      const behind = (evSt === -1 && !(ev.cond && ev.cond.ecl) && G.flags.eclipse) || (evSt >= 0 && curSt > evSt + 1);
+      if (prev.length && G.turn - lastT < (behind ? 1 : (ev.gap ?? 4))) continue;   // 前の出来事から間をあける
       if (chains[ev.chain]) continue;
       const ca = ev.cond && ev.cond.after, cAfterExt = ca && ext(ca);
       if (!cond(cAfterExt ? Object.assign({}, ev.cond, { after: undefined }) : ev.cond)) continue;
@@ -437,8 +443,12 @@ const People = (() => {
       out.push(wrap(ev, {}, { pr: ev.pr ?? 7 }));
     }
     // 1) 国の幕間
+    // 大侵攻・再来のさなか（落ち着くまで）は、のんびりした出来事を流さない。蝕に関わる話だけ
+    const crisis = G.eclipse && ['great', 'ret'].includes(G.eclipse.phase);
+    const eclEv = ev => !!(ev.cond && (ev.cond.ecl || ev.cond.eclipse === true));
     for (const ev of PEOPLE.EVS) {
       if (G.evDone[ev.id] || !ev.cond || ev.cond.fac !== me) continue;
+      if (crisis && !eclEv(ev)) continue;
       if (cond(ev.cond)) out.push(wrap(ev, {}, { pr: 3 }));
     }
     // 2) 国家間の出来事（月の変わり目に積んだもの）
@@ -450,23 +460,26 @@ const People = (() => {
       const i = p.arc.findIndex(ev => !G.evDone[ev.id]);
       if (i < 0) continue;
       const ev = p.arc[i];
+      if (crisis && !eclEv(ev)) continue;
       if (i > 0 && G.turn - (G.evDone[p.arc[i - 1].id] || 0) < 6) continue;   // 前の話から半年はあける
       if (!cond(ev.cond) || Math.random() > 0.55) continue;
       out.push(wrap(ev, {}, { pr: 2 })); arcs++;
     }
     // 4) 関係
     let talks = 0;
+    const mourn = new Map();
     for (const t of all()) {
       const s = state(t), A = mine(t.a), B = mine(t.b);
       // 初めて同じ国に仕えた
       if (A && B && !s.met) {
         if (G.turn <= 1) { s.met = true; continue; }
+        if (crisis) continue;
         out.push({ fx: () => { s.met = true; s.last = G.turn; }, id: `meet_${pk(t.a, t.b)}_${G.turn}`, title: `${KIND_NAME[t.kind] || '因縁'}：${shortName(OFF[t.a])}と${shortName(OFF[t.b])}`, bg: 'bridge', pr: 1,
           scenes: () => [['narr', '', t.desc], [t.a, WARM.has(t.kind) ? 'happy' : 'normal', line(t, 'reunion', t.a)], [t.b, WARM.has(t.kind) ? 'happy' : 'normal', line(t, 'reunion', t.b)]] });
         continue;
       }
       // 同じ国での会話（3段階）
-      if (A && B && t.talk && s.stage < 3 && talks < 1 && G.turn - s.last >= 8 && Math.random() < 0.3) {
+      if (!crisis && A && B && t.talk && s.stage < 3 && talks < 1 && G.turn - s.last >= 8 && Math.random() < 0.3) {
         const n = s.stage, sc = t.talk[n];
         if (!sc || !sc.length) continue;
         const fin = n === 2 && t.final && t.final.choices;
@@ -481,21 +494,31 @@ const People = (() => {
         const od = G.officers[d];
         if (!od || od.st !== 'dead' || !mine(sv)) continue;
         if (!s.mourned && od.diedAt >= G.turn - 3) {
-          out.push({ id: `mourn_${d}_${sv}`, title: '星になった者', bg: 'crisis', pr: 5,
-            scenes: () => [['narr', '', `${OFF[d].name}、${od.diedWhere || '宇宙'}にて没す。${t.label}であった${OFF[sv].name}のもとに、その報せが届いた。`],
-              [sv, WARM.has(t.kind) ? 'sad' : t.kind === 'rival' ? 'shock' : 'normal', line(t, 'death', sv)],
-              ...(voice(d, 'death') ? [['narr', '', `――最期の言葉は「${voice(d, 'death')}」だったという。`]] : [])],
-            fx: () => {
-              s.mourned = true;
-              if (WARM.has(t.kind)) { addStat(sv, 'tac', 2); FX.loyal(sv, 10); G.officers[sv].avenge = { fac: od.killedBy, until: G.turn + 36 }; }
-              else if (t.kind === 'rival') { Game.addMerit(sv, 3); addStat(sv, 'tac', 1); }
-            } });
-        } else if (s.mourned && s.mem < 3 && G.turn - (od.diedAt || 0) >= 10 && G.turn - s.memT >= 14 && Math.random() < 0.12) {
+          // 星になった者：縁のある者が何人いても、出来事は一つにまとめる（あとで一度に）
+          if (!mourn.has(d)) mourn.set(d, []);
+          mourn.get(d).push({ t, sv, s });
+        } else if (!crisis && s.mourned && s.mem < 3 && G.turn - (od.diedAt || 0) >= 10 && G.turn - s.memT >= 14 && Math.random() < 0.12) {
           out.push({ id: `mem_${d}_${sv}_${G.turn}`, title: '追憶', bg: 'space', pr: 0,
             scenes: () => [[sv, 'sad', line(t, 'memory', sv)], ['narr', '', `（${OFF[d].name}が逝ってから、${G.turn - od.diedAt}か月が過ぎた）`]],
             fx: () => { s.mem++; s.memT = G.turn; FX.loyal(sv, 3); } });
         }
       }
+    }
+    // 星になった者：一人の死に一つの出来事。縁の深い順に報せが届き、最期の言葉は最後に一度だけ
+    const KR = { love: 0, family: 1, bond: 2, mentor: 3, rival: 4, grudge: 5 };
+    for (const [d, list] of mourn) {
+      const od = G.officers[d];
+      list.sort((x, y) => (KR[x.t.kind] ?? 9) - (KR[y.t.kind] ?? 9) || y.s.stage - x.s.stage);
+      const L = list.slice(0, 4), last = voice(d, 'death');
+      out.push({ id: `mourn_${d}_${od.diedAt}`, title: '星になった者', bg: 'crisis', pr: 5,
+        scenes: () => [['narr', '', `${OFF[d].name}、${od.diedWhere || '宇宙'}にて没す。${L.map(x => `${x.t.label}であった${OFF[x.sv].name}`).join('、')}のもとに、その報せが届いた。`],
+          ...L.map(x => [x.sv, WARM.has(x.t.kind) ? 'sad' : x.t.kind === 'rival' ? 'shock' : 'normal', line(x.t, 'death', x.sv)]),
+          ...(last ? [['narr', '', `――最期の言葉は「${last}」だったという。`]] : [])],
+        fx: () => list.forEach(({ t, sv, s }) => {
+          s.mourned = true;
+          if (WARM.has(t.kind)) { addStat(sv, 'tac', 2); FX.loyal(sv, 10); G.officers[sv].avenge = { fac: od.killedBy, until: G.turn + 36 }; }
+          else if (t.kind === 'rival') { Game.addMerit(sv, 3); addStat(sv, 'tac', 1); }
+        }) });
     }
     // 捕らわれた人物：一人につき一つの出来事にまとめる（縁のある者が何人いても、身代金は一度だけ）
     G.capDone = G.capDone || {};
