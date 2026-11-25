@@ -208,7 +208,7 @@ PEOPLE.add({
           ['viktor', 'happy', '紅は俺の色だ。俺と一緒に沈めばいい。次の奴は、次の奴の色で前を走れ。'],
         ],
         choices: [
-          { t: '遺言を預かる（ヴィクトールの武功 +4・主戦派が伸びる）', fx: { merit: { viktor: 4 }, party: { war: 3 } },
+          { t: '遺言を預かり、送り出す（ヴィクトールが主力艦隊の司令となり、裂け目へ出撃する・ヴィクトールの武功 +4・主戦派が伸びる）', fx: { merit: { viktor: 4 }, party: { war: 3 }, act: [{ officer: 'viktor', do: 'command' }, { fleet: 'rift' }] },
             after: [['viktor', 'happy', '頼んだぜ。……ま、使わずに済むよう、せいぜい暴れてくる。']] },
           { t: '「破いて、生きて帰れ」と命じる（ヴィクトールの忠誠 +10・統率 +1）', fx: { loyal: { viktor: 10 }, stat: { viktor: { ldr: 1 } } },
             after: [['viktor', 'sad', '……四枚目も破かれちまったか。分かったよ。帰ってきて、自分で塗り直す。']] },
@@ -278,9 +278,9 @@ PEOPLE.add({
           ['irene', 'happy', 'この勲章は、兄と二人で頂きますわ。……ようやく、兄に胸を張れますもの。'],
         ],
         choices: [
-          { t: '参謀学校の創設を任せる（研究 +100・イレーネの政治 +2）', fx: { rp: 100, stat: { irene: { pol: 2 } }, flag: 'p0_irene_school' },
+          { t: '参謀学校の創設を任せる（帝都の研究 +1・研究 +50・イレーネの政治 +2）', fx: { rp: 50, stat: { irene: { pol: 2 } }, act: [{ dev: { k: 'res', n: 1 } }], flag: 'p0_irene_school' },
             after: [['irene', 'happy', '兵の顔を見ない参謀を、一人でも減らしてみせますわ。']] },
-          { t: '次の大戦の作戦を預ける（イレーネの武功 +5・主戦派が伸びる）', fx: { merit: { irene: 5 }, party: { war: 3 }, flag: 'p0_irene_plan' },
+          { t: '次の大戦の作戦を預ける（蝕への火力 +10%（12か月）・イレーネの武功 +5・主戦派が伸びる）', fx: { merit: { irene: 5 }, party: { war: 3 }, act: [{ buff: 'eclDmg', v: 0.1, months: 12, name: '銀翼の作戦' }], flag: 'p0_irene_plan' },
             after: [['irene', 'normal', '承りましたわ。兄の分まで、盤を詰めてまいります。']] },
         ] },
     ],
@@ -352,7 +352,7 @@ PEOPLE.add({
         choices: [
           { t: '講義を続けさせる（研究 +80・融和派が伸びる）', fx: { rp: 80, party: { peace: 4 } },
             after: [['konrad', 'normal', '……豆の世話の合間なら。']] },
-          { t: '前線に戻す（コンラートの武功 +4・主戦派が伸びる）', fx: { merit: { konrad: 4 }, party: { war: 3 } },
+          { t: '前線に戻す（コンラートが主力艦隊の司令になる・コンラートの武功 +4・主戦派が伸びる）', fx: { merit: { konrad: 4 }, party: { war: 3 }, act: [{ officer: 'konrad', do: 'command' }] },
             after: [['konrad', 'normal', '了解した。教えるより、見せる方が早い。']] },
         ] },
     ],
@@ -485,7 +485,7 @@ PEOPLE.add({
           ['otto', 'sad', 'もう一度だけ、大きな戦に出たい。次の殿は、年寄りが務めるのが筋というものよ。'],
         ],
         choices: [
-          { t: '最後の艦隊を任せる（オットーの武功 +5・忠誠 +10）', fx: { merit: { otto: 5 }, loyal: { otto: 10 }, flag: 'p0_otto_last' },
+          { t: '最後の艦隊を任せる（オットーが主力艦隊の司令となり、裂け目へ出撃する・オットーの武功 +5・忠誠 +10）', fx: { merit: { otto: 5 }, loyal: { otto: 10 }, act: [{ officer: 'otto', do: 'command' }, { fleet: 'rift' }], flag: 'p0_otto_last' },
             after: [['otto', 'happy', 'ほっほ。棺桶に入る前に、もう一花咲かせてやるわい。']] },
           { t: '若い将の指南役を頼む（オットーの政治 +2・研究 +80）', fx: { stat: { otto: { pol: 2 } }, rp: 80, flag: 'p0_otto_teacher' },
             after: [['otto', 'normal', '花道より、道をならす方が年寄りには似合いか。……よかろう。']] },
@@ -748,9 +748,9 @@ PEOPLE.add({
           ['@sci', 'normal', '公表すれば、総監の名に傷がつきます。黙って改修することもできますが……。'],
         ],
         choices: [
-          { t: '公表し、全艦を改修する（資金 −200・ハンナの技術 +2・忠誠 +10）', fx: { funds: -200, stat: { hanna: { sci: 2 } }, loyal: { hanna: 10 } },
+          { t: '公表し、全艦を改修する（艦の守り +10%（12か月）・資金 −200・ハンナの技術 +2・忠誠 +10）', fx: { funds: -200, stat: { hanna: { sci: 2 } }, loyal: { hanna: 10 }, act: [{ buff: 'def', v: 0.1, months: 12, name: '隔壁の改修' }] },
             after: [['hanna', 'normal', '名前なんて、図面の隅に書く飾りです。乗る人の命と、比べるものではありません。']] },
-          { t: '伏せて、静かに改修する（資金 −80・ハンナの忠誠 −10）', fx: { funds: -80, loyal: { hanna: -10 } },
+          { t: '伏せて、静かに改修する（艦の守り +5%（12か月）・資金 −80・ハンナの忠誠 −10）', fx: { funds: -80, loyal: { hanna: -10 }, act: [{ buff: 'def', v: 0.05, months: 12, name: '隔壁の改修' }] },
             after: [['hanna', 'sad', '……分かりました。沈んだ艦の乗員の名だけは、私の机の引き出しに入れておきます。']] },
         ] },
       { id: 'p0_hanna_3', title: '最後の図面', bg: 'space', cond: { ecl: 'great', after: 'm0_11' },
@@ -762,9 +762,9 @@ PEOPLE.add({
           ['hanna', 'sad', '……ただ、主砲だけが決まりません。この砲架に載せる砲を選べる人は、一人しか知らなくて。'],
         ],
         choices: [
-          { t: '主砲の選定をルドルフに任せる（研究 +150・ハンナの忠誠 +5）', fx: { rp: 150, loyal: { hanna: 5 }, flag: 'p0_hanna_ark' },
+          { t: '主砲の選定をルドルフに任せる（新しい艦 +2・蝕への火力 +10%（12か月）・資金 −200・研究 +100・ハンナの忠誠 +5）', fx: { funds: -200, rp: 100, loyal: { hanna: 5 }, act: [{ ships: 2 }, { buff: 'eclDmg', v: 0.1, months: 12, name: '箱舟の主砲' }], flag: 'p0_hanna_ark' },
             after: [['hanna', 'normal', '……私の砲架を信じてくれるのは、あの人だけですから。頭を下げてきます。']] },
-          { t: '主砲も自ら決めさせる（ハンナの技術 +2・研究 +100）', fx: { stat: { hanna: { sci: 2 } }, rp: 100 },
+          { t: '主砲も自ら決めさせる（新しい艦 +2・艦の守り +10%（12か月）・資金 −200・ハンナの技術 +2・研究 +50）', fx: { funds: -200, stat: { hanna: { sci: 2 } }, rp: 50, act: [{ ships: 2 }, { buff: 'def', v: 0.1, months: 12, name: '帰ってくる艦' }] },
             after: [['hanna', 'happy', '分かりました。あの人の好きそうな口径は、全部覚えていますから。……悔しいことに。']] },
         ] },
     ],
@@ -807,9 +807,9 @@ PEOPLE.add({
           ['@sci', 'sad', '（……造船総監が聞いたら、また大喧嘩になりますね）'],
         ],
         choices: [
-          { t: '巨砲艦を試作させる（資金 −150・主戦派が伸びる・ルドルフの忠誠 +10）', fx: { funds: -150, party: { war: 5 }, loyal: { rudolf: 10 } },
+          { t: '巨砲艦を試作させる（艦 +1・資金 −150・主戦派が伸びる・ルドルフの忠誠 +10）', fx: { funds: -150, party: { war: 5 }, loyal: { rudolf: 10 }, act: [{ ships: 1 }] },
             after: [['rudolf', 'happy', 'がっはっは！ さすが、話の分かるお方だ！']] },
-          { t: '却下し、砲の研究に回す（研究 +60・ルドルフの忠誠 −5）', fx: { rp: 60, loyal: { rudolf: -5 } },
+          { t: '却下し、砲の研究に回す（研究の重点を兵器へ・研究 +60・ルドルフの忠誠 −5）', fx: { rp: 60, loyal: { rudolf: -5 }, act: [{ research: 'wep' }] },
             after: [['rudolf', 'angry', 'むう……！ では、研究で口径を大きくしてみせよ！ 吾輩は待っておるぞ！']] },
         ] },
       { id: 'p0_rudolf_2', title: '砲声の代償', bg: 'palace', cond: { turn: 22 },
@@ -820,7 +820,7 @@ PEOPLE.add({
           ['rudolf', 'angry', 'だが吾輩から砲を取ったら、何が残る！ ただの太った伯爵だ！'],
         ],
         choices: [
-          { t: '前線を退き、砲術の教官に（ルドルフの戦術 +2・研究 +60）', fx: { stat: { rudolf: { tac: 2 } }, rp: 60 },
+          { t: '前線を退き、砲術の教官に（ルドルフの役を解く・ルドルフの戦術 +2・研究 +60）', fx: { stat: { rudolf: { tac: 2 } }, rp: 60, act: [{ officer: 'rudolf', do: 'dismiss' }] },
             after: [['rudolf', 'sad', '……教官か。若い連中の砲声を、吾輩の耳の代わりにするか。']] },
           { t: '聞こえなくなるまで撃てと告げる（ルドルフの武功 +4・主戦派が伸びる）', fx: { merit: { rudolf: 4 }, party: { war: 3 } },
             after: [['rudolf', 'happy', 'がっはっは！ それでこそだ！ 聞こえぬなら、砲の震えで感じてくれるわ！']] },
@@ -1895,9 +1895,9 @@ PEOPLE.events([
       ['@pol', 'normal', '組合の長が申しております。公爵の私兵艦の鋼は打たなかった、と。「次は、我らの声を聞く席を」とも。'],
     ],
     choices: [
-      { t: '職人組合に諮問の席を与える（民心 +4・融和派が伸びる）', fx: { stab: 4, party: { peace: 5 }, flag: 'p0_forge_seat' },
+      { t: '職人組合に諮問の席を与える（献上の駆逐艦 +1・民心 +4・融和派が伸びる）', fx: { stab: 4, party: { peace: 5 }, act: [{ ships: 1 }], flag: 'p0_forge_seat' },
         after: [['narr', '', 'その年、グラナートの炉の火は一度も落ちなかった。']] },
-      { t: '艦を受け、席の話は預かる（資金 +150・通商派が伸びる）', fx: { funds: 150, party: { trade: 4 } },
+      { t: '艦を受け、席の話は預かる（献上の駆逐艦 +1・資金 +150・通商派が伸びる）', fx: { funds: 150, party: { trade: 4 }, act: [{ ships: 1 }] },
         after: [['@pol', 'normal', '……職人たちは喜ぶでしょう。席の話は、また改めて。']] },
     ] },
 
@@ -1957,7 +1957,7 @@ PEOPLE.events([
     choices: [
       { t: '軍議の権限を削る（民心 +3・融和派が伸びる・主戦派が下がる）', fx: { stab: 3, party: { peace: 5, war: -5 } },
         after: [['@mil', 'sad', '……承知しました。将校たちには、私から伝えます。']] },
-      { t: '軍議に予算を委ねる（資金 +200・主戦派が伸びる・民心 −4）', fx: { funds: 200, party: { war: 6 }, stab: -4 },
+      { t: '軍議に予算を委ねる（造艦の費用 −10%（12か月）・資金 +200・主戦派が伸びる・民心 −4）', fx: { funds: 200, party: { war: 6 }, stab: -4, act: [{ buff: 'build', v: 0.1, months: 12, name: '軍議の予算' }] },
         after: [['@pol', 'sad', '記録しておきます。この日、帝国の財布は剣の腰に下がった、と。']] },
     ] },
 
@@ -1985,7 +1985,7 @@ PEOPLE.events([
       ['@leader', 'normal', '二百年、帝国も共和国も、相手を憎むことで己を保ってきた。……憎まずにいる国の形を、余は知らぬ。'],
     ],
     choices: [
-      { t: '密使を送り、話を聞く（共和国の信頼 +15・融和派が伸びる・主戦派が下がる）', fx: { trust: { 1: 15 }, party: { peace: 6, war: -4 }, flag: 'p0_secret_talks' },
+      { t: '密使を送り、話を聞く（共和国と戦争中なら停戦する・共和国の信頼 +15・融和派が伸びる・主戦派が下がる）', fx: { trust: { 1: 15 }, party: { peace: 6, war: -4 }, act: [{ peace: 1 }], flag: 'p0_secret_talks' },
         after: [['@leader', 'normal', '聞くだけだ。……聞くということすら、五百年の帝国は忘れていた。']] },
       { t: '封を切らずに返す（主戦派が伸びる・共和国の信頼 −10）', fx: { party: { war: 5 }, trust: { 1: -10 } },
         after: [['@mil', 'happy', 'それでこそです、{honor}。'], ['@leader', 'sad', '（……返した封書の重さを、余は覚えておこう）']] },
