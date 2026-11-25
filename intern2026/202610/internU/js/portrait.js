@@ -170,7 +170,7 @@ const Portrait = (() => {
     const LC = lineCol(f);
     // 首（描き方の講座の目安）：正面で頭の幅の約半分。女性は目の中心より少し内側の幅で細く、男性は太め。
     //  肩の付け根へ少し外へ広がる。首筋の描き込みは控えめ（華奢に見える）。付け根は襟に隠す
-    const nw = fem ? 15 : 14;
+    const nw = fem ? 15 : 19;
     c.fillStyle = shade(f.skin, 0.93);
     c.beginPath(); c.moveTo(cx - nw, cy + 20); c.lineTo(cx - nw, cy + 58); c.quadraticCurveTo(cx - nw, cy + 66, cx - nw - 8, cy + 72); c.lineTo(cx + nw + 8, cy + 72); c.quadraticCurveTo(cx + nw, cy + 66, cx + nw, cy + 58); c.lineTo(cx + nw, cy + 20); c.fill();
     c.strokeStyle = LC; c.lineWidth = 0.95; c.beginPath();
@@ -463,7 +463,20 @@ const Portrait = (() => {
   }
   function animeAccessories(c, f, cx, cy, fw, expr, E) {
     const ey = E.ey, tags = f.tags;
-    if (tags.includes('scar')) { c.strokeStyle = 'rgba(170,70,75,.85)'; c.lineWidth = 1.8; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx - 30, ey - 18); c.lineTo(cx - 14, ey + 16); c.moveTo(cx - 27, ey - 8); c.lineTo(cx - 21, ey - 11); c.moveTo(cx - 22, ey + 4); c.lineTo(cx - 16, ey + 1); c.stroke(); c.lineCap = 'butt'; }
+    if (tags.includes('scar')) {
+      // 傷：眉を断ち、まぶたの上と頬に残る古傷。目そのものの上には描かない（目は無事に見えるように）。
+      //  肌より少し赤い盛り上がった筋に、細い光と縁の影をつける
+      const x0 = cx - E.ex, top = [x0 - E.W * 0.6, ey - E.H - 14], bot = [x0 + E.W * 0.5, ey + E.H + 14];
+      const gapA = ey - E.H * 1.2, gapB = ey + E.H * 1.1;
+      const at = y => top[0] + (bot[0] - top[0]) * (y - top[1]) / (bot[1] - top[1]);
+      const segs = [[top[1], gapA], [gapB, bot[1]]];
+      c.lineCap = 'round';
+      const path = () => { c.beginPath(); segs.forEach(([a, b]) => { c.moveTo(at(a), a); c.lineTo(at(b), b); }); };
+      c.strokeStyle = Art.hexA(shade(f.skin, 0.5), 0.7); c.lineWidth = 3.4; path(); c.stroke();            // 縁の影
+      c.strokeStyle = Art.mix(f.skin, '#a8404c', 0.62); c.lineWidth = 2.3; path(); c.stroke();           // 傷の筋
+      c.strokeStyle = 'rgba(255,235,235,.55)'; c.lineWidth = 0.6; c.save(); c.translate(-0.6, 0); path(); c.stroke(); c.restore();   // 細い光
+      c.lineCap = 'butt';
+    }
     if (tags.includes('patch')) {
       c.fillStyle = '#18121a'; c.beginPath(); c.ellipse(cx + E.ex, ey + 1, E.W + 2, E.H * 0.8 + 3, 0, 0, 7); c.fill();
       c.strokeStyle = '#18121a'; c.lineWidth = 2.2; c.beginPath(); c.moveTo(cx - fw - 2, ey - 22); c.lineTo(cx + fw + 2, ey + 4); c.stroke();
