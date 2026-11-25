@@ -139,13 +139,21 @@ const Cinema = (() => {
       const R = Math.min(W, H) * (0.12 + r() * 0.14), N = 26 + Math.floor(r() * 18), e = easeOut(k * 1.6);
       const a = Math.pow(1 - k, 1.5);
       if (k < 0.12) bloom(c, x, y, R * 0.7, col, (1 - k / 0.12) * 0.8);
-      c.fillStyle = Art.hexA(col, a);
+      bloom(c, x, y + k * k * R * 0.3, R * 1.1 * e, col, 0.16 * a);
+      // 尾を引く火の粉（一本のパスにまとめて描く）
+      const e2 = easeOut(Math.max(0, k * 1.6 - 0.12)), sag = k * k * R * 0.5, sag2 = Math.max(0, k - 0.08) ** 2 * R * 0.5;
+      c.strokeStyle = Art.hexA(col, a * 0.8); c.lineWidth = 1 + (1 - k) * 1.4; c.lineCap = 'round';
+      c.beginPath();
+      const ps = [];
       for (let i = 0; i < N; i++) {
-        const an = i / N * Math.PI * 2 + r() * 0.1, dx = Math.cos(an) * R * e, dy = Math.sin(an) * R * e + k * k * R * 0.5;
-        const sz = 1.2 + (1 - k) * 1.8;
-        c.fillRect(x + dx - sz / 2, y + dy - sz / 2, sz, sz);
-        c.fillRect(x + dx * 0.85 - 0.5, y + dy * 0.85 - 0.5, 1, 1);
+        const an = i / N * Math.PI * 2 + r() * 0.1, cs = Math.cos(an), sn = Math.sin(an);
+        const px = x + cs * R * e, py = y + sn * R * e + sag; ps.push(px, py);
+        c.moveTo(x + cs * R * e2, y + sn * R * e2 + sag2); c.lineTo(px, py);
       }
+      c.stroke();
+      c.fillStyle = `rgba(255,250,235,${a})`;
+      const sz = 1.4 + (1 - k) * 2;
+      for (let i = 0; i < ps.length; i += 2) if ((i / 2 + n) % 3 || k < 0.7 || Math.sin(t * 30 + i) > 0) c.fillRect(ps[i] - sz / 2, ps[i + 1] - sz / 2, sz, sz);
     }
     c.restore();
   }
@@ -599,7 +607,7 @@ const Cinema = (() => {
           const e = easeOut(q), x = W * f.sx + (W / 2 - W * f.sx) * e, y = H * f.sy + (sunY - H * f.sy) * e;
           const ang = Math.atan2(sunY - H * f.sy, W / 2 - W * f.sx) + Math.PI / 2;
           c.globalAlpha = a * Math.min(1, (1 - q) * 3);
-          Art.ship(c, f.h, x, y, ang, M * 0.05 * f.s * (1 - e * 0.85), Art.mix(F.col, '#000000', 0.35));
+          Art.ship(c, f.h, x, y, ang, M * 0.09 * f.s * (1 - e * 0.7), Art.mix(F.col, '#000000', 0.35));
           if (q > 0.85) { c.save(); c.globalCompositeOperation = 'lighter'; bloom(c, x, y, 10, F.col2, (q - 0.85) * 4 * a); c.restore(); }
         }
         c.globalAlpha = a;
@@ -696,8 +704,8 @@ const Cinema = (() => {
     try {
       if (typeof G !== 'undefined' && G && G.player === rec.fac && typeof Game !== 'undefined' && Game.officersOf) {
         const seen = new Set((rec.epi || []).map(e => e.k));
-        const rest = Game.officersOf(rec.fac).filter(k => OFF[k] && !seen.has(k)).sort((a, b) => ((G.officers[b] && G.officers[b].merit) || 0) - ((G.officers[a] && G.officers[a].merit) || 0)).slice(0, 16);
-        if (rest.length) { h('共に戦った士官たち'); for (let i = 0; i < rest.length; i += 2) n(rest.slice(i, i + 2).map(k => OFF[k].name).join('　・　')); gap(); }
+        const rest = Game.officersOf(rec.fac).filter(k => OFF[k] && !seen.has(k)).sort((a, b) => ((G.officers[b] && G.officers[b].merit) || 0) - ((G.officers[a] && G.officers[a].merit) || 0)).slice(0, 12);
+        if (rest.length) { h('共に戦った士官たち'); rest.forEach(k => n(OFF[k].name)); gap(); }
       }
     } catch (e) { }
     if (rec.fallen && rec.fallen.length) { h('星になった者たち'); rec.fallen.slice(0, 8).forEach(k => n(OFF[k].name)); gap(); }
