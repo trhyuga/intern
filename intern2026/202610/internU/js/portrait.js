@@ -345,10 +345,8 @@ const Portrait = (() => {
     c.beginPath(); c.moveTo(cx + 1.6, cy + 16.5); c.lineTo(cx + 0.4, cy + 18); c.stroke();
     c.strokeStyle = LC; c.lineWidth = 1.3;
     if (expr === 'happy') {
-      c.beginPath(); c.moveTo(cx - 8, my - 2); c.quadraticCurveTo(cx, my - 0.5, cx + 8, my - 2); c.quadraticCurveTo(cx + 5, my + 9, cx, my + 9); c.quadraticCurveTo(cx - 5, my + 9, cx - 8, my - 2); c.closePath();
-      c.fillStyle = '#8a2a3a'; c.fill();
-      c.save(); c.clip(); c.fillStyle = '#ee7a88'; c.beginPath(); c.ellipse(cx, my + 9, 6, 4, 0, 0, 7); c.fill(); c.restore();
-      c.stroke();
+      // 笑顔：口角の上がった弧（口の中や舌は描かない）
+      c.lineWidth = 1.4; c.beginPath(); c.moveTo(cx - 7, my - 1.5); c.quadraticCurveTo(cx, my + 6, cx + 7, my - 1.5); c.stroke();
     } else if (expr === 'angry') {
       c.beginPath(); c.moveTo(cx - 7, my + 1); c.lineTo(cx + 7, my - 0.5); c.lineTo(cx + 5, my + 5); c.lineTo(cx - 5, my + 5.5); c.closePath();
       c.fillStyle = '#6a1a26'; c.fill(); c.save(); c.clip(); c.fillStyle = '#fff'; c.fillRect(cx - 8, my - 1, 16, 2.6); c.restore(); c.stroke();
@@ -483,12 +481,6 @@ const Portrait = (() => {
   }
   // 漫画の記号：怒りの筋・涙・冷や汗・青ざめの縦線
   function animeMarks(c, f, cx, cy, fw, expr, E) {
-    if (expr === 'angry') {
-      const x = cx + fw + 4, y = cy - 52;
-      c.strokeStyle = '#e8303a'; c.lineWidth = 2.2; c.lineCap = 'round';
-      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([a, b]) => { c.beginPath(); c.moveTo(x + a * 2, y + b * 7); c.quadraticCurveTo(x + a * 2, y + b * 2, x + a * 7, y + b * 2); c.stroke(); });
-      c.lineCap = 'butt';
-    }
     if (expr === 'sad' && !f.tags.includes('visor')) {
       const tx = cx - E.ex - E.W * 0.2, ty = E.ey + E.H * 0.9;
       c.fillStyle = 'rgba(170,220,255,.75)'; c.beginPath(); c.moveTo(tx, ty); c.quadraticCurveTo(tx - 2.6, ty + 9, tx - 1, ty + 18); c.quadraticCurveTo(tx + 1.8, ty + 10, tx + 1.6, ty); c.fill();
