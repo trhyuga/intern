@@ -70,7 +70,7 @@ PEOPLE.add({
           ['naja', 'normal', 'この記録を、どうするかね。{faction}だけのものにするか。すべての国に配るか。'],
         ],
         choices: [
-          { t: 'すべての国に写しを配る（各国の信頼 +5・融和派が伸びる・ナジャの忠誠 +15）', fx: { trust: { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5, 5: 5 }, party: { peace: 4 }, loyal: { naja: 15 }, flag: 'naja_open' },
+          { t: 'すべての国に写しを配る（各国の研究 +150・各国の信頼 +5・融和派が伸びる・ナジャの忠誠 +15）', fx: { trust: { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5, 5: 5 }, party: { peace: 4 }, loyal: { naja: 15 }, flag: 'naja_open', act: [{ share: 150, shareTo: 'all' }] },
             after: [['naja', 'happy', '……祖先が削った頁を、婆が配る。九百年かかった償いだね。']] },
           { t: '{faction}の研究に役立てる（研究 +250・技術派が伸びる）', fx: { rp: 250, party: { tech: 4 }, flag: 'naja_kept' },
             after: [['naja', 'normal', '分かった。……欠片を一つの手に集めるには、どこかの国が強くならねばならぬ。それも、一つの道だよ。']] },
@@ -213,7 +213,7 @@ PEOPLE.add({
           ['tahir', 'normal', '{honor}。どっちに使う。'],
         ],
         choices: [
-          { t: '{faction}の艦隊に教えてもらう（戦術 +2・武功 +3）', fx: { stat: { tahir: { tac: 2 } }, merit: { tahir: 3 }, flag: 'tahir_route' },
+          { t: '{faction}の艦隊に教えてもらう（12か月のあいだ 艦の速さ +10%・戦術 +2・武功 +3）', fx: { stat: { tahir: { tac: 2 } }, merit: { tahir: 3 }, flag: 'tahir_route', act: [{ buff: 'speed', v: 0.1, months: 12, name: '最後の抜け道' }] },
             after: [['tahir', 'normal', '……分かった。この道は、今日から戦の道だ。'], ['tahir', 'sad', '親父が聞いたら、殴られるだろうな。']] },
           { t: '民を逃がすためだけに残せと言う（民心 +3・タヒルの忠誠 +15）', fx: { stab: 3, loyal: { tahir: 15 }, flag: 'tahir_keep' },
             after: [['tahir', 'shock', '……陸の国の主が、そう言うのか。'], ['tahir', 'happy', 'よし。最後の抜け道は、逃げる者のためだけに開ける。漂泊民の名にかけてな。']] },
@@ -281,9 +281,9 @@ PEOPLE.add({
           ['yuna', 'normal', '母は最後に、帰り道を描いていたんです。……{honor}、この道を、どう使いますか。'],
         ],
         choices: [
-          { t: '逃げる民の道にする（民心 +5・融和派が伸びる・ユナの忠誠 +15）', fx: { stab: 5, party: { peace: 4 }, loyal: { yuna: 15 }, flag: 'yuna_exodus' },
+          { t: '逃げる民の道にする（首都に避難民を迎える・人口 +10・民心 +5・融和派が伸びる・ユナの忠誠 +15）', fx: { stab: 5, party: { peace: 4 }, loyal: { yuna: 15 }, flag: 'yuna_exodus', act: [{ refugees: 10 }] },
             after: [['yuna', 'happy', 'はい。母の帰り道を、皆の帰り道にします。']] },
-          { t: '裂け目へ艦隊を送る道にする（戦術 +2・武功 +4）', fx: { stat: { yuna: { tac: 2 } }, merit: { yuna: 4 }, flag: 'yuna_strike' },
+          { t: '裂け目へ艦隊を送る道にする（主力艦隊が裂け目へ出撃する・戦術 +2・武功 +4）', fx: { stat: { yuna: { tac: 2 } }, merit: { yuna: 4 }, flag: 'yuna_strike', act: [{ fleet: 'rift' }] },
             after: [['yuna', 'normal', '……分かりました。避ける道は、裏返せば近づく道にもなります。'], ['yuna', 'sad', '母さん、ごめんね。でも、あれを閉じなきゃ、誰も帰れないから。']] },
         ] },
     ],
@@ -581,7 +581,7 @@ PEOPLE.main('mn_m0', [
       ['pedro', 'normal', '{honor}。船が三隻、そっちの星の沖で錨を下ろせねえでいる。港の商人と、その家族だ。'],
     ],
     choices: [
-      { t: '港の民を受け入れる（民心 −2・通商派と融和派が伸びる）', fx: { stab: -2, party: { trade: 3, peace: 3 }, flag: 'mn0_exiles' },
+      { t: '港の民を受け入れる（首都に避難民を迎える・人口 +6・民心 −2・通商派と融和派が伸びる）', fx: { stab: -2, party: { trade: 3, peace: 3 }, flag: 'mn0_exiles', act: [{ refugees: 6 }] },
         after: [['pedro', 'happy', 'ありがてえ……。港は焼けても、港の連中はまだ生きてる。'], ['anna', 'normal', '借りは返すよ。商人ってのは、借りを忘れない生き物なんだ。']] },
       { t: '受け入れは断る（資金 +100）', fx: { funds: 100, flag: 'mn0_turned' },
         after: [['pedro', 'sad', '……そうかい。じゃあ、次の港を探すよ。'], ['narr', '', '三隻の船は、灯のない航路へ消えていった。']] },
@@ -703,7 +703,7 @@ PEOPLE.main('mn_m0', [
       ['pedro', 'normal', '{honor}、頼む。灯のない港の連中を、{faction}の星に降ろさせてくれ。'],
     ],
     choices: [
-      { t: '受け入れる（民心 −3・融和派が伸びる）', fx: { stab: -3, party: { peace: 5 }, flag: 'mn0_haven' },
+      { t: '受け入れる（首都に避難民を迎える・人口 +10・民心 −3・融和派が伸びる）', fx: { stab: -3, party: { peace: 5 }, flag: 'mn0_haven', act: [{ refugees: 10 }] },
         after: [['pedro', 'happy', '……恩に着る。灯は消えても、港の連中は、まだ胸に灯を持ってるんだ。']] },
       { t: '自国の民が先だ（民心 +2）', fx: { stab: 2, flag: 'mn0_closed' },
         after: [['anna', 'sad', '……わかった。じゃあ、あたしらは次の星を探すよ。']] },
@@ -726,7 +726,7 @@ PEOPLE.main('mn_m0', [
       ['rico', 'normal', '{honor}、港を守る艦隊と、倉を満たす金を。……わしの帳簿は、今日から赤字でかまわん。'],
     ],
     choices: [
-      { t: '艦隊と金を回す（資金 −250・民心 +4・通商派と融和派が伸びる）', fx: { funds: -250, stab: 4, party: { trade: 3, peace: 3 }, flag: 'mn0_haven' },
+      { t: '艦隊と金を回す（主力艦隊が裂け目へ出撃する・資金 −250・民心 +4・通商派と融和派が伸びる）', fx: { funds: -250, stab: 4, party: { trade: 3, peace: 3 }, flag: 'mn0_haven', act: [{ fleet: 'rift' }] },
         after: [['rico', 'happy', '……ありがとう。港の灯は、蝕にも消させん。']] },
       { t: '港の門を絞らせる（資金 +100・港の者たちの心が離れる）', fx: { funds: 100, loyal: { rico: -10, anna: -10 }, flag: 'mn0_closed' },
         after: [['rico', 'sad', '……分かった。門番は、わしがやろう。断る役は、年寄りがやるものだ。']] },
@@ -752,7 +752,7 @@ PEOPLE.main('mn_m0', [
       ['rico', 'normal', '港を守ってくれ。代わりに、港の倉と帳簿を、あんたに開く。'],
     ],
     choices: [
-      { t: '港を守ると約束する（資金 −150・民心 +2・通商派が伸びる）', fx: { funds: -150, stab: 2, party: { trade: 4 }, flag: 'mn0_haven' },
+      { t: '港を守ると約束する（主力艦隊が裂け目へ出撃する・資金 −150・民心 +2・通商派が伸びる）', fx: { funds: -150, stab: 2, party: { trade: 4 }, flag: 'mn0_haven', act: [{ fleet: 'rift' }] },
         after: [['rico', 'happy', '……頭を下げた甲斐があった。盟の話は、群れを追い払ってからにしよう。']] },
       { t: '今は自国で手一杯だと断る', fx: { flag: 'mn0_closed' },
         after: [['rico', 'sad', '分かった。……港は、港で守る。それが中立というものだ。']] },
@@ -824,7 +824,7 @@ PEOPLE.main('mn_m1', [
       ['sophos', 'normal', '{honor}。学者を何人か、引き受けてはもらえんかね。研究の続きをさせてやりたいのだ。'],
     ],
     choices: [
-      { t: '学者たちを迎える（研究 +150・資金 −100）', fx: { rp: 150, funds: -100, flag: 'mn1_exiles' },
+      { t: '学者たちを迎える（首都の研究所 +1・研究 +150・資金 −100）', fx: { rp: 150, funds: -100, flag: 'mn1_exiles', act: [{ dev: { k: 'res', n: 1 } }] },
         after: [['sophos', 'happy', '……感謝する。学び舎は建物ではない。人だ。人が残れば、また建つ。']] },
       { t: '書庫の写本だけを買い取る（研究 +80・資金 −50）', fx: { rp: 80, funds: -50, flag: 'mn1_books' },
         after: [['sophos', 'sad', '本だけか。……本も、読む者がいなければ紙だよ。']] },
@@ -840,7 +840,7 @@ PEOPLE.main('mn_m1', [
     choices: [
       { t: '学長の掟を守る（融和派が伸びる・ソフォスの忠誠 +10）', fx: { party: { peace: 4 }, loyal: { sophos: 10 }, flag: 'mn1_pure' },
         after: [['sophos', 'happy', 'ありがとう。……この盟約は、きっと長く続くよ。']] },
-      { t: 'アランに兵学の講座を開かせる（主戦派と技術派が伸びる・アランの忠誠 +10）', fx: { party: { war: 3, tech: 3 }, loyal: { alan: 10 }, flag: 'mn1_warlab' },
+      { t: 'アランに兵学の講座を開かせる（研究の重点を兵器へ・主戦派と技術派が伸びる・アランの忠誠 +10）', fx: { party: { war: 3, tech: 3 }, loyal: { alan: 10 }, flag: 'mn1_warlab', act: [{ research: 'wep' }] },
         after: [['alan', 'happy', '二十年ぶりの講座か。……学長、小生は人を殺す学問ではなく、死なせぬ学問を教えます。'], ['sophos', 'sad', '……そうであることを祈るよ。']] },
     ] },
   { id: 'mn1_02c', group: 'mn1_02', title: 'よその国の研究所', bg: 'palace', cond: { turn: 17, minorOther: 'm1' },
@@ -926,7 +926,7 @@ PEOPLE.main('mn_m1', [
       ['alan', 'normal', '{honor}。{faction}の観測記録を出していただきたい。一国の分でも、目録の穴は埋まる。'],
     ],
     choices: [
-      { t: '観測記録を出す（研究 +100・各国の信頼が上がる）', fx: { rp: 100, trust: { 0: 4, 1: 4, 2: 4, 3: 4, 4: 4, 5: 4 }, flag: 'mn1_catalog' },
+      { t: '観測記録を出す（各国の研究 +100・研究 +100・各国の信頼が上がる）', fx: { rp: 100, trust: { 0: 4, 1: 4, 2: 4, 3: 4, 4: 4, 5: 4 }, flag: 'mn1_catalog', act: [{ share: 100, shareTo: 'all' }] },
         after: [['mina', 'happy', '……来た来た！ これで、消え方の順番が見えるかも。']] },
       { t: '自国の記録は出さぬ（研究 +60）', fx: { rp: 60, flag: 'mn1_alone' },
         after: [['sophos', 'sad', '……そうか。目録の空白は、そのまま銀河の空白になるのだがね。']] },
@@ -950,9 +950,9 @@ PEOPLE.main('mn_m1', [
       ['mina', 'happy', 'ボクは核を砕く方法を考える。退屈してる暇なんか、ないね！'],
     ],
     choices: [
-      { t: '学び舎の総力を蝕に向ける（研究 +250・技術派が伸びる）', fx: { rp: 250, party: { tech: 5 }, flag: 'mn1_arms' },
+      { t: '学び舎の総力を蝕に向ける（12か月のあいだ 蝕への火力 +10%・研究 +250・技術派が伸びる）', fx: { rp: 250, party: { tech: 5 }, flag: 'mn1_arms', act: [{ buff: 'eclDmg', v: 0.1, months: 12, name: '学び舎の総力' }] },
         after: [['sophos', 'normal', '灯は、燃やすためにあるのではない。照らすためにある。今は、照らす先が戦場なのだ。']] },
-      { t: '学長の掟は守り、守りの研究だけを頼む（研究 +120・民心 +3）', fx: { rp: 120, stab: 3, loyal: { sophos: 10 }, flag: 'mn1_shield' },
+      { t: '学長の掟は守り、守りの研究だけを頼む（12か月のあいだ 艦の守り +10%・研究 +120・民心 +3）', fx: { rp: 120, stab: 3, loyal: { sophos: 10 }, flag: 'mn1_shield', act: [{ buff: 'def', v: 0.1, months: 12, name: '学び舎の守りの研究' }] },
         after: [['sophos', 'happy', '……{honor}。この老人の掟を、まだ覚えていてくださったか。']] },
     ] },
   { id: 'mn1_05c', group: 'mn1_05', title: '差出人のない包み', bg: 'crisis', cond: { ecl: 'first', minorOther: 'm1' },
@@ -1055,7 +1055,7 @@ PEOPLE.main('mn_m2', [
       ['raven', 'sad', '{honor}。アタシ、生まれて初めて人に頭を下げるよ。ガキどもを、どこかに降ろさせて。'],
     ],
     choices: [
-      { t: '巣の子らを受け入れる（民心 −2・融和派が伸びる）', fx: { stab: -2, party: { peace: 4 }, flag: 'mn2_orphans' },
+      { t: '巣の子らを受け入れる（首都に避難民を迎える・人口 +5・民心 −2・融和派が伸びる）', fx: { stab: -2, party: { peace: 4 }, flag: 'mn2_orphans', act: [{ refugees: 5 }] },
         after: [['raven', 'happy', '……ありがと。頭領が戻ったら、きっと借りを返しに来る。'], ['jack', 'normal', 'オレも覚えとく。この匂いの国は、敵にしねえ。']] },
       { t: '傭兵の始末は傭兵でつけよ（資金 +100）', fx: { funds: 100, flag: 'mn2_cold' },
         after: [['raven', 'angry', '……そう。覚えとくよ、その返事。']] },
@@ -1114,7 +1114,7 @@ PEOPLE.main('mn_m2', [
     choices: [
       { t: '捜索の燃料を出す（資金 −120・黒鴉との信が深まる）', fx: { funds: -120, flag: 'mn2_search' },
         after: [['crow', 'normal', '……恩に着る。見つけたものは、何であれ報告する。'], ['narr', '', 'ひと月後、捜索に出た鴉たちが持ち帰ったのは、黒い塵のような何かだけだった。']] },
-      { t: '辺境の見回りは自国でやる（主戦派が伸びる）', fx: { party: { war: 3 }, flag: 'mn2_nosearch' },
+      { t: '辺境の見回りは自国でやる（主力艦隊が国境の守りに就く・主戦派が伸びる）', fx: { party: { war: 3 }, flag: 'mn2_nosearch', act: [{ fleet: 'border' }] },
         after: [['crow', 'sad', '……そうか。なら、鴉は鴉で飛ぶ。']] },
     ] },
 
@@ -1134,7 +1134,7 @@ PEOPLE.main('mn_m2', [
       ['raven', 'normal', 'アタシたちは残るよ。巣は鴉の家だから。でも、ガキどもは違う。あの子たちは、鴉にならなくていい。'],
     ],
     choices: [
-      { t: '子らを内側の星に移す（民心 −2・融和派が伸びる・クロウの忠誠 +15）', fx: { stab: -2, party: { peace: 4 }, loyal: { crow: 15 }, flag: 'mn2_children' },
+      { t: '子らを内側の星に移す（首都に避難民を迎える・人口 +6・民心 −2・融和派が伸びる・クロウの忠誠 +15）', fx: { stab: -2, party: { peace: 4 }, loyal: { crow: 15 }, flag: 'mn2_children', act: [{ refugees: 6 }] },
         after: [['crow', 'happy', '……ありがとよ。あいつらには、空より土の方が似合う。']] },
       { t: '巣の守りを固める金を出す（資金 −150）', fx: { funds: -150, flag: 'mn2_fort' },
         after: [['crow', 'normal', '分かった。巣ごと守る。鴉の巣は、そう簡単には落ちねえ。']] },
@@ -1166,7 +1166,7 @@ PEOPLE.main('mn_m2', [
       ['raven', 'normal', 'ガキどもが空を見上げて、怖がらないで済むようにね。'],
     ],
     choices: [
-      { t: '黒鴉に最前線を任せる（黒鴉の三人の武功 +4・主戦派が伸びる）', fx: { merit: { crow: 4, raven: 4, jack: 4 }, party: { war: 4 }, flag: 'mn2_front' },
+      { t: '黒鴉に最前線を任せる（クロウが主力艦隊の司令になり、裂け目へ出撃する・黒鴉の三人の武功 +4・主戦派が伸びる）', fx: { merit: { crow: 4, raven: 4, jack: 4 }, party: { war: 4 }, flag: 'mn2_front', act: [{ officer: 'crow', do: 'command' }, { fleet: 'rift' }] },
         after: [['crow', 'happy', '任せな。鴉は、喰われる前に喰う。']] },
       { t: '黒鴉に民の船の護衛を頼む（民心 +4・融和派が伸びる）', fx: { stab: 4, party: { peace: 4 }, flag: 'mn2_guard' },
         after: [['crow', 'normal', '護衛か。……鴉が民を守るなんざ、巣の連中が聞いたら笑うぜ。'], ['raven', 'happy', '笑わないよ。みんな、誇りに思う。']] },
@@ -1181,7 +1181,7 @@ PEOPLE.main('mn_m2', [
     choices: [
       { t: '違約金を肩代わりする（資金 −200・黒鴉の信を得る）', fx: { funds: -200, flag: 'mn2_debt' },
         after: [['crow', 'happy', '（通信）……あんた、やっぱり変わった客だ。']] },
-      { t: '礼を述べて共に戦う（民心 +3）', fx: { stab: 3, flag: 'mn2_wing' },
+      { t: '礼を述べて共に戦う（主力艦隊が裂け目へ出撃する・民心 +3）', fx: { stab: 3, flag: 'mn2_wing', act: [{ fleet: 'rift' }] },
         after: [['crow', 'normal', '（通信）礼なんざいらねえ。……生き残ったら、一杯おごれ。']] },
     ] },
   { id: 'mn2_05d', group: 'mn2_05', title: '頭を下げる鴉', bg: 'crisis', cond: { ecl: 'first' },
@@ -1192,7 +1192,7 @@ PEOPLE.main('mn_m2', [
       ['raven', 'sad', '頭領が頭を下げるの、アタシ初めて見た。'],
     ],
     choices: [
-      { t: '巣を守る艦を出す（資金 −150・民心 +2・黒鴉の恩を得る）', fx: { funds: -150, stab: 2, flag: 'mn2_saved' },
+      { t: '巣を守る艦を出す（主力艦隊が裂け目へ出撃する・資金 −150・民心 +2・黒鴉の恩を得る）', fx: { funds: -150, stab: 2, flag: 'mn2_saved', act: [{ fleet: 'rift' }] },
         after: [['crow', 'happy', '……借りができたな。鴉は、借りを忘れねえ。']] },
       { t: '自国の守りで手一杯だと断る', fx: { flag: 'mn2_alone' },
         after: [['crow', 'normal', '分かった。……鴉は、鴉で飛ぶ。それだけだ。']] },
@@ -1496,7 +1496,7 @@ PEOPLE.main('mn_m4', [
       ['tahir', 'normal', '{honor}。しばらく、あんたの星の軌道で錨を下ろさせてくれ。払いは、道でする。いくらでも。'],
     ],
     choices: [
-      { t: '軌道の泊地を貸す（民心 −1・融和派が伸びる）', fx: { stab: -1, party: { peace: 4 }, flag: 'mn4_haven' },
+      { t: '軌道の泊地を貸す（首都に避難民を迎える・人口 +6・民心 −1・融和派が伸びる）', fx: { stab: -1, party: { peace: 4 }, flag: 'mn4_haven', act: [{ refugees: 6 }] },
         after: [['tahir', 'normal', '……恩に着る。漂泊民は、恩を道で返す。'], ['yuna', 'happy', '父さんが「恩に着る」って言うの、初めて聞きました。']] },
       { t: '泊地は貸せぬ（資金 +60）', fx: { funds: 60, flag: 'mn4_cold' },
         after: [['tahir', 'angry', '陸の連中は、いつもそうだ。……行くぞ、ユナ。']] },
@@ -1510,7 +1510,7 @@ PEOPLE.main('mn_m4', [
       ['yuna', 'sad', '……わたしは、船の上で生まれて、よかったと思ってるよ。'],
     ],
     choices: [
-      { t: '土地を分ける（民心 −2・融和派が伸びる・タヒルの忠誠 +15）', fx: { stab: -2, party: { peace: 4 }, loyal: { tahir: 15 }, flag: 'mn4_land' },
+      { t: '土地を分ける（首都に避難民を迎える・人口 +8・民心 −2・融和派が伸びる・タヒルの忠誠 +15）', fx: { stab: -2, party: { peace: 4 }, loyal: { tahir: 15 }, flag: 'mn4_land', act: [{ refugees: 8 }] },
         after: [['tahir', 'happy', '……ありがとう。漂泊民の歴史で、陸の国が土地をくれたのは初めてだ。'], ['yuna', 'normal', '降りたい人は降りる。旅を続けたい人は続ける。……それなら、いいかもしれない。']] },
       { t: '港の停泊権だけを約束する（資金 −80・ユナの忠誠 +10）', fx: { funds: -80, loyal: { yuna: 10 }, flag: 'mn4_dock' },
         after: [['tahir', 'sad', '……そうか。まあ、港があるだけでも、ましだ。'], ['yuna', 'happy', '港があれば、どこへでも行けます。わたしは、そっちの方が好き。']] },
@@ -1564,7 +1564,7 @@ PEOPLE.main('mn_m4', [
     choices: [
       { t: '燃料を回す（資金 −200・民心 +2）', fx: { funds: -200, stab: 2, flag: 'mn4_ark' },
         after: [['tahir', 'happy', '……これで、環の民も、あんたの民も運べる。']] },
-      { t: '燃料は艦隊に回す（主戦派が伸びる）', fx: { party: { war: 3 }, flag: 'mn4_ark2' },
+      { t: '燃料は艦隊に回す（12か月のあいだ 艦の速さ +10%・主戦派が伸びる）', fx: { party: { war: 3 }, flag: 'mn4_ark2', act: [{ buff: 'speed', v: 0.1, months: 12, name: '艦隊に回した燃料' }] },
         after: [['tahir', 'sad', '……分かった。漂泊民は、自分の燃料で自分を運ぶ。いつものことだ。']] },
     ] },
   { id: 'mn4_04b', group: 'mn4_04', title: '環を離れる歌', bg: 'space', cond: { ecl: 'omen2' },
@@ -1585,9 +1585,9 @@ PEOPLE.main('mn_m4', [
       ['tahir', 'normal', '{honor}。降ろす場所が要る。あんたの星に、運んできた連中を降ろさせてくれ。'],
     ],
     choices: [
-      { t: '受け入れる（民心 −3・融和派が伸びる）', fx: { stab: -3, party: { peace: 5 }, flag: 'mn4_corridor' },
+      { t: '受け入れる（首都に避難民を迎える・人口 +10・民心 −3・融和派が伸びる）', fx: { stab: -3, party: { peace: 5 }, flag: 'mn4_corridor', act: [{ refugees: 10 }] },
         after: [['yuna', 'happy', 'ありがとうございます！ 次の船も、すぐ着きます。']] },
-      { t: '受け入れの数を絞る（民心 +1）', fx: { stab: 1, flag: 'mn4_shut' },
+      { t: '受け入れの数を絞る（首都に避難民を迎える・人口 +5・民心 +1）', fx: { stab: 1, flag: 'mn4_shut', act: [{ refugees: 5 }] },
         after: [['tahir', 'sad', '……そうか。なら、次の星を探す。道は、まだある。']] },
     ] },
   { id: 'mn4_05b', group: 'mn4_05', title: '逃がしの回廊', bg: 'crisis', cond: { ecl: 'first', minorAlly: 'm4' },
@@ -1598,9 +1598,9 @@ PEOPLE.main('mn_m4', [
       ['yuna', 'sad', 'この道を、攻めるためだけに使わないでください。逃げる人の道でもあるんです。'],
     ],
     choices: [
-      { t: '回廊の出口を艦隊で守る（民心 +4・融和派が伸びる）', fx: { stab: 4, party: { peace: 4 }, flag: 'mn4_corridor' },
+      { t: '回廊の出口を艦隊で守る（主力艦隊が裂け目へ出撃する・民心 +4・融和派が伸びる）', fx: { stab: 4, party: { peace: 4 }, flag: 'mn4_corridor', act: [{ fleet: 'rift' }] },
         after: [['yuna', 'happy', 'ありがとうございます。回廊の名前、決めました。「{faction}の道」にします。']] },
-      { t: '抜け道で群れの背後を突く（主戦派が伸びる・タヒルの武功 +4）', fx: { party: { war: 4 }, merit: { tahir: 4 }, flag: 'mn4_raid' },
+      { t: '抜け道で群れの背後を突く（タヒルが主力艦隊の司令になり、裂け目へ出撃する・主戦派が伸びる・タヒルの武功 +4）', fx: { party: { war: 4 }, merit: { tahir: 4 }, flag: 'mn4_raid', act: [{ officer: 'tahir', do: 'command' }, { fleet: 'rift' }] },
         after: [['tahir', 'happy', 'いい判断だ。逃げるだけじゃ、終わらねえからな。'], ['yuna', 'sad', '……父さん。']] },
     ] },
   { id: 'mn4_05c', group: 'mn4_05', title: '旗を問わぬ船', bg: 'crisis', cond: { ecl: 'first', minorOther: 'm4' },
@@ -1610,7 +1610,7 @@ PEOPLE.main('mn_m4', [
       ['tahir', 'normal', '（通信）娘が言い出したら聞かねえ。運んだ連中は、あんたの国の内側の星に降ろす。文句はねえな。'],
     ],
     choices: [
-      { t: '燃料を贈って礼とする（資金 −150・民心 +3）', fx: { funds: -150, stab: 3, flag: 'mn4_corridor' },
+      { t: '燃料を贈って礼とする（首都に避難民を迎える・人口 +6・資金 −150・民心 +3）', fx: { funds: -150, stab: 3, flag: 'mn4_corridor', act: [{ refugees: 6 }] },
         after: [['tahir', 'normal', '（通信）……陸の国から燃料をもらうとはな。借りにしておく。']] },
       { t: '他国の船の手は借りぬ', fx: { flag: 'mn4_shut' },
         after: [['yuna', 'sad', '（通信）……旗の話は、生き延びてからにしませんか。']] },
@@ -1624,7 +1624,7 @@ PEOPLE.main('mn_m4', [
       ['yuna', 'normal', '……{honor}。お願いです。船賃の分を、{faction}で持ってはもらえませんか。'],
     ],
     choices: [
-      { t: '船賃を肩代わりする（資金 −200・民心 +3・融和派が伸びる）', fx: { funds: -200, stab: 3, party: { peace: 3 }, flag: 'mn4_corridor' },
+      { t: '船賃を肩代わりする（首都に避難民を迎える・人口 +8・資金 −200・民心 +3・融和派が伸びる）', fx: { funds: -200, stab: 3, party: { peace: 3 }, flag: 'mn4_corridor', act: [{ refugees: 8 }] },
         after: [['tahir', 'sad', '……陸の国に、借りができちまったな。'], ['yuna', 'happy', 'これで、誰も置いていかずに済みます！']] },
       { t: '漂泊民の商いに口は挟まぬ', fx: { flag: 'mn4_fare' },
         after: [['yuna', 'sad', '……分かりました。わたしの取り分で、払えない人の分を払います。']] },

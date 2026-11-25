@@ -186,7 +186,7 @@ PEOPLE.add({
           ['pedro', 'normal', '{honor}。この人たちを{faction}の星に降ろしちゃもらえねえかい。荷運びでも畑仕事でも、働く連中だよ。'],
         ],
         choices: [
-          { t: '受け入れる（民心 −2・融和派が伸びる・ペドロの忠誠 +20）', fx: { stab: -2, party: { peace: 6 }, loyal: { pedro: 20 }, flag: 'pedro_refuge' },
+          { t: '受け入れる（首都に避難民を迎える・人口 +6・民心 −2・融和派が伸びる・ペドロの忠誠 +20）', fx: { stab: -2, party: { peace: 6 }, loyal: { pedro: 20 }, flag: 'pedro_refuge', act: [{ refugees: 6 }] },
             after: [['pedro', 'happy', '……ありがてえ。ほんとに、ありがてえ。'], ['pedro', 'normal', 'この借りは、おいらの一生で返すよ。']] },
           { t: '密かに運び続けることを黙認する（資金 −80・ペドロの忠誠 +8）', fx: { funds: -80, loyal: { pedro: 8 }, flag: 'pedro_smuggle' },
             after: [['pedro', 'normal', '燃料代まで出してくれるのかい。……あんた、表向きより甘いね。']] },
@@ -256,7 +256,7 @@ PEOPLE.add({
           ['sophos', 'sad', '知を囲い込んだ国は、いずれ自分の壁の内で窒息する。私はそういう国を、いくつも見てきた。'],
         ],
         choices: [
-          { t: '書庫を開く（各国の信頼 +5・融和派が伸びる・ソフォスの忠誠 +15）', fx: { trust: { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5, 5: 5 }, party: { peace: 4 }, loyal: { sophos: 15 }, flag: 'sophos_open' },
+          { t: '書庫を開く（各国の研究 +100・各国の信頼 +5・融和派が伸びる・ソフォスの忠誠 +15）', fx: { trust: { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5, 5: 5 }, party: { peace: 4 }, loyal: { sophos: 15 }, flag: 'sophos_open', act: [{ share: 100, shareTo: 'all' }] },
             after: [['sophos', 'happy', 'ありがとう。……灯は、分ければ分けるほど明るくなる。きっとそうなる。']] },
           { t: '今は閉ざしておく（研究 +120・ソフォスの忠誠が少し下がる）', fx: { rp: 120, loyal: { sophos: -5 } },
             after: [['sophos', 'sad', '……そうか。戦の最中だ、無理もない。いつか、扉を開ける日が来ることを願うよ。']] },
@@ -282,7 +282,7 @@ PEOPLE.add({
           ['sophos', 'normal', '{honor}。私の最後の仕事を、どう使うかね。'],
         ],
         choices: [
-          { t: '若い技師を育ててもらう（研究 +200・技術派が伸びる）', fx: { rp: 200, party: { tech: 6 }, loyal: { sophos: 10 }, flag: 'sophos_engineers' },
+          { t: '若い技師を育ててもらう（首都の研究所 +1・研究 +120・技術派が伸びる）', fx: { rp: 120, party: { tech: 6 }, loyal: { sophos: 10 }, flag: 'sophos_engineers', act: [{ dev: { k: 'res', n: 1 } }] },
             after: [['sophos', 'happy', 'よろしい。灯を渡す相手は、多いほどいい。']] },
           { t: '民のための学校を開いてもらう（民心 +6・政治 +2）', fx: { stab: 6, stat: { sophos: { pol: 2 } }, loyal: { sophos: 15 }, flag: 'sophos_school' },
             after: [['sophos', 'happy', '子どもたちか。……ああ、それがいい。それが一番いい。']] },
@@ -351,9 +351,9 @@ PEOPLE.add({
           ['mina', 'sad', '{honor}。ボク、初めて答えが分からない。'],
         ],
         choices: [
-          { t: '盾として使うよう勧める（技術 +3・研究 +150・ミーナの忠誠 +15）', fx: { stat: { mina: { sci: 3 } }, rp: 150, loyal: { mina: 15 }, flag: 'mina_shield' },
+          { t: '盾として使うよう勧める（12か月のあいだ 艦の守り +10%・技術 +3・研究 +150・ミーナの忠誠 +15）', fx: { stat: { mina: { sci: 3 } }, rp: 150, loyal: { mina: 15 }, flag: 'mina_shield', act: [{ buff: 'def', v: 0.1, months: 12, name: 'ミーナの防壁理論' }] },
             after: [['mina', 'happy', '……うん。お母さんも、たぶんそれを望んでた。ボク、そう思うことにする。']] },
-          { t: '兵器として使う（戦術 +2・主戦派が伸びる・ミーナの忠誠が下がる）', fx: { stat: { mina: { tac: 2 } }, party: { war: 6 }, loyal: { mina: -10 }, flag: 'mina_weapon' },
+          { t: '兵器として使う（12か月のあいだ 艦の火力 +10%・戦術 +2・主戦派が伸びる・ミーナの忠誠が下がる）', fx: { stat: { mina: { tac: 2 } }, party: { war: 6 }, loyal: { mina: -10 }, flag: 'mina_weapon', act: [{ buff: 'dmg', v: 0.1, months: 12, name: 'ミーナの反転式' }] },
             after: [['mina', 'sad', '……分かった。命令なら、作るよ。'], ['mina', 'sad', '（ごめんね。ボク、まだ子どもだから、断れなかった）']] },
         ] },
     ],
@@ -492,7 +492,7 @@ PEOPLE.add({
           ['crow', 'normal', 'だが、あいつらはそれ以上の物を見つけたらしい。……俺は、どうすりゃいい。'],
         ],
         choices: [
-          { t: '黒鴉を正規の艦隊に迎える（クロウの忠誠 +25・統率 +2）', fx: { loyal: { crow: 25 }, stat: { crow: { ldr: 2 } }, party: { war: 4 }, flag: 'crow_banner' },
+          { t: '黒鴉を正規の艦隊に迎える（クロウが主力艦隊の司令になる・艦 +2・資金 −200・クロウの忠誠 +25・統率 +2）', fx: { loyal: { crow: 25 }, stat: { crow: { ldr: 2 } }, party: { war: 4 }, funds: -200, flag: 'crow_banner', act: [{ officer: 'crow', do: 'command' }, { ships: 2 }] },
             after: [['crow', 'happy', '……鴉が旗を背負うか。悪くねえ。'], ['crow', 'normal', 'いいか、{honor}。これで俺たちは、金じゃ動かねえ。あんたのために動く。']] },
           { t: '傭兵の誇りを守らせる（戦術 +2・資金 +200）', fx: { stat: { crow: { tac: 2 } }, funds: 200, loyal: { crow: 5 }, flag: 'crow_wings' },
             after: [['crow', 'normal', '分かった。鴉は鴉のまま、あんたの空を飛ぶ。それも悪くねえ。']] },
@@ -560,7 +560,7 @@ PEOPLE.add({
           ['raven', 'normal', '{honor}。アタシ、どうしたらいいと思う？'],
         ],
         choices: [
-          { t: '一羽で飛んでみろと背中を押す（統率 +3・武功 +4）', fx: { stat: { raven: { ldr: 3 } }, merit: { raven: 4 }, loyal: { raven: 10 }, flag: 'raven_solo' },
+          { t: '一羽で飛んでみろと背中を押す（レイヴンが主力艦隊の司令になる・統率 +3・武功 +4）', fx: { stat: { raven: { ldr: 3 } }, merit: { raven: 4 }, loyal: { raven: 10 }, flag: 'raven_solo', act: [{ officer: 'raven', do: 'command' }] },
             after: [['raven', 'normal', '……うん。いつか頭領の隣に、並んで飛べるように。'], ['raven', 'happy', '見ててよ。アタシ、すっごい鴉になるから。']] },
           { t: '頭領の隣にいてやれと言う（レイヴンの忠誠 +20・戦術 +1）', fx: { loyal: { raven: 20 }, stat: { raven: { tac: 1 } }, flag: 'raven_side' },
             after: [['raven', 'happy', '……そっか。うん、そうする。'], ['raven', 'sad', '（あの人、アタシがいないと、すぐ無茶するからね）']] },
@@ -875,7 +875,7 @@ PEOPLE.add({
           ['dmitri', 'normal', 'それにな、若い者は、温かい星で長生きせねばならん。……死ぬのは、老人の順番だ。'],
         ],
         choices: [
-          { t: '辺境の守りを任せる（統率 +2・ドミトリの忠誠 +15）', fx: { stat: { dmitri: { ldr: 2 } }, loyal: { dmitri: 15 } },
+          { t: '辺境の守りを任せる（ドミトリが国境の星の総督になる・統率 +2・ドミトリの忠誠 +15）', fx: { stat: { dmitri: { ldr: 2 } }, loyal: { dmitri: 15 }, act: [{ officer: 'dmitri', do: 'govern', where: 'border' }] },
             after: [['dmitri', 'happy', 'ふん、話の分かる主だ。……老いた狼の縄張り、しっかり守ってやる。']] },
           { t: '若い士官の教官を頼む（政治 +2・ドミトリの忠誠 +5）', fx: { stat: { dmitri: { pol: 2 } }, loyal: { dmitri: 5 }, party: { war: 3 } },
             after: [['dmitri', 'normal', '若造どもの子守りか。……よかろう。死なずに済む戦い方を、叩き込んでやる。']] },
@@ -899,7 +899,7 @@ PEOPLE.add({
           ['dmitri', 'normal', '死に場所を探しとるわけではない。生きて帰る。……ただ、狼として、一度吠えておきたいのだ。'],
         ],
         choices: [
-          { t: '最前線の艦隊を任せる（戦術 +2・武功 +6・ドミトリの忠誠 +15）', fx: { stat: { dmitri: { tac: 2 } }, merit: { dmitri: 6 }, loyal: { dmitri: 15 } },
+          { t: '最前線の艦隊を任せる（ドミトリが主力艦隊の司令になる・戦術 +2・武功 +6・ドミトリの忠誠 +15）', fx: { stat: { dmitri: { tac: 2 } }, merit: { dmitri: 6 }, loyal: { dmitri: 15 }, act: [{ officer: 'dmitri', do: 'command' }] },
             after: [['dmitri', 'happy', '感謝する。……必ず、帰ってくるぞ。墓の連中には、まだ早いと言っておく。']] },
           { t: '若い者たちのそばにいてくれと頼む（統率 +2・民心 +3・ドミトリの忠誠 +10）', fx: { stat: { dmitri: { ldr: 2 } }, stab: 3, loyal: { dmitri: 10 } },
             after: [['dmitri', 'sad', '……そうか。老人の役目は、吠えることではなく、見届けることか。'], ['dmitri', 'normal', '分かった。若い狼どもが一人前になるまで、見ていてやろう。']] },
@@ -1244,9 +1244,9 @@ PEOPLE.add({
           ['eve', 'sad', '……でも、開けば、私の中の古い記憶は消えます。私がイヴでいられるのは、あと少しかもしれません。'],
         ],
         choices: [
-          { t: '記録を開いてもらう（研究 +200・技術派が伸びる・イヴの技術 +3）', fx: { rp: 200, party: { tech: 6 }, stat: { eve: { sci: 3 } } },
+          { t: '記録を開いてもらう（12か月のあいだ 蝕への火力 +10%・研究 +200・技術派が伸びる・イヴの技術 +3）', fx: { rp: 200, party: { tech: 6 }, stat: { eve: { sci: 3 } }, act: [{ buff: 'eclDmg', v: 0.1, months: 12, name: 'イヴの記録' }] },
             after: [['eve', 'normal', '了解しました。……記録、開放します。'], ['eve', 'happy', '大丈夫です。消えるのは古い記憶だけ。この時代で覚えたことは、ちゃんと残ります。']] },
-          { t: '記憶は残せ、共に戦えと言う（統率 +2・戦術 +2・イヴの忠誠 +25）', fx: { stat: { eve: { ldr: 2, tac: 2 } }, loyal: { eve: 25 } },
+          { t: '記憶は残せ、共に戦えと言う（イヴが主力艦隊の司令になる・統率 +2・戦術 +2・イヴの忠誠 +25）', fx: { stat: { eve: { ldr: 2, tac: 2 } }, loyal: { eve: 25 }, act: [{ officer: 'eve', do: 'command' }] },
             after: [['eve', 'shock', '……記録より、私を選ぶのですか。'], ['eve', 'happy', 'ありがとうございます。では、記録ではなく、私自身で戦います。今度は、眠らずに。']] },
         ] },
     ],
@@ -1318,7 +1318,7 @@ PEOPLE.add({
           ['zero', 'normal', '{honor}。今度は負けない。……俺に、最前線をくれ。'],
         ],
         choices: [
-          { t: '最前線を託す（戦術 +3・武功 +8・ゼロの忠誠 +20）', fx: { stat: { zero: { tac: 3 } }, merit: { zero: 8 }, loyal: { zero: 20 } },
+          { t: '最前線を託す（ゼロが主力艦隊の司令になり、裂け目へ出撃する・戦術 +3・武功 +8・ゼロの忠誠 +20）', fx: { stat: { zero: { tac: 3 } }, merit: { zero: 8 }, loyal: { zero: 20 }, act: [{ officer: 'zero', do: 'command' }, { fleet: 'rift' }] },
             after: [['zero', 'happy', '……感謝する。一万二千年、待たせたな。'], ['zero', 'normal', '全艦に告げろ。名も無き提督が、二度目の戦に出る。']] },
           { t: '敗れた戦の記憶を皆に伝えさせる（統率 +2・研究 +150）', fx: { stat: { zero: { ldr: 2 } }, rp: 150, loyal: { zero: 10 } },
             after: [['zero', 'normal', '負けた男の話が、役に立つか。……いや、負けた男だから、話せることがある。'], ['zero', 'normal', '同じ負け方は、二度とさせない。']] },
@@ -1385,9 +1385,9 @@ PEOPLE.add({
           ['noah', 'sad', 'ただし、これを公にすれば、信仰の国は私を許さないでしょう。'],
         ],
         choices: [
-          { t: '研究を公にさせる（研究 +200・技術派が伸びる・聖教国の信頼 −8）', fx: { rp: 200, party: { tech: 6 }, trust: { 3: -8 }, stat: { noah: { sci: 2 } } },
+          { t: '研究を公にさせる（各国の研究 +150・研究 +200・技術派が伸びる・聖教国の信頼 −8）', fx: { rp: 200, party: { tech: 6 }, trust: { 3: -8 }, stat: { noah: { sci: 2 } }, act: [{ share: 150, shareTo: 'all' }] },
             after: [['noah', 'happy', 'ありがとうございます。……知は、恐れるためではなく、備えるためにあるのです。']] },
-          { t: '信仰の国とも分かち合うよう勧める（交渉 +2・聖教国の信頼 +10・融和派が伸びる）', fx: { stat: { noah: { dip: 2 } }, trust: { 3: 10 }, party: { peace: 5 } },
+          { t: '信仰の国とも分かち合うよう勧める（聖教国の研究 +150・交渉 +2・聖教国の信頼 +10・融和派が伸びる）', fx: { stat: { noah: { dip: 2 } }, trust: { 3: 10 }, party: { peace: 5 }, act: [{ share: 150, shareTo: 3 }] },
             after: [['noah', 'shock', '……私を追った国と、ですか。'], ['noah', 'normal', '分かりました。預言を信じてきた人々こそ、この記録を読む資格がある。そうかもしれません。']] },
         ] },
     ],
@@ -1433,7 +1433,7 @@ PEOPLE.add({
           ['haruto', 'normal', '{honor}。僕を信じられないなら、修理班に回してください。それでも、僕は役に立ちます。'],
         ],
         choices: [
-          { t: '艦隊を任せて信を示す（統率 +2・ハルトの忠誠 +20）', fx: { stat: { haruto: { ldr: 2 } }, loyal: { haruto: 20 } },
+          { t: '艦隊を任せて信を示す（ハルトが主力艦隊の司令になる・統率 +2・ハルトの忠誠 +20）', fx: { stat: { haruto: { ldr: 2 } }, loyal: { haruto: 20 }, act: [{ officer: 'haruto', do: 'command' }] },
             after: [['haruto', 'shock', '……いいんですか。'], ['haruto', 'happy', 'ありがとうございます。必ず、皆を連れて帰ります。']] },
           { t: 'まずは修理班で働かせる（技術 +2・資金 +80）', fx: { stat: { haruto: { sci: 2 } }, funds: 80, loyal: { haruto: 5 } },
             after: [['haruto', 'normal', '分かりました。艦を直すのも、人を守ることですから。']] },
@@ -1521,7 +1521,7 @@ PEOPLE.add({
           ['amber', 'sad', 'どちらに先に使うか、わたしには決められなくて。'],
         ],
         choices: [
-          { t: '軍艦に載せる（技術 +3・研究 +100・主戦派が伸びる）', fx: { stat: { amber: { sci: 3 } }, rp: 100, party: { war: 4 }, loyal: { amber: 10 } },
+          { t: '軍艦に載せる（12か月のあいだ 艦の守り +10%・技術 +3・研究 +100・主戦派が伸びる）', fx: { stat: { amber: { sci: 3 } }, rp: 100, party: { war: 4 }, loyal: { amber: 10 }, act: [{ buff: 'def', v: 0.1, months: 12, name: '沈まない船の救命区画' }] },
             after: [['amber', 'happy', 'はい！ 戦場から、一人でも多く帰ってこられるように！']] },
           { t: '民間の船に配る（民心 +6・融和派が伸びる・アンバーの忠誠 +15）', fx: { stab: 6, party: { peace: 4 }, loyal: { amber: 15 } },
             after: [['amber', 'happy', 'お父さん、聞いた？ エオスの鉱山船にも、載せてもらえるって！'], ['amber', 'sad', '……もう、誰も帰ってこない日なんて、来ないといいな。']] },
@@ -1654,7 +1654,7 @@ PEOPLE.add({
           ['tobias', 'normal', '紋章か、償いか。どちらを先に選ぶべきでしょう。'],
         ],
         choices: [
-          { t: '{faction}の要職を与え、家名を再び名乗らせる（政治 +2・交渉 +1・トビアスの忠誠 +20）', fx: { stat: { tobias: { pol: 2, dip: 1 } }, loyal: { tobias: 20 } },
+          { t: '{faction}の要職を与え、家名を再び名乗らせる（トビアスが首都の総督になる・政治 +2・交渉 +1・トビアスの忠誠 +20）', fx: { stat: { tobias: { pol: 2, dip: 1 } }, loyal: { tobias: 20 }, act: [{ officer: 'tobias', do: 'govern' }] },
             after: [['tobias', 'happy', 'クレーマー家、ここに再び。……ありがとうございます。'], ['tobias', 'normal', '最後の一枚は、名を取り戻した身で、正面から返しに参ります。']] },
           { t: '償いを先にしろと言う（交渉 +2・民心 +3・トビアスの忠誠 +10）', fx: { stat: { tobias: { dip: 2 } }, stab: 3, loyal: { tobias: 10 } },
             after: [['tobias', 'sad', '……そうですね。名を取り戻してから頭を下げるのは、順番が逆だ。'], ['tobias', 'normal', '紋章のないまま、その娘さんに会いに行きましょう。']] },
