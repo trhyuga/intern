@@ -1224,7 +1224,11 @@ const Battle = (() => {
     const lineOf = (sd) => sd.fac === 'E' ? ECL_LINE.start : !sd.cmd ? '迎え撃て！'
       : S.tie ? (sd.key === 'A' ? S.tie.la : S.tie.lb) : (People.voice(sd.cmd, 'bstart') || R.pick(LINES[OFF[sd.cmd].pers].start));
     const card = (sd, cls) => { const st = styleSd(sd); return `<div class="vs-card ${cls}" style="--c:${Game.ownerCol(sd.fac)}">${faceOf(sd, 'angry')}<div><b>${sd.cmd ? OFF[sd.cmd].name : sd.fac === 'E' ? sideName(sd) : sideName(sd) + '・' + genName(sd)}</b>${st ? `<em class="vs-style s-${st.type}">${st.name}</em>` : ''}<p>「${lineOf(sd)}」</p></div></div>`; };
-    el.innerHTML = `<div class="vs">${card(e, 'en')}<div class="vs-x">VS</div>${card(a, 'me')}${S.tie ? `<div class="vs-tie">因縁の対決 ― ${S.tie.t.label}：${S.tie.t.desc}</div>` : ''}<div class="vs-where">${S.planet ? S.planet.name + ' 宙域' : '星間宙域'}${S.terrain.length ? ' ― ' + S.terrain.map(t => ({ ast: '小惑星帯', neb: '星雲', deb: '残骸' })[t.type]).join('・') : ''}</div></div>`;
+    const EK = eclKind();
+    const vsSt = EK ? ` style="background:radial-gradient(ellipse at 50% 18%, ${EK === 2 ? '#2a0426' : '#4a0418'}cc, #0a0006ee 70%);border-top:1px solid #ff2a6a66;border-bottom:1px solid #ff2a6a66;box-shadow:0 0 40px #ff1a5a33 inset"` : '';
+    const xSt = EK ? ` style="color:#ff2a6a;text-shadow:0 0 12px #ff0050,0 0 30px #9010c0;letter-spacing:4px"` : '';
+    const warn = EK ? `<div style="text-align:center;font-size:11px;letter-spacing:3px;color:#ff5a8a;text-shadow:0 0 8px #ff0050">${EK === 2 ? '― 深淵より、それは見ている ―' : '― 警告：蝕の侵蝕を確認 ―'}</div>` : '';
+    el.innerHTML = `<div class="vs"${vsSt}>${warn}${card(e, 'en')}<div class="vs-x"${xSt}>VS</div>${card(a, 'me')}${S.tie ? `<div class="vs-tie">因縁の対決 ― ${S.tie.t.label}：${S.tie.t.desc}</div>` : ''}<div class="vs-where"${EK ? ' style="color:#d88aa8"' : ''}>${S.planet ? S.planet.name + (EK === 2 ? ' 深淵' : ' 宙域') : '星間宙域'}${S.terrain.length ? ' ― ' + S.terrain.map(t => ({ ast: '小惑星帯', neb: '星雲', deb: '残骸' })[t.type]).join('・') : ''}</div></div>`;
     el.classList.add('show');
     Sound.se('alarm');
     if (watch) hold++;
@@ -1305,24 +1309,32 @@ const Battle = (() => {
     c.setTransform(dpr, 0, 0, dpr, 0, 0);
     // 背景：深い宇宙のグラデーション → 星雲 → 流れる星
     const bgG = c.createLinearGradient(0, 0, 0, r.height);
-    bgG.addColorStop(0, '#060a1c'); bgG.addColorStop(0.55, '#02030c'); bgG.addColorStop(1, '#05030a');
+    const EK = eclKind();
+    if (EK) { bgG.addColorStop(0, EK === 2 ? '#0a0208' : '#16040f'); bgG.addColorStop(0.55, '#040106'); bgG.addColorStop(1, EK === 2 ? '#000000' : '#0c0206'); }
+    else { bgG.addColorStop(0, '#060a1c'); bgG.addColorStop(0.55, '#02030c'); bgG.addColorStop(1, '#05030a'); }
     c.fillStyle = bgG; c.fillRect(0, 0, r.width, r.height);
-    c.globalAlpha = 0.95; c.drawImage(bg, 0, 0, r.width, r.height); c.globalAlpha = 1;
+    c.globalAlpha = EK ? 0.35 : 0.95; c.drawImage(bg, 0, 0, r.width, r.height); c.globalAlpha = 1;
+    if (EK) {
+      if (!S.eclNeb) S.eclNeb = Art.nebulaCanvas(300, 500, (S.planet ? S.planet.seed : 5) + 666, EK === 2 ? [300, 340, 270] : [345, 290, 0], { alpha: EK === 2 ? 0.12 : 0.17, stars: 40 });
+      c.globalAlpha = EK === 2 ? 0.75 : 0.95; c.drawImage(S.eclNeb, 0, 0, r.width, r.height); c.globalAlpha = 1;
+    }
     camera(r);
     // 画面の揺れ
     S.shake = Math.max(0, (S.shake || 0) - 0.5);
     const sh = S.shake > 0.2 ? S.shake : 0;
     c.save(); c.translate(ox + (Math.random() - 0.5) * sh, oy + (Math.random() - 0.5) * sh); c.scale(scale, scale);
     const T = performance.now() / 1000;
+    const stC = EK ? '255,200,215' : '220,232,255', stK = EK === 2 ? 0.35 : EK ? 0.6 : 1;
     for (const st of S.stars || []) {
-      const y = (st.y + T * 6 * st.z) % H, a = 0.45 + 0.4 * Math.sin(T * 2 + st.tw);
-      c.fillStyle = `rgba(220,232,255,${a * (st.z === 1 ? 0.9 : 0.55)})`; c.fillRect(st.x, y, st.r, st.r);
+      const y = (st.y + T * 6 * st.z) % H, a = (0.45 + 0.4 * Math.sin(T * 2 + st.tw)) * stK;
+      c.fillStyle = `rgba(${stC},${a * (st.z === 1 ? 0.9 : 0.55)})`; c.fillRect(st.x, y, st.r, st.r);
     }
     // 惑星と漂う塵は、戦いごとに一度だけ描いて貼る（毎フレームのグラデーションを減らす）
     if (!S.bgLayer) {
       const L = document.createElement('canvas'), k = 1, mx = 260, my = 460; L.width = (W + mx * 2) * k; L.height = (H + my + 260) * k;
       const g2 = L.getContext('2d'); g2.scale(k, k); g2.translate(mx, my); S.bgOff = [mx, my];
-      if (S.planet) {
+      if (EK) eclBgLayer(g2, EK);
+      else if (S.planet) {
         const px = W / 2, py = -210, pr = 330;
         const ag = g2.createRadialGradient(px, py, pr * 0.9, px, py, pr * 1.18);
         ag.addColorStop(0, 'rgba(120,190,255,.35)'); ag.addColorStop(1, 'rgba(120,190,255,0)');
@@ -1330,10 +1342,11 @@ const Battle = (() => {
         Art.planet(g2, px, py, pr, S.planet.type, S.planet.seed, { t: 0 });
       }
       g2.globalCompositeOperation = 'lighter';
-      for (const d of S.dust || []) { const g = g2.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.r); g.addColorStop(0, `rgba(140,160,255,${d.a})`); g.addColorStop(1, 'rgba(140,160,255,0)'); g2.fillStyle = g; g2.beginPath(); g2.arc(d.x, d.y, d.r, 0, 7); g2.fill(); }
+      for (const [i, d] of (S.dust || []).entries()) { const dc = !EK ? '140,160,255' : i % 3 ? '220,30,80' : '140,40,220'; const g = g2.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.r * (EK ? 1.4 : 1)); g.addColorStop(0, `rgba(${dc},${d.a * (EK ? 1.8 : 1)})`); g.addColorStop(1, `rgba(${dc},0)`); g2.fillStyle = g; g2.beginPath(); g2.arc(d.x, d.y, d.r, 0, 7); g2.fill(); }
       S.bgLayer = L;
     }
     c.drawImage(S.bgLayer, -S.bgOff[0], -S.bgOff[1], S.bgLayer.width, S.bgLayer.height);
+    if (EK) eclWorld(c, EK, T);
     // 地形
     for (const t of S.terrain) drawTerrain(c, t);
     // 自陣の線
@@ -1426,6 +1439,7 @@ const Battle = (() => {
       if (sd.buff && S.t < sd.buffUntil) for (const u of S.units) if (u.side === sk && alive(u)) { c.strokeStyle = `rgba(255,220,120,${0.4 + Math.sin(S.t * 8) * 0.2})`; c.lineWidth = 2; c.beginPath(); c.arc(u.x, u.y, unitR(u) + 5, 0, 7); c.stroke(); }
     }
     c.restore();
+    if (EK) eclScreen(c, EK, T, r);
     // 上の表示
     const el = document.getElementById('battle');
     if (el) {
@@ -1448,6 +1462,160 @@ const Battle = (() => {
     }
   }
   // ---------- 効果を描く（重ねて光らせる） ----------
+  // ---------- 蝕との戦い：背景の演出 ----------
+  // 0: ふつう / 1: 蝕（裂け目） / 2: 深淵
+  function eclKind() {
+    if (S.eclK === undefined) {
+      const p = S.planet, e = S.side.A.fac === 'E' || S.side.D.fac === 'E';
+      S.eclK = p && p.abyss ? 2 : e || (p && p.type === 'rift') ? 1 : 0;
+    }
+    return S.eclK;
+  }
+  const MAW = { x: W / 2, y: -30 };
+  // 一度だけ描く部分（光輪の奥の輝き・黒い太陽・目の白目）
+  function eclBgLayer(g, EK) {
+    const R = EK === 2 ? 210 : 150, { x, y } = MAW, rs = Art.srand((S.planet ? S.planet.seed : 5) + 31);
+    // 大きな赤紫の輝き
+    let gr = g.createRadialGradient(x, y, R * 0.6, x, y, R * 4.2);
+    gr.addColorStop(0, EK === 2 ? 'rgba(150,20,120,.55)' : 'rgba(255,30,80,.55)'); gr.addColorStop(0.35, 'rgba(120,20,150,.22)'); gr.addColorStop(1, 'rgba(60,0,40,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, R * 4.2, 0, 7); g.fill();
+    // 星雲のすじ
+    g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 18; i++) {
+      const a = rs() * 7, d = R * (1.3 + rs() * 3), bx = x + Math.cos(a) * d, by = y + Math.abs(Math.sin(a)) * d * 1.4, br = 60 + rs() * 120;
+      const col = i % 2 ? '200,20,70' : '110,30,190';
+      gr = g.createRadialGradient(bx, by, 0, bx, by, br); gr.addColorStop(0, `rgba(${col},.12)`); gr.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = gr; g.beginPath(); g.arc(bx, by, br, 0, 7); g.fill();
+    }
+    g.globalCompositeOperation = 'source-over';
+    // 回る光輪（別のキャンバスに、一度だけ）
+    const sz = Math.ceil(R * 4), L = document.createElement('canvas'); L.width = L.height = sz;
+    const q = L.getContext('2d'); q.translate(sz / 2, sz / 2);
+    if (EK === 2) {
+      // 渦の腕
+      for (let arm = 0; arm < 5; arm++) {
+        const a0 = arm * Math.PI * 2 / 5;
+        for (let j = 0; j < 40; j++) {
+          const t = j / 40, a = a0 + t * 4.2, d = R * (0.95 + t * 1.0), w = (1 - t) * 26 + 4;
+          q.fillStyle = `rgba(${arm % 2 ? '170,30,140' : '230,40,90'},${0.16 * (1 - t)})`;
+          q.beginPath(); q.arc(Math.cos(a) * d, Math.sin(a) * d, w, 0, 7); q.fill();
+        }
+      }
+    } else {
+      // 黒い太陽のコロナ（細い炎の筋）
+      for (let i = 0; i < 70; i++) {
+        const a = rs() * 7, l = R * (0.25 + rs() * 0.9), w = 0.012 + rs() * 0.03;
+        const lg = q.createLinearGradient(Math.cos(a) * R * 0.95, Math.sin(a) * R * 0.95, Math.cos(a) * (R + l), Math.sin(a) * (R + l));
+        lg.addColorStop(0, i % 4 ? 'rgba(255,60,110,.55)' : 'rgba(255,190,220,.7)'); lg.addColorStop(1, 'rgba(140,20,170,0)');
+        q.fillStyle = lg; q.beginPath(); q.moveTo(Math.cos(a - w) * R * 0.95, Math.sin(a - w) * R * 0.95);
+        q.quadraticCurveTo(Math.cos(a + w * 3) * (R + l * 0.6), Math.sin(a + w * 3) * (R + l * 0.6), Math.cos(a) * (R + l), Math.sin(a) * (R + l));
+        q.lineTo(Math.cos(a + w) * R * 0.95, Math.sin(a + w) * R * 0.95); q.fill();
+      }
+    }
+    S.eclRot = L;
+    // 目（深淵）
+    if (EK === 2) {
+      const ew = R * 1.5, eh = R * 0.62, E2 = document.createElement('canvas'); E2.width = Math.ceil(ew * 2); E2.height = Math.ceil(eh * 2);
+      const e = E2.getContext('2d'); e.translate(ew, eh);
+      e.beginPath(); e.moveTo(-ew, 0); e.quadraticCurveTo(0, -eh * 2, ew, 0); e.quadraticCurveTo(0, eh * 2, -ew, 0); e.closePath(); e.save(); e.clip();
+      let eg = e.createRadialGradient(0, 0, 0, 0, 0, ew); eg.addColorStop(0, '#5a0818'); eg.addColorStop(0.6, '#1e0208'); eg.addColorStop(1, '#050002');
+      e.fillStyle = eg; e.fillRect(-ew, -eh, ew * 2, eh * 2);
+      e.strokeStyle = 'rgba(200,20,60,.45)'; e.lineWidth = 1.2;
+      for (let i = 0; i < 26; i++) { const a = rs() * 7; e.beginPath(); e.moveTo(Math.cos(a) * ew, Math.sin(a) * eh); e.quadraticCurveTo(Math.cos(a + 0.3) * ew * 0.6, Math.sin(a - 0.3) * eh * 0.6, Math.cos(a) * eh * 0.5, Math.sin(a) * eh * 0.5); e.stroke(); }
+      const ir = eh * 0.85; eg = e.createRadialGradient(0, 0, ir * 0.2, 0, 0, ir);
+      eg.addColorStop(0, '#ffd0a0'); eg.addColorStop(0.3, '#ff3a3a'); eg.addColorStop(0.75, '#7a0a50'); eg.addColorStop(1, 'rgba(40,0,30,0)');
+      e.fillStyle = eg; e.beginPath(); e.arc(0, 0, ir, 0, 7); e.fill();
+      e.restore();
+      e.strokeStyle = '#ff2a6a'; e.lineWidth = 2.5; e.shadowColor = '#ff0050'; e.shadowBlur = 14;
+      e.beginPath(); e.moveTo(-ew, 0); e.quadraticCurveTo(0, -eh * 2, ew, 0); e.quadraticCurveTo(0, eh * 2, -ew, 0); e.stroke();
+      S.eclEye = E2;
+    } else {
+      // 黒い円盤と熱い縁
+      g.fillStyle = '#000'; g.beginPath(); g.arc(x, y, R, 0, 7); g.fill();
+    }
+    // 画面の縁の触手（形だけ決めておく）
+    S.tendr = Array.from({ length: 11 }, (_, i) => ({ side: i < 4 ? 0 : i < 8 ? 1 : 2, p: rs(), len: 0.12 + rs() * 0.16, ph: rs() * 7, w: 6 + rs() * 9 }));
+    S.ash = Array.from({ length: 56 }, () => ({ x: rs(), y: rs(), v: 0.004 + rs() * 0.012, s: 0.8 + rs() * 2.2, ph: rs() * 7, glow: rs() < 0.18 }));
+  }
+  // 毎フレーム（ワールド座標）：回る光輪・目・赤い稲妻
+  function eclWorld(c, EK, T) {
+    const R = EK === 2 ? 210 : 150, { x, y } = MAW, L = S.eclRot;
+    if (L) {
+      c.save(); c.globalCompositeOperation = 'lighter'; c.translate(x, y); c.rotate(EK === 2 ? -T * 0.12 : T * 0.03);
+      c.globalAlpha = 0.85 + 0.15 * Math.sin(T * 1.3); c.drawImage(L, -L.width / 2, -L.height / 2);
+      if (EK !== 2) { c.rotate(-T * 0.07); c.globalAlpha = 0.45; c.drawImage(L, -L.width * 0.45, -L.height * 0.45, L.width * 0.9, L.height * 0.9); }
+      c.restore();
+    }
+    if (EK === 2 && S.eclEye) {
+      // ゆっくり開き、ときどき瞬く。瞳は戦場を見下ろす
+      const E2 = S.eclEye, bl = (T % 9) < 0.35 ? Math.abs(Math.cos((T % 9) / 0.35 * Math.PI)) : 1, open = Math.max(0.04, bl);
+      c.fillStyle = '#000'; c.beginPath(); c.arc(x, y, R * 0.98, 0, 7); c.fill();
+      c.drawImage(E2, x - E2.width / 2, y - E2.height / 2 * open, E2.width, E2.height * open);
+      const ph = R * 0.62 * open, px = x + Math.sin(T * 0.4) * R * 0.25, py = y + ph * 0.15;
+      c.fillStyle = '#000'; c.beginPath(); c.ellipse(px, py, R * 0.07, ph * 0.72, 0, 0, 7); c.fill();
+    } else if (EK) {
+      c.fillStyle = '#000'; c.beginPath(); c.arc(x, y, R, 0, 7); c.fill();
+      c.strokeStyle = `rgba(255,${60 + Math.sin(T * 3) * 30 | 0},120,${0.55 + 0.3 * Math.sin(T * 2.1)})`; c.lineWidth = 3; c.beginPath(); c.arc(x, y, R + 1, 0, 7); c.stroke();
+      c.strokeStyle = 'rgba(255,220,235,.5)'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, R - 1, 0, 7); c.stroke();
+    }
+    // 赤い稲妻（ときどき）
+    if (!S.bolt && Math.random() < (EK === 2 ? 0.006 : 0.009)) {
+      const pts = [], a = Math.PI * (0.15 + Math.random() * 0.7), d0 = R * 0.9, d1 = R + 300 + Math.random() * 500;
+      let bx = x + Math.cos(a) * d0, by = y + Math.sin(a) * d0; pts.push([bx, by]);
+      const n = 9, ex = x + Math.cos(a) * d1, ey = y + Math.sin(a) * d1;
+      for (let i = 1; i <= n; i++) { const t = i / n; pts.push([bx + (ex - bx) * t + (Math.random() - 0.5) * 60, by + (ey - by) * t + (Math.random() - 0.5) * 60]); }
+      S.bolt = { t0: T, pts, br: pts.slice(3, 5).map(p => [p, [p[0] + (Math.random() - 0.5) * 140, p[1] + 40 + Math.random() * 90]]) };
+    }
+    if (S.bolt) {
+      const k = 1 - (T - S.bolt.t0) / 0.28;
+      if (k <= 0) S.bolt = null;
+      else {
+        c.save(); c.globalCompositeOperation = 'lighter'; c.lineJoin = 'round';
+        for (const [lw, col] of [[7, `rgba(255,20,80,${0.35 * k})`], [2, `rgba(255,200,220,${0.9 * k})`]]) {
+          c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); S.bolt.pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
+          for (const [p, q] of S.bolt.br) { c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); } c.stroke();
+        }
+        c.restore();
+      }
+    }
+  }
+  // 毎フレーム（画面座標）：灰と胞子・縁で脈打つ肉の触手・暗い縁取り
+  function eclScreen(c, EK, T, r) {
+    const w = r.width, h = r.height;
+    // 縁取り（大きさが変わったときだけ作り直す）
+    if (!S.eclVig || S.eclVig.w !== w || S.eclVig.h !== h) {
+      const V = document.createElement('canvas'); V.width = Math.ceil(w / 2); V.height = Math.ceil(h / 2);
+      const v = V.getContext('2d'), g = v.createRadialGradient(V.width / 2, V.height * 0.5, Math.min(V.width, V.height) * 0.35, V.width / 2, V.height * 0.5, Math.max(V.width, V.height) * 0.72);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.7, EK === 2 ? 'rgba(10,0,8,.55)' : 'rgba(40,0,14,.45)'); g.addColorStop(1, EK === 2 ? 'rgba(0,0,0,.92)' : 'rgba(30,0,10,.85)');
+      v.fillStyle = g; v.fillRect(0, 0, V.width, V.height);
+      S.eclVig = { cv: V, w, h };
+    }
+    c.globalAlpha = 0.85 + 0.15 * Math.sin(T * 1.6); c.drawImage(S.eclVig.cv, 0, 0, w, h); c.globalAlpha = 1;
+    // 触手
+    c.lineCap = 'round';
+    for (const t of S.tendr || []) {
+      const pul = Math.sin(T * 1.8 + t.ph), L = t.len * (t.side === 2 ? h * 0.6 : w) * (0.85 + 0.15 * pul);
+      let x0, y0, dx, dy;
+      if (t.side === 0) { x0 = -6; y0 = h * (0.15 + t.p * 0.75); dx = 1; dy = 0; }
+      else if (t.side === 1) { x0 = w + 6; y0 = h * (0.15 + t.p * 0.75); dx = -1; dy = 0; }
+      else { x0 = w * (0.05 + t.p * 0.9); y0 = h + 6; dx = 0; dy = -1; }
+      const nx = -dy, ny = dx, sw = Math.sin(T * 1.1 + t.ph * 2) * L * 0.35;
+      const cx1 = x0 + dx * L * 0.4 + nx * sw, cy1 = y0 + dy * L * 0.4 + ny * sw, ex = x0 + dx * L - nx * sw * 0.6, ey = y0 + dy * L - ny * sw * 0.6;
+      c.strokeStyle = EK === 2 ? 'rgba(30,4,20,.92)' : 'rgba(50,6,18,.9)'; c.lineWidth = t.w * (1 + 0.15 * pul);
+      c.beginPath(); c.moveTo(x0, y0); c.quadraticCurveTo(cx1, cy1, ex, ey); c.stroke();
+      c.strokeStyle = `rgba(255,40,100,${0.25 + 0.25 * pul})`; c.lineWidth = Math.max(1, t.w * 0.25);
+      c.beginPath(); c.moveTo(x0, y0); c.quadraticCurveTo(cx1, cy1, ex, ey); c.stroke();
+      c.fillStyle = `rgba(255,90,150,${0.35 + 0.3 * pul})`; c.beginPath(); c.arc(ex, ey, t.w * 0.28, 0, 7); c.fill();
+    }
+    // 灰と胞子（ゆっくり舞い上がる）
+    for (const a of S.ash || []) {
+      const yy = ((a.y - T * a.v) % 1 + 1) % 1 * h, xx = (a.x + Math.sin(T * 0.5 + a.ph) * 0.02) * w;
+      if (a.glow) { c.fillStyle = `rgba(255,70,140,${0.35 + 0.25 * Math.sin(T * 2 + a.ph)})`; c.beginPath(); c.arc(xx, yy, a.s * 1.2, 0, 7); c.fill(); }
+      else { c.fillStyle = 'rgba(170,140,150,.38)'; c.fillRect(xx, yy, a.s, a.s); }
+    }
+    // 稲妻の瞬間、画面がわずかに赤く光る
+    if (S.bolt) { const k = 1 - (T - S.bolt.t0) / 0.28; if (k > 0) { c.fillStyle = `rgba(255,20,70,${0.08 * k})`; c.fillRect(0, 0, w, h); } }
+  }
   function fcol(fac) { return fac === 'E' ? '#ff3070' : Game.ownerCol(fac); }
   function drawFx(c, e, k, dt) {
     k = Math.max(0, Math.min(1, k));
