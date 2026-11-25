@@ -763,7 +763,12 @@ const Cinema = (() => {
     return L;
   }
 
-  return { title, stopTitle, opening, ending, eclipseArrival };
+  // タイトル・映像のために描いた銀河の絵と字幕を手放す（ゲームを始めた時。iPhone のメモリのため）
+  function release() {
+    for (const cv of galCache.values()) { try { cv.width = cv.height = 0; } catch (e) { } }
+    galCache.clear(); capClear();
+  }
+  return { title, stopTitle, opening, ending, eclipseArrival, release };
 })();
 
 // ============================================================

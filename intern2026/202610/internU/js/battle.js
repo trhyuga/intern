@@ -1303,9 +1303,19 @@ const Battle = (() => {
       view = null;
       const res = apply();
       el.classList.remove('show');
+      release();
       const fn = resolveFn; resolveFn = null;
       fn(res);
     };
+  }
+
+  // 戦いが終わったら、その戦いのためだけに描いた絵（背景の層・光輪・目・縁取り）を手放す。
+  //  Safari は参照が消えても、キャンバスの中身をすぐには放さないことがある（iPhone のメモリ不足で落ちる）
+  function release() {
+    const z = x => { if (x && x.width !== undefined) { try { x.width = x.height = 0; } catch (e) { } } };
+    if (S) { z(S.bgLayer); z(S.eclRot); z(S.eclEye); if (S.eclVig) z(S.eclVig.cv); S.bgLayer = S.eclRot = S.eclEye = S.eclVig = null; }
+    z(bg); bg = null;
+    z(cv); cv = null; ctx = null;
   }
 
   // ---------- 描く ----------

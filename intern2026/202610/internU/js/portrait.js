@@ -3,8 +3,27 @@
 //  expr: normal 通常 / angry 怒り / happy 喜び / sad 憂い / shock 驚き
 // ============================================================
 const Portrait = (() => {
-  const cache = new Map();
+  // 覚えておく数に上限をつける（iPhone のメモリ不足で落ちないように）。
+  //  大きな顔（会話・人物の詳細）と、小さな顔（一覧・作戦室など）を別々に覚える。古い物から捨てる
+  const cache = new Map(), small = new Map();
+  const BIG_MAX = 36, SMALL_MAX = 260, TW = 96, TH = 115;
   const PW = 180, PH = 216;
+  function remember(m, k, v, max) { m.set(k, v); while (m.size > max) m.delete(m.keys().next().value); return v; }
+  function recall(m, k) { const v = m.get(k); if (v !== undefined) { m.delete(k); m.set(k, v); } return v; }
+  // キャンバスの中身を手放す（Safari は参照が消えても、すぐには放さないことがある）
+  const free = cv => { try { cv.width = cv.height = 0; } catch (e) { } };
+  let thumbCv = null;
+  function toUrls(cv, wantSmall) {
+    const big = cv.toDataURL('image/jpeg', 0.9);
+    let sm = null;
+    if (wantSmall) {
+      if (!thumbCv) { thumbCv = document.createElement('canvas'); thumbCv.width = TW * 2; thumbCv.height = TH * 2; }
+      const t = thumbCv.getContext('2d'); t.imageSmoothingQuality = 'high'; t.drawImage(cv, 0, 0, thumbCv.width, thumbCv.height);
+      sm = thumbCv.toDataURL('image/jpeg', 0.88);
+    }
+    free(cv);
+    return { big, sm };
+  }
   function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   const SKINS = ['#f6dcc4', '#f0cfb0', '#e8bf98', '#d8a880', '#c28c62', '#9c6a48', '#7a5038', '#f8e4d4'];
   const HAIRS = ['#1a1418', '#2a1e1a', '#4a2e1e', '#7a4a28', '#c89858', '#e8d090', '#d8d8e0', '#8a2a22', '#283a6a', '#3a6a7a', '#f0f0f4', '#5a3a6a'];
@@ -125,7 +144,7 @@ const Portrait = (() => {
     // 縁
     c.strokeStyle = Art.hexA(f.col2, 0.7); c.lineWidth = 2; c.strokeRect(1, 1, PW - 2, PH - 2);
     c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1; c.strokeRect(3.5, 3.5, PW - 7, PH - 7);
-    return cv.toDataURL('image/png');
+    return cv;
   }
 
   let grainCv = null;
@@ -568,20 +587,37 @@ const Portrait = (() => {
     const live = typeof G !== 'undefined' && G && G.officers && G.officers[key];
     const rk = live ? (Game.isLeader(key) ? 'L' : Game.rankIdx(key)) : (FACTIONS.some(F => F.leader === key) ? 'L' : Game.rankIdx(key));
     const medals = Math.min(4, Math.floor((live ? G.officers[key].merit : initMerit(OFF[key])) / 45));
-    const k = key + ':' + expr + ':' + rk + ':' + medals;
-    if (!cache.has(k)) cache.set(k, draw(key, expr, rk));
-    return cache.get(k);
+    return get(key + ':' + expr + ':' + rk + ':' + medals, () => draw(key, expr, rk), false);
+  }
+  // 描いて、大きな顔と小さな顔を覚える。thumb のときは小さな顔を返す
+  function get(k, mk, thumb) {
+    let v = recall(thumb ? small : cache, k);
+    if (v) return v;
+    const big = !thumb && recall(cache, k);
+    if (big) return big;
+    const u = toUrls(mk(), true);
+    remember(small, k, u.sm, SMALL_MAX);
+    if (!thumb) remember(cache, k, u.big, BIG_MAX);
+    return thumb ? u.sm : u.big;
+  }
+  // 一覧・作戦室など、小さく見せる所の顔（軽い）
+  function thumb(key, expr = 'normal') {
+    if (!OFF[key]) return '';
+    const live = typeof G !== 'undefined' && G && G.officers && G.officers[key];
+    const rk = live ? (Game.isLeader(key) ? 'L' : Game.rankIdx(key)) : (FACTIONS.some(F => F.leader === key) ? 'L' : Game.rankIdx(key));
+    const medals = Math.min(4, Math.floor((live ? G.officers[key].merit : initMerit(OFF[key])) / 45));
+    return get(key + ':' + expr + ':' + rk + ':' + medals, () => draw(key, expr, rk), true);
   }
   // 一般の将兵（名のない艦長など）。seed ごとに決まった顔
   function generic(seed, fac, expr = 'normal') {
-    const k = 'gen:' + seed + ':' + expr;
-    if (!cache.has(k)) {
+    return get('gen:' + seed + ':' + expr, () => {
       const r = Art.srand(hash(seed));
       const fem = r() < 0.35, t = r();
       const S0 = { name: seed, fac0: fac, female: fem, age: 25 + Math.floor(r() * 30), pers: '沈着', tags: [!fem && t < 0.3 ? 'beard' : t > 0.82 ? 'scar' : ''].filter(Boolean) };
-      cache.set(k, draw('gen' + seed, expr, 1, S0));
-    }
-    return cache.get(k);
+      return draw('gen' + seed, expr, 1, S0);
+    }, false);
   }
-  return { url, generic };
+  // メモリが足りない時など：覚えた顔をすべて捨てる（必要になれば描き直す）
+  function purge() { cache.clear(); small.clear(); if (thumbCv) { free(thumbCv); thumbCv = null; } }
+  return { url, thumb, generic, purge };
 })();

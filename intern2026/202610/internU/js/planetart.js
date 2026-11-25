@@ -230,7 +230,9 @@ const PlanetArt = (() => {
     const vg = x.createRadialGradient(w / 2, h / 2, h * 0.4, w / 2, h / 2, w * 0.65);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
     x.fillStyle = vg; x.fillRect(0, 0, w, h);
-    return cv.toDataURL('image/jpeg', 0.86);
+    const u = cv.toDataURL('image/jpeg', 0.86);
+    cv.width = cv.height = 0;   // 中身を手放す
+    return u;
   }
 
   function url(p, w = 340, h = 150) {
@@ -239,5 +241,5 @@ const PlanetArt = (() => {
     if (!u) { try { u = draw(p, w, h); } catch (e) { u = ''; } if (cache.size > 24) cache.clear(); cache.set(key, u); }
     return u;
   }
-  return { url };
+  return { url, purge: () => cache.clear() };
 })();

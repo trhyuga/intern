@@ -4,7 +4,7 @@
 //  機関の炎は毎フレーム描く（揺らぎ・推力で長さが変わる）
 // ============================================================
 const ShipArt = (() => {
-  const cache = new Map();
+  const cache = new Map(), PX_MAX = 6e6; let px = 0;
   const RES = 2;   // 覚えておく絵の解像度（2倍で描いて縮めて貼る）
   const hex2 = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
   const mix = (a, b, k) => { const A = hex2(a), B = hex2(b); return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(',')})`; };
@@ -367,7 +367,7 @@ const ShipArt = (() => {
     const Lb = Math.max(6, Math.round(L / 2) * 2);
     const key = `${hull}|${Lb}|${col}|${white ? 1 : 0}`;
     let cv = cache.get(key);
-    if (cv) return cv;
+    if (cv) { cache.delete(key); cache.set(key, cv); return cv; }   // 使った物を新しい側へ
     const u = Lb * 0.5 * RES, S = Math.ceil(u * (hull === 'spore' || hull === 'maw' || hull === 'crown' ? 3 : 2.6));
     cv = document.createElement('canvas'); cv.width = cv.height = S;
     const c = cv.getContext('2d');
@@ -375,10 +375,15 @@ const ShipArt = (() => {
     if (hull === 'sat') drawSat(c, u, col, white);
     else if (hull === 'spore' || hull === 'maw' || hull === 'crown') drawEclipse(c, hull, u, white);
     else drawHuman(c, hull, u, col, white);
-    if (cache.size > 600) cache.clear();
-    cache.set(key, cv);
+    cache.set(key, cv); px += S * S;
+    // 覚えておく絵の画素の合計に上限（約24MB）。古い物から手放す（iPhone のメモリ不足で落ちないように）
+    while ((px > PX_MAX || cache.size > 500) && cache.size > 1) {
+      const [k0, old] = cache.entries().next().value; cache.delete(k0);
+      px -= old.width * old.height; old.width = old.height = 0;
+    }
     return cv;
   }
+  function purge() { for (const v of cache.values()) v.width = v.height = 0; cache.clear(); px = 0; }
   // 機関の炎（毎フレーム。重ねて明るく）
   function flames(c, hull, u, t, thrust, eclipse) {
     const list = ENG[hull] || [];
@@ -410,5 +415,5 @@ const ShipArt = (() => {
     if (opt.hit) { c.globalAlpha = Math.min(1, opt.hitK ?? 0.8); c.globalCompositeOperation = 'lighter'; const w = sprite(hull, L, col, true); c.drawImage(w, -S / 2, -S / 2, S, S); }
     c.restore();
   }
-  return { draw, sprite, ENG, RES };
+  return { draw, sprite, ENG, RES, purge };
 })();

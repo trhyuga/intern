@@ -29,6 +29,7 @@ const TalkFX = (() => {
     const key = kind + W + 'x' + H + dpr + col;
     if (key === baseKey && base) return;
     baseKey = key;
+    if (base) base.width = base.height = 0;
     base = document.createElement('canvas');
     base.width = W * dpr; base.height = H * dpr;
     const b = base.getContext('2d');
@@ -278,6 +279,8 @@ const TalkFX = (() => {
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
     if (cv && cv.parentNode) cv.parentNode.removeChild(cv);
+    if (cv) cv.width = cv.height = 0;   // 中身を手放す（Safari はすぐに放さないことがある）
+    if (base) base.width = base.height = 0;
     cv = null; ctx = null; base = null; baseKey = ''; parts = []; W = H = 0;
   }
   return { start, stop };

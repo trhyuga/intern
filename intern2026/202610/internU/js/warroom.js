@@ -120,7 +120,7 @@ const WarRoom = (() => {
     if (e.k === 'say') {
       const fac = G.officers[e.who] && typeof G.officers[e.who].fac === 'number' ? FACTIONS[G.officers[e.who].fac].col : '#8aa0c0';
       const st = G.officers[e.who] && G.officers[e.who].st === 'act' ? `<span class="rk ${Game.isLeader(e.who) ? 'lord' : Game.rankIdx(e.who) >= 6 ? 'gen' : ''}">${Game.rankName(e.who)}</span>` : '';
-      wrap.innerHTML = `<img src="${Portrait.url(e.who, e.expr)}" style="border-color:${fac}"><div class="wr-b" style="--c:${fac}"><b>${st}${OFF[e.who].name}</b><p></p></div>`;
+      wrap.innerHTML = `<img src="${Portrait.thumb(e.who, e.expr)}" style="border-color:${fac}"><div class="wr-b" style="--c:${fac}"><b>${st}${OFF[e.who].name}</b><p></p></div>`;
       const p = wrap.querySelector('p');
       if (typing) { let n = 0; const tx = e.text; const h = setInterval(() => { n += 2; p.textContent = tx.slice(0, n); if (n >= tx.length) clearInterval(h); }, 24); wrap._h = h; }
       else p.textContent = e.text;

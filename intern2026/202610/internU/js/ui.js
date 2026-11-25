@@ -25,7 +25,7 @@ const UI = (() => {
     let el = document.getElementById('vbub');
     if (!el) { el = document.createElement('div'); el.id = 'vbub'; el.className = 'vbub'; document.getElementById('app').appendChild(el); el.onclick = () => el.classList.remove('show'); }
     const fac = G.officers[k] && typeof G.officers[k].fac === 'number' ? FACTIONS[G.officers[k].fac].col : '#8aa0c0';
-    el.innerHTML = `<img src="${Portrait.url(k, expr)}" style="border-color:${fac}"><div><b>${OFF[k].name}</b><p>${text}</p></div>`;
+    el.innerHTML = `<img src="${Portrait.thumb(k, expr)}" style="border-color:${fac}"><div><b>${OFF[k].name}</b><p>${text}</p></div>`;
     el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
     clearTimeout(el._h); el._h = setTimeout(() => el.classList.remove('show'), 2600 + text.length * 45);
   }
@@ -123,7 +123,7 @@ const UI = (() => {
       const p = G.planets[fl.at];
       const tgt = fl.route ?? fl.dest;
       q.innerHTML = `<div class="q-card" style="--c:${Game.ownerCol(fl.fac)}">
-        ${fl.cmd ? `<img src="${Portrait.url(fl.cmd)}">` : '<div class="q-em">⚓</div>'}
+        ${fl.cmd ? `<img src="${Portrait.thumb(fl.cmd)}">` : '<div class="q-em">⚓</div>'}
         <div class="q-info"><b>${fl.fac === 'E' ? '蝕の群れ' : Game.fleetName(fl)}</b><small>${Game.ownerShort(fl.fac)}・${p.name}・${fl.ships.length}隻・戦力 ${num(Game.fleetPower(fl))}${mine && tgt !== null && tgt !== undefined ? ` → ${G.planets[tgt].name}` : ''}</small></div>
         <div class="q-btns">${mine ? `<button class="btn small primary" data-q="move">移動</button><button class="btn small" data-q="fleet">詳細</button>` : `<button class="btn small" data-q="planet">星を見る</button>`}</div></div>`;
       q.classList.add('show'); bindQuick(); return;
@@ -160,7 +160,7 @@ const UI = (() => {
     const role = roleText(k);
     const rk = o && o.st === 'act' ? `<span class="rk ${Game.isLeader(k) ? 'lord' : Game.rankIdx(k) >= 6 ? 'gen' : ''}">${Game.rankName(k)}</span>` : '';
     const fcol = o && o.fac !== null && o.fac !== undefined ? Game.ownerCol(o.fac) : '#8a93a6';
-    return `<div class="ofc" data-ofc="${k}" style="--fc:${fcol}"><img src="${Portrait.url(k)}"><div class="ofc-i"><b>${rk}${S.name}</b><small>${S.epi}・${S.pers}${role ? '・' + role : ''}</small>
+    return `<div class="ofc" data-ofc="${k}" style="--fc:${fcol}"><img src="${Portrait.thumb(k)}"><div class="ofc-i"><b>${rk}${S.name}</b><small>${S.epi}・${S.pers}${role ? '・' + role : ''}</small>
       <div class="st"><span>統${S.ldr}</span><span>戦${S.tac}</span><span>政${S.pol}</span><span>交${S.dip}</span><span>技${S.sci}</span></div></div>${extra}</div>`;
   }
   function roleText(k) {
@@ -386,7 +386,7 @@ const UI = (() => {
   function tabFleets(body) {
     const list = G.fleets.filter(f => f.fac === G.player);
     const docks = G.planets.filter(p => p.owner === G.player && p.dock.length);
-    body.innerHTML = (list.length ? list.map(fl => { const t = fl.route ?? fl.dest; return `<div class="fl-row" data-f="${fl.id}" style="--c:${FACTIONS[G.player].col}">${fl.cmd ? `<img src="${Portrait.url(fl.cmd)}">` : ''}<div><b>${Game.fleetName(fl)}</b><small>${G.planets[fl.at].name}${t !== null && t !== undefined ? ' → ' + G.planets[t].name : ''}・${fl.ships.length}隻・戦力${num(Game.fleetPower(fl))}〈${Gloss.power(Game.fleetPower(fl))}〉・${Battle.FORMS[fl.form].name}</small></div></div>`; }).join('') : '<p class="dim">艦隊がありません。</p>')
+    body.innerHTML = (list.length ? list.map(fl => { const t = fl.route ?? fl.dest; return `<div class="fl-row" data-f="${fl.id}" style="--c:${FACTIONS[G.player].col}">${fl.cmd ? `<img src="${Portrait.thumb(fl.cmd)}">` : ''}<div><b>${Game.fleetName(fl)}</b><small>${G.planets[fl.at].name}${t !== null && t !== undefined ? ' → ' + G.planets[t].name : ''}・${fl.ships.length}隻・戦力${num(Game.fleetPower(fl))}〈${Gloss.power(Game.fleetPower(fl))}〉・${Battle.FORMS[fl.form].name}</small></div></div>`; }).join('') : '<p class="dim">艦隊がありません。</p>')
       + (docks.length ? `<h3>駐留艦のある星</h3>${docks.map(p => `<div class="pl-row" data-p="${p.id}"><div><b>${p.name}</b><small>駐留 ${p.dock.length}隻</small></div></div>`).join('')}` : '');
     $$('[data-f]', body).forEach(el => el.onclick = () => { const fl = G.fleets.find(x => x.id === +el.dataset.f); StarMap.focus(fl.at); StarMap.selFleet = fl; openFleet(fl); });
     $$('[data-p]', body).forEach(el => el.onclick = () => openPlanet(+el.dataset.p));
@@ -457,7 +457,7 @@ const UI = (() => {
         ${ties.length ? `<h3>関係</h3>${ties.map(t => {
           const ot = People.other(t, k), so = G.officers[ot], stg = People.state(t).stage;
           const where = !so ? '' : so.st === 'dead' ? '故人' : so.st === 'cap' ? '捕虜' : so.st === 'free' ? '在野' : so.fac === G.player ? '自国' : Game.isMajor(so.fac) ? FACTIONS[so.fac].short : '小勢力';
-          return `<div class="tie ${People.WARM.has(t.kind) ? 'bond' : t.kind}" data-ofc2="${ot}"><img src="${Portrait.url(ot)}"><div><b>${OFF[ot].name}<em class="gl">${where}</em></b><small><b>${People.KIND_NAME[t.kind] || ''}・${t.label}</b>${t.talk ? `<span class="stg">${'◆'.repeat(stg)}${'◇'.repeat(3 - stg)}</span>` : ''}：${t.desc}</small></div></div>`;
+          return `<div class="tie ${People.WARM.has(t.kind) ? 'bond' : t.kind}" data-ofc2="${ot}"><img src="${Portrait.thumb(ot)}"><div><b>${OFF[ot].name}<em class="gl">${where}</em></b><small><b>${People.KIND_NAME[t.kind] || ''}・${t.label}</b>${t.talk ? `<span class="stg">${'◆'.repeat(stg)}${'◇'.repeat(3 - stg)}</span>` : ''}：${t.desc}</small></div></div>`;
         }).join('')}<p class="note">◆は二人の物語の進み具合。絆・想い人・家族・師弟は同じ艦隊や戦場で力を高め合い、好敵手は戦場で燃え、遺恨は同じ国にいると忠誠を損ねます。</p>` : ''}
         ${pf && pf.arc && mine ? `<p class="note">${S.name}の物語：${pf.arc.filter(ev => G.evDone[ev.id]).length} / ${pf.arc.length} 話</p>` : ''}
         ${mine && G.facs[G.player].leader !== k ? `<div class="row"><button class="btn" data-a="reward">褒美を与える（100）</button><button class="btn" data-a="relieve">役目を解く</button></div>` : ''}
@@ -886,7 +886,7 @@ const UI = (() => {
         const pols = Object.keys(Staff.POLICIES).filter(p => !Staff.POLICIES[p].needEclipse || G.eclipse.arrived);
         body.innerHTML = `<p class="note">各方針への向き不向き（S〜D）。君主の気質も少し加わっています。</p>` + cands.map(k => {
           const g = Staff.grades(k);
-          return `<div class="ofc sp" data-k="${k}"><img src="${Portrait.url(k)}"><div class="ofc-i"><b><span class="rk">${Game.rankName(k)}</span>${OFF[k].name}</b><small>${OFF[k].epi}・${OFF[k].pers}</small>
+          return `<div class="ofc sp" data-k="${k}"><img src="${Portrait.thumb(k)}"><div class="ofc-i"><b><span class="rk">${Game.rankName(k)}</span>${OFF[k].name}</b><small>${OFF[k].epi}・${OFF[k].pers}</small>
             <div class="gr">${pols.map(p => `<span>${Staff.POLICIES[p].icon}${gradeBadge(g[p])}</span>`).join('')}</div></div><button class="btn small primary">選ぶ</button></div>`;
         }).join('');
         $$('.sp', body).forEach(el => el.onclick = () => { Sound.se('click'); sheetStack.pop(); drawSheet(); res(el.dataset.k); });
@@ -935,7 +935,7 @@ const UI = (() => {
     if (!was) { let m = false; try { m = localStorage.getItem('seisou_wr_mini') === '1'; } catch (x) { } wr.classList.toggle('mini', m); }
     wr.classList.add('show');
     const head = $('.wr-head', wr);
-    head.innerHTML = `<img src="${Portrait.url(s.key)}"><div class="ab-i"><b>作戦室｜参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}</b><small>${Game.dateStr()}・${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}・${esc(Staff.monthLine())}</small></div>
+    head.innerHTML = `<img src="${Portrait.thumb(s.key)}"><div class="ab-i"><b>作戦室｜参謀 ${shortName(OFF[s.key])}：${P.icon}${P.name} ${gradeBadge(Staff.gradeOf(s.score))}</b><small>${Game.dateStr()}・${s.until ? `あと${Math.max(0, s.until - G.turn)}か月` : '止めるまで'}・${esc(Staff.monthLine())}</small></div>
       <div class="ab-b"><button data-ab="mini" title="作戦室をたたむ／ひろげる">${wr.classList.contains('mini') ? '▴' : '▾'}</button><button data-ab="speed">${['ゆっくり', 'ふつう', '速い', '超速'][autoSpeed]}</button><button data-ab="skip">⏭</button><button data-ab="stop" class="stop">■</button></div>`;
     WarRoom.setSpeed(autoSpeed);
     head.querySelector('[data-ab=speed]').onclick = e => { e.stopPropagation(); autoSpeed = (autoSpeed + 1) % 4; try { localStorage.setItem('seisou_autospeed', autoSpeed); } catch (x) { } drawAutobar(); };
@@ -1012,7 +1012,7 @@ const UI = (() => {
     const el = $('#selList');
     el.innerHTML = FACTIONS.map(F => `<div class="fc" data-f="${F.id}" style="--c:${F.col};--c2:${F.col2}">
       <div class="fc-top"><canvas width="72" height="72"></canvas><div><h3>${F.name}</h3><p class="motto">「${F.motto}」</p></div></div>
-      <div class="fc-mid"><img src="${Portrait.url(F.leader)}"><div><b>${OFF[F.leader].name}</b><small>${OFF[F.leader].epi}</small><p>${F.desc}</p></div></div>
+      <div class="fc-mid"><img src="${Portrait.thumb(F.leader)}"><div><b>${OFF[F.leader].name}</b><small>${OFF[F.leader].epi}</small><p>${F.desc}</p></div></div>
       <div class="fc-bot"><span>難しさ ${F.diff}</span><span>${F.bonusText}</span><span>${F.style}</span></div></div>`).join('');
     $$('.fc', el).forEach(c => {
       const F = FACTIONS[+c.dataset.f];
@@ -1026,6 +1026,7 @@ const UI = (() => {
   let starting = false;
   // 前のゲームの画面の状態（移動の指示・作戦室・参謀の下書き）を消す
   function resetView() {
+    Cinema.release(); Memory.trim();
     StarMap.moveMode = null; StarMap.selFleet = null; StarMap.raidFocus = null;
     staffDraft = null;
     WarRoom.clearQueue();
