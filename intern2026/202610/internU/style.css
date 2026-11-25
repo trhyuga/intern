@@ -270,7 +270,8 @@ small { font-size: 11px; }
 .t-por img { width: min(62vw, 260px); border-radius: 14px; border: 1px solid var(--c); box-shadow: 0 0 40px color-mix(in srgb, var(--c) 50%, transparent); display: block; }
 @keyframes porin { from { opacity: 0; transform: translate(-50%, 16px); } }
 .t-box { position: absolute; left: 10px; right: 10px; bottom: calc(14px + var(--safe-b)); min-height: 160px; background: linear-gradient(#0c1630f2, #060b18f2); border: 1px solid var(--c); border-radius: 14px; padding: 14px 16px 26px; box-shadow: 0 0 24px #000c; }
-.t-box.narr { border-color: #ffffff40; text-align: center; display: flex; align-items: center; justify-content: center; }
+/* 地の文：1文字ずつ出すので、中央揃えにしない（真ん中から左右に広がって読みにくい）。左上から読む順に */
+.t-box.narr { border-color: #ffffff40; text-align: left; display: block; }
 .t-box.narr .t-text { font-family: var(--mincho); font-size: 17px; }
 .t-name { font-family: var(--mincho); font-weight: 800; font-size: 17px; color: #fff; margin-bottom: 6px; }
 .t-name small { font-weight: 400; color: var(--gold); margin-left: 8px; font-size: 11px; }
