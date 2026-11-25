@@ -122,8 +122,8 @@ const WarRoom = (() => {
       const st = G.officers[e.who] && G.officers[e.who].st === 'act' ? `<span class="rk ${Game.isLeader(e.who) ? 'lord' : Game.rankIdx(e.who) >= 6 ? 'gen' : ''}">${Game.rankName(e.who)}</span>` : '';
       wrap.innerHTML = `<img src="${Portrait.thumb(e.who, e.expr)}" style="border-color:${fac}"><div class="wr-b" style="--c:${fac}"><b>${st}${OFF[e.who].name}</b><p></p></div>`;
       const p = wrap.querySelector('p');
-      if (typing) { let n = 0; const tx = e.text; const h = setInterval(() => { n += 2; p.textContent = tx.slice(0, n); if (n >= tx.length) clearInterval(h); }, 24); wrap._h = h; }
-      else p.textContent = e.text;
+      if (typing) { const ty = Typeset.type(p, e.text, 2, 24); wrap._h = ty.h; }
+      else { const T = Typeset.plain(p, e.text); wrap._fit = T.fit; }
     } else if (e.k === 'order') wrap.innerHTML = `<span class="wr-i">▶ 命令</span><span>${esc(e.text)}</span>`;
     else if (e.k === 'result') wrap.innerHTML = `<span class="wr-i">${e.ok ? '✔ 結果' : '✖ 結果'}</span><span>${esc(e.text)}</span>`;
     else if (e.k === 'raid') {
@@ -147,7 +147,7 @@ const WarRoom = (() => {
     for (const e of items) {
       if (!on()) break;
       const el = render(e, !skipAll && speedIdx < 2);
-      list.appendChild(el);
+      list.appendChild(el); if (el._fit) el._fit();
       while (list.children.length > 160) list.removeChild(list.firstChild);
       list.scrollTop = list.scrollHeight;
       if (e.k === 'raid' && G.planets[e.from] && G.planets[e.to]) { StarMap.raidFocus = { from: e.from, to: e.to }; StarMap.focusPair(e.from, e.to); StarMap.selPlanet = e.to; }
@@ -169,7 +169,7 @@ const WarRoom = (() => {
     const list = document.querySelector('#warroom .wr-list');
     if (!list) return;
     list.innerHTML = '';
-    hist().slice(-80).forEach(e => list.appendChild(render(e, false)));
+    hist().slice(-80).forEach(e => { const el = render(e, false); list.appendChild(el); if (el._fit) el._fit(); });
     list.scrollTop = list.scrollHeight;
   }
   function clearQueue() { queue = []; }

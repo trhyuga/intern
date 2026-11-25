@@ -657,13 +657,13 @@ const UI = (() => {
           ${narr ? '' : `<div class="t-por" style="--c:${fc}"><img src="${Portrait.url(who, ex || 'normal')}"></div>`}
           <div class="t-box ${narr ? 'narr' : ''}" style="--c:${fc}">${narr ? '' : `<div class="t-name">${S.name}<small>${S.epi}</small></div>`}<div class="t-text"></div><div class="t-next">▼</div></div>`;
         const tt = $('.t-text', el);
-        let n = 0; full = false;
-        clearInterval(typing);
-        typing = setInterval(() => { n++; tt.textContent = text.slice(0, n); if (n % 3 === 0) Sound.se('type'); if (n >= text.length) { clearInterval(typing); full = true; } }, 28);
-        tt._full = text;
+        full = false;
+        if (typing) typing.stop();
+        // 先に全文で折り返しを決めて、1文字ずつ見せる（改行のあとに1〜2文字だけ残る行を作らない）
+        typing = Typeset.type(tt, text, 1, 28, n => { if (n % 3 === 0) Sound.se('type'); }, () => { full = true; });
       };
       const finish = () => {
-        clearInterval(typing);
+        if (typing) typing.stop();
         if (choices && choices.length) {
           el.querySelectorAll('canvas.talkfx').forEach(cv => cv.remove());   // 動く背景は TalkFX が付け直す（写しを残さない）
           el.innerHTML += `<div class="t-choices">${choices.map((c, k) => `<button class="btn" data-c="${k}">${c.t}</button>`).join('')}</div>`;
@@ -675,7 +675,7 @@ const UI = (() => {
       };
       el.onclick = () => {
         const tt = $('.t-text', el);
-        if (!full && tt) { clearInterval(typing); tt.textContent = tt._full; full = true; return; }
+        if (!full && tt && typing) { typing.finish(); full = true; return; }
         Sound.se('page');
         i++;
         if (i >= scenes.length) finish(); else draw();

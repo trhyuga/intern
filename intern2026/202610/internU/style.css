@@ -770,3 +770,7 @@ h3.seal { color: #ff7aa0; }
 /* 士官の顔：所属する国の色で縁を光らせる */
 .ofc[style*="--fc"] > img { box-shadow: 0 0 0 2px var(--fc), 0 0 10px color-mix(in srgb, var(--fc) 55%, transparent); }
 .ofc-big[style*="--fc"] > img { box-shadow: 0 0 0 2px #0a0d18, 0 0 0 4px var(--fc), 0 0 22px color-mix(in srgb, var(--fc) 50%, transparent); }
+/* 文の組み方（Typeset）：段落ごとの塊。まだ出ていない字は透明に置いて、折り返しを先に決める */
+.ts-p { display: block; }
+.ts-rest { visibility: hidden; }
+.cine-cap .cap .ts-p { margin-left: auto; margin-right: auto; }

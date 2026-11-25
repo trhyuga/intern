@@ -40,12 +40,14 @@ const Cinema = (() => {
     while (capUsed.has(key)) key = s + '#' + (++n);
     capUsed.add(key);
     let d = capPool.get(key);
-    if (!d) { d = document.createElement('div'); d.className = 'cap'; d.textContent = s; capEl.appendChild(d); capPool.set(key, d); }
+    if (!d) { d = document.createElement('div'); d.className = 'cap'; capEl.appendChild(d); capPool.set(key, d); d._T = Typeset.set(d, s); d._T.all(); }
     const ls = opt.ls || 0, glow = opt.glow || 'rgba(120,180,255,.8)', blur = opt.blur ?? 12;
     const clip = opt.clip !== undefined ? `clip-path:inset(-40% ${Math.max(0, (1 - opt.clip) * 100)}% -40% -10%);-webkit-clip-path:inset(-40% ${Math.max(0, (1 - opt.clip) * 100)}% -40% -10%);` : '';
     d.style.cssText = `left:${x}px;top:${y}px;font-size:${size}px;opacity:${Math.min(1, a)};color:${opt.col || '#eef4ff'};font-weight:${opt.w || 600};`
       + `letter-spacing:${ls}px;padding-left:${ls}px;text-shadow:0 0 ${blur}px ${glow},0 0 ${Math.round(blur / 3)}px ${glow},0 1px 3px #000;`
       + (maxW ? `width:${Math.round(maxW)}px;white-space:normal;` : 'white-space:nowrap;') + clip;
+    // 幅の決まった字幕は、最初に見せる時に一度だけ組み直す（改行のあとに1〜2文字だけ残る行を作らない）
+    if (maxW && !d._fitted) { d._fitted = true; d._T.fit(true); }
   }
   function textC(c, s, x, y, size, a, opt = {}) { putCap(s, x, y, size, a, opt, null); }
   function textBlock(c, s, x, y, size, a, maxW, opt = {}) { putCap(s, x, y, size, a, opt, maxW || null); }
