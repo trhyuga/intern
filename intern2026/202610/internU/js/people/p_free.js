@@ -4,6 +4,9 @@
 //  在野の者は、どの国に仕えても話が成り立つように {faction} {honor} {leader} を使う。
 //  ノルトリヒトの旧家（ユーリ・ドミトリ・ガルム・シオン）、ドラクマの坑夫の件（ザハロフ・サラ）、
 //  ゲヘナの眠り人（ゼロ・ノア）、カテドラルの機体（イヴ）は、arc と関係を通して少しずつ明かす。
+//  小勢力の人物（rico anna pedro / sophos mina alan / crow raven jack）の arc は、js/people/minors.js の物語の列
+//  （mn_m0〜mn_m2）の出来事を after や flag で条件にし、選択の flag（rico_stay anna_white pedro_hold sophos_open
+//  mina_shield mina_weapon alan_retreat crow_banner raven_solo jack_oath）が列の分岐を変える。
 
 // ===================== ポルト・リベラ交易港 =====================
 PEOPLE.add({
@@ -35,23 +38,25 @@ PEOPLE.add({
       death:   ['桟橋の灯を……消すなよ。'],
     },
     arc: [
-      { id: 'rico_1', title: '港の帳簿', bg: 'palace', cond: { turn: 6 },
+      { id: 'rico_1', title: '港の帳簿', bg: 'palace', cond: { turn: 6, after: 'mn0_01' },
         scenes: [
           ['narr', '', 'リコ・バルディーニが、分厚い革の帳簿を卓に置いた。表紙は潮で白く焼けている。'],
           ['rico', 'normal', 'ポルト・リベラに入った船の記録だ。三十年分。どの国の船が、何を積んで、どこへ行ったか。'],
+          ['rico', 'normal', '港の評議会は、盟を結んだ国にこれを差し出せと言う。中立の値段を、盟約の値段に替えろとな。'],
           ['@pol', 'shock', 'これは……各国の補給の動きが、すべて読めます。'],
           ['rico', 'normal', 'そうだ。港が中立でいられたのは、誰にもこれを売らなかったからさ。'],
           ['rico', 'sad', '{honor}。わしは今、これを売るべきか迷っておる。港の中立と、{faction}への忠義と、どちらに値をつけるかをな。'],
         ],
         choices: [
-          { t: '帳簿を使う（資金 +250・リコの忠誠が下がる・交易港の信を損ねる）', fx: { funds: 250, loyal: { rico: -10 }, party: { trade: 4 } },
+          { t: '帳簿を使う（資金 +250・リコの忠誠が下がる・交易港の信を損ねる）', fx: { funds: 250, loyal: { rico: -10 }, party: { trade: 4 }, flag: 'rico_sold' },
             after: [['rico', 'sad', '……分かった。わしは今日、港の掟を一つ破った。'], ['rico', 'normal', '覚えておいてくれ、{honor}。一度売った物は、二度と買い戻せん。']] },
           { t: '帳簿は港のものだと返す（リコの忠誠 +15・政治 +1）', fx: { loyal: { rico: 15 }, stat: { rico: { pol: 1 } }, flag: 'rico_ledger' },
             after: [['rico', 'happy', 'ははっ……あんた、商人には向かんな。だが、港の連中は向いとると言うだろうよ。'], ['rico', 'normal', 'この恩は帳簿には書かん。わしの胸に書いておく。']] },
         ] },
-      { id: 'rico_2', title: '三十年前の桟橋', bg: 'palace', cond: { turn: 26, after: 'rico_1' },
+      { id: 'rico_2', title: '三十年前の桟橋', bg: 'palace', cond: { turn: 26, after: 'rico_1', anyFlag: ['mn0_watch', 'mn0_insure'] },
         scenes: [
-          ['narr', '', '酒の入ったリコが、珍しく昔の話を始めた。'],
+          ['narr', '', '外の航路で、港の船が帰らぬ夜が続いていた。酒の入ったリコが、珍しく昔の話を始めた。'],
+          ['rico', 'sad', '帰らぬ船の名を帳簿から消すたびに、思い出す男がおる。'],
           ['rico', 'normal', 'わしは港の荷揚げ場で育った。親の顔も知らん。拾ってくれたのは、セラという船長でな。'],
           ['rico', 'normal', '腕のいい男だった。帝国と共和国の戦の最中、どちらの封鎖も平気で抜けた。'],
           ['rico', 'sad', '……だが、あの男が両方の国を怒らせたせいで、港ごと焼かれかけた。'],
@@ -60,18 +65,18 @@ PEOPLE.add({
           ['rico', 'sad', '一番大事な物さ。それ以来、わしは港の灯を一晩も消したことがない。償いのつもりでな。'],
         ],
         fx: { loyal: { rico: 5 } } },
-      { id: 'rico_3', title: '桟橋の灯', bg: 'space', cond: { turn: 48, after: 'rico_2' },
+      { id: 'rico_3', title: '桟橋の灯', bg: 'space', cond: { turn: 48, after: 'rico_2', anyFlag: ['mn0_exiles', 'mn0_turned', 'mn0_partner', 'mn0_customs', 'mn0_smuggle', 'mn0_fair', 'mn0_courted', 'mn0_aloof'] },
         scenes: [
-          ['narr', '', 'ポルト・リベラから、港の古株たちの連名で書状が届いた。'],
+          ['narr', '', 'ポルト・リベラから、評議会の古株たちの連名で書状が届いた。'],
           ['rico', 'normal', '港の連中が、わしに戻って来いと言っておる。跡を継ぐ者がおらんとな。'],
           ['rico', 'sad', '笑わせる。わしは港を守るために、人を一人売った男だぞ。'],
           ['@leader', 'normal', 'それでも、港の者たちはおぬしを呼んでいる。'],
           ['rico', 'normal', '……{honor}。わしの残りの値打ちを、どこで使うか決めてくれんか。'],
         ],
         choices: [
-          { t: '港と{faction}の橋渡しを任せる（資金 +300・通商派が伸びる）', fx: { funds: 300, party: { trade: 6 }, loyal: { rico: 10 } },
+          { t: '港と{faction}の橋渡しを任せる（資金 +300・通商派が伸びる）', fx: { funds: 300, party: { trade: 6 }, loyal: { rico: 10 }, flag: 'rico_bridge' },
             after: [['rico', 'happy', '橋渡しか。いい言葉だ。港の桟橋も、最初はただの板切れだった。']] },
-          { t: '{faction}に残ってくれと頼む（交渉 +2・リコの忠誠 +20）', fx: { stat: { rico: { dip: 2 } }, loyal: { rico: 20 } },
+          { t: '{faction}に残ってくれと頼む（交渉 +2・リコの忠誠 +20・港の灯は若い者に）', fx: { stat: { rico: { dip: 2 } }, loyal: { rico: 20 }, flag: 'rico_stay' },
             after: [['rico', 'sad', '……物好きな主だ。わしのような古狸に、まだ値をつけるとはな。'], ['rico', 'happy', 'よかろう。港の灯は若い者に任せる。わしは、ここの灯を守ろう。']] },
         ] },
     ],
@@ -105,7 +110,7 @@ PEOPLE.add({
       death:   ['帆を……たたむのは、まだ早いのにな……'],
     },
     arc: [
-      { id: 'anna_1', title: '旗のない船', bg: 'bridge', cond: { turn: 7 },
+      { id: 'anna_1', title: '旗のない船', bg: 'bridge', cond: { turn: 7, after: 'mn0_01' },
         scenes: [
           ['@mil', 'angry', 'セラ船長！ 隊列を崩すなと何度言えば分かる！'],
           ['anna', 'normal', '隊列通りに進んでたら、敵の網にまっすぐ突っ込んでたよ。あたしが抜けたから、穴が見えたんだ。'],
@@ -119,9 +124,9 @@ PEOPLE.add({
           { t: '遊撃を任せる（戦術 +2・アンナの忠誠 +10）', fx: { stat: { anna: { tac: 2 } }, loyal: { anna: 10 } },
             after: [['anna', 'happy', 'さすが、話が分かる！ その代わり、穴は必ず見つけてくるよ。']] },
         ] },
-      { id: 'anna_2', title: '父の六分儀', bg: 'space', cond: { turn: 24, after: 'anna_1' },
+      { id: 'anna_2', title: '父の六分儀', bg: 'space', cond: { turn: 24, after: 'anna_1', anyFlag: ['mn0_watch', 'mn0_insure'] },
         scenes: [
-          ['narr', '', '古い航路の残骸を調べていた部隊から、一隻の小型船の記録が上がってきた。'],
+          ['narr', '', '帰らぬ船を探す港の見回りに加わっていた部隊から、古い航路の残骸に眠っていた小型船の記録が上がってきた。'],
           ['anna', 'shock', '……この船名。親父の船だ。'],
           ['anna', 'normal', '親父は封鎖破りの最中に、どこかの国の艦に沈められたって聞いてた。'],
           ['anna', 'shock', 'でも、この記録……沈む前の日に、ポルト・リベラの管制と通信してる。「約束の座標で待つ」って。'],
@@ -129,7 +134,7 @@ PEOPLE.add({
           ['narr', '', 'アンナは六分儀を強く握りしめた。その問いの答えを知る者は、ひとりしか思い浮かばなかった。'],
         ],
         fx: { flag: 'anna_log' } },
-      { id: 'anna_3', title: '自由の帆', bg: 'bridge', cond: { turn: 46, after: 'anna_2' },
+      { id: 'anna_3', title: '自由の帆', bg: 'bridge', cond: { turn: 46, after: 'anna_2', anyFlag: ['mn0_exiles', 'mn0_turned', 'mn0_partner', 'mn0_customs', 'mn0_smuggle', 'mn0_fair', 'mn0_courted', 'mn0_aloof'] },
         scenes: [
           ['anna', 'normal', '{honor}。あたし、ずっと思ってたんだ。旗を揚げたら、自由じゃなくなるって。'],
           ['anna', 'normal', 'でも、ここの連中と飛んでるうちに分かった。誰かと並んで飛ぶのも、悪くない。'],
@@ -137,9 +142,9 @@ PEOPLE.add({
           ['@leader', 'normal', 'ならば、その帆に何を描く。'],
         ],
         choices: [
-          { t: '{faction}の紋を描く（アンナの忠誠 +20・武功 +4）', fx: { loyal: { anna: 20 }, merit: { anna: 4 } },
+          { t: '{faction}の紋を描く（アンナの忠誠 +20・武功 +4）', fx: { loyal: { anna: 20 }, merit: { anna: 4 }, flag: 'anna_crest' },
             after: [['anna', 'happy', '似合うかな、あたしの船に。……うん、似合う。']] },
-          { t: '帆は白いままでいいと言う（交渉 +2・自由同盟と交易港の心証が良くなる）', fx: { stat: { anna: { dip: 2 } }, trust: { 4: 8 }, loyal: { anna: 10 } },
+          { t: '帆は白いままでいいと言う（交渉 +2・自由同盟と交易港の心証が良くなる）', fx: { stat: { anna: { dip: 2 } }, trust: { 4: 8 }, loyal: { anna: 10 }, flag: 'anna_white' },
             after: [['anna', 'happy', '白い帆の船が、{faction}と並んで飛ぶ。それが一番、あたしらしいかもね。']] },
         ] },
     ],
@@ -173,7 +178,7 @@ PEOPLE.add({
       death:   ['船倉の連中を……ちゃんと、降ろしてやってくれ……'],
     },
     arc: [
-      { id: 'pedro_1', title: '船倉の底', bg: 'bridge', cond: { turn: 8 },
+      { id: 'pedro_1', title: '船倉の底', bg: 'bridge', cond: { turn: 8, after: 'mn0_01' },
         scenes: [
           ['@mil', 'angry', 'ルスの輸送船に、届けにない人間が三十人乗っていた。密航者だ。'],
           ['pedro', 'normal', '密航者じゃねえ。お客さんだよ。焼け出された星から乗せてきた。'],
@@ -183,10 +188,10 @@ PEOPLE.add({
         choices: [
           { t: '受け入れる（民心 −2・融和派が伸びる・ペドロの忠誠 +20）', fx: { stab: -2, party: { peace: 6 }, loyal: { pedro: 20 }, flag: 'pedro_refuge' },
             after: [['pedro', 'happy', '……ありがてえ。ほんとに、ありがてえ。'], ['pedro', 'normal', 'この借りは、おいらの一生で返すよ。']] },
-          { t: '密かに運び続けることを黙認する（資金 −80・ペドロの忠誠 +8）', fx: { funds: -80, loyal: { pedro: 8 } },
+          { t: '密かに運び続けることを黙認する（資金 −80・ペドロの忠誠 +8）', fx: { funds: -80, loyal: { pedro: 8 }, flag: 'pedro_smuggle' },
             after: [['pedro', 'normal', '燃料代まで出してくれるのかい。……あんた、表向きより甘いね。']] },
         ] },
-      { id: 'pedro_2', title: '眼帯の下', bg: 'space', cond: { turn: 27, after: 'pedro_1' },
+      { id: 'pedro_2', title: '眼帯の下', bg: 'space', cond: { turn: 27, after: 'pedro_1', anyFlag: ['mn0_exiles', 'mn0_turned', 'mn0_partner', 'mn0_customs', 'mn0_smuggle', 'mn0_fair', 'mn0_courted', 'mn0_aloof'] },
         scenes: [
           ['narr', '', '補給港の片隅で、ペドロは眼帯を外して目を拭っていた。その下には古い火傷の痕があった。'],
           ['pedro', 'normal', '見ちまったかい。……昔、一人の男を売ったことがあってね。'],
@@ -195,17 +200,18 @@ PEOPLE.add({
           ['pedro', 'normal', '恨んじゃいねえ。おいらが先に裏切ったんだ。……ただ、たまに、まだ痛むんだよ。'],
         ],
         fx: { loyal: { pedro: 5 } } },
-      { id: 'pedro_3', title: '最後の荷', bg: 'bridge', cond: { turn: 50, after: 'pedro_2' },
+      { id: 'pedro_3', title: '最後の荷', bg: 'bridge', cond: { turn: 50, after: 'pedro_2', anyFlag: ['mn0_watch', 'mn0_insure'] },
         scenes: [
           ['pedro', 'normal', '{honor}、頼みがある。おいらの船を、正式に{faction}の輸送船にしてくれねえか。'],
           ['pedro', 'normal', '密航船はもうやめる。……船倉の連中が、みんなどこかの星に根を下ろしたんでね。'],
           ['pedro', 'happy', '最後の一家が、畑で採れた芋を送ってきたんだ。甘くてよ、菓子よりうめえ。'],
           ['pedro', 'sad', '空っぽの船倉ってのは、案外さみしいもんだな。'],
+          ['pedro', 'normal', '……ただ、外の航路で船が帰らねえって話が、どうにも気になってね。'],
         ],
         choices: [
-          { t: '輸送隊を任せる（政治 +2・資金 +150）', fx: { stat: { pedro: { pol: 2 } }, funds: 150, loyal: { pedro: 10 } },
+          { t: '輸送隊を任せる（政治 +2・資金 +150）', fx: { stat: { pedro: { pol: 2 } }, funds: 150, loyal: { pedro: 10 }, flag: 'pedro_fleet' },
             after: [['pedro', 'happy', '表の看板で、堂々と荷を運ぶ。……悪くねえ人生の終わり方だ。いや、まだ終わらねえけどな。']] },
-          { t: '船倉を空けたまま、困った者のために残せと言う（民心 +4・ペドロの忠誠 +15）', fx: { stab: 4, loyal: { pedro: 15 } },
+          { t: '船倉を空けたまま、困った者のために残せと言う（民心 +4・ペドロの忠誠 +15）', fx: { stab: 4, loyal: { pedro: 15 }, flag: 'pedro_hold' },
             after: [['pedro', 'shock', '……へへ。あんたって人は。'], ['pedro', 'happy', '分かったよ。船倉の底は、いつでも空けとく。']] },
         ] },
     ],
@@ -242,7 +248,7 @@ PEOPLE.add({
       death:   ['灯を……次の者へ……'],
     },
     arc: [
-      { id: 'sophos_1', title: '開かれた書庫', bg: 'palace', cond: { turn: 5 },
+      { id: 'sophos_1', title: '開かれた書庫', bg: 'palace', cond: { turn: 5, after: 'mn1_01' },
         scenes: [
           ['sophos', 'normal', '{honor}、一つお願いがある。{faction}の研究所の記録を、他国の学者にも読ませてはもらえんかね。'],
           ['@pol', 'shock', '学長、それは国の秘密を敵に渡すということです。'],
@@ -250,12 +256,12 @@ PEOPLE.add({
           ['sophos', 'sad', '知を囲い込んだ国は、いずれ自分の壁の内で窒息する。私はそういう国を、いくつも見てきた。'],
         ],
         choices: [
-          { t: '書庫を開く（各国の信頼 +5・融和派が伸びる・ソフォスの忠誠 +15）', fx: { trust: { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5, 5: 5 }, party: { peace: 4 }, loyal: { sophos: 15 } },
+          { t: '書庫を開く（各国の信頼 +5・融和派が伸びる・ソフォスの忠誠 +15）', fx: { trust: { 0: 5, 1: 5, 2: 5, 3: 5, 4: 5, 5: 5 }, party: { peace: 4 }, loyal: { sophos: 15 }, flag: 'sophos_open' },
             after: [['sophos', 'happy', 'ありがとう。……灯は、分ければ分けるほど明るくなる。きっとそうなる。']] },
           { t: '今は閉ざしておく（研究 +120・ソフォスの忠誠が少し下がる）', fx: { rp: 120, loyal: { sophos: -5 } },
             after: [['sophos', 'sad', '……そうか。戦の最中だ、無理もない。いつか、扉を開ける日が来ることを願うよ。']] },
         ] },
-      { id: 'sophos_2', title: '二人の弟子', bg: 'palace', cond: { turn: 25, after: 'sophos_1' },
+      { id: 'sophos_2', title: '二人の弟子', bg: 'palace', cond: { turn: 25, after: 'sophos_1', anyFlag: ['mn1_exiles', 'mn1_books', 'mn1_pure', 'mn1_warlab', 'mn1_letters', 'mn1_secret', 'mn1_promise', 'mn1_challenge'] },
         scenes: [
           ['narr', '', '夜更けの書斎。ソフォスは古い名簿を開いていた。'],
           ['sophos', 'normal', '私には、忘れられぬ弟子が二人おる。'],
@@ -266,18 +272,19 @@ PEOPLE.add({
           ['sophos', 'happy', '教師というのは、そういうものでね。卒業した者の帰りを、いつまでも待っておる。'],
         ],
         fx: { rp: 60 } },
-      { id: 'sophos_3', title: '最後の講義', bg: 'palace', cond: { turn: 55, after: 'sophos_2' },
+      { id: 'sophos_3', title: '最後の講義', bg: 'palace', cond: { turn: 55, after: 'sophos_2', anyFlag: ['mn1_truth', 'mn1_quiet'] },
         scenes: [
           ['narr', '', 'ソフォスが、{faction}の若い士官や技師たちを集めて講義を開いた。題は「問いを持ち続けること」。'],
           ['sophos', 'normal', '答えは、いつか古くなる。だが、良い問いは古くならん。'],
+          ['sophos', 'sad', '天文台の発表を取り消した時、私は問いより学び舎を選んだ。……あれは、学長としての過ちだったかもしれん。'],
           ['sophos', 'normal', 'なぜ戦うのか。何を守るのか。誰のために学ぶのか。それを問うのを止めた時、人は道具になる。'],
           ['sophos', 'sad', '……私も歳だ。この講義を、あと何度できるか分からん。'],
           ['sophos', 'normal', '{honor}。私の最後の仕事を、どう使うかね。'],
         ],
         choices: [
-          { t: '若い技師を育ててもらう（研究 +200・技術派が伸びる）', fx: { rp: 200, party: { tech: 6 }, loyal: { sophos: 10 } },
+          { t: '若い技師を育ててもらう（研究 +200・技術派が伸びる）', fx: { rp: 200, party: { tech: 6 }, loyal: { sophos: 10 }, flag: 'sophos_engineers' },
             after: [['sophos', 'happy', 'よろしい。灯を渡す相手は、多いほどいい。']] },
-          { t: '民のための学校を開いてもらう（民心 +6・政治 +2）', fx: { stab: 6, stat: { sophos: { pol: 2 } }, loyal: { sophos: 15 } },
+          { t: '民のための学校を開いてもらう（民心 +6・政治 +2）', fx: { stab: 6, stat: { sophos: { pol: 2 } }, loyal: { sophos: 15 }, flag: 'sophos_school' },
             after: [['sophos', 'happy', '子どもたちか。……ああ、それがいい。それが一番いい。']] },
         ] },
     ],
@@ -311,7 +318,7 @@ PEOPLE.add({
       death:   ['まだ……解いてない式が、あるのに……'],
     },
     arc: [
-      { id: 'mina_1', title: '一晩の設計図', bg: 'palace', cond: { turn: 5 },
+      { id: 'mina_1', title: '一晩の設計図', bg: 'palace', cond: { turn: 5, after: 'mn1_01' },
         scenes: [
           ['@sci', 'shock', 'ク、クレール君！ 研究計画が、一晩で全部書き換わっているのだが！'],
           ['mina', 'happy', 'うん。前のは無駄が多すぎたから。三割は速くなるよ。'],
@@ -325,7 +332,7 @@ PEOPLE.add({
           { t: '人と働くことを教える（政治 +2・交渉 +1・ミーナの忠誠が少し下がる）', fx: { stat: { mina: { pol: 2, dip: 1 } }, loyal: { mina: -5 } },
             after: [['mina', 'sad', '……人と働くのって、計算できないから苦手なんだよね。'], ['mina', 'normal', 'でも、まあ、やってみる。実験だと思えば、ね。']] },
         ] },
-      { id: 'mina_2', title: '門の前の籠', bg: 'palace', cond: { turn: 22, after: 'mina_1' },
+      { id: 'mina_2', title: '門の前の籠', bg: 'palace', cond: { turn: 22, after: 'mina_1', anyFlag: ['mn1_exiles', 'mn1_books', 'mn1_pure', 'mn1_warlab', 'mn1_letters', 'mn1_secret', 'mn1_promise', 'mn1_challenge'] },
         scenes: [
           ['narr', '', '研究室の机の引き出しに、ミーナは古い記録片を大事にしまっていた。'],
           ['mina', 'normal', 'これ、ボクが学術都市の門の前に置かれてた時、籠に入ってたんだって。'],
@@ -334,9 +341,10 @@ PEOPLE.add({
           ['mina', 'happy', 'だからさ、解けたら会える気がするんだ。変だよね、天才なのに。'],
         ],
         fx: { loyal: { mina: 8 }, rp: 50 } },
-      { id: 'mina_3', title: '解けた式', bg: 'palace', cond: { turn: 44, after: 'mina_2' },
+      { id: 'mina_3', title: '解けた式', bg: 'palace', cond: { turn: 44, after: 'mina_2', anyFlag: ['mn1_truth', 'mn1_quiet'] },
         scenes: [
           ['mina', 'shock', '……解けた。解けちゃった。'],
+          ['mina', 'normal', '欠けた光の計算をしてて、徹夜した朝に気づいたんだ。同じ記法が、籠の式にも使われてるって。'],
           ['mina', 'normal', '最後の鍵は、演算塔の古い記法だったんだ。ボクの親は、ゼノアの塔で働いてた人間の技師だったのかもしれない。'],
           ['mina', 'normal', '式の正体は、艦の防壁を何倍にもする理論。……でも、反転させれば、とんでもない兵器にもなる。'],
           ['mina', 'sad', '最後の一行にね、こう書いてあった。「娘へ。どちらに使うかは、あなたが決めて」って。'],
@@ -345,7 +353,7 @@ PEOPLE.add({
         choices: [
           { t: '盾として使うよう勧める（技術 +3・研究 +150・ミーナの忠誠 +15）', fx: { stat: { mina: { sci: 3 } }, rp: 150, loyal: { mina: 15 }, flag: 'mina_shield' },
             after: [['mina', 'happy', '……うん。お母さんも、たぶんそれを望んでた。ボク、そう思うことにする。']] },
-          { t: '兵器として使う（戦術 +2・主戦派が伸びる・ミーナの忠誠が下がる）', fx: { stat: { mina: { tac: 2 } }, party: { war: 6 }, loyal: { mina: -10 } },
+          { t: '兵器として使う（戦術 +2・主戦派が伸びる・ミーナの忠誠が下がる）', fx: { stat: { mina: { tac: 2 } }, party: { war: 6 }, loyal: { mina: -10 }, flag: 'mina_weapon' },
             after: [['mina', 'sad', '……分かった。命令なら、作るよ。'], ['mina', 'sad', '（ごめんね。ボク、まだ子どもだから、断れなかった）']] },
         ] },
     ],
@@ -379,7 +387,7 @@ PEOPLE.add({
       death:   ['砂が……落ちきったか……'],
     },
     arc: [
-      { id: 'alan_1', title: '敗者の記録', bg: 'bridge', cond: { turn: 6 },
+      { id: 'alan_1', title: '敗者の記録', bg: 'bridge', cond: { turn: 6, after: 'mn1_01' },
         scenes: [
           ['alan', 'normal', '{honor}。{faction}がこれまでに負けた戦の記録を、すべて見せていただきたい。'],
           ['@mil', 'angry', '負け戦を掘り返して何になる。'],
@@ -392,7 +400,7 @@ PEOPLE.add({
           { t: '将兵の名誉のため、伏せておく（主戦派が伸びる・アランの忠誠が少し下がる）', fx: { party: { war: 4 }, loyal: { alan: -5, } },
             after: [['alan', 'sad', '名誉か。……名誉のために同じ過ちを繰り返す国を、小生は知っている。']] },
         ] },
-      { id: 'alan_2', title: '二十年前の作戦図', bg: 'bridge', cond: { turn: 26, after: 'alan_1' },
+      { id: 'alan_2', title: '二十年前の作戦図', bg: 'bridge', cond: { turn: 26, after: 'alan_1', anyFlag: ['mn1_exiles', 'mn1_books', 'mn1_pure', 'mn1_warlab', 'mn1_letters', 'mn1_secret', 'mn1_promise', 'mn1_challenge'] },
         scenes: [
           ['narr', '', 'アランの砂時計の台座に、一枚の古い作戦図が挟まっていた。極光の星、ノルトリヒトの包囲図だった。'],
           ['alan', 'sad', '見たのか。……それは、小生が二十六の時に引いた図だ。'],
@@ -400,6 +408,7 @@ PEOPLE.add({
           ['alan', 'sad', '実際には、敵の将は包囲の唯一の綻びを見抜き、艦隊と民を連れて抜けた。残された都は、焼かれた。'],
           ['alan', 'sad', '焼けと命じたのは小生ではない。だが、焼ける形の図を引いたのは、小生だ。'],
           ['alan', 'normal', 'それ以来、小生は「どう勝つか」ではなく「どう負けを小さくするか」を研究している。'],
+          ['alan', 'sad', '軍を去って学び舎に移った後、小生は戦の講座を開こうとした。学長はそれを閉じた。……正しかったよ。あの頃の小生は、まだ勝ち方しか教えられなかった。'],
         ],
         fx: { flag: 'alan_north' } },
       { id: 'alan_3', title: '新しい兵書', bg: 'bridge', cond: { turn: 40, wins: 6, after: 'alan_2' },
@@ -411,9 +420,9 @@ PEOPLE.add({
           ['alan', 'normal', '{honor}。この本を、{faction}の士官学校で教えてもよいか。'],
         ],
         choices: [
-          { t: '士官学校で教えさせる（統率 +2・アランの忠誠 +15・融和派が伸びる）', fx: { stat: { alan: { ldr: 2 } }, loyal: { alan: 15 }, party: { peace: 4 } },
+          { t: '士官学校で教えさせる（統率 +2・アランの忠誠 +15・融和派が伸びる）', fx: { stat: { alan: { ldr: 2 } }, loyal: { alan: 15 }, party: { peace: 4 }, flag: 'alan_retreat' },
             after: [['alan', 'happy', '……ありがとう。二十年ぶりに、教壇に立てる。']] },
-          { t: '作戦部で使わせる（戦術 +2・武功 +5）', fx: { stat: { alan: { tac: 2 } }, merit: { alan: 5 } },
+          { t: '作戦部で使わせる（戦術 +2・武功 +5）', fx: { stat: { alan: { tac: 2 } }, merit: { alan: 5 }, flag: 'alan_ops' },
             after: [['alan', 'normal', '承知した。戦場で証明しよう。退くことが、勝つことに繋がると。']] },
         ] },
     ],
@@ -450,7 +459,7 @@ PEOPLE.add({
       death:   ['巣の……ガキどもに……払いを……'],
     },
     arc: [
-      { id: 'crow_1', title: '鴉の契約', bg: 'bridge', cond: { turn: 6 },
+      { id: 'crow_1', title: '鴉の契約', bg: 'bridge', cond: { turn: 6, after: 'mn2_01' },
         scenes: [
           ['crow', 'normal', '契約の更新だ、{honor}。団員の手当てを、三割上げてもらいたい。'],
           ['@pol', 'angry', '傭兵の分際で、この戦時に値上げを要求するのか。'],
@@ -463,7 +472,7 @@ PEOPLE.add({
           { t: '値上げを断り、武功で報いると約束する（クロウの忠誠が下がる・武功 +3）', fx: { loyal: { crow: -10 }, merit: { crow: 3 } },
             after: [['crow', 'angry', '武功じゃ腹は膨れねえんだがな。……まあいい、見てな。']] },
         ] },
-      { id: 'crow_2', title: '坑道の子ら', bg: 'space', cond: { turn: 28, after: 'crow_1' },
+      { id: 'crow_2', title: '坑道の子ら', bg: 'space', cond: { turn: 28, after: 'crow_1', anyFlag: ['mn2_orphans', 'mn2_cold', 'mn2_clause', 'mn2_merit', 'mn2_bid', 'mn2_duel', 'mn2_paid', 'mn2_oath'] },
         scenes: [
           ['narr', '', '補給の合間、クロウは黒鴉の巣から届いた子どもたちの手紙を読んでいた。'],
           ['crow', 'normal', '黒鴉の巣は、昔は流刑の採掘場だった。俺はそこで生まれた。親は落盤で死んだ。'],
@@ -474,17 +483,18 @@ PEOPLE.add({
           ['crow', 'sad', '……言いふらすなよ。鴉は、恐れられてなんぼなんだ。'],
         ],
         fx: { loyal: { crow: 8 } } },
-      { id: 'crow_3', title: '鴉の巣立ち', bg: 'bridge', cond: { turn: 45, wins: 8, after: 'crow_2' },
+      { id: 'crow_3', title: '鴉の巣立ち', bg: 'bridge', cond: { turn: 45, wins: 8, after: 'crow_2', anyFlag: ['mn2_search', 'mn2_nosearch'] },
         scenes: [
           ['crow', 'normal', '{honor}。黒鴉の連中が、妙なことを言い出した。'],
           ['crow', 'normal', '{faction}の正規兵になりてえ、ってな。傭兵じゃなく、旗を背負って戦いてえんだとよ。'],
+          ['crow', 'sad', '辺境で三隻が帰らなかった時、{faction}の連中が一緒に悼んでくれた。あれが効いたらしい。'],
           ['crow', 'sad', '俺は、金でしか繋がらねえ関係しか知らなかった。金なら裏切らねえからな。'],
           ['crow', 'normal', 'だが、あいつらはそれ以上の物を見つけたらしい。……俺は、どうすりゃいい。'],
         ],
         choices: [
-          { t: '黒鴉を正規の艦隊に迎える（クロウの忠誠 +25・統率 +2）', fx: { loyal: { crow: 25 }, stat: { crow: { ldr: 2 } }, party: { war: 4 } },
+          { t: '黒鴉を正規の艦隊に迎える（クロウの忠誠 +25・統率 +2）', fx: { loyal: { crow: 25 }, stat: { crow: { ldr: 2 } }, party: { war: 4 }, flag: 'crow_banner' },
             after: [['crow', 'happy', '……鴉が旗を背負うか。悪くねえ。'], ['crow', 'normal', 'いいか、{honor}。これで俺たちは、金じゃ動かねえ。あんたのために動く。']] },
-          { t: '傭兵の誇りを守らせる（戦術 +2・資金 +200）', fx: { stat: { crow: { tac: 2 } }, funds: 200, loyal: { crow: 5 } },
+          { t: '傭兵の誇りを守らせる（戦術 +2・資金 +200）', fx: { stat: { crow: { tac: 2 } }, funds: 200, loyal: { crow: 5 }, flag: 'crow_wings' },
             after: [['crow', 'normal', '分かった。鴉は鴉のまま、あんたの空を飛ぶ。それも悪くねえ。']] },
         ] },
     ],
@@ -518,7 +528,7 @@ PEOPLE.add({
       death:   ['頭領……アタシ……ちゃんと、飛べた……？'],
     },
     arc: [
-      { id: 'raven_1', title: '二番鴉の勘', bg: 'bridge', cond: { turn: 7 },
+      { id: 'raven_1', title: '二番鴉の勘', bg: 'bridge', cond: { turn: 7, after: 'mn2_01' },
         scenes: [
           ['@mil', 'angry', 'レイヴン！ 撤退の命令を無視して、敵陣に戻ったな！'],
           ['raven', 'normal', '味方の船が一隻、取り残されてたんだよ。見捨てろって言うの？'],
@@ -532,7 +542,7 @@ PEOPLE.add({
           { t: '命令の重さを教える（統率 +2・レイヴンの忠誠が少し下がる）', fx: { stat: { raven: { ldr: 2 } }, loyal: { raven: -5 } },
             after: [['raven', 'sad', '……分かったよ。次は、ちゃんと聞く。たぶん。']] },
         ] },
-      { id: 'raven_2', title: '坑夫の歌', bg: 'space', cond: { turn: 26, after: 'raven_1' },
+      { id: 'raven_2', title: '坑夫の歌', bg: 'space', cond: { turn: 26, after: 'raven_1', anyFlag: ['mn2_orphans', 'mn2_cold', 'mn2_clause', 'mn2_merit', 'mn2_bid', 'mn2_duel', 'mn2_paid', 'mn2_oath'] },
         scenes: [
           ['narr', '', '夜の格納庫で、レイヴンが小さな声で歌っていた。古い坑夫の歌だった。'],
           ['raven', 'shock', 'うわっ、聞いてたの？ ……恥ずかしいな。'],
@@ -542,7 +552,7 @@ PEOPLE.add({
           ['narr', '', 'そう言って笑うレイヴンの目は、少しだけ濡れていた。'],
         ],
         fx: { loyal: { raven: 8 } } },
-      { id: 'raven_3', title: '一羽で飛ぶ空', bg: 'bridge', cond: { turn: 46, after: 'raven_2' },
+      { id: 'raven_3', title: '一羽で飛ぶ空', bg: 'bridge', cond: { turn: 46, after: 'raven_2', anyFlag: ['mn2_search', 'mn2_nosearch'] },
         scenes: [
           ['@mil', 'normal', 'レイヴン。君に、独立した艦隊を任せたいという話が出ている。'],
           ['raven', 'shock', 'アタシに？ 頭領の隊から離れて？'],
@@ -550,9 +560,9 @@ PEOPLE.add({
           ['raven', 'normal', '{honor}。アタシ、どうしたらいいと思う？'],
         ],
         choices: [
-          { t: '一羽で飛んでみろと背中を押す（統率 +3・武功 +4）', fx: { stat: { raven: { ldr: 3 } }, merit: { raven: 4 }, loyal: { raven: 10 } },
+          { t: '一羽で飛んでみろと背中を押す（統率 +3・武功 +4）', fx: { stat: { raven: { ldr: 3 } }, merit: { raven: 4 }, loyal: { raven: 10 }, flag: 'raven_solo' },
             after: [['raven', 'normal', '……うん。いつか頭領の隣に、並んで飛べるように。'], ['raven', 'happy', '見ててよ。アタシ、すっごい鴉になるから。']] },
-          { t: '頭領の隣にいてやれと言う（レイヴンの忠誠 +20・戦術 +1）', fx: { loyal: { raven: 20 }, stat: { raven: { tac: 1 } } },
+          { t: '頭領の隣にいてやれと言う（レイヴンの忠誠 +20・戦術 +1）', fx: { loyal: { raven: 20 }, stat: { raven: { tac: 1 } }, flag: 'raven_side' },
             after: [['raven', 'happy', '……そっか。うん、そうする。'], ['raven', 'sad', '（あの人、アタシがいないと、すぐ無茶するからね）']] },
         ] },
     ],
@@ -586,7 +596,7 @@ PEOPLE.add({
       death:   ['頭領……オレ……いい犬だったか……'],
     },
     arc: [
-      { id: 'jack_1', title: '猟犬の鼻', bg: 'bridge', cond: { turn: 6 },
+      { id: 'jack_1', title: '猟犬の鼻', bg: 'bridge', cond: { turn: 6, after: 'mn2_01' },
         scenes: [
           ['jack', 'angry', '{honor}！ 補給船の乗組員に、妙な匂いのする奴が混じってる。'],
           ['@pol', 'normal', '匂い、とは？ 証拠はあるのか。'],
@@ -599,9 +609,9 @@ PEOPLE.add({
           { t: '証拠もなく人を疑うなと諭す（政治 +2・ジャックの忠誠が少し下がる）', fx: { stat: { jack: { pol: 2 } }, loyal: { jack: -5 } },
             after: [['jack', 'sad', '……証拠、か。頭領と同じことを言うんだな。分かったよ、探してくる。']] },
         ] },
-      { id: 'jack_2', title: '首輪の痕', bg: 'space', cond: { turn: 25, after: 'jack_1' },
+      { id: 'jack_2', title: '首輪の痕', bg: 'space', cond: { turn: 25, after: 'jack_1', anyFlag: ['mn2_search', 'mn2_nosearch'] },
         scenes: [
-          ['narr', '', 'ジャックの首には、焼けたような輪の痕がある。訓練の後、彼はそれを無意識に掻いていた。'],
+          ['narr', '', 'ジャックの首には、焼けたような輪の痕がある。辺境で仲間の匂いが途切れてから、彼はそれを無意識に掻くようになった。'],
           ['jack', 'normal', 'これか。……昔、企業の賞金稼ぎだった時の首輪だ。逃げたら電気が流れる仕組みだった。'],
           ['jack', 'sad', '狙えと言われた奴を狙った。理由も知らずにな。アビスの奥まで、坑夫を逃がした男を追ったこともある。'],
           ['jack', 'normal', 'ある日、獲物だった頭領に叩きのめされた。で、首輪を引きちぎられた。「てめえはもう犬じゃねえ」ってな。'],
@@ -615,7 +625,7 @@ PEOPLE.add({
           ['jack', 'sad', '頭領以外に、守りてえと思った奴らは初めてだ。……どうしたらいいか、分からねえ。'],
         ],
         choices: [
-          { t: '{faction}の兵として胸を張れと言う（ジャックの忠誠 +25・統率 +2）', fx: { loyal: { jack: 25 }, stat: { jack: { ldr: 2 } } },
+          { t: '{faction}の兵として胸を張れと言う（ジャックの忠誠 +25・統率 +2）', fx: { loyal: { jack: 25 }, stat: { jack: { ldr: 2 } }, flag: 'jack_oath' },
             after: [['jack', 'happy', '……胸を張る、か。やってみるよ。'], ['jack', 'normal', 'オレの牙は、今日から{faction}のもんだ。']] },
           { t: '牙を磨き続けろと言う（戦術 +3・武功 +4）', fx: { stat: { jack: { tac: 3 } }, merit: { jack: 4 } },
             after: [['jack', 'happy', 'おう！ 守りてえ奴らのために、もっと強くなってやる！']] },

@@ -212,10 +212,19 @@ const People = (() => {
       if (ev.group && PEOPLE.MAIN.some(x => x.group === ev.group && G.evDone[x.id])) continue;
       const prev = ev.after !== undefined ? [].concat(ev.after) : (ev.idx > 0 ? [PEOPLE.MAIN.filter(x => x.chain === ev.chain && x.idx < ev.idx && !x.finale && (!ev.group || x.group !== ev.group)).sort((a, b) => b.idx - a.idx)[0]].filter(Boolean).map(x => x.group ? '@' + x.group : x.id) : []);
       const done = id => id.startsWith('@') ? PEOPLE.MAIN.some(x => x.group === id.slice(1) && G.evDone[x.id]) : !!G.evDone[id];
-      if (!prev.every(done)) continue;
-      const lastT = Math.max(0, ...prev.map(id => id.startsWith('@') ? Math.max(0, ...PEOPLE.MAIN.filter(x => x.group === id.slice(1)).map(x => G.evDone[x.id] || 0)) : G.evDone[id] || 0));
+      // 既存の章（data_events）を待つ時は、ゆるく待つ：その章が起きないまま（君主がいない等）8か月たてば、先へ進む
+      const ext = id => !id.startsWith('@') && typeof EVENTS !== 'undefined' && EVENTS.some(e => e.id === id);
+      if (!prev.filter(id => !ext(id)).every(done)) continue;
+      const lastT = Math.max(0, ...prev.filter(done).map(id => id.startsWith('@') ? Math.max(0, ...PEOPLE.MAIN.filter(x => x.group === id.slice(1)).map(x => G.evDone[x.id] || 0)) : G.evDone[id] || 0));
       if (prev.length && G.turn - lastT < (ev.gap ?? 4)) continue;   // 前の出来事から間をあける
-      if (chains[ev.chain] || !cond(ev.cond)) continue;
+      if (chains[ev.chain]) continue;
+      const ca = ev.cond && ev.cond.after, cAfterExt = ca && ext(ca);
+      if (!cond(cAfterExt ? Object.assign({}, ev.cond, { after: undefined }) : ev.cond)) continue;
+      if (!prev.filter(ext).every(done) || (cAfterExt && !G.evDone[ca])) {
+        G.mainWait = G.mainWait || {};
+        if (G.mainWait[ev.id] === undefined) G.mainWait[ev.id] = G.turn;
+        if (G.turn - G.mainWait[ev.id] < 8) continue;
+      }
       chains[ev.chain] = 1;
       out.push(wrap(ev, {}, { pr: ev.pr ?? 7 }));
     }
