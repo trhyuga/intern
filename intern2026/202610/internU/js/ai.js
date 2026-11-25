@@ -180,7 +180,9 @@ const AI = (() => {
           if (!path || path.length < 2) continue;
           const d = path.length - 1;
           // 封印の理論を修めた国は、深淵がどれほど遠くても目指す（そこを断たねば終わらない）。プレイヤーの国は遠くの裂け目にも向かう
-          if (d > (t0.abyss ? 99 : fid === G.player ? Math.max(reach, 8) : reach)) continue;
+          // 長く開いたままの裂け目（2年以上）には、どの国も遠くから向かう（放っておけば、いつまでも終わらない）
+          const rr = (G.eclipse.rifts || []).find(x => x.id === t0.id), stale = rr && G.turn - (rr.openedAt || 0) >= 24;
+          if (d > (t0.abyss || stale ? 99 : fid === G.player ? Math.max(reach, 8) : reach)) continue;
           let i = 1; while (i < path.length - 1 && Game.friendly(fid, G.planets[path[i]].owner)) i++;
           const t = G.planets[path[i]], stage = G.planets[path[i - 1]];
           if (Game.friendly(fid, t.owner) || !Game.canAttack(fid, t.owner)) continue;
@@ -192,7 +194,7 @@ const AI = (() => {
       if (plan) {
         const { t, stage } = plan;   // 深淵へは、出せる艦隊を全て集める
         // 参謀が動かすプレイヤーの国は、ほぼ互角なら攻める（司令官と策で補う）
-        const need = (Game.planetDefense(t) + G.fleets.filter(x => x.at === t.id && x.fac === 'E').reduce((a, x) => a + Game.fleetPower(x), 0)) * (fid === G.player ? 0.95 : 1.15);
+        const need = (Game.planetDefense(t) + G.fleets.filter(x => x.at === t.id && x.fac === 'E').reduce((a, x) => a + Game.fleetPower(x), 0)) * (fid === G.player || plan.abyss ? 0.95 : 1.15);
         const ready = my.filter(x => !busy.has(x) && x.at === stage.id && x.ships.length >= 3);
         const readyP = ready.reduce((a, x) => a + Game.fleetPower(x), 0);
         if (readyP >= need) { ready.forEach(x => { x.dest = t.id; busy.add(x); }); }

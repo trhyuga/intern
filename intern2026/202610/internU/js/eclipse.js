@@ -214,7 +214,9 @@ const Eclipse = (() => {
   }
   // 深淵の守り：最後の砦
   function guard() {
-    const e = E(), cap = topPower() * 0.65;
+    // 深淵の守りは、封印の理論を修めた国々の力に合わせる（いちばん強い国でなくても、届くように）
+    const sp = Math.max(0, ...G.facs.filter(f => f.alive && f.sealed).map(f => G.fleets.filter(x => x.fac === f.id).reduce((a, x) => a + Game.fleetPower(x), 0)));
+    const e = E(), cap = (sp ? Math.max(1500, sp) : topPower()) * 0.55;
     const here = G.fleets.filter(f => f.fac === 'E' && f.at === e.abyss).reduce((a, f) => a + Game.fleetPower(f), 0);
     if (here >= cap * 0.9) return;
     const fl = mkFleet(e.abyss, true, 'circle');
