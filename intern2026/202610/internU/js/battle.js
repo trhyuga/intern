@@ -1242,7 +1242,7 @@ const Battle = (() => {
     const el = document.querySelector('#battle .b-cut');
     if (!el || !sd.cmd) return;
     const line = sd.fac === 'E' ? ECL_LINE.skill : (People.voice(sd.cmd, 'bskill') || LINES[OFF[sd.cmd].pers].skill);
-    el.innerHTML = `<div class="cutin ${sk === mySide ? 'me' : 'en'}" style="--c:${Game.ownerCol(sd.fac)}"><img src="${Portrait.url(sd.cmd, 'angry')}"><div><small>${SKILLS[s].name}</small><b>「${line}」</b><span>${OFF[sd.cmd].name}</span></div></div>`;
+    el.innerHTML = `<div class="cutin sk ${sk === mySide ? 'me' : 'en'}" style="--c:${Game.ownerCol(sd.fac)}"><i class="ci-slash"></i><i class="ci-lines"></i><img src="${Portrait.url(sd.cmd, 'angry')}"><div class="ci-txt"><small>${SKILLS[s].name}</small><b>「${line}」</b><span>${OFF[sd.cmd].name}</span></div></div>`;
     el.classList.add('show');
     Sound.se('skill');
     // カットインの間だけ時間を止める（一時停止ボタンの状態とは別に数える）
@@ -1254,7 +1254,7 @@ const Battle = (() => {
     const el = document.querySelector('#battle .b-cut');
     if (!el || endShown) return;
     const sd = S.side[sk];
-    el.innerHTML = `<div class="cutin drama ${sk === mySide ? 'me' : 'en'}" style="--c:${Game.ownerCol(sd.fac)}"><img src="${Portrait.url(who, expr)}"><div><small>${title}</small><b>${line ? '「' + line + '」' : ''}</b><span>${OFF[who].name}（${sk === mySide ? '味方' : '敵'}）</span></div></div>`;
+    el.innerHTML = `<div class="cutin drama ${sk === mySide ? 'me' : 'en'}" style="--c:${Game.ownerCol(sd.fac)}"><i class="dc-bar t"></i><i class="dc-bar b"></i><i class="dc-flash"></i><img src="${Portrait.url(who, expr)}"><div class="ci-txt"><small class="dc-stamp">${title}</small><b>${line ? '「' + line + '」' : ''}</b><span>${OFF[who].name}（${sk === mySide ? '味方' : '敵'}）</span></div></div>`;
     el.classList.add('show');
     Sound.se(title === '潰走' || title === '旗艦、轟沈' ? 'bigboom' : 'skill');
     hold++;
@@ -1281,12 +1281,17 @@ const Battle = (() => {
     const up = S.side[S.over] && S.side[S.over].p0 < S.side[foeOf(S.over)].p0 * 0.8 && S.side[S.over].fac !== 'E';
     const line = sd.cmd ? (won && up ? pickL(TL.upset) : (People.voice(sd.cmd, won ? 'win' : 'lose') || LINES[OFF[sd.cmd].pers][won ? 'win' : 'lose'])) : '';
     const flow = S.story.slice(-5).map(e => `<li class="${e.side === mySide ? 'me' : 'en'}">${e.text}</li>`).join('');
-    el.innerHTML = `<div class="b-result ${won ? 'win' : 'lose'}"><h2>${won ? (up ? '大逆転' : '勝利') : S.timeout ? '時間切れ' : '敗北'}</h2>
-      ${flow ? `<ul class="b-flow">${flow}</ul>` : ''}
-      ${sd.cmd ? `<img src="${Portrait.url(sd.cmd, won ? 'happy' : 'sad')}"><p>「${line}」</p>` : sd.fac !== 'E' ? `${faceOf(sd, won ? 'happy' : 'sad')}<p>「${won ? '……勝った。生きて帰れるぞ。' : '……ここまでか。退くぞ。'}」<br><small>${genName(sd)}</small></p>` : ''}
-      <div class="b-stat">撃沈 ${S.side[mySide].sunk}隻 ／ 喪失 ${S.side[mySide].lost}隻</div>
+    const ttl = won ? (up ? '大逆転' : '勝利') : S.timeout ? '時間切れ' : '敗北';
+    el.innerHTML = `<div class="b-result ${won ? 'win' : 'lose'}${won && up ? ' upset' : ''}${S.timeout && !won ? ' tout' : ''}"><i class="br-rays"></i><i class="br-spark"></i><h2 class="br-ttl"><span data-t="${ttl}">${ttl}</span></h2>
+      ${flow ? `<ul class="b-flow br-tl">${flow}</ul>` : ''}
+      ${sd.cmd ? `<div class="br-face"><img src="${Portrait.url(sd.cmd, won ? 'happy' : 'sad')}"></div><p>「${line}」</p>` : sd.fac !== 'E' ? `<div class="br-face">${faceOf(sd, won ? 'happy' : 'sad')}</div><p>「${won ? '……勝った。生きて帰れるぞ。' : '……ここまでか。退くぞ。'}」<br><small>${genName(sd)}</small></p>` : ''}
+      <div class="b-stat br-stat"><div class="br-n k"><small>撃沈</small><b data-n="${S.side[mySide].sunk}">0</b><em>隻</em></div><div class="br-n l"><small>喪失</small><b data-n="${S.side[mySide].lost}">0</b><em>隻</em></div></div>
       <button class="btn primary">戦いを終える</button></div>`;
     el.classList.add('show');
+    // 撃沈・喪失の数を数え上げる（見た目だけ）
+    const nums = el.querySelectorAll('.br-n b'), t0 = performance.now(), dur = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 900;
+    const tick = now => { const k = dur ? Math.min(1, (now - t0 - 350) / dur) : 1; nums.forEach(b => { b.textContent = Math.round(+b.dataset.n * Math.max(0, 1 - Math.pow(1 - Math.max(0, k), 3))); }); if (k < 1 && nums[0] && nums[0].isConnected) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
     Sound.se(won ? 'fanfare' : 'lose');
     clearTimeout(autoClose);
     if (watch) autoClose = setTimeout(() => { const b = el.querySelector('.b-result button'); if (b) b.click(); }, fast ? 2200 : 8000);
