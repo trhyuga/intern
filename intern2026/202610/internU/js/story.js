@@ -41,12 +41,16 @@ const Story = (() => {
     if (ev.valid && !ev.valid()) return;   // 前の出来事で、もう片づいた（取り戻した捕虜など）
     const scenes = ev.scenes().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead' && !away(ev, w))));
     if (!scenes.length) { G.evDone[ev.id] = G.turn; return; }
-    const choice = await UI.talk(ev.title, scenes, ev.choices, ev.bg);
+    const shown = ev.choices && typeof People !== 'undefined' ? ev.choices.map(c => Object.assign({}, c, { t: People.fixNations(c.t) })) : ev.choices;
+    // 既存の章で、選択肢に滅んだ国が出るなら、場面の台詞のその国も置き換える
+    const deadN = ev.choices && typeof People !== 'undefined' ? People.deadIn(ev.choices.map(c => c.t)) : [];
+    if (deadN.length) scenes.forEach(l => { l[2] = People.fixNations(l[2], {}, deadN); });
+    const choice = await UI.talk(ev.title, scenes, shown, ev.bg);
     if (ev.fx) ev.fx();
     if (ev.choices && choice !== null && choice !== undefined) {
       const c = ev.choices[choice];
       c.fx();
-      if (c.after) { const s2 = c.after().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead'))); if (s2.length) await UI.talk(null, s2, null, ev.bg, true); }
+      if (c.after) { const s2 = c.after().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, deadN.length ? People.fixNations(t, {}, deadN) : t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead'))); if (s2.length) await UI.talk(null, s2, null, ev.bg, true); }
     }
     // 選んだことが、実際に動いた（艦隊の出撃・宣戦・造艦など）
     const acts = typeof People !== 'undefined' ? People.takeActs() : [];

@@ -711,7 +711,7 @@ const Game = (() => {
   }
   function destroyFaction(fid, by) {
     const f = G.facs[fid];
-    f.alive = false;
+    f.alive = false; f.killedBy = by; f.diedAt = G.turn;
     G.fleets.filter(fl => fl.fac === fid).forEach(fl => removeFleet(fl));
     Object.keys(G.officers).forEach(k => {
       const o = G.officers[k];

@@ -174,7 +174,7 @@ const Diplo = (() => {
     // 設計も引き継ぐ
     G.facs[fid].designs.forEach(d => { G.designs[d].fac = by; G.facs[by].designs.push(d); });
     G.facs[fid].designs = [];
-    G.facs[fid].alive = false;
+    G.facs[fid].alive = false; G.facs[fid].killedBy = by; G.facs[fid].diedAt = G.turn;
     G.facs[by].stats.captured += 3;
     for (const m of Object.values(G.minors)) if (m.ally === fid) m.ally = null;
     for (let b = 0; b < 6; b++) if (b !== fid) Game.rel(fid, b).s = 'neutral';

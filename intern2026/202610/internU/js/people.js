@@ -80,6 +80,36 @@ const People = (() => {
       .replace(/\{target\}/g, x.target !== undefined && x.target !== null ? x.target : 'そこ').replace(/\{o\}/g, x.o || '');
   }
 
+  // ---------- 滅んだ国の名を、いまの相手に置き換える ----------
+  //  選択肢に滅んだ国の名が出たら：その国を滅ぼした国（生きていて自国でなければ）、なければ、いちばん仲の悪い生きている国。
+  //  選択の効き目（信頼・宣戦など）も、同じ国に向け直す
+  function liveFid(fid, ctx = {}) {
+    if (typeof fid !== 'number' || !G.facs[fid] || G.facs[fid].alive) return fid;
+    if (ctx.other === fid) return fid;   // その国そのものの出来事（滅亡の報など）はそのまま
+    const me = G.player, f = G.facs[fid];
+    let k = f.killedBy;
+    for (let i = 0; i < 6 && typeof k === 'number' && G.facs[k] && !G.facs[k].alive; i++) k = G.facs[k].killedBy;   // 滅ぼした国も滅んでいれば、さらにその先
+    if (typeof k === 'number' && k !== me && G.facs[k] && G.facs[k].alive) return k;
+    const alive = [0, 1, 2, 3, 4, 5].filter(i => i !== me && G.facs[i].alive);
+    if (!alive.length) return null;
+    return alive.sort((a, b) => Game.rel(me, a).t - Game.rel(me, b).t)[0];
+  }
+  // 選択肢に出てくる、滅んだ国（場面の台詞も、その国だけ置き換えて筋をそろえる）
+  function deadIn(texts, ctx = {}) { if (typeof G === 'undefined' || !G || !G.facs) return []; return FACTIONS.filter(F => !G.facs[F.id].alive && ctx.other !== F.id && texts.some(t => t && (t.includes(F.name) || t.includes(F.short)))).map(F => F.id); }
+  function fixNations(text, ctx = {}, only = null) {
+    if (!text || typeof G === 'undefined' || !G || !G.facs) return text;
+    let t = text;
+    for (const F of FACTIONS) {
+      if (only && !only.includes(F.id)) continue;
+      if (G.facs[F.id].alive || ctx.other === F.id || (!t.includes(F.name) && !t.includes(F.short))) continue;
+      const to = liveFid(F.id, ctx);
+      const nm = to === null ? '残る敵' : FACTIONS[to].name, sh = to === null ? '敵' : FACTIONS[to].short;
+      t = t.split(F.name).join('\u0000' + to + 'N');   // 長い名前を先に
+      t = t.split(F.short).join('\u0000' + to + 'S');
+      t = t.replace(/\u0000(null|\d)N/g, () => nm).replace(/\u0000(null|\d)S/g, () => sh);
+    }
+    return t;
+  }
   // ---------- 人物の言葉（コマンドへの返事など） ----------
   const prof = k => PEOPLE.P[k] || null;
   function voice(k, kind, target) {
@@ -178,7 +208,7 @@ const People = (() => {
     const me = G.player, alive = [0, 1, 2, 3, 4, 5].filter(i => i !== me && G.facs[i].alive);
     if (t === 'all') return alive;
     if (t === 'other') return ctx.other !== undefined && ctx.other !== null && G.facs[ctx.other] && G.facs[ctx.other].alive ? [ctx.other] : [];
-    if (typeof t === 'number') return G.facs[t] && G.facs[t].alive && t !== me ? [t] : [];
+    if (typeof t === 'number') { const u = liveFid(t, ctx); return typeof u === 'number' && G.facs[u] && G.facs[u].alive && u !== me ? [u] : []; }
     const pw = i => G.fleets.filter(f => f.fac === i).reduce((a, f) => a + Game.fleetPower(f), 0) + G.planets.filter(p => p.owner === i).length * 50;
     if (t === 'rival') return alive.filter(i => Game.rel(me, i).s !== 'ally').sort((a, b) => Game.rel(me, a).t - Game.rel(me, b).t).slice(0, 1);
     if (t === 'strongest') return alive.sort((a, b) => pw(b) - pw(a)).slice(0, 1);
@@ -337,16 +367,18 @@ const People = (() => {
     if (x.funds) FX.funds(x.funds);
     if (x.rp) FX.rp(x.rp);
     if (x.party) Object.entries(x.party).forEach(([p, n]) => FX.party(p, n));
-    if (x.trust) Object.entries(x.trust).forEach(([f, n]) => { const fid = f === 'other' ? ctx.other : +f; if (fid !== undefined && fid !== null && !isNaN(fid)) FX.trust(fid, n); });
+    if (x.trust) { const done = new Set(); Object.entries(x.trust).forEach(([f, n]) => { let fid = f === 'other' ? ctx.other : +f; fid = liveFid(fid, ctx); if (fid !== undefined && fid !== null && !isNaN(fid) && !done.has(fid) && G.facs[fid].alive) { done.add(fid); FX.trust(fid, n); } }); }
     if (x.flag) [].concat(x.flag).forEach(f => FX.flag(f));
   }
   // 宣言的な出来事を、Story.play が読める形にする
   function wrap(ev, ctx = {}, extra = {}) {
-    const lines = sc => (sc || []).map(([w, e, t]) => [w, e, sub(t, ctx)]);
+    const cs0 = ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices || [];
+    const dead = deadIn(cs0.map(c => c.t), ctx);
+    const lines = sc => (sc || []).map(([w, e, t]) => [w, e, dead.length ? fixNations(sub(t, ctx), ctx, dead) : sub(t, ctx)]);
     return {
       id: ev.id, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0, home: typeof ev.fac === 'number' ? ev.fac : undefined,
       scenes: () => lines(ctx.win && ev[ctx.win] ? ev[ctx.win] : ctx.useB && ev.sceneB ? ev.sceneB : (ev.scenesBy && ev.scenesBy[G.facs[G.player].ruling]) || ev.scenes),
-      choices: (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices) ? (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices).map(c => ({ t: sub(c.t, ctx), fx: () => { fx(c.fx, ctx); if (extra.onChoice) extra.onChoice(c); }, after: c.after ? () => lines(c.after) : null })) : undefined,
+      choices: (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices) ? (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices).map(c => ({ t: fixNations(sub(c.t, ctx), ctx), fx: () => { fx(c.fx, ctx); if (extra.onChoice) extra.onChoice(c); }, after: c.after ? () => lines(c.after) : null })) : undefined,
       fx: () => { fx(ev.fx, ctx); if (extra.onPlay) extra.onPlay(); },
     };
   }
@@ -599,5 +631,5 @@ const People = (() => {
     const ev = PEOPLE.MAIN.find(x => x.finale && (x.fac === undefined || x.fac === me) && (!x.win || x.win === win) && cond(Object.assign({}, x.cond || {}, { chance: undefined })));
     return ev ? wrap(ev, { win }, { pr: 99 }) : null;
   }
-  return { act, takeActs, buff, BUFF_NAME, init, finale, mainProgress, applyStats, addStat, voice, reply, staffLine, cond, fx, wrap, pending, monthTick, battleTie, fleetMul, avengeMul, recruitBonus, enemyComment, allyComment, tiesOf, tie, state, line, other, prof, KIND_NAME, WARM, HONOR, sub, all: () => all() };
+  return { fixNations, deadIn, liveFid, act, takeActs, buff, BUFF_NAME, init, finale, mainProgress, applyStats, addStat, voice, reply, staffLine, cond, fx, wrap, pending, monthTick, battleTie, fleetMul, avengeMul, recruitBonus, enemyComment, allyComment, tiesOf, tie, state, line, other, prof, KIND_NAME, WARM, HONOR, sub, all: () => all() };
 })();
