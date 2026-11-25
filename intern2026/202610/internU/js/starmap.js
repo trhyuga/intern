@@ -9,6 +9,60 @@ const StarMap = (() => {
   let selPlanet = null, selFleet = null, moveMode = null;
   const pointers = new Map(); let pinch = null, drag = null, moved = false;
   let onTap = () => { };
+  // ---------- 飾りの下ごしらえ（重い物は先に描いておき、毎フレームは貼るだけ） ----------
+  const glowCache = new Map();
+  // 柔らかい光の玉（色ごとに一度だけ作る）
+  function glow(col, a = 1) {
+    const k = col + a; let g = glowCache.get(k); if (g) return g;
+    g = document.createElement('canvas'); g.width = g.height = 64;
+    const x = g.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, Art.hexA(col, a)); gr.addColorStop(0.35, Art.hexA(col, a * 0.45)); gr.addColorStop(1, Art.hexA(col, 0));
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64); glowCache.set(k, g); return g;
+  }
+  const blit = (img, x, y, R) => c.drawImage(img, x - R, y - R, R * 2, R * 2);
+  // 瞬く星（2層、画面の座標で視差つき）
+  let stars = null;
+  function makeStars() {
+    const r = Art.srand(777); stars = [];
+    for (let i = 0; i < 170; i++) stars.push({ x: r(), y: r(), s: 0.5 + r() * (i < 30 ? 1.6 : 0.9), ph: r() * 6.3, sp: 0.6 + r() * 2.2, l: i < 60 ? 0.12 : 0.05, w: r() < 0.25 });
+  }
+  // 星雲と勢力圏の光（持ち主が変わった時だけ描き直す）
+  const LS = 0.5; let layer = null, layerKey = '';
+  function ownKey() { let k = ''; for (const p of G.planets) k += (p.owner === null ? '_' : p.owner) + p.type + (p.pop | 0) + ','; return k; }
+  function buildLayer() {
+    if (!layer) { layer = document.createElement('canvas'); layer.width = WW * LS; layer.height = WH * LS; }
+    const x = layer.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, layer.width, layer.height);
+    x.setTransform(LS, 0, 0, LS, 0, 0); x.globalCompositeOperation = 'lighter';
+    // 星系ごとの星雲（星系の色相で、いくつかの雲を重ねる）
+    for (const s of SYSTEMS) {
+      const r = Art.srand(s.id * 97 + 13);
+      for (let i = 0; i < 7; i++) {
+        const a = r() * 6.3, d = r() * 190, R = 110 + r() * 170, h = s.hue + (r() - 0.5) * 50;
+        const cx = s.x + Math.cos(a) * d, cy = s.y + Math.sin(a) * d * 1.2;
+        const g = x.createRadialGradient(cx, cy, 0, cx, cy, R);
+        g.addColorStop(0, `hsla(${h},70%,${45 + r() * 20}%,${0.07 + r() * 0.06})`); g.addColorStop(0.6, `hsla(${h},70%,35%,.03)`); g.addColorStop(1, `hsla(${h},70%,30%,0)`);
+        x.fillStyle = g; x.beginPath(); x.arc(cx, cy, R, 0, 7); x.fill();
+      }
+      // 塵の帯
+      for (let i = 0; i < 40; i++) {
+        const a = r() * 6.3, d = r() * 260;
+        x.fillStyle = `hsla(${s.hue + 20},60%,80%,${0.04 + r() * 0.08})`;
+        x.beginPath(); x.arc(s.x + Math.cos(a) * d, s.y + Math.sin(a) * d, 0.8 + r() * 2.2, 0, 7); x.fill();
+      }
+    }
+    // 勢力圏（持ち主の色の柔らかい光。裂け目は脈打つので毎フレーム描く）
+    for (const p of G.planets) {
+      if (p.owner === null || p.type === 'rift') continue;
+      const col = Game.ownerCol(p.owner), R0 = p.owner === 'E' ? 120 : 100;
+      const g = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, R0);
+      g.addColorStop(0, Art.hexA(col, p.owner === 'E' ? 0.3 : 0.17)); g.addColorStop(0.55, Art.hexA(col, p.owner === 'E' ? 0.12 : 0.07)); g.addColorStop(1, Art.hexA(col, 0));
+      x.fillStyle = g; x.beginPath(); x.arc(p.x, p.y, R0, 0, 7); x.fill();
+    }
+    // 惑星そのものの柔らかい光
+    x.globalAlpha = 0.5;
+    for (const p of G.planets) { if (p.type === 'rift') continue; const R = planetR(p) * 2.6; x.drawImage(glow((PTYPES[p.type] || PTYPES.terra).col[2]), p.x - R, p.y - R, R * 2, R * 2); }
+    x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+  }
 
   function init(canvas, tapFn) {
     cv = canvas; c = cv.getContext('2d'); onTap = tapFn;
@@ -126,6 +180,21 @@ const StarMap = (() => {
     const [ox, oy] = toScreen(0, 0);
     c.globalAlpha = 1;
     c.drawImage(bg, ox + bx * 0.5 - 20, oy + by * 0.5 - 20, WW * cam.z + 40, WH * cam.z + 40);
+    // 瞬く星（視差）
+    if (!stars) makeStars();
+    const W2 = vw + 20, H2 = vh + 20;
+    for (const s of stars) {
+      const px = ((s.x * W2 - cam.x * cam.z * s.l) % W2 + W2) % W2 - 10, py = ((s.y * H2 - cam.y * cam.z * s.l) % H2 + H2) % H2 - 10;
+      const a = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph));
+      if (s.s > 1.4) { c.globalAlpha = a * 0.7; blit(glow(s.w ? '#ffd8b0' : '#bcd4ff'), px, py, s.s * 3.2); }
+      c.globalAlpha = a; c.fillStyle = s.w ? '#ffe6c8' : '#e6eeff'; c.fillRect(px - s.s / 2, py - s.s / 2, s.s, s.s);
+    }
+    c.globalAlpha = 1;
+    // 星雲と勢力圏（下ごしらえ済みの絵を貼る）
+    const k = ownKey(); if (!layer || k !== layerKey) { buildLayer(); layerKey = k; }
+    c.globalCompositeOperation = 'lighter';
+    c.drawImage(layer, ox, oy, WW * cam.z, WH * cam.z);
+    c.globalCompositeOperation = 'source-over';
     c.save();
     c.translate(vw / 2, vh / 2); c.scale(cam.z, cam.z); c.translate(-cam.x, -cam.y);
     // 星系の名前
@@ -137,9 +206,9 @@ const StarMap = (() => {
     // 勢力圏
     c.globalCompositeOperation = 'lighter';
     for (const p of G.planets) {
-      if (p.owner === null) continue;
+      if (p.owner === null || p.type !== 'rift') continue;
       const col = Game.ownerCol(p.owner);
-      const R0 = p.type === 'rift' ? 160 + Math.sin(t * 2) * 12 : 95;
+      const R0 = 160 + Math.sin(t * 2) * 12;
       const g = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, R0);
       g.addColorStop(0, Art.hexA(col, p.owner === 'E' ? 0.3 : 0.16)); g.addColorStop(1, Art.hexA(col, 0));
       c.fillStyle = g; c.beginPath(); c.arc(p.x, p.y, R0, 0, 7); c.fill();
@@ -157,6 +226,23 @@ const StarMap = (() => {
       c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(B.x, B.y); c.stroke();
       c.setLineDash([]);
     }
+    // 航路を流れる光
+    c.globalCompositeOperation = 'lighter';
+    for (const [a, b] of Game.LANES) {
+      const A = G.planets[a], B = G.planets[b];
+      const rift = A.type === 'rift' || B.type === 'rift';
+      const same = A.owner !== null && A.owner === B.owner;
+      const col = rift ? '#ff2a6a' : same ? Game.ownerCol(A.owner) : '#9fc0ff';
+      const L = Math.hypot(B.x - A.x, B.y - A.y) || 1, n = L > 260 ? 2 : 1;
+      const dir = (a * 7 + b * 3) % 2 ? 1 : -1;
+      for (let i = 0; i < n; i++) {
+        let f = ((t * (rift ? 70 : 38)) / L + (a * 0.137 + b * 0.291) + i / n) % 1; if (dir < 0) f = 1 - f;
+        const fade = Math.sin(f * Math.PI);
+        c.globalAlpha = (same || rift ? 0.95 : 0.6) * fade;
+        blit(glow(col), A.x + (B.x - A.x) * f, A.y + (B.y - A.y) * f, rift ? 9 : 7);
+      }
+    }
+    c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
     // 移動の予定
     for (const fl of G.fleets) {
       if (fl.fac !== G.player) continue;
@@ -185,11 +271,21 @@ const StarMap = (() => {
     // 惑星
     for (const p of G.planets) {
       const r = planetR(p);
+      const PT = PTYPES[p.type] || PTYPES.terra;
+      if (p.owner === 'E') drawCorrupt(p, r, t);
       Art.planet(c, p.x, p.y, r, p.type, p.seed, { t });
+      if (p.type === 'rift') drawBlackSun(p, r, t);
+      else {
+        // 大気の縁（光の当たる側）
+        c.strokeStyle = Art.hexA(PT.col[2], 0.75); c.lineWidth = 1.2;
+        c.beginPath(); c.arc(p.x, p.y, r - 0.4, Math.PI * 0.95, Math.PI * 1.75); c.stroke();
+        if (p.type === 'ice' || p.type === 'ruin') { c.strokeStyle = Art.hexA(PT.col[0], 0.35); c.lineWidth = 0.8; c.beginPath(); c.ellipse(p.x, p.y, r * 1.55, r * 0.35, 0.3, 0, 7); c.stroke(); }
+        if (p.owner === 'E') { c.fillStyle = `rgba(60,0,40,${0.35 + Math.sin(t * 2.5 + p.id) * 0.12})`; c.beginPath(); c.arc(p.x, p.y, r, 0, 7); c.fill(); }
+      }
       const col = Game.ownerCol(p.owner);
       c.strokeStyle = col; c.lineWidth = p.cap ? 3 : 1.6;
       c.beginPath(); c.arc(p.x, p.y, r + 3, 0, 7); c.stroke();
-      if (p.cap) { c.strokeStyle = Art.hexA(col, 0.5); c.lineWidth = 1; c.beginPath(); c.arc(p.x, p.y, r + 7, 0, 7); c.stroke(); }
+      if (p.cap) { c.strokeStyle = Art.hexA(col, 0.5); c.lineWidth = 1; c.beginPath(); c.arc(p.x, p.y, r + 7, 0, 7); c.stroke(); drawCrown(p.x, p.y - r - (typeof p.owner === 'string' && p.owner !== 'E' ? 20 : 11), col, t); }
       // 防衛衛星
       for (let i = 0; i < Math.min(10, p.def); i++) {
         const a = t * 0.4 + i * Math.PI * 2 / Math.max(1, p.def);
@@ -211,6 +307,15 @@ const StarMap = (() => {
     for (const m of fleetMarks()) {
       const fl = m.fl, col = Game.ownerCol(fl.fac);
       const sel = fl === selFleet;
+      // エンジンの尾（星から外へ流れる）と光
+      const P0 = G.planets[fl.at], ex = m.x - P0.x, ey = m.y - P0.y, el = Math.hypot(ex, ey) || 1;
+      c.globalCompositeOperation = 'lighter';
+      const tr = c.createLinearGradient(m.x, m.y, m.x + ex / el * 22, m.y + ey / el * 22);
+      tr.addColorStop(0, Art.hexA(col, 0.55)); tr.addColorStop(1, Art.hexA(col, 0));
+      c.strokeStyle = tr; c.lineWidth = 4; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(m.x, m.y); c.lineTo(m.x + ex / el * (18 + Math.sin(t * 9 + fl.at) * 3), m.y + ey / el * (18 + Math.sin(t * 9 + fl.at) * 3)); c.stroke(); c.lineCap = 'butt';
+      c.globalAlpha = 0.6 + Math.sin(t * 3 + fl.at) * 0.15; blit(glow(col), m.x, m.y, 20); c.globalAlpha = 1;
+      c.globalCompositeOperation = 'source-over';
       c.save(); c.translate(m.x, m.y);
       if (sel) { c.strokeStyle = '#fff'; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, 13, 0, 7); c.stroke(); }
       c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.arc(0, 0, 10, 0, 7); c.fill();
@@ -221,6 +326,49 @@ const StarMap = (() => {
       if ((fl.route ?? fl.dest) !== null && (fl.route ?? fl.dest) !== undefined && fl.fac === G.player) { c.fillStyle = '#7ae0ff'; c.fillText('▶', 12, -8); }
       c.restore();
     }
+    c.restore();
+  }
+  // 蝕に染まった星：紫と赤の触手がうごめく
+  function drawCorrupt(p, r, t) {
+    c.save(); c.globalCompositeOperation = 'lighter'; c.lineCap = 'round';
+    const n = p.type === 'rift' ? 9 : 6, rr = Art.srand(p.seed + 5);
+    for (let i = 0; i < n; i++) {
+      const a0 = rr() * 6.3 + Math.sin(t * 0.4 + i) * 0.3, len = r * (p.type === 'rift' ? 3.4 : 2.4) * (0.75 + 0.25 * Math.sin(t * 1.7 + i * 2.1));
+      const sx = p.x + Math.cos(a0) * r * 0.8, sy = p.y + Math.sin(a0) * r * 0.8;
+      const ex = p.x + Math.cos(a0) * (r + len), ey = p.y + Math.sin(a0) * (r + len);
+      const bend = Math.sin(t * 1.3 + i * 1.7) * len * 0.45;
+      const mx = (sx + ex) / 2 - Math.sin(a0) * bend, my = (sy + ey) / 2 + Math.cos(a0) * bend;
+      c.strokeStyle = i % 2 ? `rgba(170,40,255,${0.35 + Math.sin(t * 3 + i) * 0.15})` : `rgba(255,30,90,${0.35 + Math.sin(t * 2.6 + i) * 0.15})`;
+      c.lineWidth = Math.max(1, r * 0.22);
+      c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(mx, my, ex, ey); c.stroke();
+    }
+    c.restore();
+  }
+  // 裂け目：黒い太陽（光冠と回る光の筋）。深淵はさらに大きく、まがまがしく
+  function drawBlackSun(p, r, t) {
+    const ab = !!p.abyss, k = ab ? 1.5 : 1;
+    c.save(); c.globalCompositeOperation = 'lighter';
+    c.globalAlpha = 0.7 + Math.sin(t * 2) * 0.2; blit(glow(ab ? '#ff1040' : '#ff2a6a'), p.x, p.y, r * 3.6 * k); c.globalAlpha = 1;
+    c.translate(p.x, p.y); c.rotate(t * (ab ? -0.25 : 0.18));
+    const n = ab ? 18 : 12;
+    for (let i = 0; i < n; i++) {
+      const a = i * Math.PI * 2 / n, l = r * (1.9 + 0.7 * Math.sin(t * 2.2 + i * 1.3)) * k;
+      c.strokeStyle = i % 2 ? 'rgba(255,60,120,.45)' : 'rgba(190,60,255,.4)'; c.lineWidth = 1.4;
+      c.beginPath(); c.moveTo(Math.cos(a) * r * 1.05, Math.sin(a) * r * 1.05); c.lineTo(Math.cos(a) * l, Math.sin(a) * l); c.stroke();
+    }
+    c.globalCompositeOperation = 'source-over';
+    // 事象の地平（黒い核と細い光の縁）
+    c.fillStyle = '#000'; c.beginPath(); c.arc(0, 0, r * 0.95, 0, 7); c.fill();
+    c.strokeStyle = `rgba(255,${ab ? 60 : 120},${ab ? 80 : 170},${0.75 + Math.sin(t * 4) * 0.2})`; c.lineWidth = 1.6; c.beginPath(); c.arc(0, 0, r * 0.98, 0, 7); c.stroke();
+    if (ab) { c.strokeStyle = 'rgba(255,40,70,.6)'; c.lineWidth = 1.2; c.setLineDash([3, 5]); c.beginPath(); c.arc(0, 0, r * 2.4, 0, 7); c.stroke(); c.setLineDash([]); }
+    c.restore();
+  }
+  // 首都の冠
+  function drawCrown(x, y, col, t) {
+    c.save(); c.translate(x, y);
+    c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.55 + Math.sin(t * 2) * 0.15; blit(glow('#ffd76a'), 0, 0, 11); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+    c.beginPath(); c.moveTo(-6, 3); c.lineTo(-7, -4); c.lineTo(-3, -1); c.lineTo(0, -6); c.lineTo(3, -1); c.lineTo(7, -4); c.lineTo(6, 3); c.closePath();
+    c.fillStyle = '#ffd76a'; c.fill(); c.strokeStyle = Art.mix(col, '#000000', 0.3); c.lineWidth = 1; c.stroke();
     c.restore();
   }
   // ---------- 侵攻の矢印（今月と先月、どこからどこへ攻め込んだか） ----------
