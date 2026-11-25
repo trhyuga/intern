@@ -98,6 +98,66 @@ const Epilogue = (() => {
     grudge: (a, b, pz) => `${a}と${b}の間の溝は、${pz ? 'すぐには埋まらなかった。それでも、互いに背を向けることはなくなった' : '消えはしなかった。だが二人とも、もう剣を抜こうとはしなかった'}。`,
   };
 
+  // ---------- あの日の選択の行く末（G.flags の物語の flag から。最大4行） ----------
+  // [flag, 和平の文, 統一の文]（統一の文が無ければ和平の文を使う）。並び順＝優先順
+  const ECHO = [
+    ['cr0_rescued', '殿を務めた紅の旗の話は、帝国の子どもたちの寝物語になった。'],
+    ['cr0_abandon', '見捨てた前線の名は、和平の席でも誰も口にしなかった。それでも毎年、その日だけは都の鐘が鳴らされた。', '見捨てた前線の名は、凱旋の式典でも呼ばれなかった。それでも毎年、その日だけは都の鐘が鳴らされた。'],
+    ['cr0_viktor_rear', '殿に残った艦隊の航跡は、いまも国境の哨戒航路として使われている。'],
+    ['cr0_konrad_rear', '殿に築かれた砦は、戦が終わると灯台に作り変えられた。'],
+    ['cr0_retreat', 'あの日の撤退を臆病と呼ぶ者は、もういない。生き残った者たちが、この平和を築いたのだから。', 'あの日の撤退を臆病と呼ぶ者は、もういない。退いて残した力が、最後の勝利を呼んだのだから。'],
+    ['cr1_aid_empire', '昨日の敵へ送った救援の艦隊は、和平の礎になった。', '昨日の敵へ送った救援の艦隊を覚えていた星々は、統一の旗を拒まなかった。'],
+    ['cr1_martial', '一度は閉ざされた議場の扉は、二度と閉じられないよう蝶番ごと外された。'],
+    ['cr1_open', '危機のさなかにも灯り続けた議場の灯は、いまも消えずにともっている。'],
+    ['cr2_paid', '避難船の乗船券を買い支えた帳簿は、のちに「最も高く、最も正しい支出」と呼ばれた。'],
+    ['cr2_smuggle', '帳簿に載らなかった船が運んだ人々は、いまでは港の顔役になっている。'],
+    ['cr2_market', '市場の理屈で見送った人々のことを、この国は長い時間をかけて悔いることになった。'],
+    ['cr3_crusade', '聖戦の誓いに散った騎士たちの名は、聖堂の壁一面に刻まれた。'],
+    ['cr3_sanctuary', 'あの日開かれた聖堂の扉は、戦が終わっても開かれたままだった。'],
+    ['cr3_purge', '焼かれた名簿の灰の上に、ささやかな慰霊の碑が建てられた。'],
+    ['cr3_mercy', 'あの日の赦しを受けた者たちが、のちに辺境の和解の橋渡しになった。', 'あの日の赦しを受けた者たちが、のちに降った星々との橋渡しになった。'],
+    ['cr4_gather', '氏族を一つの星に集めたあの冬の話は、炉端で語り継がれる昔話になった。'],
+    ['cr4_strike', '熊殺しの突撃は歌になり、酒場で歌われるたびに少しずつ勇ましくなっていった。'],
+    ['cr4_saved', '坑道から救い出された子どもたちは、やがて救難艦隊の乗組員になった。'],
+    ['cr5_shield', '人々の盾となった機兵たちの墓所には、いまも花が絶えない。'],
+    ['cr5_triage', 'あの日の選別表は封印され、「二度と使わぬように」とだけ書き添えられた。'],
+    ['af1_empire_trade', '旧敵との晩餐で結ばれた交易は、やがて銀河でいちばん賑やかな航路になった。'],
+    ['af2_legal', '裏航路は表看板を掲げ、密輸の船乗りたちは堂々と港に帰ってきた。'],
+    ['af4_new_home', '喰われた星の名は、新しい故郷の星にそのまま受け継がれた。'],
+  ];
+  const ECHO_KIND = { // 個別の文が無い flag の言い回し（接頭辞ごと）
+    al: ['昨日の敵と結んだ共闘の盟は、和平の礎になった。', '昨日の敵と結んだ共闘の盟は、統一ののちも破られることはなかった。'],
+    rv: ['好敵手と刃を交えたあの日の話は、のちに互いを認め合う笑い話になった。', '好敵手と刃を交えたあの日の話は、統一ののち、二人だけが知る思い出になった。'],
+    af: ['危機のあとに選んだ道は、戦の傷を癒やす長い歩みの始まりになった。', '危機のあとに選んだ道は、統一された銀河の治め方の手本になった。'],
+    ec: ['あの災いの日に下した決断は、いまも民の語り草になっている。', 'あの災いの日に下した決断は、勝利の陰の功として記録に残された。'],
+    om: ['兆しを見逃さなかったあの夜のことは、記録係の日誌に静かに書き残された。', '兆しを見逃さなかったあの夜のことは、統一史の最初の頁に記された。'],
+    cr: ['あの日の選択は、良くも悪くも、この国の形を決めた。', 'あの日の選択は、良くも悪くも、統一への道筋を決めた。'],
+  };
+  const KIND_ORDER = ['cr', 'af', 'al', 'rv', 'ec', 'om'];
+  function echoes(pz) {
+    try {
+      const fl = (typeof G !== 'undefined' && G && G.flags && typeof G.flags === 'object') ? G.flags : null;
+      if (!fl) return [];
+      const has = f => Object.prototype.hasOwnProperty.call(fl, f) && fl[f] !== false && fl[f] != null;
+      const fid = String(G.player);
+      const mineFlag = f => { const m = /^(cr|af|al|rv|ec|om)(\d+)_/.exec(f); return m && m[2] === fid ? m[1] : null; };
+      const lines = [], usedKind = new Set();
+      for (const [f, a, b] of ECHO) {
+        if (lines.length >= 4) break;
+        if (mineFlag(f) && has(f)) lines.push(pz ? a : (b || a));
+      }
+      // 個別の文が無い flag は種類ごとに一行（重要度の高い種類から）
+      const known = new Set(ECHO.map(e => e[0]));
+      const rest = Object.keys(fl).filter(f => !known.has(f) && has(f) && mineFlag(f));
+      for (const k of KIND_ORDER) {
+        if (lines.length >= 4) break;
+        if (usedKind.has(k) || !ECHO_KIND[k]) continue;
+        if (rest.some(f => mineFlag(f) === k)) { usedKind.add(k); lines.push(ECHO_KIND[k][pz ? 0 : 1]); }
+      }
+      return lines.slice(0, 4).filter(t => typeof t === 'string' && t);
+    } catch (e) { return []; }
+  }
+
   function scenes(type) {
     type = type === 'conquest' ? 'conquest' : 'peace';
     const pz = type === 'peace';
@@ -149,6 +209,8 @@ const Epilogue = (() => {
     // 捕らわれた者・去った者（もとは我が国の者）を短く
     const lost = Object.keys(G.officers).filter(k => OFF[k] && G.officers[k].ever === fid && G.officers[k].fac !== fid && G.officers[k].st === 'cap');
     if (lost.length) out.push(['narr', '', `捕らわれていた${nm(lost[0])}${lost.length > 1 ? 'たち' : ''}も、${pz ? '和平の取り決めで' : '戦の終わりとともに'}故国の土を踏んだ。`]);
+
+    for (const ln of echoes(pz)) out.push(['narr', '', ln]);
 
     let date = ''; try { date = Game.dateStr(); } catch (e) { date = ''; }
     out.push(['narr', '', pz

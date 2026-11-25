@@ -349,6 +349,19 @@ const ShipArt = (() => {
     c.restore();
   }
 
+  const ECL_SCALE = { spore: 1.6, maw: 1.25, crown: 1 };
+  // 蝕艦の淡い光輪（暗い紅の背景でも一目でわかるように）
+  function halo(c, hull, u, t) {
+    const k = 0.5 + 0.5 * Math.sin(t * 2.6 + (hull === 'maw' ? 1 : 0));
+    const r = u * (hull === 'crown' ? 1.05 : 0.95);
+    c.save(); c.globalCompositeOperation = 'lighter';
+    const g = c.createRadialGradient(0, 0, r * 0.55, 0, 0, r * 1.25);
+    g.addColorStop(0, 'rgba(255,60,220,0)'); g.addColorStop(0.6, `rgba(255,70,230,${0.1 + 0.12 * k})`); g.addColorStop(1, 'rgba(255,40,200,0)');
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, r * 1.25, 0, 7); c.fill();
+    c.strokeStyle = `rgba(255,110,240,${0.22 + 0.2 * k})`; c.lineWidth = Math.max(0.8, u * 0.06);
+    c.beginPath(); c.arc(0, 0, r, 0, 7); c.stroke();
+    c.restore();
+  }
   // 覚えておいた絵を返す（L：艦の長さ px）
   function sprite(hull, L, col, white) {
     const Lb = Math.max(6, Math.round(L / 2) * 2);
@@ -385,8 +398,11 @@ const ShipArt = (() => {
   // 描く：Art.ship と同じ引数（L は艦の長さ）
   function draw(c, hull, x, y, ang, L, col, opt = {}) {
     const eclipse = hull === 'spore' || hull === 'maw' || hull === 'crown';
+    // 蝕艦は戦場で見えやすく（見た目だけ拡大。当たり判定は変えない）
+    if (eclipse && !opt.noEngine) L *= ECL_SCALE[hull] || 1;
     const cv = sprite(hull, L, col, false), S = cv.width / RES, u = L * 0.5;
     c.save(); c.translate(x, y); c.rotate(ang);
+    if (eclipse && !opt.noEngine) halo(c, hull, u, opt.t || performance.now() / 1000);
     if (!opt.noEngine) flames(c, hull, u, opt.t || performance.now() / 1000, opt.thrust ?? 0.6, eclipse);
     c.drawImage(cv, -S / 2, -S / 2, S, S);
     if (eclipse && !opt.noEngine) pulse(c, hull, u, opt.t || performance.now() / 1000);
