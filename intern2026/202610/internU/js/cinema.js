@@ -332,6 +332,11 @@ const Cinema = (() => {
         c.globalAlpha = a;
         const z = 1 + k * 0.5;
         c.drawImage(neb, -W * (z - 1) / 2, -H * (z - 1) / 2 - k * 40, W * z, H * z);
+        // 渦巻銀河の上をカメラが流れる
+        const gal = galaxyCanvas(512, 77, '#6a8cff', '#ffd9a0'), gs = M * (1.5 + k * 0.9);
+        c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = a * 0.85;
+        c.translate(W * (0.75 - k * 0.5), H * (0.35 + k * 0.2)); c.scale(1, 0.62); c.rotate(-0.5 + t * 0.03);
+        c.drawImage(gal, -gs / 2, -gs / 2, gs, gs); c.restore();
         c.globalAlpha = 1;
         starfield(c, W, H, stars, t, 0.08 + k * 0.1, k > 0.8 ? (k - 0.8) * 5 : 0);
         textBlock(c, '星と星とを結ぶ「航路門」の網の上に、', W / 2, H * 0.78, 16, fade(t, 10.5, 15, 1));
@@ -359,6 +364,11 @@ const Cinema = (() => {
           c.fillStyle = g; c.beginPath(); c.arc(x, y, M * 0.12, 0, 7); c.fill();
           Art.emblem(c, F.emblem, x, y, M * 0.07 * (0.6 + k * 0.4), F.col, F.col2);
           c.restore();
+          // 中心の門へ伸びる光の航路
+          c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = a * k * 0.5;
+          c.strokeStyle = F.col; c.lineWidth = 1.2; c.setLineDash([4, 6]); c.lineDashOffset = -t * 20;
+          c.beginPath(); c.moveTo(x, y); c.lineTo(W / 2 + (x - W / 2) * (1 - k), H * 0.5 + (y - H * 0.5) * (1 - k)); c.stroke(); c.restore();
+          if (t < at + 1.2) bloom(c, x, y, M * 0.2 * (1 - (t - at) / 1.2), F.col, a * 0.6 * (1 - (t - at) / 1.2));
           const ta = a * fade(t, at, at + 2.2, 0.35);
           textC(c, F.name, W / 2, H * 0.5, 22, ta, { glow: F.col, blur: 18 });
           textC(c, '「' + F.motto + '」', W / 2, H * 0.5 + 30, 13, ta * 0.9, { col: F.col2 });
@@ -405,7 +415,17 @@ const Cinema = (() => {
         c.fillStyle = sg; c.beginPath(); c.arc(sx, sy, M * 0.18, 0, 7); c.fill();
         // 影が覆う
         const cover = ease((k - 0.25) / 0.55);
-        if (cover > 0) eclipse(c, sx + (1 - cover) * M * 0.35, sy - (1 - cover) * M * 0.1, M * 0.06 + cover * M * 0.02, cover * a, t);
+        // 周りの星が、ひとつずつ消える
+        const rr = Art.srand(303);
+        c.save(); c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 26; i++) {
+          const px = rr() * W, py = rr() * H * 0.9, off = 56 + rr() * 9, col = rr() < 0.5 ? '#bcd8ff' : '#ffe0b0';
+          const life = t < off ? 1 : Math.max(0, 1 - (t - off) / 0.35);
+          if (t >= off && t < off + 0.35) bloom(c, px, py, 14, '#ff4080', 0.5 * (1 - (t - off) / 0.35));
+          if (life > 0) bloom(c, px, py, 5 + 3 * Math.sin(t * 3 + i), col, a * life * 0.8);
+        }
+        c.restore();
+        if (cover > 0) blackSun(c, sx + (1 - cover) * M * 0.35, sy - (1 - cover) * M * 0.1, M * 0.06 + cover * M * 0.02, cover * a, t);
         hit(t, 61, 'timp');
         textBlock(c, 'だが、誰も気づいていなかった。', W / 2, H * 0.72, 16, fade(t, 54, 59, 1));
         textBlock(c, '遠い星が、ひとつ、またひとつと――', W / 2, H * 0.72, 16, fade(t, 59, 63, 0.8));
@@ -443,7 +463,7 @@ const Cinema = (() => {
   function eclipseArrival(phase = 'first', cycle = 1) {
     Sound.stopBgm();
     const TX = {
-      first: { pre: '異常な重力波を観測――', title: '蝕', sub: '― ECLIPSE ―', line: '星を喰らうものが、来た。', n: 1 },
+      first: { pre: '異常な重力波を観測――', title: '蝕、来たる', sub: '― ECLIPSE ―', line: '星を喰らうものが、来た。', n: 1 },
       great: { pre: '銀河の三方で、同時に重力波――', title: '大蝕', sub: '― THE GREAT ECLIPSE ―', line: 'あれは、先触れにすぎなかった。', n: 3 },
       ret: { pre: '閉じたはずの裂け目が、ふたたび――', title: '再蝕', sub: `― ECLIPSE RETURNS・${cycle}度目 ―`, line: '根を断たぬかぎり、蝕は何度でも来る。', n: Math.min(4, 1 + cycle) },
     }[phase] || {};
@@ -451,15 +471,24 @@ const Cinema = (() => {
     const neb = Art.nebulaCanvas(420, 760, 404, [230, 260], { alpha: 0.07, stars: 400 });
     const hits = new Set();
     const at = (t, k, fn) => { if (t >= k && !hits.has(k)) { hits.add(k); fn(); } };
+    const br = Art.srand(717), bright = Array.from({ length: 20 }, () => ({ x: br(), y: br() * 0.9, s: br() }));
     const swarm = Array.from({ length: 70 * Math.min(3, TX.n || 1) }, (_, i) => { const r = Art.srand(i * 13 + 5); r(); r(); return { a: i * 2.39996 + r() * 0.3, sp: 0.4 + r() * 1.2, d: r() * 0.4, s: 6 + r() * 14, h: r() < 0.8 ? 'spore' : 'maw' }; });
     return play('opening', 'opcv', 17, (c, W, H, t) => {
       const M = Math.min(W, H), cx = W / 2, cy = H * 0.42;
       c.fillStyle = '#000'; c.fillRect(0, 0, W, H);
       // 1. いつもの静かな宇宙（0〜2.5）……のはずが
-      const shake = t > 2.5 && t < 6 ? (Math.random() - 0.5) * 10 * (1 - (t - 2.5) / 3.5) : 0;
+      const shake = t > 2.5 && t < 8 ? (Math.random() - 0.5) * (t > 4.5 && t < 6 ? 18 : 10) * (1 - (t - 2.5) / 5.5) : 0;
       c.save(); c.translate(shake, shake * 0.6);
       c.globalAlpha = t < 2.5 ? 1 : Math.max(0.25, 1 - (t - 2.5) / 3); c.drawImage(neb, 0, 0, W, H); c.globalAlpha = 1;
       starfield(c, W, H, stars, t, 0.01);
+      // 明るい星が、ひとつずつ消えていく
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < bright.length; i++) {
+        const b = bright[i], off = 0.5 + i * 0.13, L = t < off ? 1 : Math.max(0, 1 - (t - off) / 0.25);
+        if (L > 0) bloom(c, b.x * W, b.y * H, 4 + b.s * 5, '#cfe0ff', L * 0.9);
+        else if (t < off + 0.6) bloom(c, b.x * W, b.y * H, 10, '#ff2a6a', 0.4 * (1 - (t - off - 0.25) / 0.35));
+      }
+      c.restore();
       if (t < 2.6) textC(c, TX.pre, W / 2, H * 0.82, 15, fade(t, 0.4, 2.6, 0.4), { col: '#ffb0b0', glow: 'rgba(255,60,60,.8)' });
       // 2. 宇宙に亀裂（2.5〜5）
       if (t >= 2.5) {
@@ -478,11 +507,25 @@ const Cinema = (() => {
         const POS = TX.n === 1 ? [[cx, cy, 1]] : [[cx, cy, 1], [W * 0.2, H * 0.2, 0.55], [W * 0.82, H * 0.66, 0.6], [W * 0.25, H * 0.75, 0.5]].slice(0, TX.n);
         for (const [px, py, sc] of POS) {
           const rr = M * (0.05 + k * 0.32) * sc;
-          for (let i = 0; i < 3; i++) {
+          blackSun(c, px, py, rr * 0.55, Math.min(1, k * 1.5), t);
+          for (let i = 0; i < 2; i++) {
             const g = c.createRadialGradient(px, py, 0, px, py, rr * (1.3 + i * 0.5 + Math.sin(t * 3 + i) * 0.05));
             g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.5, 'rgba(15,0,8,.95)'); g.addColorStop(0.68, 'rgba(255,40,110,.6)'); g.addColorStop(1, 'rgba(255,40,110,0)');
             c.fillStyle = g; c.beginPath(); c.ellipse(px, py, rr * (2.2 + i * 0.4), rr * (0.9 + i * 0.25), 0, 0, 7); c.fill();
           }
+        }
+        // 紅い稲妻
+        if (t < 12) {
+          const lr = Art.srand(Math.floor(t * 9));
+          c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = 'rgba(255,70,110,.85)'; c.shadowColor = '#ff2050'; c.shadowBlur = 14;
+          for (let j = 0; j < 3; j++) {
+            if (lr() < 0.45) continue;
+            let a0 = lr() * 7, x = cx + Math.cos(a0) * M * 0.12, y = cy + Math.sin(a0) * M * 0.12;
+            c.lineWidth = 1 + lr() * 2; c.beginPath(); c.moveTo(x, y);
+            for (let s2 = 0; s2 < 9; s2++) { a0 += (lr() - 0.5) * 0.9; x += Math.cos(a0) * M * 0.07; y += Math.sin(a0) * M * 0.07; c.lineTo(x, y); }
+            c.stroke();
+          }
+          c.restore();
         }
         if (t < 5.2) { c.fillStyle = `rgba(255,220,230,${1 - (t - 4.5) / 0.7})`; c.fillRect(-20, -20, W + 40, H + 40); }
       }
@@ -501,7 +544,9 @@ const Cinema = (() => {
         at(t, 9, () => { if (Sound.ctx) Sound.drum(Sound.ctx.currentTime + 0.01, 'timp', 1.6); });
         const a = Math.min(1, (t - 9) / 0.6);
         c.fillStyle = `rgba(0,0,0,${a * 0.45})`; c.fillRect(0, 0, W, H);
-        textC(c, TX.title, W / 2, H * 0.4, Math.min(W / (1.3 + TX.title.length * 1.3), 150), a, { w: 800, col: '#ffffff', glow: 'rgba(255,30,100,1)', blur: 40 });
+        const st = Math.max(0, 1 - (t - 9) / 0.35), sj = st * 8 * (Math.random() - 0.5);
+        if (t < 9.6) { c.fillStyle = `rgba(255,40,90,${0.35 * (1 - (t - 9) / 0.6)})`; c.fillRect(0, 0, W, H); }
+        textC(c, TX.title, W / 2 + sj, H * 0.4 + sj, Math.min(W / (1.3 + TX.title.length * 1.3), 150) * (1 + st * 1.2), a, { w: 800, col: '#ffffff', glow: 'rgba(255,30,100,1)', blur: 40 });
         textC(c, TX.sub, W / 2, H * 0.4 + Math.min(W / 2.6, 150) * 0.85, 15, Math.min(1, (t - 10) / 1), { ls: 6, col: '#ffc0d0', glow: 'rgba(255,40,110,.9)' });
         textBlock(c, TX.line, W / 2, H * 0.78, 18, fade(t, 11, 16.8, 0.8), W * 0.9, { col: '#ffe0e8', glow: 'rgba(255,40,110,.9)' });
       }
