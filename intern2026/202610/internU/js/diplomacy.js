@@ -151,6 +151,7 @@ const Diplo = (() => {
         Game.log(`${FACTIONS[c].name}は盟約に従い、${FACTIONS[a].name}に宣戦した。`, a === G.player ? 'bad' : 'info', c);
       }
     }
+    if (typeof Sound !== 'undefined' && (a === G.player || b === G.player)) Sound.se('war');
     Game.log(`${FACTIONS[a].name}が${reason ? reason + '、' : ''}${FACTIONS[b].name}に宣戦を布告した。${broke ? '（約束を破って）' : ''}`, b === G.player ? 'bad' : a === G.player ? 'big' : 'info', a);
   }
   function gift(from, to, amt) {
@@ -264,6 +265,7 @@ const Diplo = (() => {
       setRel(pend.from, G.player, KINDS[pend.kind].to);
       r.t = Math.min(100, r.t + 10);
       Game.log(`${FACTIONS[pend.from].name}と${KINDS[pend.kind].name}を結んだ。`, 'good', G.player);
+      if (typeof Sound !== 'undefined') Sound.se('seal');
     } else r.t = Math.max(-100, r.t - 8);
   }
 

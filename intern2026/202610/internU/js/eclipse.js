@@ -145,6 +145,7 @@ const Eclipse = (() => {
     for (const k in G.rel) G.rel[k].t = Math.min(100, G.rel[k].t + 8);
     G.flags.eclipse = G.turn;
     const near = nearFacs(r.id);
+    if (typeof Sound !== 'undefined') Sound.se('eclipse');
     Game.log(`虚空が裂けた。「蝕」が来た――星を喰らう異形の群れが、${near.length ? near.map(f => FACTIONS[f].short).join('・') + 'の星々へ' : '辺境へ'}溢れ出す。`, 'big');
     spawn(r, true);
   }
@@ -158,6 +159,7 @@ const Eclipse = (() => {
     openRifts().forEach(r => { G.planets[r.id].def = Math.max(G.planets[r.id].def, 10); garrison(r); });
     for (const k in G.rel) G.rel[k].t = Math.min(100, G.rel[k].t + 25);
     G.flags.eclipseGreat = G.turn;
+    if (typeof Sound !== 'undefined') Sound.se('eclipse');
     Game.log(`銀河の三方で、同時に虚空が裂けた。蝕の大侵攻――もはや、どの国も他人事ではない。`, 'big');
   }
   // 再来：退いた数年後、もっと強くなって
@@ -169,6 +171,7 @@ const Eclipse = (() => {
     for (let i = 0; i < n && i < sites.length; i++) { const r = openRift(sites[i]); spawn(r, true); }
     for (const k in G.rel) G.rel[k].t = Math.min(100, G.rel[k].t + 20);
     G.flags['eclipseRet' + e.cycle] = G.turn; G.flags.eclipseRet = G.turn;
+    if (typeof Sound !== 'undefined') Sound.se('eclipse');
     Game.log(`閉じたはずの裂け目が、ふたたび開いた。蝕の再来（${e.cycle}度目）――前よりも、大きく。`, 'big');
   }
   function nearFacs(rid) {

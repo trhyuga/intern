@@ -448,6 +448,7 @@ const Game = (() => {
         f.tech[f.researching]++;
         done.push(t.name);
         const un = TECH_UNLOCK[f.researching][f.tech[f.researching]];
+        if (fid === G.player) (typeof Sound !== 'undefined' && Sound.se('research'));
         if (fid === G.player) log(`技術 ${t.name}を修めた。${t.gain ? '（' + t.gain + '）' : un ? '（' + un + '）' : ''}`, 'good', fid);
       }
       f.stats.techs++;
@@ -537,7 +538,7 @@ const Game = (() => {
           // 同じ星にいる自軍の艦隊（命令なし）に入れる。なければ駐留
           const fl = G.fleets.find(x => x.fac === p.owner && x.at === p.id && !x.dest && x.cmd && x.ships.length < fleetCap(x));
           if (fl && p.owner !== G.player) fl.ships.push(s); else p.dock.push(s);
-          if (p.owner === G.player) log(`${p.name}で ${G.designs[b.d].name} が竣工した。`, 'good', p.owner);
+          if (p.owner === G.player) { log(`${p.name}で ${G.designs[b.d].name} が竣工した。`, 'good', p.owner); if (typeof Sound !== 'undefined') Sound.se('build'); }
         }
       }
       // 修理
@@ -679,6 +680,7 @@ const Game = (() => {
     }
     if (isMajor(old) && isMajor(newOwner)) { const r = rel(newOwner, old); r.gainA = (r.gainA || 0) + (newOwner < old ? 1 : 0); r.gainB = (r.gainB || 0) + (newOwner < old ? 0 : 1); p.captT = G.turn; }
     p.prev = old; p.owner = newOwner; p.gov = null; p.build = []; p.dock = []; p.prog = 0;
+    if (typeof Sound !== 'undefined') { if (newOwner === G.player) Sound.se('capture'); else if (old === G.player) Sound.se('lost'); }
     if (typeof old === 'string' && old !== 'E' && G.minors[old]) G.minors[old].ally = null;
     p.stab = newOwner === 'E' ? 0 : 32;
     p.def = Math.max(0, Math.min(p.def, 1));
@@ -733,6 +735,7 @@ const Game = (() => {
     for (const m of Object.values(G.minors)) if (m.ally === fid) m.ally = null;
     for (let b = 0; b < 6; b++) if (b !== fid) G.rel[relKey(fid, b)].s = 'neutral';
     log(`${FACTIONS[fid].name}は滅びた。`, 'big', fid);
+    if (typeof Sound !== 'undefined') Sound.se('gong');
     G.flags['fell_' + fid] = G.turn;
   }
 

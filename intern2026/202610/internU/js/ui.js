@@ -66,7 +66,7 @@ const UI = (() => {
     top.render(body);
     body.scrollTop = st;
   }
-  function closeSheet() { sheetStack = []; $('#sheet').classList.remove('show'); refresh(); }
+  function closeSheet() { if ($('#sheet').classList.contains('show')) Sound.se('close'); sheetStack = []; $('#sheet').classList.remove('show'); refresh(); }
   function backSheet() { sheetStack.pop(); if (!sheetStack.length) closeSheet(); else { drawSheet(); } }
   function redraw() { if (sheetStack.length) drawSheet(); refreshTop(); }
 
@@ -100,7 +100,7 @@ const UI = (() => {
           mm.route = pid; mm.dest = null; mm.mission = null;
           const h = Game.path(mm.at, pid, n => Game.friendly(G.player, G.planets[n].owner)).length - 1;
           toast(`${Game.fleetName(mm)} → ${G.planets[pid].name}（${h}か月ほど）`);
-          Sound.se('order');
+          Sound.se('order'); Sound.se('move');
           answer(Game.friendly(G.player, G.planets[pid].owner) ? 'move' : 'attack', mm.cmd, G.planets[pid].name, Game.friendly(G.player, G.planets[pid].owner) ? 'normal' : 'angry');
         }
       } else toast('移動の指示をやめました');
@@ -285,7 +285,7 @@ const UI = (() => {
       sc.push([k, ok ? 'happy' : 'normal', People.voice(k, ok ? 'join' : 'refuse') || (ok ? 'わかった。その誘い、受けよう。' : '悪いが、まだ仕える気はない。')]);
       if (ok) {
         o.st = 'act'; o.fac = G.player; o.loyal = 65 + Math.random() * 20; if (o.ever === null || o.ever === undefined) o.ever = G.player; o.capBy = null;
-        Game.log(`${S.name}が仕官した。`, 'good', G.player);
+        Game.log(`${S.name}が仕官した。`, 'good', G.player); Sound.se('recruit');
         Sound.se('good');
       } else Sound.se('bad');
       await talk(ok ? '仕官' : '登用ならず', sc, null, 'palace');
@@ -373,6 +373,7 @@ const UI = (() => {
 
   // ---------- 一覧のタブ ----------
   function openTab(tab) {
+    Sound.se('open');
     const titles = { planets: '惑星', fleets: '艦隊', tech: '技術と設計', people: '人事', diplo: '外交', gov: '国政', menu: 'メニュー' };
     sheetStack = [];
     sheet(body => ({ planets: tabPlanets, fleets: tabFleets, tech: tabTech, people: tabPeople, diplo: tabDiplo, gov: tabGov, menu: tabMenu })[tab](body), titles[tab]);
@@ -586,6 +587,8 @@ const UI = (() => {
       <button class="btn wide" data-m="save">セーブする</button>
       <button class="btn wide" data-m="howto">遊び方</button>
       <button class="btn wide" data-m="mute">音：${Sound.muted ? 'オフ' : 'オン'}</button>
+      <button class="btn wide" data-m="vbgm">BGMの音量：${Math.round(Sound.vol.bgm * 100)}%</button>
+      <button class="btn wide" data-m="vse">効果音の音量：${Math.round(Sound.vol.se * 100)}%</button>
       <button class="btn wide" data-m="face">顔の絵：${Portrait.style === 'anime' ? 'アニメ調' : 'これまでの絵'}</button>
       ${Wake.supported() ? `<button class="btn wide" data-m="wake">画面を消さない：${Wake.on ? 'オン' : 'オフ'}</button>` : ''}
       <button class="btn wide danger" data-m="title">タイトルへ戻る</button></div>
@@ -596,6 +599,8 @@ const UI = (() => {
       if (m === 'save') saveToSlot();
       if (m === 'howto') howto();
       if (m === 'mute') { Sound.toggleMute(); drawSheet(); }
+      // 音量：100 → 75 → 50 → 25 → 0 → 100 …
+      if (m === 'vbgm' || m === 'vse') { const w = m === 'vbgm' ? 'bgm' : 'se', v = Sound.vol[w]; Sound.setVol(w, v <= 0.01 ? 1 : Math.round((v - 0.25) * 4) / 4); if (w === 'se') Sound.se('order'); drawSheet(); }
       if (m === 'face') { Portrait.setStyle(Portrait.style === 'anime' ? 'classic' : 'anime'); refresh(); drawSheet(); toast('顔の絵を切り替えました（会話などで描き直されます）'); }
       if (m === 'wake') { Wake.set(!Wake.on); toast(Wake.on ? '遊んでいる間、画面を消さないようにしました' : '画面の自動スリープを元に戻しました'); drawSheet(); }
       if (m === 'title') { Game.save(); closeSheet(); toTitle(); }
@@ -647,6 +652,13 @@ const UI = (() => {
       const el = $('#talk');
       el.className = 'talk show bg-' + (bg || 'space');
       if (typeof TalkFX !== 'undefined') TalkFX.start(bg || 'space');
+      // 会話の曲：悲しい場面が多ければ悲しみの曲、危機の背景なら危機の曲、ほかは穏やかな曲。
+      //  短い会話（2場面以下）と、危機・戦いの最中は曲を変えない。終われば元の曲へ戻す
+      const sadN = scenes.filter(x => x[1] === 'sad').length, cur = Sound.mood;
+      const tm = sadN && sadN * 2 >= scenes.length ? 'sad' : bg === 'crisis' ? 'crisis' : (cur === 'crisis' || cur === 'battle') ? null : 'event';
+      const pushed = scenes.length >= 3 && tm && tm !== cur && cur !== 'ending' && cur !== 'defeat';
+      if (pushed) Sound.push(tm);
+      const popM = () => { if (pushed) Sound.pop(); };
       let i = 0, typing = null, full = false;
       if (!noTitle && title) Sound.se('event');
       const prevMood = null;
@@ -669,11 +681,11 @@ const UI = (() => {
         if (choices && choices.length) {
           el.querySelectorAll('canvas.talkfx').forEach(cv => cv.remove());   // 動く背景は TalkFX が付け直す（写しを残さない）
           el.innerHTML += `<div class="t-choices">${choices.map((c, k) => `<button class="btn" data-c="${k}">${c.t}</button>`).join('')}</div>`;
-          $$('[data-c]', el).forEach(b => b.onclick = e => { e.stopPropagation(); Sound.se('click'); el.className = 'talk'; el.innerHTML = ''; if (typeof TalkFX !== 'undefined') TalkFX.stop(); el.onclick = null; res(+b.dataset.c); });
+          $$('[data-c]', el).forEach(b => b.onclick = e => { e.stopPropagation(); Sound.se('click'); el.className = 'talk'; el.innerHTML = ''; if (typeof TalkFX !== 'undefined') TalkFX.stop(); el.onclick = null; popM(); res(+b.dataset.c); });
           el.onclick = null;
           return;
         }
-        el.className = 'talk'; el.innerHTML = ''; if (typeof TalkFX !== 'undefined') TalkFX.stop(); el.onclick = null; res(null);
+        el.className = 'talk'; el.innerHTML = ''; if (typeof TalkFX !== 'undefined') TalkFX.stop(); el.onclick = null; popM(); res(null);
       };
       el.onclick = () => {
         const tt = $('.t-text', el);
