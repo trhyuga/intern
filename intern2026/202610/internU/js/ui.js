@@ -82,7 +82,7 @@ const UI = (() => {
     const ecl = $('#tbEcl');
     const st = Eclipse.status();
     ecl.textContent = st; ecl.style.display = st ? '' : 'none';
-    ecl.onclick = () => { if (G.eclipse.arrived) { Sound.se('click'); openTab('gov'); } };
+    ecl.onclick = () => { if (Turn.running) return; if (G.eclipse.arrived) { Sound.se('click'); openTab('gov'); } };
   }
   function refresh() { refreshTop(); quick(); }
 
@@ -93,7 +93,7 @@ const UI = (() => {
     if (mm) {
       if (hit.planet !== undefined) {
         const pid = hit.planet;
-        if (pid === mm.at) { mm.route = null; mm.dest = null; toast('待機させました'); }
+        if (pid === mm.at) { mm.route = null; mm.dest = null; mm.mission = null; toast('待機させました'); }
         else if (!Game.canEnter(G.player, pid)) toast('その星には入れません（戦争中の相手か、独立惑星・味方の星だけ）');
         else if (!Game.path(mm.at, pid, n => Game.friendly(G.player, G.planets[n].owner))) toast('そこまでの道がありません（敵の星を通り抜けることはできません）');
         else {
@@ -833,6 +833,7 @@ const UI = (() => {
     }
     const lead = G.facs[me].leader;
     const cands = Game.officersOf(me).filter(k => k !== lead);
+    if (!cands.length) { body.innerHTML = '<p class="note">参謀を任せられる士官がいません。士官を登用すると、任せられるようになります。</p>'; return; }
     if (!staffDraft || !cands.includes(staffDraft.key)) {
       // いちばん得意の大きい士官を勧める
       let best = cands[0], bs = -1;
@@ -840,6 +841,7 @@ const UI = (() => {
       staffDraft = { key: best, policy: staffDraft ? staffDraft.policy : 'balanced', months: 12, big: true };
     }
     const d = staffDraft;
+    if (Staff.POLICIES[d.policy] && Staff.POLICIES[d.policy].needEclipse && (!G.eclipse.arrived || G.eclipse.defeated)) d.policy = 'balanced';
     const grs = Staff.grades(d.key);
     if (!G.eclipse.arrived) delete grs.eclipse;
     const balG = grs.balanced; delete grs.balanced;
@@ -850,7 +852,7 @@ const UI = (() => {
       <p class="note">得意：${good.join('・') || 'とくになし'}${bad.length ? `／不得手：${bad.join('・')}` : ''}${lead && isMine(lead) ? `（君主${shortName(OFF[lead])}の${OFF[lead].pers}の気質も加わる）` : ''}</p>
       <h3>方針</h3><div class="pols">${Object.entries(Staff.POLICIES).filter(([k, P]) => !P.needEclipse || G.eclipse.arrived).map(([k, P]) => {
         const dis = P.needEclipse && G.eclipse.defeated;
-        return `<button class="pol ${d.policy === k ? 'on' : ''}" data-p="${k}" ${dis ? 'disabled' : ''}><b>${P.icon} ${P.name}</b>${gradeBadge(grs[k])}<small>${dis ? '蝕が来てから選べる' : P.desc}</small></button>`; }).join('')}</div>
+        return `<button class="pol ${d.policy === k ? 'on' : ''}" data-p="${k}" ${dis ? 'disabled' : ''}><b>${P.icon} ${P.name}</b>${gradeBadge(grs[k])}<small>${dis ? '蝕は根絶された' : P.desc}</small></button>`; }).join('')}</div>
       <h3>期間</h3><div class="chips">${[[6, '半年'], [12, '1年'], [24, '2年'], [0, '止めるまで']].map(([m, n]) => `<button class="chip ${d.months === m ? 'on' : ''}" data-m="${m}">${n}</button>`).join('')}</div>
       <h3>艦隊戦</h3><div class="chips">${[['watch', '見る', '参謀が指揮。簡単な指示が出せる'], ['bigcmd', '大きな戦いは指揮', '20隻以上は自分で指揮、ほかは見る'], ['none', '見ない', '結果だけ報告']].map(([k, n, ds]) => `<button class="chip ${(d.watch || 'watch') === k ? 'on' : ''}" data-w="${k}">${n}<small>${ds}</small></button>`).join('')}</div>
       <button class="btn primary wide" data-a="go">${OFF[d.key].name}に「${Staff.POLICIES[d.policy].name}」を任せる</button>
@@ -993,6 +995,7 @@ const UI = (() => {
   // ---------- タイトル・勢力選び ----------
   function toTitle() {
     closeSheet();
+    { const wr = $('#warroom'); if (wr) wr.classList.remove('show'); }
     show('title');
     Cinema.title();
     Sound.bgm('title');
@@ -1016,9 +1019,17 @@ const UI = (() => {
     });
   }
   let starting = false;
+  // 前のゲームの画面の状態（移動の指示・作戦室・参謀の下書き）を消す
+  function resetView() {
+    StarMap.moveMode = null; StarMap.selFleet = null; StarMap.raidFocus = null;
+    staffDraft = null;
+    WarRoom.clearQueue();
+    const wr = $('#warroom'); if (wr) { wr.classList.remove('show'); WarRoom.redrawAll(); }
+  }
   async function startGame(fid) {
     starting = true;
     Game.newGame(fid);
+    resetView();
     show('main');
     StarMap.focus(FACTIONS[fid].capital, 0.75);
     StarMap.selPlanet = FACTIONS[fid].capital;
@@ -1041,7 +1052,9 @@ const UI = (() => {
     if (s === null) return;
     if (!Game.load(s)) { toast('セーブを読めませんでした'); return; }
     Cinema.stopTitle();
+    resetView();
     show('main');
+    if (G.over) { refresh(); await gameOver(G.over); return; }
     StarMap.focus(G.facs[G.player].capital, 0.7);
     refresh();
     Sound.bgm(Eclipse.active() ? 'crisis' : 'strategy');
@@ -1084,7 +1097,7 @@ const UI = (() => {
       if (n === 'end') { if (Staff.active()) { stopAuto(); return; } closeSheet(); StarMap.moveMode = null; Turn.end(); }
       else openTab(n);
     });
-    $('#btnMenu').onclick = () => { Sound.se('click'); openTab('menu'); };
+    $('#btnMenu').onclick = () => { if (Turn.running) { toast('月の処理が終わるまで、お待ちください'); return; } Sound.se('click'); openTab('menu'); };
     $('#btnStaff').onclick = () => { if (Turn.running) return; Sound.se('click'); openStaff(); };
     $('#sheet .sh-close').onclick = () => { Sound.se('click'); closeSheet(); };
     $('#sheet .sh-back').onclick = () => { Sound.se('click'); backSheet(); };

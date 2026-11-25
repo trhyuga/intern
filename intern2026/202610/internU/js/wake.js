@@ -7,15 +7,18 @@
 // ============================================================
 const Wake = (() => {
   const KEY = 'seisou_wake';
-  let lock = null, want = true;
+  let lock = null, want = true, pending = false;
   try { want = localStorage.getItem(KEY) !== '0'; } catch (e) { }
   const supported = () => 'wakeLock' in navigator;
   async function acquire() {
-    if (!want || !supported() || lock || document.visibilityState !== 'visible') return;
+    if (!want || !supported() || lock || pending || document.visibilityState !== 'visible') return;
+    pending = true;
     try {
-      lock = await navigator.wakeLock.request('screen');
-      lock.addEventListener('release', () => { lock = null; });
+      const l = await navigator.wakeLock.request('screen');
+      if (!want) { try { await l.release(); } catch (e) { } }   // 待つ間にオフにされた
+      else { lock = l; l.addEventListener('release', () => { if (lock === l) lock = null; }); }
     } catch (e) { lock = null; }   // 省電力モードなどで断られることがある
+    pending = false;
   }
   async function release() { try { if (lock) await lock.release(); } catch (e) { } lock = null; }
   function set(on) {

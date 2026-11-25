@@ -400,6 +400,7 @@ const Staff = (() => {
   function shouldStop(info) {
     const s = G.staff;
     if (!active()) return null;
+    { const o = G.officers[s.key]; if (!o || o.st !== 'act' || o.fac !== G.player) return `参謀の${OFF[s.key] ? OFF[s.key].name : ''}が${!o || o.st === 'dead' ? '戦死しました' : o.st === 'cap' ? '捕らわれました' : '国を去りました'}。新しい参謀を選んでください。`; }
     if (s.until !== null && G.turn >= s.until) return `方針の期間（${s.until - s.from}か月）が終わりました。`;
     if (info.eclipseArrived) {
       // 止めずに、参謀が対応する：蝕の段階が変わったら、作戦室で知らせ、艦隊を回す（どの方針でも、裂け目へ向かう）
