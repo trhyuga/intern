@@ -165,7 +165,7 @@ const Portrait = (() => {
   function animeFigure(c, f, cx, cy, expr) {
     backHair(c, f, cx, cy);
     const fem = f.female;
-    const fw = (fem ? 35.5 : 39) * (0.94 + (f.jaw - 0.86) * 0.5), chinY = cy + (fem ? 45 : 50) * f.faceL;
+    const fw = (fem ? 36.5 : 39) * (0.94 + (f.jaw - 0.86) * 0.5), chinY = cy + (fem ? 45 : 50) * f.faceL;
     const LC = lineCol(f);
     // 首（描き方の講座の目安）：正面で頭の幅の約半分。女性は目の中心より少し内側の幅で細く、男性は太め。
     //  肩の付け根へ少し外へ広がる。首筋の描き込みは控えめ（華奢に見える）。付け根は襟に隠す
@@ -192,8 +192,8 @@ const Portrait = (() => {
       c.bezierCurveTo(cx - fw * 0.94, cy + 16, cx - fw - 1.5, cy - 6, cx - fw, cy - 36);
       c.closePath();
     };
-    // 耳（髪から少しのぞく）
-    [-1, 1].forEach(s => {
+    // 耳：横髪のある髪型（女性・長い髪・おかっぱ）は髪に隠れるので描かない
+    if (!(fem || f.style === 'long' || f.style === 'bob' || f.style === 'side')) [-1, 1].forEach(s => {
       c.fillStyle = shade(f.skin, 0.95); c.beginPath(); c.ellipse(cx + s * (fw - 1), cy + 11, 4, 8, s * 0.2, 0, 7); c.fill();
       c.strokeStyle = LC; c.lineWidth = 0.9; c.stroke();
     });
@@ -214,6 +214,8 @@ const Portrait = (() => {
     c.quadraticCurveTo(cx - fw * 0.28, chinY - 4, cx - fw * 0.6, cy + 31);
     c.bezierCurveTo(cx - fw * 0.94, cy + 16, cx - fw - 1.5, cy - 6, cx - fw, cy - 20);
     c.stroke();
+    // ここから顔の部品：顔の輪郭の内側にだけ描く（はみ出さない）
+    c.save(); facePath(); c.clip();
     // 頬の赤み（ふんわり）と、照れの斜線
     const blush = fem ? 0.32 : expr === 'happy' ? 0.18 : 0.08;
     [-1, 1].forEach(s => {
@@ -225,10 +227,14 @@ const Portrait = (() => {
     if (f.cyber) cyberFace(c, f, cx, cy + 6, fw);
     const E = animeEyes(c, f, cx, cy, expr);
     animeMouth(c, f, cx, cy, expr);
+    c.restore();
     if (f.tags.includes('beard')) animeBeard(c, f, cx, cy, fw, chinY);
     animeFrontHair(c, f, cx, cy, fw, facePath);
+    c.save(); facePath(); c.clip();   // 眉・眼鏡・傷なども顔の内側だけ
     animeBrows(c, f, cx, E, expr);
     animeAccessories(c, f, cx, cy, fw, expr, E);
+    c.restore();
+    animeVeil(c, f, cx, cy);
     animeMarks(c, f, cx, cy, fw, expr, E);
     crown(c, f, cx, cy);
   }
@@ -236,8 +242,8 @@ const Portrait = (() => {
     const fem = f.female, old = f.old;
     // 目の大きさと間隔（描き方の講座の図から）：目と目の間は目1つ分、顔の幅はおよそ目尻から目尻まで
     //  女性は目を少し大きく、間を目0.7個分に詰める（見比べて、離れすぎず大きすぎない所）
-    const W = (fem ? 12.5 : 10.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 12 : 7.5) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.25 : 1);
-    const ey = cy + 4, ex = W * (fem ? 1.7 : 2);
+    const W = (fem ? 11.5 : 10.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 11.5 : 7.5) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.25 : 1);
+    const ey = cy + 4, ex = W * (fem ? 1.68 : 2);
     const LC = lineCol(f), lash = '#1a0e12';
     const E = { ey, ex, W, H };
     [-1, 1].forEach(s => {
@@ -301,7 +307,7 @@ const Portrait = (() => {
       }
       c.moveTo(P[0][0], P[0][1]); P.forEach(p => c.lineTo(p[0], p[1]));
       // 目尻のはね
-      const wing = fem ? 6 : 3.5;
+      const wing = fem ? 3.5 : 2.5;
       c.lineTo(outer + s * wing, oY - (fem ? 4 : 2.5));
       for (let i = N; i >= 0; i--) c.lineTo(Q[i][0], Q[i][1]);
       c.closePath(); c.fill();
@@ -460,13 +466,16 @@ const Portrait = (() => {
     if (tags.includes('visor')) {
       const g = c.createLinearGradient(cx - fw, 0, cx + fw, 0);
       g.addColorStop(0, '#0a1a2a'); g.addColorStop(0.5, f.cyber ? '#1a4a6a' : '#3a1a2a'); g.addColorStop(1, '#0a1a2a');
-      c.fillStyle = g; c.beginPath(); c.moveTo(cx - fw - 4, ey - 12); c.lineTo(cx + fw + 4, ey - 12); c.lineTo(cx + fw, ey + 9); c.lineTo(cx - fw, ey + 9); c.closePath(); c.fill();
+      c.fillStyle = g; c.beginPath(); c.moveTo(cx - fw - 2, ey - 12); c.lineTo(cx + fw + 2, ey - 12); c.lineTo(cx + fw + 2, ey + 9); c.lineTo(cx - fw - 2, ey + 9); c.closePath(); c.fill();
       c.strokeStyle = lineCol(f); c.lineWidth = 1; c.stroke();
       c.fillStyle = expr === 'angry' ? '#ff4060' : f.cyber ? '#40e8ff' : '#ff80a0';
       c.fillRect(cx - fw * 0.7, ey - 2, fw * 1.4, 2.5);
     }
     if (f.cyber && !tags.includes('visor')) { c.fillStyle = 'rgba(80,230,255,.3)'; c.beginPath(); c.arc(cx + E.ex, ey + 2, E.W + 1, 0, 7); c.fill(); }
-    if (tags.includes('veil')) {
+  }
+  // 聖衣のかぶり物（頭にかぶる物なので、顔の内側に限らない）
+  function animeVeil(c, f, cx, cy) {
+    if (f.tags.includes('veil')) {
       c.fillStyle = '#f8f4ff'; c.beginPath(); c.moveTo(cx - 56, cy - 30); c.bezierCurveTo(cx - 50, cy - 92, cx + 50, cy - 92, cx + 56, cy - 30); c.lineTo(cx + 46, cy - 42); c.bezierCurveTo(cx + 30, cy - 72, cx - 30, cy - 72, cx - 46, cy - 42); c.closePath(); c.fill();
       c.strokeStyle = '#d4af37'; c.lineWidth = 2; c.beginPath(); c.moveTo(cx - 46, cy - 44); c.bezierCurveTo(cx - 30, cy - 72, cx + 30, cy - 72, cx + 46, cy - 44); c.stroke();
       c.fillStyle = '#d4af37'; c.beginPath(); c.arc(cx, cy - 64, 4, 0, 7); c.fill();
