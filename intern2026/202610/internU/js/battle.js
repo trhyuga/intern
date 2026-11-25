@@ -1467,7 +1467,9 @@ const Battle = (() => {
   function eclKind() {
     if (S.eclK === undefined) {
       const p = S.planet, e = S.side.A.fac === 'E' || S.side.D.fac === 'E';
-      S.eclK = p && p.abyss ? 2 : e || (p && p.type === 'rift') ? 1 : 0;
+      // 星の見た目だけでなく、いま蝕のものか（取り戻した裂け目の跡での国どうしの戦いは、ふつうの戦場）
+      const pe = p && p.owner === 'E';
+      S.eclK = pe && p.abyss ? 2 : e || (pe && p.type === 'rift') ? 1 : 0;
     }
     return S.eclK;
   }
@@ -1559,7 +1561,9 @@ const Battle = (() => {
       c.strokeStyle = 'rgba(255,220,235,.5)'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, R - 1, 0, 7); c.stroke();
     }
     // 赤い稲妻（ときどき）
-    if (!S.bolt && Math.random() < (EK === 2 ? 0.006 : 0.009)) {
+    // 稲妻：画面の更新の速さに関わらず同じ頻度（1秒あたり）。一時停止中は走らない
+    const nowB = performance.now(), dtB = Math.min(0.1, (nowB - (S.boltT || nowB)) / 1000); S.boltT = nowB;
+    if (!S.bolt && !paused && Math.random() < (EK === 2 ? 0.36 : 0.54) * dtB) {
       const pts = [], a = Math.PI * (0.15 + Math.random() * 0.7), d0 = R * 0.9, d1 = R + 300 + Math.random() * 500;
       let bx = x + Math.cos(a) * d0, by = y + Math.sin(a) * d0; pts.push([bx, by]);
       const n = 9, ex = x + Math.cos(a) * d1, ey = y + Math.sin(a) * d1;

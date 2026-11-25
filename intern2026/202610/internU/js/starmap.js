@@ -441,7 +441,7 @@ const StarMap = (() => {
     c.restore();
   }
   // 会話・艦隊戦で星図が隠れている間は描かない（iPhone の負担を減らす）
-  const hidden = () => { const t = document.getElementById('talk'), b = document.getElementById('battle'); return (t && t.classList.contains('show')) || (b && b.classList.contains('active')); };
+  const hidden = () => { const t = document.getElementById('talk'), b = document.getElementById('battle'); return (t && t.classList.contains('show')) || (b && b.classList.contains('show')); };
   function loop() { if (!hidden()) draw(); raf = requestAnimationFrame(loop); }
   function start() { if (!raf) { resize(); raf = requestAnimationFrame(loop); } }
   function stop() { if (raf) cancelAnimationFrame(raf); raf = null; }
