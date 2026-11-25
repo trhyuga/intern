@@ -165,7 +165,7 @@ const Portrait = (() => {
   function animeFigure(c, f, cx, cy, expr) {
     backHair(c, f, cx, cy);
     const fem = f.female;
-    const fw = (fem ? 37 : 39) * (0.94 + (f.jaw - 0.86) * 0.5), chinY = cy + (fem ? 45 : 50) * f.faceL;
+    const fw = (fem ? 35.5 : 39) * (0.94 + (f.jaw - 0.86) * 0.5), chinY = cy + (fem ? 45 : 50) * f.faceL;
     const LC = lineCol(f);
     // 首（描き方の講座の目安）：正面で頭の幅の約半分。女性は目の中心より少し内側の幅で細く、男性は太め。
     //  肩の付け根へ少し外へ広がる。首筋の描き込みは控えめ（華奢に見える）。付け根は襟に隠す
@@ -235,8 +235,9 @@ const Portrait = (() => {
   function animeEyes(c, f, cx, cy, expr) {
     const fem = f.female, old = f.old;
     // 目の大きさと間隔（描き方の講座の図から）：目と目の間は目1つ分、顔の幅はおよそ目尻から目尻まで
-    const W = (fem ? 11 : 10.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 10.5 : 7.5) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.25 : 1);
-    const ey = cy + 4, ex = W * 2;
+    //  女性は目を少し大きく、間を目0.7個分に詰める（見比べて、離れすぎず大きすぎない所）
+    const W = (fem ? 12.5 : 10.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 12 : 7.5) * f.eyeS * (old ? 0.8 : 1) * (expr === 'shock' ? 1.25 : 1);
+    const ey = cy + 4, ex = W * (fem ? 1.7 : 2);
     const LC = lineCol(f), lash = '#1a0e12';
     const E = { ey, ex, W, H };
     [-1, 1].forEach(s => {
@@ -392,7 +393,7 @@ const Portrait = (() => {
       let tipY = cy + (st === 'slick' ? -40 : fem ? -12 : st === 'short' ? -24 : -17) + (edge ? (fem ? 16 : 10) : 0) + (longL ? 4 : shortL ? -9 : -3) + (r() - 0.5) * 5;
       if (st === 'spiky') tipY -= 4 + (i % 2) * 6;
       // 目にかからないように：顔の内側の房は、眉の少し下まで
-      if (!edge) tipY = Math.min(tipY, cy + 4 - (fem ? 10.5 : 7.5) * f.eyeS * 1.15 - (fem ? 5 : 5));
+      if (!edge) tipY = Math.min(tipY, cy + 4 - (fem ? 12 : 7.5) * f.eyeS * 1.15 - (fem ? 5 : 5));
       else tipY = Math.min(tipY, cy - 2);
       const bend = swept ? 16 + k * 12 : 5 + Math.abs(rx - part) * 0.3;
       const tipX = rx + dir * bend + (r() - 0.5) * 3;
@@ -400,7 +401,7 @@ const Portrait = (() => {
       locks.push({ p0: [rx, ry], p1: [rx + dir * 1, ry + 14], p2: [tipX - dir * (6 + bend * 0.2), tipY - 12], p3: [tipX, tipY], w: w * 1.25, dir, tone: 0.95 + r() * 0.1 });
     }
     if (!swept && st !== 'slick') {
-      const tY = cy + 4 - (fem ? 10.5 : 7.5) * f.eyeS * 1.15 - (fem ? 7 : 7);
+      const tY = cy + 4 - (fem ? 12 : 7.5) * f.eyeS * 1.15 - (fem ? 7 : 7);
       locks.push({ p0: [part, cy - 76], p1: [part, cy - 52], p2: [part + 1, tY - 12], p3: [part + 2, tY], w: (fw * 2 + 12) / n * 1.3, dir: 1, tone: 1.02 });
     }
     // 額に落ちる房の影（くっきり、少し下へずらす）
