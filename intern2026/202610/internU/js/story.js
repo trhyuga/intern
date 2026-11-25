@@ -34,10 +34,12 @@ const Story = (() => {
     list.sort((x, y) => pr(y) - pr(x));
     for (const ev of list.slice(0, 3)) await play(ev);
   }
+  // 自国の物語で、寝返った・捕まった自国の人物の台詞は飛ばす（他国の人物はそのまま）
+  const away = (ev, w) => ev.home !== undefined && OFF[w].fac0 === ev.home && (G.officers[w].st !== 'act' || G.officers[w].fac !== ev.home);
   async function play(ev) {
     G.evDone[ev.id] = G.turn;
     if (ev.valid && !ev.valid()) return;   // 前の出来事で、もう片づいた（取り戻した捕虜など）
-    const scenes = ev.scenes().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead')));
+    const scenes = ev.scenes().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead' && !away(ev, w))));
     if (!scenes.length) { G.evDone[ev.id] = G.turn; return; }
     const choice = await UI.talk(ev.title, scenes, ev.choices, ev.bg);
     if (ev.fx) ev.fx();

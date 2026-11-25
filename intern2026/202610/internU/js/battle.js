@@ -41,6 +41,31 @@ const Battle = (() => {
     '野心': { breakthrough: 2.5, pincer: 2, rapid: 1.5, ambush: 1 }, '忠烈': { breakthrough: 3, pincer: 1, rapid: 1, ambush: 0.3 },
     '奔放': { rapid: 3, ambush: 2, breakthrough: 1.5, pincer: 1 },
   };
+  // 戦い方の型：万能の天才／○○の名手／堅実／鉄壁／凡将
+  //  天才はどの策も上手く、二度目の策も打てる。名手は得意の一手だけが冴える。鉄壁は策に頼らず、ひたすら崩れない。凡将は策をほとんど使わない
+  const STYLE = {
+    genius:     { name: '万能の天才', desc: 'どの策も巧みに使いこなし、一度の戦いで二度、策を打てる。敵の策もよく見抜く' },
+    specialist: { name: '名手', desc: '得意の策だけが冴える。ほかの策は並以下' },
+    regular:    { name: '堅実', desc: '好みの策を、手堅く使う' },
+    shield:     { name: '鉄壁', desc: '攻めの策は使わない。そのかわり守りが硬く、崩れにくい。敵の策も見抜きやすい' },
+    plain:      { name: '凡将', desc: '策はほとんど使わない。正面から撃ち合うだけ' },
+  };
+  const hashK = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  function styleOf(k) {
+    const o = OFF[k]; if (!o) return null;
+    const l = o.ldr, t = o.tac;
+    const prefs = Object.entries(PREF[o.pers] || PREF['沈着']).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+    let type;
+    if (l + t >= 170 && Math.min(l, t) >= 82) type = 'genius';
+    else if (l >= 74 && l - t >= 10) type = 'shield';
+    else if (t >= 78) type = 'specialist';
+    else if (t < 60 && l < 68) type = 'plain';
+    else type = 'regular';
+    const fav = type === 'specialist' ? prefs[hashK(k) % 2] : null;
+    const S0 = STYLE[type];
+    return { type, fav, top: prefs.slice(0, 2), name: fav ? TACTICS[fav].name + 'の名手' : S0.name, desc: fav ? `「${TACTICS[fav].name}」だけが冴える。ほかの策は並以下` : S0.desc };
+  }
+  const styleSd = sd => sd.cmd && !sd.cmdLost ? styleOf(sd.cmd) : null;
   const TL = {
     pincer: { start: ['両翼、開け。敵を挟み込む。', '左右から包め。逃げ場をなくせ。'], done: ['包囲完成だ！ 撃て！', '挟み込んだ！ 一隻も逃すな！'] },
     breakthrough: { start: ['紡錘陣！ 敵の中央を食い破る！', '一点を貫け！ 突き抜けたら反転だ！'], done: ['突き抜けた！ 全艦反転、背中を撃て！', '背後を取った！ 撃ちまくれ！'], fail: ['突破できん……！ 押し返されたか。', 'くっ、厚い……！ 一度下がれ！'] },
@@ -246,6 +271,9 @@ const Battle = (() => {
       if (o.pers === '猛進' && u.stance === 'assault') m.dmg *= 1.1;
       if (o.pers === '沈着' && u.stance === 'guard') m.taken *= 0.9;
       if (o.pers === '策士') m.flank += 0.12;
+      const st = styleOf(cmd);
+      if (st.type === 'shield') { m.taken *= sd.key === 'D' || u.stance === 'guard' ? 0.78 : 0.92; m.dmg *= 0.95; }
+      if (st.type === 'plain') m.dmg *= 0.97;
       if (o.pers === '野心') m.dmg *= 1.05;
     }
     // 副官
@@ -257,7 +285,7 @@ const Battle = (() => {
     // 策の役目
     const P = sd.plan;
     if (P && !P.done && u.role) {
-      if (u.role === 'spear' && P.phase === 1) { m.speed *= 1.18; m.dmg *= 1.1; if (P.detected) m.taken *= 1.2; }
+      if (u.role === 'spear' && P.phase === 1) { m.speed *= 1.18; m.dmg *= 1.02 + 0.16 * P.q; m.taken *= P.detected ? 1.2 : 1.1 - 0.22 * P.q; }   // 巧い突破ほど、撃たれる前に抜ける
       if (u.role === 'rapid' && P.phase === 1) m.speed *= 1.5;
       if (u.hidden) m.speed *= 1.2;
     }
@@ -312,7 +340,7 @@ const Battle = (() => {
       s.dead = true; s.hp = 0;
       S.side[target.side].lost++; S.side[srcSide].sunk++;
       const td = S.side[target.side], sd2 = S.side[srcSide];
-      td.morale -= 58 / td.ships0 * (target.sat ? 0.5 : 1);
+      td.morale -= 58 / td.ships0 * (target.sat ? 0.5 : 1) * (styleSd(td) && styleSd(td).type === 'shield' ? 0.7 : 1);
       sd2.morale = Math.min(sd2.mMax, sd2.morale + 14 / td.ships0);
       if (view) { boom(target, s, true); if (Sound) Sound.se(s.size >= 15 ? 'bigboom' : 'boom'); }
       if (!target.ships.some(x => !x.dead)) {
@@ -664,7 +692,7 @@ const Battle = (() => {
       if (sd.planT > 0) continue;
       sd.planT = 0.4;
       if (sd.plan && !sd.plan.done) planTick(sk);
-      else if (!sd.planUsed && sd.ctrl === 'ai' && !sd.force && !sd.routed && S.t > 2.5) choosePlan(sk);
+      else if (!sd.planUsed && sd.ctrl === 'ai' && !sd.force && !sd.routed && S.t > 2.5 && S.t > (sd.planAt || 0)) choosePlan(sk);
       void fd;
     }
   }
@@ -676,7 +704,9 @@ const Battle = (() => {
     if (DBG.noPlan) return;
     if (!sd.cmd || sd.cmdLost) return;
     const o = OFF[sd.cmd], n = mob(sk).length;
-    if (Math.random() > 0.3 + (o.tac - 50) / 55) return;   // 戦術 50 で3割、80 で8割、90 以上ならほぼ必ず
+    const st = styleOf(sd.cmd);
+    const chance = st.type === 'plain' ? 0.12 : st.type === 'shield' ? 0.3 : st.type === 'genius' ? 0.95 : st.type === 'specialist' ? 0.4 + (o.tac - 50) / 60 : 0.25 + (o.tac - 50) / 60;
+    if (Math.random() > chance) return;   // 凡将はまず使わない。名手・天才はほぼ必ず
     const my = mob(sk).reduce((a, u) => a + power(u), 0), en = mob(foeOf(sk)).reduce((a, u) => a + power(u), 0) || 1;
     const r = my / en;
     const mySp = Math.max(...mob(sk).map(unitSpeed)), enSp = Math.max(...mob(foeOf(sk)).map(unitSpeed), 1);
@@ -693,6 +723,15 @@ const Battle = (() => {
       if (fp.type === 'pincer') { w.breakthrough *= 1.8; }
     }
     if (sk === 'D' && S.planet && S.planet.def > 0) w.ambush *= 1.3;
+    // 型：名手は得意の一手ばかり、堅実は好みの二つ、鉄壁は待ち伏せだけ（攻めの策は使わない）
+    // 天才は戦況を読む：互角以下で正面突破はしない。数で勝てば包み、劣れば誘う
+    if (st.type === 'genius') {   // 好みでなく、戦況で選ぶ
+      Object.assign(w, { ambush: fp && !fp.done && fp.type === 'ambush' ? 0 : 2.5, pincer: r > 1.2 ? 3 : 0.8, breakthrough: r > 1.3 || S.side[foeOf(sk)].morale < 45 ? 2.5 : 0.2, rapid: mySp > enSp * 1.25 ? 2 : 0.2 });
+      if (S.terrain.some(t => t.type !== 'deb')) w.ambush *= 1.3;
+    }
+    if (st.type === 'specialist') Object.keys(w).forEach(k => w[k] *= k === st.fav ? 5 : 0.25);
+    if (st.type === 'regular' || st.type === 'plain') Object.keys(w).forEach(k => { if (!st.top.includes(k)) w[k] *= 0.15; });
+    if (st.type === 'shield') Object.keys(w).forEach(k => { if (k !== 'ambush' && k !== 'pincer') w[k] = 0; });
     Object.keys(w).forEach(k => { if (n < TACTICS[k].min) w[k] = 0; });
     const tot = Object.values(w).reduce((a, b) => a + b, 0); if (!tot) return;
     let x = Math.random() * tot, pick = null;
@@ -704,8 +743,13 @@ const Battle = (() => {
     const units = mob(sk);
     if (sd.routed || units.length < TACTICS[type].min || !mob(foeOf(sk)).length) return false;
     sd.planUsed = true;
-    const q = clamp(cmdTac(sd) / 100 + (Math.random() - 0.5) * 0.15, 0.25, 1.1);
-    const det = fd.cmd && !fd.cmdLost ? clamp(0.06 + (cmdTac(fd) - cmdTac(sd)) * 0.012, 0.03, 0.55) : 0;
+    const ms = styleSd(sd), fs = styleSd(fd);
+    // 策の出来：名手の得意技は冴え、不得手は鈍る。凡将はそもそも粗い
+    const qAdd = !ms ? 0 : ms.type === 'genius' ? 0.12 : ms.type === 'plain' ? -0.15 : ms.type === 'shield' ? -0.1 : ms.type === 'specialist' ? (ms.fav === type ? 0.22 : -0.12) : ms.top.includes(type) ? 0.04 : -0.06;
+    const q = clamp(cmdTac(sd) / 100 + qAdd + (Math.random() - 0.5) * 0.15, 0.2, 1.25);
+    const detAdd = !fs ? 0 : fs.type === 'genius' ? 0.12 : fs.type === 'shield' ? 0.14 : fs.type === 'plain' ? -0.04 : 0;
+    const detSub = !ms ? 0 : ms.type === 'genius' ? 0.06 : ms.type === 'specialist' && ms.fav === type ? 0.1 : 0;
+    const det = fd.cmd && !fd.cmdLost ? clamp(0.06 + (cmdTac(fd) - cmdTac(sd)) * 0.012 + detAdd - detSub, 0.03, 0.6) : 0;
     const P = sd.plan = { type, phase: 1, t0: S.t, q, detected: Math.random() < det };
     units.forEach(u => { u.role = null; u.wpi = 0; });
     units.sort((a, b) => a.x - b.x);
@@ -762,6 +806,8 @@ const Battle = (() => {
   function endPlan(sk) {
     const sd = S.side[sk], P = sd.plan; if (!P) return;
     P.done = true; sd.cautious = false; S.side[foeOf(sk)].cautious = false;
+    const st = styleSd(sd);
+    if (st && st.type === 'genius' && !sd.second && !sd.routed) { sd.first = P.type + (P.detected ? 'D' : ''); sd.second = true; sd.planUsed = false; sd.planAt = S.t + 3; }
     S.units.filter(u => u.side === sk).forEach(u => { u.role = null; u.wp = null; if (u.hidden) { u.hidden = false; } u.aiT = 0; });
   }
   function planTick(sk) {
@@ -1020,6 +1066,14 @@ const Battle = (() => {
     updateCtrl();
     Sound.bgm(S.side.A.fac === 'E' || S.side.D.fac === 'E' ? 'crisis' : 'battle');
   }
+  // 司令官のいない側の顔：一般の将兵（側ごとに決まった顔）
+  const GEN_T = ['艦長', '分艦隊長', '守備隊長', '先任士官', '戦隊長', '艦長代理'];
+  function genName(sd) { const s = (S.planet ? S.planet.id : 0) * 7 + (sd.key === 'A' ? 1 : 2) + String(sd.fac).length; return GEN_T[s % GEN_T.length]; }
+  function faceOf(sd, expr) {
+    if (sd.cmd) return `<img src="${Portrait.url(sd.cmd, expr)}">`;
+    if (sd.fac === 'E') return `<div class="vs-em ecl"></div>`;
+    return `<img src="${Portrait.generic('g' + (S.planet ? S.planet.id : 0) + sd.key + sd.fac, sd.fac, expr)}">`;
+  }
   function sideName(sd) {
     if (sd.fac === 'E') return '蝕の群れ';
     const n = Game.ownerShort(sd.fac);
@@ -1098,7 +1152,7 @@ const Battle = (() => {
     if (b.dataset.tac) {
       const sd = S.side[mySide];
       if (!sd.cmd || sd.cmdLost) say('司令官がいないと、策は使えない', '#ffb0a0');
-      else if (sd.planUsed) say('策は一度だけ', '#ffb0a0');
+      else if (sd.planUsed) say(sd.second || !styleSd(sd) || styleSd(sd).type !== 'genius' ? '策は一度だけ' : 'いまの策が終わるまで待て', '#ffb0a0');
       else if (!startPlan(mySide, b.dataset.tac)) say(`分隊が足りない（${TACTICS[b.dataset.tac].min}隊以上）`, '#ffb0a0');
       else { paused = false; sel = []; }
     }
@@ -1166,7 +1220,7 @@ const Battle = (() => {
     const el = document.querySelector('#battle .b-cut');
     const lineOf = (sd) => sd.fac === 'E' ? ECL_LINE.start : !sd.cmd ? '迎え撃て！'
       : S.tie ? (sd.key === 'A' ? S.tie.la : S.tie.lb) : (People.voice(sd.cmd, 'bstart') || R.pick(LINES[OFF[sd.cmd].pers].start));
-    const card = (sd, cls) => `<div class="vs-card ${cls}" style="--c:${Game.ownerCol(sd.fac)}">${sd.cmd ? `<img src="${Portrait.url(sd.cmd, 'angry')}">` : `<div class="vs-em"></div>`}<div><b>${sd.cmd ? OFF[sd.cmd].name : sideName(sd)}</b><p>「${lineOf(sd)}」</p></div></div>`;
+    const card = (sd, cls) => { const st = styleSd(sd); return `<div class="vs-card ${cls}" style="--c:${Game.ownerCol(sd.fac)}">${faceOf(sd, 'angry')}<div><b>${sd.cmd ? OFF[sd.cmd].name : sd.fac === 'E' ? sideName(sd) : sideName(sd) + '・' + genName(sd)}</b>${st ? `<em class="vs-style s-${st.type}">${st.name}</em>` : ''}<p>「${lineOf(sd)}」</p></div></div>`; };
     el.innerHTML = `<div class="vs">${card(e, 'en')}<div class="vs-x">VS</div>${card(a, 'me')}${S.tie ? `<div class="vs-tie">因縁の対決 ― ${S.tie.t.label}：${S.tie.t.desc}</div>` : ''}<div class="vs-where">${S.planet ? S.planet.name + ' 宙域' : '星間宙域'}${S.terrain.length ? ' ― ' + S.terrain.map(t => ({ ast: '小惑星帯', neb: '星雲', deb: '残骸' })[t.type]).join('・') : ''}</div></div>`;
     el.classList.add('show');
     Sound.se('alarm');
@@ -1222,7 +1276,7 @@ const Battle = (() => {
     const flow = S.story.slice(-5).map(e => `<li class="${e.side === mySide ? 'me' : 'en'}">${e.text}</li>`).join('');
     el.innerHTML = `<div class="b-result ${won ? 'win' : 'lose'}"><h2>${won ? (up ? '大逆転' : '勝利') : S.timeout ? '時間切れ' : '敗北'}</h2>
       ${flow ? `<ul class="b-flow">${flow}</ul>` : ''}
-      ${sd.cmd ? `<img src="${Portrait.url(sd.cmd, won ? 'happy' : 'sad')}"><p>「${line}」</p>` : ''}
+      ${sd.cmd ? `<img src="${Portrait.url(sd.cmd, won ? 'happy' : 'sad')}"><p>「${line}」</p>` : sd.fac !== 'E' ? `${faceOf(sd, won ? 'happy' : 'sad')}<p>「${won ? '……勝った。生きて帰れるぞ。' : '……ここまでか。退くぞ。'}」<br><small>${genName(sd)}</small></p>` : ''}
       <div class="b-stat">撃沈 ${S.side[mySide].sunk}隻 ／ 喪失 ${S.side[mySide].lost}隻</div>
       <button class="btn primary">戦いを終える</button></div>`;
     el.classList.add('show');
@@ -1493,5 +1547,5 @@ const Battle = (() => {
     }
   }
 
-  return { simulate, run, FORMS, STANCES, LINES, TACTICS, DBG, get state() { return S; }, power: (fl) => Game.fleetPower(fl) };
+  return { simulate, run, FORMS, STANCES, LINES, TACTICS, DBG, styleOf, get state() { return S; }, power: (fl) => Game.fleetPower(fl) };
 })();

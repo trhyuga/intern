@@ -11,8 +11,8 @@ const Portrait = (() => {
   const EYES = ['#3a5a8a', '#4a7a4a', '#7a4a2a', '#2a2a32', '#8a6a2a', '#5a3a8a', '#2a8a9a', '#a03030', '#6a7a8a'];
   const shade = (hex, k) => Art.mix(hex, k > 1 ? '#ffffff' : '#000000', Math.abs(1 - k));
 
-  function features(key) {
-    const S = OFF[key];
+  function features(key, S0) {
+    const S = S0 || OFF[key];
     const h = hash(key + S.name), r = Art.srand(h);
     const F = typeof S.fac0 === 'number' ? FACTIONS[S.fac0] : null;
     const old = S.tags.includes('old') || S.age >= 60;
@@ -35,15 +35,15 @@ const Portrait = (() => {
       tags: S.tags, pers: S.pers, r,
       lip: S.female ? ['#c86a6a', '#b85a62', '#d07a78', '#a05058'][Math.floor(r() * 4)] : null,
       fac: S.fac0,
-      merit: typeof G !== 'undefined' && G && G.officers[key] ? G.officers[key].merit : initMerit(S),
+      merit: S0 ? 0 : typeof G !== 'undefined' && G && G.officers[key] ? G.officers[key].merit : initMerit(S),
     };
   }
 
-  function draw(key, expr, rk) {
+  function draw(key, expr, rk, S0) {
     const SC = 2;   // 2倍の細かさで描く
     const cv = document.createElement('canvas'); cv.width = PW * SC; cv.height = PH * SC;
     const c = cv.getContext('2d'); c.scale(SC, SC);
-    const f = features(key);
+    const f = features(key, S0);
     f.rk = rk;
     // 背景：国の色の光と、ぼけた光の粒
     const bg = c.createLinearGradient(0, 0, 0, PH);
@@ -465,5 +465,15 @@ const Portrait = (() => {
     if (!cache.has(k)) cache.set(k, draw(key, expr, rk));
     return cache.get(k);
   }
-  return { url };
+  // 一般の将兵（名のない艦長など）。seed ごとに決まった顔
+  function generic(seed, fac, expr = 'normal') {
+    const k = 'gen:' + seed + ':' + expr;
+    if (!cache.has(k)) {
+      const r = Art.srand(hash(seed));
+      const S0 = { name: seed, fac0: fac, tags: [r() < 0.3 ? 'beard' : r() < 0.2 ? 'scar' : ''].filter(Boolean), age: 25 + Math.floor(r() * 30), female: r() < 0.35, pers: '沈着' };
+      cache.set(k, draw('gen' + seed, expr, 1, S0));
+    }
+    return cache.get(k);
+  }
+  return { url, generic };
 })();

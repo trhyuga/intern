@@ -182,7 +182,7 @@ const People = (() => {
   function wrap(ev, ctx = {}, extra = {}) {
     const lines = sc => (sc || []).map(([w, e, t]) => [w, e, sub(t, ctx)]);
     return {
-      id: ev.id, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0,
+      id: ev.id, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0, home: typeof ev.fac === 'number' ? ev.fac : undefined,
       scenes: () => lines(ctx.win && ev[ctx.win] ? ev[ctx.win] : ctx.useB && ev.sceneB ? ev.sceneB : (ev.scenesBy && ev.scenesBy[G.facs[G.player].ruling]) || ev.scenes),
       choices: (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices) ? (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices).map(c => ({ t: sub(c.t, ctx), fx: () => { fx(c.fx, ctx); if (extra.onChoice) extra.onChoice(c); }, after: c.after ? () => lines(c.after) : null })) : undefined,
       fx: () => { fx(ev.fx, ctx); if (extra.onPlay) extra.onPlay(); },
@@ -210,7 +210,7 @@ const People = (() => {
       if (ev.finale || G.evDone[ev.id]) continue;
       if (ev.fac !== undefined && ev.fac !== me) continue;
       if (ev.group && PEOPLE.MAIN.some(x => x.group === ev.group && G.evDone[x.id])) continue;
-      const prev = ev.after !== undefined ? [].concat(ev.after) : (ev.idx > 0 ? [PEOPLE.MAIN.find(x => x.chain === ev.chain && x.idx === ev.idx - 1 && !x.finale)].filter(Boolean).map(x => x.group ? '@' + x.group : x.id) : []);
+      const prev = ev.after !== undefined ? [].concat(ev.after) : (ev.idx > 0 ? [PEOPLE.MAIN.filter(x => x.chain === ev.chain && x.idx < ev.idx && !x.finale && (!ev.group || x.group !== ev.group)).sort((a, b) => b.idx - a.idx)[0]].filter(Boolean).map(x => x.group ? '@' + x.group : x.id) : []);
       const done = id => id.startsWith('@') ? PEOPLE.MAIN.some(x => x.group === id.slice(1) && G.evDone[x.id]) : !!G.evDone[id];
       if (!prev.every(done)) continue;
       const lastT = Math.max(0, ...prev.map(id => id.startsWith('@') ? Math.max(0, ...PEOPLE.MAIN.filter(x => x.group === id.slice(1)).map(x => G.evDone[x.id] || 0)) : G.evDone[id] || 0));

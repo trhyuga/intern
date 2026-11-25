@@ -481,3 +481,12 @@ h3.seal { color: #ff7aa0; }
 .story-prog span { color: var(--gold); font-size: 11px; min-width: 18px; }
 .story-prog small { margin-left: auto; color: var(--dim); font-family: var(--sans); }
 .story-prog .next { opacity: .5; border-left-style: dashed; }
+/* 戦い方の型 */
+.vs-style { display: inline-block; margin-left: 6px; font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 9px; background: #ffffff14; border: 1px solid #ffffff33; color: #cfd8e8; vertical-align: 2px; }
+.vs-card.me .vs-style { margin: 0 6px 0 0; }
+.s-genius { color: #ffe08a; border-color: #f0d27a; background: #f0d27a22; box-shadow: 0 0 8px #f0d27a55; }
+.s-specialist { color: #9fe0ff; border-color: #6ad0ff88; }
+.s-shield { color: #b8f0c8; border-color: #6ad09088; }
+.s-plain { color: #a8a8b4; }
+.vs-em.ecl { opacity: 1; background: radial-gradient(circle at 50% 45%, #ff2a6a 0 6px, #40001a 7px, #0a0008 60%); box-shadow: 0 0 14px #ff2a6a66 inset; }
+.st-style { margin: 6px 0; font-size: 13px; }

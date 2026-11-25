@@ -448,6 +448,7 @@ const UI = (() => {
       body.innerHTML = `<div class="ofc-big"><img src="${Portrait.url(k, 'normal')}"><div><h2>${S.name}</h2><p class="epi">${S.epi}</p>${rankHtml}
         <p>${S.age ? S.age + '歳・' : '年齢不詳・'}${S.pers}（${PERSONALITY[S.pers].desc}）</p><p>${roleText(k) || (o.st === 'dead' ? '戦死' : '')}</p></div></div>
         ${pf ? `<p class="bio">${pf.bio}</p>${pf.likes ? `<p class="note">好むもの：${pf.likes}</p>` : ''}` : ''}
+        ${(() => { const st = Battle.styleOf(k); return st ? `<div class="st-style">戦い方：<em class="vs-style s-${st.type}">${st.name}</em> <small class="dim">${st.desc}</small></div>` : ''; })()}
         <div class="stat-bars">${[['統率', 'ldr', '艦隊の被害を減らす'], ['戦術', 'tac', '艦隊の火力を上げる'], ['政治', 'pol', '総督として開発・収入'], ['交渉', 'dip', '外交の使者'], ['技術', 'sci', '総督として研究']].map(([n, s, d]) => `<div><span>${n}</span>${bar(S[s], 100, '#6ad0ff')}<b>${S[s]}</b><small><em class="gl ${Gloss.stat(S[s]).cls}">${Gloss.stat(S[s]).w}</em> ${d}</small></div>`).join('')}</div>
         <p class="note">奥の手：<b>${sk === 'random' ? '気まぐれ（毎回変わる）' : SKILLS[sk].name}</b>${sk !== 'random' ? ' ― ' + SKILLS[sk].desc : ''}</p>
         <div class="kv"><div><span>忠誠</span><b>${Gloss.tag(o.loyal, Gloss.loyal(o.loyal))}</b></div><div><span>武功</span><b>${Math.round(o.merit)}</b></div><div><span>戦い</span><b>${o.battles}（勝${o.wins}）</b></div></div>
