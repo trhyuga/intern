@@ -167,6 +167,7 @@ const People = (() => {
     if (c.with && !c.with.every(mine)) return false;
     if (c.notWith && c.notWith.some(mine)) return false;
     if (c.foe && !c.foe.every(foe)) return false;
+    if (c.foe && typeof c.war === 'number' && !c.foe.every(k => G.officers[k] && G.officers[k].fac === c.war)) return false;
     if (c.dead && !c.dead.every(k => st(k) === 'dead')) return false;
     if (c.alive && !c.alive.every(k => st(k) && st(k) !== 'dead')) return false;
     if (c.rank && !Object.entries(c.rank).every(([k, n]) => G.officers[k] && Game.rankIdx(k) >= n)) return false;
@@ -370,9 +371,10 @@ const People = (() => {
   function fx(x, ctx = {}) {
     if (!x) return;
     if (x.act) act(x.act, ctx);
-    if (x.loyal) Object.entries(x.loyal).forEach(([k, n]) => FX.loyal(k, n));
-    if (x.stat) Object.entries(x.stat).forEach(([k, v]) => Object.entries(v).forEach(([s, n]) => addStat(k, s, n)));
-    if (x.merit) Object.entries(x.merit).forEach(([k, n]) => G.officers[k] && Game.addMerit(k, n));
+    const okK = k => { const o = G.officers[k]; return !!o && o.st !== 'dead' && !(OFF[k] && OFF[k].fac0 === G.player && (o.st !== 'act' || o.fac !== G.player)); };
+    if (x.loyal) Object.entries(x.loyal).forEach(([k, n]) => { if (okK(k)) FX.loyal(k, n); });
+    if (x.stat) Object.entries(x.stat).forEach(([k, v]) => okK(k) && Object.entries(v).forEach(([s, n]) => addStat(k, s, n)));
+    if (x.merit) Object.entries(x.merit).forEach(([k, n]) => okK(k) && Game.addMerit(k, n));
     if (x.stab) FX.stab(x.stab);
     if (x.funds) FX.funds(x.funds);
     if (x.rp) FX.rp(x.rp);
@@ -391,7 +393,7 @@ const People = (() => {
     const dead = deadIn(cs0.map(c => c.t), ctx);
     const lines = sc => (sc || []).map(([w, e, t]) => [w, e, dead.length ? fixNations(sub(t, ctx), ctx, dead) : sub(t, ctx)]);
     return {
-      id: ev.id, wrapped: true, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0, home: typeof ev.fac === 'number' ? ev.fac : undefined,
+      id: ev.id, wrapped: true, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0, home: typeof ev.fac === 'number' ? ev.fac : (ev.cond && typeof ev.cond.fac === 'number' ? ev.cond.fac : undefined),
       scenes: () => lines(ctx.win && ev[ctx.win] ? ev[ctx.win] : ctx.useB && ev.sceneB ? ev.sceneB : (ev.scenesBy && ev.scenesBy[G.facs[G.player].ruling]) || ev.scenes),
       choices: (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices) ? (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices).map(c => ({ t: fixNations(sub(c.t, ctx), ctx), fx: () => { fx(c.fx, ctx); if (extra.onChoice) extra.onChoice(c); }, after: c.after ? () => lines(c.after) : null })) : undefined,
       fx: () => { fx(ev.fx, ctx); if (extra.onPlay) extra.onPlay(); },
@@ -449,6 +451,7 @@ const People = (() => {
     for (const ev of PEOPLE.EVS) {
       if (G.evDone[ev.id] || !ev.cond || ev.cond.fac !== me) continue;
       if (crisis && !eclEv(ev)) continue;
+      if (['great', 'ret'].includes(ev.cond.ecl) && !crisis) continue;   // さなかの場面は、さなかにだけ（根絶の後には流さない）
       if (cond(ev.cond)) out.push(wrap(ev, {}, { pr: 3 }));
     }
     // 2) 国家間の出来事（月の変わり目に積んだもの）

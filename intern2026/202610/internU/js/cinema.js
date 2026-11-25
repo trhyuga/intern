@@ -702,7 +702,7 @@ const Cinema = (() => {
     h('功臣'); (rec.epi || []).slice(0, 8).forEach(e => n(OFF[e.k].name)); gap();
     // 共に戦った士官たち（いま遊んでいる記録のときだけ）
     try {
-      if (typeof G !== 'undefined' && G && G.player === rec.fac && typeof Game !== 'undefined' && Game.officersOf) {
+      if (liveRecs.has(rec) && typeof G !== 'undefined' && G && G.player === rec.fac && typeof Game !== 'undefined' && Game.officersOf) {
         const seen = new Set((rec.epi || []).map(e => e.k));
         const rest = Game.officersOf(rec.fac).filter(k => OFF[k] && !seen.has(k)).sort((a, b) => ((G.officers[b] && G.officers[b].merit) || 0) - ((G.officers[a] && G.officers[a].merit) || 0)).slice(0, 12);
         if (rest.length) { h('共に戦った士官たち'); rest.forEach(k => n(OFF[k].name)); gap(); }
@@ -756,6 +756,7 @@ const EPILOGUE = {
   '奔放': ['ある日ふらりと姿を消し、銀河のどこかで噂だけが聞こえてくる。', '戦後は旅芸人のように星々を渡り歩き、行く先々で騒ぎを起こしたという。'],
 };
 const Ending = (() => {
+  const liveRecs = new WeakSet();   // いま終わったゲームの記録（見返しと区別する）
   function record(type) {
     const me = G.player, f = G.facs[me];
     const mine = Object.keys(G.officers).filter(k => G.officers[k].fac === me && G.officers[k].st === 'act');
@@ -787,6 +788,7 @@ const Ending = (() => {
       const list = JSON.parse(localStorage.getItem(CONFIG.recKey) || '[]');
       list.unshift(rec); localStorage.setItem(CONFIG.recKey, JSON.stringify(list.slice(0, 20)));
     } catch (e) { }
+    liveRecs.add(rec);
     return rec;
   }
   function showRecords() {

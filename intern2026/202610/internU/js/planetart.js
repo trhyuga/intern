@@ -230,13 +230,13 @@ const PlanetArt = (() => {
     const vg = x.createRadialGradient(w / 2, h / 2, h * 0.4, w / 2, h / 2, w * 0.65);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
     x.fillStyle = vg; x.fillRect(0, 0, w, h);
-    return cv.toDataURL('image/png');
+    return cv.toDataURL('image/jpeg', 0.86);
   }
 
   function url(p, w = 340, h = 150) {
     const key = [p.id, p.type, p.owner, p.abyss ? 1 : 0, Math.min(24, p.def | 0), Math.round((p.pop || 0) / 10), w, h].join('|');
     let u = cache.get(key);
-    if (!u) { try { u = draw(p, w, h); } catch (e) { u = ''; } if (cache.size > 120) cache.clear(); cache.set(key, u); }
+    if (!u) { try { u = draw(p, w, h); } catch (e) { u = ''; } if (cache.size > 24) cache.clear(); cache.set(key, u); }
     return u;
   }
   return { url };
