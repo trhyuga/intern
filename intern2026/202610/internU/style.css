@@ -761,3 +761,8 @@ h3.seal { color: #ff7aa0; }
 .st-style .vs-style { padding: 2px 9px; background: linear-gradient(180deg, #ffffff1e, #ffffff08); box-shadow: inset 0 1px 0 #ffffff22, 0 0 8px #8ab4ff33; letter-spacing: .05em; }
 .st-style .vs-style.s-genius { background: linear-gradient(180deg, #f0d27a40, #f0d27a14); box-shadow: inset 0 1px 0 #fff0c044, 0 0 10px #f0d27a66; }
 @media (prefers-reduced-motion: reduce) { .wr-e.wr-raid::after { animation: none; opacity: .8; } }
+/* 作戦室：敵襲の行は、結果の色より優先して赤帯を見せる */
+#warroom .wr-e.wr-result.wr-raid, #warroom .wr-e.wr-result.wr-raid.ng, #warroom .wr-e.wr-result.wr-raid.ok { background: repeating-linear-gradient(135deg, rgba(150,20,30,.34) 0 10px, rgba(90,10,20,.30) 10px 20px); box-shadow: inset 3px 0 0 #ff4a5a, 0 0 12px rgba(255,60,80,.22); }
+/* 艦隊戦の結果：小さな画面でも「戦いを終える」まで届くように、はみ出したら縦に動かせる */
+.b-cut:has(.b-result) { overflow-y: auto; align-items: flex-start; }
+.b-cut > .b-result { margin-top: auto; margin-bottom: auto; }

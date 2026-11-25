@@ -290,7 +290,7 @@ const Cinema = (() => {
       let raf = null, done = false, skipT = 0;
       const stop = () => { if (done) return false; done = true; cancelAnimationFrame(raf); window.removeEventListener('resize', onR); scr.querySelector('.skip').onclick = null; scr.onclick = null; capClear(); if (playing === stop) playing = null; return true; };
       const end = () => { if (stop()) res(); };
-      playing = stop;
+      playing = () => { if (stop()) res(); };   // 次の映像に替わる時も、待っている側を止めたままにしない
       const skip = scr.querySelector('.skip');
       skip.onclick = e => { e.stopPropagation(); Sound.se('click'); end(); };
       if (opt.tap) scr.onclick = () => { skipT += opt.tap(((performance.now() - t0) / 1000) + skipT) || 0; };
