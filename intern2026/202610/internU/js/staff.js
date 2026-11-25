@@ -115,6 +115,12 @@ const Staff = (() => {
 
   // AI に渡す指示
   function params() {
+    const r = params0();
+    // 蝕が来ている間は、どの方針でも艦を多めに造る（裂け目に挑める数をそろえる）
+    if (Eclipse.active()) r.build = (r.build || 1) * 1.25;
+    return r;
+  }
+  function params0() {
     const s = G.staff, k = curK(), S = OFF[s.key];
     const reckless = S.pers === '猛進' ? -0.15 : S.pers === '沈着' ? 0.1 : 0;
     const base = { mistake: 0.35 * Math.pow(1 - k, 2), noForb: true };
@@ -395,7 +401,11 @@ const Staff = (() => {
     const s = G.staff;
     if (!active()) return null;
     if (s.until !== null && G.turn >= s.until) return `方針の期間（${s.until - s.from}か月）が終わりました。`;
-    if (info.eclipseArrived && s.policy !== 'balanced') return '蝕が現れました。方針を見直してください。';
+    if (info.eclipseArrived) {
+      // 止めずに、参謀が対応する：蝕の段階が変わったら、作戦室で知らせ、艦隊を回す（どの方針でも、裂け目へ向かう）
+      const ph = { first: '蝕の先触れが現れました', great: '蝕の大侵攻です', ret: '蝕が再来しました' }[G.eclipse.phase] || '蝕が動きました';
+      WarRoom.say(s.key, `${ph}。方針は${POLICIES[s.policy].name}のまま、艦隊を裂け目へ回します。守りの手薄な星にも艦を置きます。`, 'angry');
+    }
     if (info.capitalLost) return '首都が陥落しました。';
     if (s.policy === 'eclipse' && !G.planets.some(p => p.owner === 'E' && (!p.abyss || G.facs[G.player].sealed))) return G.eclipse.defeated ? '蝕を根から絶ちました。対蝕作戦はここまでです。' : '蝕は退きました。いまは攻める相手がいません。';
     const lost = s.base.planets - G.planets.filter(p => p.owner === G.player).length;

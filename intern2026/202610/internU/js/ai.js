@@ -148,7 +148,8 @@ const AI = (() => {
     const f = G.facs[fid], F = { agg: pol.agg ?? Diplo.aggOf(fid) };
     const my = G.fleets.filter(x => x.fac === fid && x.ships.length && (x.cmd || x.ships.length >= 4));
     const busy = new Set();
-    G.fleets.forEach(x => { if (x.fac === fid && x.mission && x.mission.until >= G.turn) busy.add(x); });   // 出来事の命を受けた艦隊
+    const softM = [];
+    G.fleets.forEach(x => { if (x.fac === fid && x.mission && x.mission.until >= G.turn) { if (['home', 'border'].includes(x.mission.kind)) softM.push(x); else busy.add(x); } });   // 出来事の命を受けた艦隊
     // 1. 守り：脅かされている星へ
     for (const p of G.planets.filter(p => p.owner === fid)) {
       let threat = 0;
@@ -168,33 +169,43 @@ const AI = (() => {
       let plan = null;
       // 蝕への熱意：国の気風（預言の聖教国・古の勅書の帝国・記録を継ぐ機巧院は熱心、企業連合は損得次第）と、主導する派閥で変わる
       const ZEAL = [0.75, 0.6, 0.4, 1.0, 0.55, 0.85];
-      const zeal = clamp(ZEAL[fid] + (f.ruling === 'war' ? 0.2 : f.ruling === 'peace' ? 0.1 : f.ruling === 'trade' ? -0.15 : 0.05) + (G.flags.e0_oath && fid === 0 ? 0.15 : 0) + (G.eclipse.phase === 'ret' ? 0.15 : 0), 0.2, 1.2);
+      // プレイヤーの国を参謀が動かす時は、国の気風に関わらず、きちんと蝕に立ち向かう（遠くの裂け目にも、半分以上の艦隊で）
+      const zeal = fid === G.player ? Math.max(0.85, clamp(ZEAL[fid] + (G.eclipse.phase === 'ret' ? 0.15 : 0), 0.2, 1.2)) : clamp(ZEAL[fid] + (f.ruling === 'war' ? 0.2 : f.ruling === 'peace' ? 0.1 : f.ruling === 'trade' ? -0.15 : 0.05) + (G.flags.e0_oath && fid === 0 ? 0.15 : 0) + (G.eclipse.phase === 'ret' ? 0.15 : 0), 0.2, 1.2);
       const reach = zeal >= 0.8 ? 6 : zeal >= 0.55 ? 4 : 2;
       for (const t0 of targets) {
-        // いちばん近い自国の星を集結地に。隣でなければ、間にある星（蝕の星・独立惑星）から攻め取る
-        const stage = mine.slice().sort((a, b) => Game.hops(a.id, t0.id) - Game.hops(b.id, t0.id))[0];
-        if (!stage) continue;
-        const d = Game.hops(stage.id, t0.id);
-        if (d > (t0.abyss ? reach + 2 : reach)) continue;
-        let t = t0;
-        if (d > 1) { const path = Game.path(stage.id, t0.id, () => true); if (!path || path.length < 2) continue; t = G.planets[path[1]]; if (Game.friendly(fid, t.owner) || !Game.canAttack(fid, t.owner)) continue; }
-        const sc = (t0.abyss ? 50 : 0) - d * 3 - Game.hops(f.capital, t0.id);
-        if (!plan || sc > plan.sc) plan = { t, stage, sc };
+        // 近い自国の星から、入れる星（自国・同盟・攻められる星）だけを通る道を探す。道の上で最初の「味方でない星」を攻め、その手前を集結地にする
+        const srcs = mine.slice().sort((a, b) => Game.hops(a.id, t0.id) - Game.hops(b.id, t0.id)).slice(0, 3);
+        for (const s0 of srcs) {
+          const path = Game.path(s0.id, t0.id, n => Game.canEnter(fid, n));
+          if (!path || path.length < 2) continue;
+          const d = path.length - 1;
+          // 封印の理論を修めた国は、深淵がどれほど遠くても目指す（そこを断たねば終わらない）。プレイヤーの国は遠くの裂け目にも向かう
+          if (d > (t0.abyss ? 99 : fid === G.player ? Math.max(reach, 8) : reach)) continue;
+          let i = 1; while (i < path.length - 1 && Game.friendly(fid, G.planets[path[i]].owner)) i++;
+          const t = G.planets[path[i]], stage = G.planets[path[i - 1]];
+          if (Game.friendly(fid, t.owner) || !Game.canAttack(fid, t.owner)) continue;
+          const sc = (t0.abyss ? 50 : 0) - d * 3 - Game.hops(f.capital, t0.id);
+          if (!plan || sc > plan.sc) plan = { t, stage, sc, abyss: !!t0.abyss };
+          break;
+        }
       }
       if (plan) {
-        const { t, stage } = plan;
-        const need = (Game.planetDefense(t) + G.fleets.filter(x => x.at === t.id && x.fac === 'E').reduce((a, x) => a + Game.fleetPower(x), 0)) * 1.15;
+        const { t, stage } = plan;   // 深淵へは、出せる艦隊を全て集める
+        // 参謀が動かすプレイヤーの国は、ほぼ互角なら攻める（司令官と策で補う）
+        const need = (Game.planetDefense(t) + G.fleets.filter(x => x.at === t.id && x.fac === 'E').reduce((a, x) => a + Game.fleetPower(x), 0)) * (fid === G.player ? 0.95 : 1.15);
         const ready = my.filter(x => !busy.has(x) && x.at === stage.id && x.ships.length >= 3);
         const readyP = ready.reduce((a, x) => a + Game.fleetPower(x), 0);
         if (readyP >= need) { ready.forEach(x => { x.dest = t.id; busy.add(x); }); }
         else {
           // 集結：半分ほどの艦隊を集結地へ（自国の守りは残す）
           const free = my.filter(x => !busy.has(x) && x.at !== stage.id && x.ships.length >= 3).sort((a, b) => Game.hops(a.at, stage.id) - Game.hops(b.at, stage.id));
-          free.slice(0, Math.max(1, Math.ceil(free.length * (0.3 + 0.55 * zeal)))).forEach(x => { const path = Game.path(x.at, stage.id, n => Game.friendly(fid, G.planets[n].owner)); if (path && path.length > 1) { x.dest = path[1]; busy.add(x); } });
+          free.slice(0, Math.max(1, Math.ceil(free.length * (plan.abyss ? 1 : 0.3 + 0.55 * zeal)))).forEach(x => { const path = Game.path(x.at, stage.id, n => Game.friendly(fid, G.planets[n].owner)); if (path && path.length > 1) { x.dest = path[1]; busy.add(x); } });
           ready.forEach(x => busy.add(x));
         }
       }
     }
+    // 守りの命の艦隊：守りや蝕への対応に使ったなら命は解き、使わなかったなら、ここからは動かさない
+    softM.forEach(x => { if (busy.has(x)) { x.mission = null; x.route = null; } else busy.add(x); });
     // 2. 攻め：勝てそうな隣の星へ
     const D = api.dbg && fid !== 'E' ? api.dbg : null;
     for (const fl of my) {
