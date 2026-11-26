@@ -48,7 +48,7 @@ const Portrait = (() => {
       style: (S.female ? styleF : styleM)[Math.floor(r() * (S.female ? styleF : styleM).length)],
       jaw: S.female ? 0.86 + r() * 0.06 : 0.92 + r() * 0.12,
       faceL: 1 + (r() - 0.5) * 0.1,
-      eyeS: S.female ? 1.08 + r() * 0.12 : 0.9 + r() * 0.15,
+      eyeS: (e => STYLE === 'anime' && S.female ? 1.12 + (e - 1.14) * 0.25 : e)(S.female ? 1.08 + r() * 0.12 : 0.9 + r() * 0.15),   // アニメ調の女性は、目の大きさの差を小さく（大きすぎる人が出ないように）
       brow: S.female ? 0.6 : 0.9 + r() * 0.4,
       col: F ? F.col : (/^m\d$/.test(S.fac0 || '') ? MINORS.find(m => m.id === S.fac0).col : ['#6a7088', '#8a6a4a', '#4a6a8a', '#7a4a6a'][Math.floor(r() * 4)]),
       col2: F ? F.col2 : '#e0d8c0',
