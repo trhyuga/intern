@@ -62,7 +62,7 @@ const Portrait = (() => {
     };
     if (saint) { out.saint = true; out.skin = '#fff1e8'; out.eye = '#4a86d8'; out.style = 'long'; out.lip = '#e8909a'; out.col2 = '#e8d49a'; }
     out.granny = old && S.female;
-    if (out.granny && STYLE === 'anime') { out.style = 'bun'; out.lip = null; out.skin = shade(out.skin, 0.96); }
+    if (out.granny && STYLE === 'anime') { out.style = 'long'; out.lip = null; out.eye = '#6a4026'; out.hood = S.tags.includes('hood'); }
     return out;
   }
 
@@ -169,6 +169,69 @@ const Portrait = (() => {
   let STYLE = 'anime';
   try { const v = localStorage.getItem('seisou_face'); if (v === 'classic' || v === 'anime') STYLE = v; } catch (e) { }
   const lineCol = f => Art.mix(f.skin, '#2a1014', 0.72);
+  // 三つ編み：(x0,y0) から (x1,y1) へ。節を左右交互に重ね、先は房、結び目に飾り
+  function braid(c, f, x0, y0, x1, y1, w, tie) {
+    const col = f.hair, lc = Art.hexA(shade(col, 0.45), 0.7), n = Math.max(6, Math.round(Math.hypot(x1 - x0, y1 - y0) / (w * 0.5)));
+    const ang = Math.atan2(y1 - y0, x1 - x0);
+    // 下地（編み目のすきまを埋める濃い帯）
+    c.strokeStyle = shade(col, 0.72); c.lineCap = 'round'; c.lineWidth = w * 0.95; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke(); c.lineCap = 'butt';
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t, side = i % 2 ? 1 : -1, ww = w * (1 - t * 0.25);
+      // 編み目：斜めに傾いた葉の形を、左右交互に重ねる（V の字が連なって見える）
+      c.save(); c.translate(x + Math.cos(ang + Math.PI / 2) * side * ww * 0.22, y + Math.sin(ang + Math.PI / 2) * side * ww * 0.22); c.rotate(ang + side * 0.75);
+      const g = c.createLinearGradient(0, -ww * 0.4, 0, ww * 0.4); g.addColorStop(0, shade(col, 1.12)); g.addColorStop(1, shade(col, 0.8));
+      c.fillStyle = g; c.beginPath(); c.moveTo(-ww * 0.66, 0); c.quadraticCurveTo(0, -ww * 0.62, ww * 0.66, 0); c.quadraticCurveTo(0, ww * 0.5, -ww * 0.66, 0); c.fill();
+      c.strokeStyle = lc; c.lineWidth = 0.7; c.stroke();
+      c.restore();
+    }
+    // 先の房
+    c.fillStyle = shade(col, 0.95); c.beginPath(); c.moveTo(x1 - w * 0.5, y1); c.quadraticCurveTo(x1, y1 + w * 2.6, x1 + w * 0.5, y1); c.fill(); c.strokeStyle = lc; c.lineWidth = 0.8; c.stroke();
+    if (tie === 'ribbon') {
+      c.fillStyle = '#f6e6d0'; c.strokeStyle = '#c8a070'; c.lineWidth = 0.7;
+      [-1, 1].forEach(sd => { c.beginPath(); c.moveTo(x1, y1); c.quadraticCurveTo(x1 + sd * 6, y1 - 5, x1 + sd * 7, y1 + 1); c.quadraticCurveTo(x1 + sd * 4, y1 + 3, x1, y1); c.fill(); c.stroke(); });
+      c.beginPath(); c.arc(x1, y1, 1.6, 0, 7); c.fill(); c.stroke();
+    } else if (tie === 'gold') {
+      c.fillStyle = '#c89a40'; c.fillRect(x1 - w * 0.55, y1 - 3, w * 1.1, 4); c.strokeStyle = '#7a5a20'; c.lineWidth = 0.6; c.strokeRect(x1 - w * 0.55, y1 - 3, w * 1.1, 4);
+    }
+  }
+  // 塔守の長老：星をちりばめたフード（後ろの身ごろと、顔をふちどる前の縁）、星図の背景
+  function elderHood(c, f, cx, cy, front) {
+    const P = '#4a2e78', P2 = '#33205a', GD = '#d8b860';
+    const star = (x, y, k) => { c.beginPath(); for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i * Math.PI / 4, r = i % 2 ? k * 0.38 : k; c.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } c.closePath(); c.fill(); };
+    if (!front) {
+      // 背景の星図
+      c.save(); c.globalCompositeOperation = 'lighter'; const r = Art.srand(55);
+      const pts = []; for (let i = 0; i < 40; i++) { const x = r() * PW, y = r() * PH * 0.75; pts.push([x, y]); c.fillStyle = `rgba(230,236,255,${0.25 + r() * 0.5})`; c.beginPath(); c.arc(x, y, 0.5 + r() * 1.1, 0, 7); c.fill(); }
+      c.strokeStyle = 'rgba(200,214,255,.28)'; c.lineWidth = 0.6; c.beginPath(); [[0, 3], [3, 7], [7, 12], [20, 24], [24, 31], [31, 35]].forEach(([a, b]) => { c.moveTo(pts[a][0], pts[a][1]); c.lineTo(pts[b][0], pts[b][1]); }); c.stroke();
+      c.restore();
+      const g = c.createLinearGradient(0, cy - 100, 0, PH); g.addColorStop(0, P); g.addColorStop(1, P2);
+      c.fillStyle = g; c.beginPath(); c.moveTo(cx - 58, cy - 40); c.bezierCurveTo(cx - 58, cy - 116, cx + 58, cy - 116, cx + 58, cy - 40);
+      c.bezierCurveTo(cx + 74, cy + 30, cx + 84, cy + 80, cx + 92, PH); c.lineTo(cx - 92, PH); c.bezierCurveTo(cx - 84, cy + 80, cx - 74, cy + 30, cx - 58, cy - 40); c.fill();
+      c.fillStyle = Art.hexA(GD, 0.75); const r2 = Art.srand(9); for (let i = 0; i < 9; i++) { const sd = i % 2 ? 1 : -1; star(cx + sd * (62 + r2() * 14), cy - 20 + r2() * 120, 2 + r2() * 1.6); }
+      return;
+    }
+    // 顔をふちどる前の縁（厚い帯に金の縁取り、星と月）
+    const band = (o) => { c.beginPath(); c.moveTo(cx - 52 - o, cy + 70); c.bezierCurveTo(cx - 56 - o, cy - 10, cx - 52 - o, cy - 104 - o, cx, cy - 106 - o); c.bezierCurveTo(cx + 52 + o, cy - 104 - o, cx + 56 + o, cy - 10, cx + 52 + o, cy + 70); };
+    c.save(); c.lineCap = 'round';
+    c.strokeStyle = P; c.lineWidth = 15; band(4); c.stroke();
+    c.strokeStyle = GD; c.lineWidth = 1.3; band(-3.5); c.stroke(); band(11.5); c.stroke();
+    c.restore();
+    c.fillStyle = GD;
+    [[-0.85, 0.3], [-0.55, 0.75], [0, 1], [0.55, 0.75], [0.85, 0.3]].forEach(([u, v], i) => { const x = cx + u * 56, y = cy - 50 - v * 54; if (i === 2) { c.beginPath(); c.arc(x, y, 3.2, 0, 7); c.fill(); c.fillStyle = P; c.beginPath(); c.arc(x + 1.4, y - 0.6, 2.6, 0, 7); c.fill(); c.fillStyle = GD; } else star(x, y, 2.4); });
+  }
+  // 聖女の首飾り（太陽の飾りと、花の鎖）
+  function saintJewel(c, f, cx) {
+    const y = 196;
+    c.strokeStyle = '#d0a848'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(cx - 22, 166); c.quadraticCurveTo(cx, y + 6, cx + 22, 166); c.stroke();
+    const sun = (x, y, r) => { c.fillStyle = '#e8c050'; c.beginPath(); for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, rr = i % 2 ? r * 0.62 : r; c.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } c.closePath(); c.fill(); c.strokeStyle = '#a07820'; c.lineWidth = 0.6; c.stroke(); c.fillStyle = '#fff0b0'; c.beginPath(); c.arc(x, y, r * 0.42, 0, 7); c.fill(); };
+    sun(cx, y, 6);
+    [-1, 1].forEach(sd => { for (let k = 1; k <= 2; k++) { const x = cx + sd * (6 + k * 7), yy = y - 6 - k * 6; for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; c.fillStyle = '#fbeee4'; c.beginPath(); c.ellipse(x + Math.cos(a) * 1.7, yy + Math.sin(a) * 1.7, 1.6, 1.1, a, 0, 7); c.fill(); } c.fillStyle = '#f0c060'; c.beginPath(); c.arc(x, yy, 0.8, 0, 7); c.fill(); } });
+  }
+  // 長老の首飾り（星）
+  function elderJewel(c, f, cx) {
+    c.strokeStyle = '#b8b8c8'; c.lineWidth = 0.7; c.beginPath(); c.moveTo(cx - 18, 168); c.quadraticCurveTo(cx, 196, cx + 18, 168); c.stroke();
+    c.fillStyle = '#e8d070'; c.beginPath(); for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i * Math.PI / 4, r = i % 2 ? 2 : 5; c.lineTo(cx + Math.cos(a) * r, 194 + Math.sin(a) * r); } c.closePath(); c.fill();
+  }
   // 聖女の後ろの光：やわらかな光輪と光の粒
   function saintGlow(c, f, cx, cy) {
     c.save(); c.globalCompositeOperation = 'lighter';
@@ -212,6 +275,7 @@ const Portrait = (() => {
   }
   function animeFigure(c, f, cx, cy, expr) {
     if (f.saint) { saintGlow(c, f, cx, cy); saintVeil(c, f, cx, cy, false); }
+    if (f.hood) elderHood(c, f, cx, cy, false);
     backHair(c, f, cx, cy);
     const fem = f.female;
     // 男性は「これまでの絵」の骨格（すっきりした逆三角の輪郭）を、アニメ調の線と塗りで描く（精悍さを残す）
@@ -227,6 +291,8 @@ const Portrait = (() => {
     c.stroke();
     if (!fem) { c.strokeStyle = Art.hexA(LC, 0.3); c.lineWidth = 0.8; c.beginPath(); [-1, 1].forEach(s => { c.moveTo(cx + s * (nw - 5), cy + 42); c.lineTo(cx + s * 4, cy + 64); }); c.stroke(); }
     body(c, f, cx);
+    if (f.saint) saintJewel(c, f, cx);
+    if (f.hood) elderJewel(c, f, cx);
     // あごの下の影（首の丸みに沿った弧）
     c.fillStyle = shade(f.skin, 0.76);
     c.beginPath(); c.moveTo(cx - nw - 0.5, cy + 26); c.quadraticCurveTo(cx, chinY + 14, cx + nw + 0.5, cy + 26); c.lineTo(cx + nw, cy + 20); c.lineTo(cx - nw, cy + 20); c.fill();
@@ -285,7 +351,7 @@ const Portrait = (() => {
       c.lineCap = 'round';
       // 頬のこけた影
       [-1, 1].forEach(sd => { const g = c.createRadialGradient(cx + sd * fw * 0.66, cy + 14, 1, cx + sd * fw * 0.66, cy + 14, 11); g.addColorStop(0, Art.hexA(shade(f.skin, 0.82), 0.5)); g.addColorStop(1, Art.hexA(shade(f.skin, 0.82), 0)); c.fillStyle = g; c.fillRect(cx + sd * fw * 0.66 - 12, cy + 2, 24, 24); });
-      c.strokeStyle = Art.hexA(LC, 0.5); c.lineWidth = 0.9;
+      c.strokeStyle = Art.hexA(LC, 0.42); c.lineWidth = 0.85;
       [-1, 1].forEach(sd => {
         c.beginPath(); c.moveTo(cx + sd * 6.5, cy + 17); c.bezierCurveTo(cx + sd * 13, cy + 23, cx + sd * 13, cy + 31, cx + sd * 10, cy + 37); c.stroke();   // ほうれい線
         c.beginPath(); c.moveTo(cx + sd * 8.5, cy + 38); c.quadraticCurveTo(cx + sd * 10, cy + 42, cx + sd * 9, cy + 45); c.stroke();   // 口元から下へのしわ
@@ -300,7 +366,8 @@ const Portrait = (() => {
     c.restore();
     if (f.tags.includes('beard')) animeBeard(c, f, cx, cy, fw, chinY);
     animeFrontHair(c, f, cx, cy, fw, facePath);
-    if (f.saint) { fluffy(c, f, cx, cy, true); saintVeil(c, f, cx, cy, true); }
+    if (f.saint) { [-1, 1].forEach(sd => braid(c, f, cx + sd * (fw + 3), cy - 8, cx + sd * (fw + 9), cy + 88, 11, 'ribbon')); saintVeil(c, f, cx, cy, true); }
+    if (f.hood) { [-1, 1].forEach(sd => braid(c, f, cx + sd * (fw + 5), cy - 4, cx + sd * (fw + 14), cy + 104, 13, 'gold')); elderHood(c, f, cx, cy, true); }
     c.save(); facePath(); c.clip();   // 眉・眼鏡・傷なども顔の内側だけ
     animeBrows(c, f, cx, E, expr);
     animeAccessories(c, f, cx, cy, fw, expr, E);
@@ -313,7 +380,7 @@ const Portrait = (() => {
     const fem = f.female, old = f.old;
     // 目の大きさと間隔（描き方の講座の図から）：目と目の間は目1つ分、顔の幅はおよそ目尻から目尻まで
     //  女性は目を少し大きく、間を目0.7個分に詰める（見比べて、離れすぎず大きすぎない所）
-    const W = (fem ? 11.5 : 11.5) * f.eyeS * (f.granny ? 0.82 : old ? 0.92 : 1), H = (fem ? 11.5 : 7) * f.eyeS * (f.granny ? 0.6 : old ? 0.85 : f.saint ? 1.05 : 1) * (expr === 'shock' ? 1.15 : 1);
+    const W = (fem ? 11.5 : 11.5) * f.eyeS * (f.granny ? 0.82 : old ? 0.92 : 1), H = (fem ? 11.5 : 7) * f.eyeS * (f.granny ? 0.72 : old ? 0.85 : f.saint ? 1.05 : 1) * (expr === 'shock' ? 1.15 : 1);
     const ey = cy + (fem ? 4 : -2), ex = fem ? W * 1.68 : 17.5;
     const LC = lineCol(f), lash = '#1a0e12';
     const E = { ey, ex, W, H };
@@ -465,17 +532,28 @@ const Portrait = (() => {
     const top = cy - 80;
     const fem = f.female, st = f.style;
     // 頭頂の塊
-    const hl = f.granny ? cy - 44 : cy - 40, hs = f.granny ? cy - 22 : cy - 2;
+    const cpart = f.granny || f.saint;
+    const hl = cpart ? cy - 46 : cy - 40, hs = cpart ? cy - 18 : cy - 2;
     const dome = () => { c.beginPath(); c.moveTo(cx - fw - 10, hs); c.bezierCurveTo(cx - fw - 19, cy - 108, cx + fw + 19, cy - 108, cx + fw + 10, hs); c.quadraticCurveTo(cx + fw * 0.8, hl + 2, cx, hl); c.quadraticCurveTo(cx - fw * 0.8, hl + 2, cx - fw - 10, hs); c.closePath(); };
     const g = c.createLinearGradient(0, top, 0, cy - 10); g.addColorStop(0, shade(col, 1.08)); g.addColorStop(1, shade(col, 0.9));
     c.fillStyle = g; dome(); c.fill();
     c.strokeStyle = Art.hexA(shade(col, 0.4), 0.6); c.lineWidth = 0.9; c.beginPath(); c.moveTo(cx - fw - 10, cy - 4); c.bezierCurveTo(cx - fw - 19, cy - 108, cx + fw + 19, cy - 108, cx + fw + 10, cy - 4); c.stroke();
     if (st === 'buzz') return;
     // 房の並び
-    if (f.granny) {
-      // 老婆：前髪を作らず、髪を後ろへなでつけてまとめる（生え際と、後ろへ流れる毛筋）
-      c.strokeStyle = Art.hexA(shade(col, 0.55), 0.55); c.lineWidth = 0.8;
-      for (let i = 0; i < 9; i++) { const x = cx - fw + (fw * 2) * (i + 0.5) / 9; c.beginPath(); c.moveTo(x, cy - 46); c.quadraticCurveTo(x * 0.6 + cx * 0.4, cy - 72, cx + (x - cx) * 0.3, cy - 86); c.stroke(); }
+    if (cpart) {
+      // 真ん中分け：分け目から左右へ、額の両脇をおおって頬の横へ流れる髪
+      const lc = Art.hexA(shade(col, 0.5), 0.6);
+      [-1, 1].forEach(sd => {
+        c.beginPath(); c.moveTo(cx, cy - 74);
+        c.bezierCurveTo(cx + sd * 16, cy - 70, cx + sd * (fw + 1), cy - 56, cx + sd * (fw + 3), cy - 20);
+        c.lineTo(cx + sd * (fw + 9), cy - 10); c.bezierCurveTo(cx + sd * (fw + 12), cy - 50, cx + sd * 22, cy - 84, cx, cy - 80); c.closePath();
+        const g = c.createLinearGradient(cx, cy - 80, cx + sd * fw, cy - 20); g.addColorStop(0, shade(col, 1.08)); g.addColorStop(1, shade(col, 0.9));
+        c.fillStyle = g; c.fill(); c.strokeStyle = lc; c.lineWidth = 0.9; c.stroke();
+        c.strokeStyle = Art.hexA(shade(col, 0.55), 0.45); c.lineWidth = 0.8;
+        for (let k = 1; k <= 3; k++) { c.beginPath(); c.moveTo(cx + sd * 2, cy - 76 + k); c.bezierCurveTo(cx + sd * (10 + k * 3), cy - 70 + k * 2, cx + sd * (fw - 6 + k * 2), cy - 50, cx + sd * (fw + k * 2), cy - 16); c.stroke(); }
+      });
+      // 分け目の、細い光
+      c.strokeStyle = Art.hexA(shade(col, 1.5), 0.5); c.lineWidth = 1.2; c.beginPath(); c.moveTo(cx - 6, cy - 70); c.quadraticCurveTo(cx - 14, cy - 64, cx - 20, cy - 56); c.stroke();
       return;
     }
     const swept = st === 'swept' || st === 'side' || st === 'slick';
@@ -590,14 +668,24 @@ const Portrait = (() => {
       c.restore();
       return;
     }
-    // 頭にかかるベールの縁（髪の上）
-    c.fillStyle = 'rgba(255,255,255,.92)';
-    c.beginPath(); c.moveTo(cx - 50, cy - 56); c.bezierCurveTo(cx - 40, cy - 93, cx + 40, cy - 93, cx + 50, cy - 56); c.lineTo(cx + 44, cy - 60); c.bezierCurveTo(cx + 32, cy - 82, cx - 32, cy - 82, cx - 44, cy - 60); c.closePath(); c.fill();
-    c.strokeStyle = '#d8bc6a'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(cx - 44, cy - 60); c.bezierCurveTo(cx - 32, cy - 82, cx + 32, cy - 82, cx + 44, cy - 60); c.stroke();
-    c.strokeStyle = 'rgba(216,188,106,.6)'; c.lineWidth = 0.8; c.beginPath(); c.moveTo(cx - 50, cy - 56); c.bezierCurveTo(cx - 40, cy - 93, cx + 40, cy - 93, cx + 50, cy - 56); c.stroke();
-    c.fillStyle = '#5aa8f0'; c.beginPath(); c.moveTo(cx, cy - 80); c.lineTo(cx + 3.2, cy - 75); c.lineTo(cx, cy - 70); c.lineTo(cx - 3.2, cy - 75); c.closePath(); c.fill();
+    // 顔をふちどるベールの縁：白いひだ（レース）と金の刺しゅう。頭の上から頬の横へ
+    const rim = (o) => { c.beginPath(); c.moveTo(cx - 50 - o, cy + 40); c.bezierCurveTo(cx - 54 - o, cy - 20, cx - 50 - o, cy - 92 - o, cx, cy - 94 - o); c.bezierCurveTo(cx + 50 + o, cy - 92 - o, cx + 54 + o, cy - 20, cx + 50 + o, cy + 40); };
+    c.save(); c.lineCap = 'round';
+    c.strokeStyle = '#ffffff'; c.lineWidth = 7; rim(4); c.stroke();
+    c.strokeStyle = '#d8bc6a'; c.lineWidth = 1.1; rim(7.5); c.stroke(); c.setLineDash([1.6, 2.2]); c.lineWidth = 0.9; rim(5); c.stroke(); c.setLineDash([]);
+    c.restore();
+    // ひだ（内側の縁に、小さな丸を連ねる）
+    c.fillStyle = '#fbf8f2'; c.strokeStyle = 'rgba(200,180,130,.7)'; c.lineWidth = 0.6;
+    for (let i = 0; i <= 40; i++) {
+      const t = i / 40, u = 1 - t;
+      const px = t < 0.5 ? null : null;
+      const a = Math.PI * (1.05 - t * 1.1);
+      const x = cx + Math.cos(Math.PI - a) * 48 * (Math.abs(Math.cos(a)) > 0.7 ? 1.02 : 1), y = cy - 26 - Math.sin(Math.PI - a) * 66;
+      if (y > cy + 10) continue;
+      c.beginPath(); c.arc(x, y, 1.9, Math.PI * 0.0, Math.PI * 2); c.fill(); c.stroke();
+    }
+    c.fillStyle = '#5aa8f0'; c.beginPath(); c.moveTo(cx, cy - 98); c.lineTo(cx + 3, cy - 93.5); c.lineTo(cx, cy - 89); c.lineTo(cx - 3, cy - 93.5); c.closePath(); c.fill();
     c.strokeStyle = '#c8a040'; c.lineWidth = 0.8; c.stroke();
-    c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(cx - 1, cy - 76.5, 0.9, 0, 7); c.fill();
   }
   // 聖女の額飾り：金の細い冠と、白い花
   function saintCirclet(c, f, cx, cy) {
