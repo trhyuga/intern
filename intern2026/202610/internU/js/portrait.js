@@ -62,6 +62,9 @@ const Portrait = (() => {
     };
     if (saint) { out.saint = true; out.skin = '#fff1e8'; out.eye = '#4a86d8'; out.style = 'long'; out.lip = '#e8909a'; out.col2 = '#e8d49a'; }
     out.granny = old && S.female;
+    out.gap = ({ freya: 1.5 })[key] || null;
+    // 精悍な武人（赤髭のハンセンなど）：短く刈った赤茶の髪・日焼けした肌
+    if (S.tags.includes('rugged')) { out.rugged = true; out.style = 'short'; out.hair = '#8c3c20'; out.skin = '#c89068'; out.jaw = 1.04; }
     if (out.granny && STYLE === 'anime') { out.style = 'long'; out.lip = null; out.eye = '#6a4026'; out.hood = S.tags.includes('hood'); }
     return out;
   }
@@ -361,6 +364,13 @@ const Portrait = (() => {
       [0, 1].forEach(k => { c.beginPath(); c.moveTo(cx - 13 + k * 3, cy - 31 - k * 4); c.quadraticCurveTo(cx, cy - 33 - k * 4, cx + 13 - k * 3, cy - 31 - k * 4); c.stroke(); });   // 額のしわ
       c.lineCap = 'butt';
     }
+    if (f.rugged) {
+      c.strokeStyle = Art.hexA(LC, 0.45); c.lineWidth = 0.9; c.lineCap = 'round';
+      [-1, 1].forEach(sd => { c.beginPath(); c.moveTo(cx + sd * 27, cy - 3); c.lineTo(cx + sd * 31, cy - 1); c.moveTo(cx + sd * 27, cy + 1); c.lineTo(cx + sd * 30, cy + 3.5); c.stroke(); });   // 目尻のしわ
+      c.beginPath(); c.moveTo(cx - 6, cy - 22); c.lineTo(cx - 2.5, cy - 16); c.moveTo(cx + 6, cy - 22); c.lineTo(cx + 2.5, cy - 16); c.stroke();   // 眉間のしわ
+      c.strokeStyle = Art.hexA(LC, 0.35); c.beginPath(); c.moveTo(cx + 3, cy - 6); c.quadraticCurveTo(cx + 4, cy + 4, cx + 4.5, cy + 12); c.stroke();   // 鼻筋
+      c.lineCap = 'butt';
+    }
     const E = animeEyes(c, f, cx, cy, expr);
     animeMouth(c, f, cx, cy, expr);
     c.restore();
@@ -380,8 +390,8 @@ const Portrait = (() => {
     const fem = f.female, old = f.old;
     // 目の大きさと間隔（描き方の講座の図から）：目と目の間は目1つ分、顔の幅はおよそ目尻から目尻まで
     //  女性は目を少し大きく、間を目0.7個分に詰める（見比べて、離れすぎず大きすぎない所）
-    const W = (fem ? 11.5 : 11.5) * f.eyeS * (f.granny ? 0.82 : old ? 0.92 : 1), H = (fem ? 11.5 : 7) * f.eyeS * (f.granny ? 0.72 : old ? 0.85 : f.saint ? 1.05 : 1) * (expr === 'shock' ? 1.15 : 1);
-    const ey = cy + (fem ? 4 : -2), ex = fem ? W * 1.68 : 17.5;
+    const W = (fem ? 11.5 : 11.5) * f.eyeS * (f.granny ? 0.82 : old ? 0.92 : 1), H = (fem ? 11.5 : 7) * f.eyeS * (f.granny ? 0.72 : f.rugged ? 0.82 : old ? 0.85 : f.saint ? 1.05 : 1) * (expr === 'shock' ? 1.15 : 1);
+    const ey = cy + (fem ? 4 : -2), ex = fem ? W * (f.gap || 1.68) : 17.5;
     const LC = lineCol(f), lash = '#1a0e12';
     const E = { ey, ex, W, H };
     [-1, 1].forEach(s => {
@@ -480,7 +490,8 @@ const Portrait = (() => {
       let a = 0; if (expr === 'angry') a = 1; if (expr === 'sad') a = -1; if (!fem && expr === 'normal' && f.pers === '猛進') a = 0.5;
       const iX = x - s * (E.W * (fem ? 0.95 : 0.9)), oX = x + s * (E.W * (fem ? 1.05 : 0.95));
       const iY = by + a * 5 + (a < 0 ? -1 : 0), oY = by - a * 3 + (a < 0 ? 2 : 0) + 1;
-      const t = f.granny ? 1.1 : fem ? 1.6 : 3.2 + f.brow * 1.4;
+      const t = f.granny ? 1.1 : fem ? 1.6 : f.rugged ? 4.6 : 3.2 + f.brow * 1.4;
+      if (f.rugged && expr === 'normal') a = 0.45;
       if (f.granny && expr === 'normal') a = -0.6;
       if (fem) { c.beginPath(); c.moveTo(iX, iY); c.quadraticCurveTo(x, by - 3 - (a === 0 ? 1 : 0), oX, oY); c.quadraticCurveTo(x, by - 3 - t - (a === 0 ? 1 : 0), iX - s * 0.5, iY - t); c.closePath(); c.fill(); }
       // 男性：眉頭が太く、眉尻へ細くなる、まっすぐな眉（これまでの絵の精悍な眉）
@@ -519,6 +530,22 @@ const Portrait = (() => {
   const beardHair = f => f.tags.includes('redbeard') ? '#b8401e' : f.hair;
   function animeBeard(c, f, cx, cy, fw, chinY) {
     const bh = beardHair(f), col = shade(bh, 0.8), LC = Art.hexA(shade(bh, 0.4), 0.8);
+    if (f.rugged) {
+      const g = c.createLinearGradient(0, cy, 0, chinY + 8); g.addColorStop(0, shade(bh, 0.95)); g.addColorStop(1, shade(bh, 0.72));
+      c.fillStyle = g; c.strokeStyle = LC; c.lineWidth = 1;
+      // もみあげから顎を包む髭（頬の上は見せる）
+      c.beginPath(); c.moveTo(cx - fw * 0.98, cy - 8);
+      c.bezierCurveTo(cx - fw * 1.0, cy + 18, cx - fw * 0.6, chinY + 2, cx, chinY + 7);
+      c.bezierCurveTo(cx + fw * 0.6, chinY + 2, cx + fw * 1.0, cy + 18, cx + fw * 0.98, cy - 8);
+      c.lineTo(cx + fw * 0.82, cy - 6); c.bezierCurveTo(cx + fw * 0.8, cy + 14, cx + fw * 0.5, cy + 24, cx + 9, cy + 31);
+      c.quadraticCurveTo(cx, cy + 35, cx - 9, cy + 31); c.bezierCurveTo(cx - fw * 0.5, cy + 24, cx - fw * 0.8, cy + 14, cx - fw * 0.82, cy - 6); c.closePath(); c.fill(); c.stroke();
+      // 口髭
+      c.beginPath(); c.moveTo(cx - 11, cy + 27); c.quadraticCurveTo(cx - 4, cy + 21, cx, cy + 23); c.quadraticCurveTo(cx + 4, cy + 21, cx + 11, cy + 27); c.quadraticCurveTo(cx + 6, cy + 25.5, cx, cy + 26); c.quadraticCurveTo(cx - 6, cy + 25.5, cx - 11, cy + 27); c.closePath(); c.fill(); c.stroke();
+      // 毛の流れ
+      c.strokeStyle = Art.hexA(shade(bh, 1.35), 0.4); c.lineWidth = 0.7;
+      for (let i = 0; i < 9; i++) { const t = (i + 0.5) / 9, x = cx - fw * 0.8 + fw * 1.6 * t; c.beginPath(); c.moveTo(x, cy + 30 + Math.sin(t * Math.PI) * 4); c.lineTo(x + (x - cx) * 0.06, cy + 36 + Math.sin(t * Math.PI) * 6); c.stroke(); }
+      return;
+    }
     c.fillStyle = col; c.strokeStyle = LC; c.lineWidth = 1;
     c.beginPath(); c.moveTo(cx - fw * 0.92, cy + 4);
     c.bezierCurveTo(cx - fw * 0.9, cy + 26, cx - fw * 0.5, chinY + 6, cx, chinY + 9);
