@@ -62,7 +62,7 @@ const Portrait = (() => {
     };
     if (saint) { out.saint = true; out.skin = '#fff1e8'; out.eye = '#4a86d8'; out.style = 'long'; out.lip = '#e8909a'; out.col2 = '#e8d49a'; }
     out.granny = old && S.female;
-    out.gap = ({ freya: 1.5 })[key] || null;
+    out.gap = ({ freya: 1.5, mina: 1.5 })[key] || null;
     // 精悍な武人（赤髭のハンセンなど）：短く刈った赤茶の髪・日焼けした肌
     if (S.tags.includes('rugged')) { out.rugged = true; out.style = 'short'; out.hair = '#8c3c20'; out.skin = '#c89068'; out.jaw = 1.04; }
     if (out.granny && STYLE === 'anime') { out.style = 'long'; out.lip = null; out.eye = '#6a4026'; out.hood = S.tags.includes('hood'); }
