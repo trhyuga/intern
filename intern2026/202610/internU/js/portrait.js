@@ -508,9 +508,17 @@ const Portrait = (() => {
   // 漫画の記号：怒りの筋・涙・冷や汗・青ざめの縦線
   function animeMarks(c, f, cx, cy, fw, expr, E) {
     if (expr === 'sad' && !f.tags.includes('visor')) {
+      if (!f.female) {
+        // 男性：目尻に小さくにじむ涙だけ（頬を流れる筋は描かない）
+        const tx = cx - E.ex - E.W * 0.92, ty = E.ey + E.H * 0.15;
+        c.fillStyle = 'rgba(170,220,255,.9)'; c.beginPath(); c.moveTo(tx + 1.4, ty - 2); c.quadraticCurveTo(tx - 2.2, ty + 2, tx - 0.6, ty + 5); c.quadraticCurveTo(tx + 2.2, ty + 3.6, tx + 1.4, ty - 2); c.fill();
+        c.strokeStyle = 'rgba(90,140,190,.5)'; c.lineWidth = 0.5; c.stroke();
+        c.fillStyle = 'rgba(255,255,255,.95)'; c.beginPath(); c.arc(tx - 0.3, ty + 3, 0.75, 0, 7); c.fill();
+      } else {
       const tx = cx - E.ex - E.W * 0.2, ty = E.ey + E.H * 0.9;
       c.fillStyle = 'rgba(170,220,255,.75)'; c.beginPath(); c.moveTo(tx, ty); c.quadraticCurveTo(tx - 2.6, ty + 9, tx - 1, ty + 18); c.quadraticCurveTo(tx + 1.8, ty + 10, tx + 1.6, ty); c.fill();
       c.fillStyle = 'rgba(255,255,255,.9)'; c.beginPath(); c.arc(tx - 0.6, ty + 14, 1, 0, 7); c.fill();
+      }
     }
     if (expr === 'shock') {
       c.strokeStyle = 'rgba(70,100,190,.55)'; c.lineWidth = 1.1;
