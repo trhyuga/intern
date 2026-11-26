@@ -249,7 +249,7 @@ const Portrait = (() => {
     const fem = f.female, old = f.old;
     // 目の大きさと間隔（描き方の講座の図から）：目と目の間は目1つ分、顔の幅はおよそ目尻から目尻まで
     //  女性は目を少し大きく、間を目0.7個分に詰める（見比べて、離れすぎず大きすぎない所）
-    const W = (fem ? 11.5 : 11.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 11.5 : 7) * f.eyeS * (old ? 0.85 : 1) * (expr === 'shock' ? 1.3 : 1);
+    const W = (fem ? 11.5 : 11.5) * f.eyeS * (old ? 0.92 : 1), H = (fem ? 11.5 : 7) * f.eyeS * (old ? 0.85 : 1) * (expr === 'shock' ? 1.15 : 1);
     const ey = cy + (fem ? 4 : -2), ex = fem ? W * 1.68 : 17.5;
     const LC = lineCol(f), lash = '#1a0e12';
     const E = { ey, ex, W, H };
@@ -278,7 +278,7 @@ const Portrait = (() => {
       c.save(); shape(); c.clip();
       c.fillStyle = 'rgba(150,160,200,.45)'; c.beginPath(); c.moveTo(inner - 2, iY - 2); c.quadraticCurveTo(x, cY - 2, outer + 2, oY - 2); c.lineTo(outer + 2, oY + H * 0.4); c.quadraticCurveTo(x, cY + H * 0.75, inner - 2, iY + H * 0.4); c.fill();
       // 瞳（大きく縦長）
-      const ir = { x: x + s * W * 0.05 * (expr === 'sad' ? 0 : 1), y: ey + H * 0.2, rx: W * (fem ? 0.66 : 0.55) * (expr === 'shock' ? 0.6 : 1), ry: H * (fem ? 1.08 : 1.15) * (expr === 'shock' ? 0.55 : 1) };
+      const ir = { x: x + s * W * 0.05 * (expr === 'sad' ? 0 : 1), y: ey + H * 0.2, rx: W * (fem ? 0.66 : 0.55) * (expr === 'shock' ? 0.88 : 1), ry: H * (fem ? 1.08 : 1.15) * (expr === 'shock' ? 0.85 : 1) };
       const g = c.createLinearGradient(0, ir.y - ir.ry, 0, ir.y + ir.ry);
       g.addColorStop(0, shade(f.eye, 0.22)); g.addColorStop(0.45, shade(f.eye, 0.75)); g.addColorStop(0.8, f.eye); g.addColorStop(1, shade(f.eye, 1.75));
       c.fillStyle = g; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx, ir.ry, 0, 0, 7); c.fill();
@@ -289,16 +289,16 @@ const Portrait = (() => {
       c.fillStyle = lg; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx, ir.ry, 0, 0, 7); c.fill();
       c.restore();
       // 瞳孔と縁
-      c.fillStyle = shade(f.eye, 0.12); c.beginPath(); c.ellipse(ir.x, ir.y - ir.ry * 0.05, ir.rx * (expr === 'shock' ? 0.3 : 0.42), ir.ry * (expr === 'shock' ? 0.3 : 0.48), 0, 0, 7); c.fill();
+      c.fillStyle = shade(f.eye, 0.12); c.beginPath(); c.ellipse(ir.x, ir.y - ir.ry * 0.05, ir.rx * (expr === 'shock' ? 0.32 : 0.42), ir.ry * (expr === 'shock' ? 0.36 : 0.48), 0, 0, 7); c.fill();
       c.strokeStyle = shade(f.eye, 0.18); c.lineWidth = 1; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx - 0.4, ir.ry - 0.4, 0, 0, 7); c.stroke();
       // 上まぶたの落とす影（くっきり）
       c.fillStyle = 'rgba(30,15,40,.2)'; c.beginPath(); c.moveTo(inner - 2, iY - 3); c.quadraticCurveTo(x, cY - 3, outer + 2, oY - 3); c.lineTo(outer + 2, oY + H * 0.28); c.quadraticCurveTo(x, cY + H * 0.62, inner - 2, iY + H * 0.28); c.fill();
       // ハイライト：大きな光・小さな光・下のきらめき
-      if (expr !== 'shock') {
+      {
         c.fillStyle = '#ffffff'; c.beginPath(); c.ellipse(ir.x - s * ir.rx * 0.32, ir.y - ir.ry * 0.38, ir.rx * 0.36, ir.ry * 0.26, -0.4 * s, 0, 7); c.fill();
         c.beginPath(); c.arc(ir.x + s * ir.rx * 0.38, ir.y + ir.ry * 0.3, ir.rx * 0.14, 0, 7); c.fill();
         if (fem) { c.fillStyle = 'rgba(255,255,255,.7)'; c.beginPath(); c.arc(ir.x - s * ir.rx * 0.1, ir.y + ir.ry * 0.55, ir.rx * 0.09, 0, 7); c.fill(); }
-      } else { c.fillStyle = '#fff'; c.beginPath(); c.arc(ir.x - ir.rx * 0.3, ir.y - ir.ry * 0.3, ir.rx * 0.2, 0, 7); c.fill(); }
+      }
       if (expr === 'sad') { c.fillStyle = 'rgba(255,255,255,.6)'; c.beginPath(); c.ellipse(ir.x, ir.y + ir.ry * 0.62, ir.rx * 0.7, ir.ry * 0.14, 0, 0, 7); c.fill(); }
       if (f.cyber) { c.strokeStyle = 'rgba(200,255,255,.65)'; c.lineWidth = 0.6; c.beginPath(); c.ellipse(ir.x, ir.y, ir.rx * 0.65, ir.ry * 0.65, 0, 0, 7); c.stroke(); }
       c.restore();
@@ -521,10 +521,8 @@ const Portrait = (() => {
       }
     }
     if (expr === 'shock') {
-      c.strokeStyle = 'rgba(70,100,190,.55)'; c.lineWidth = 1.1;
-      for (let i = 0; i < 6; i++) { const x = cx - 22 + i * 8; c.beginPath(); c.moveTo(x, cy - 40); c.lineTo(x, cy - 40 + 10 + (i % 2) * 6); c.stroke(); }
-      const sx = cx + fw + 2, sy = cy - 26;
-      c.fillStyle = 'rgba(190,230,255,.9)'; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(sx - 5, sy + 10, sx, sy + 13); c.quadraticCurveTo(sx + 5, sy + 10, sx, sy); c.fill();
+      const sx = cx + fw - 3, sy = cy - 22;   // こめかみに小さな汗
+      c.fillStyle = 'rgba(190,230,255,.9)'; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(sx - 3.5, sy + 7, sx, sy + 9); c.quadraticCurveTo(sx + 3.5, sy + 7, sx, sy); c.fill();
       c.strokeStyle = 'rgba(60,110,170,.7)'; c.lineWidth = 0.8; c.stroke();
     }
   }
