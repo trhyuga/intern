@@ -374,8 +374,10 @@ const Portrait = (() => {
     }
     c.lineCap = 'butt';
   }
+  // 髭の色：髪の色から。「赤髭」の人物（redbeard）は赤い髭
+  const beardHair = f => f.tags.includes('redbeard') ? '#b8401e' : f.hair;
   function animeBeard(c, f, cx, cy, fw, chinY) {
-    const col = shade(f.hair, 0.8), LC = Art.hexA(shade(f.hair, 0.4), 0.8);
+    const bh = beardHair(f), col = shade(bh, 0.8), LC = Art.hexA(shade(bh, 0.4), 0.8);
     c.fillStyle = col; c.strokeStyle = LC; c.lineWidth = 1;
     c.beginPath(); c.moveTo(cx - fw * 0.92, cy + 4);
     c.bezierCurveTo(cx - fw * 0.9, cy + 26, cx - fw * 0.5, chinY + 6, cx, chinY + 9);
@@ -923,7 +925,7 @@ const Portrait = (() => {
     if (f.old) { c.strokeStyle = shade(f.skin, 0.75); c.lineWidth = 1; [-1, 1].forEach(s => { c.beginPath(); c.moveTo(cx + s * 30, ey + 2); c.lineTo(cx + s * 34, ey + 6); c.moveTo(cx + s * 12, cy + 20); c.quadraticCurveTo(cx + s * 16, cy + 28, cx + s * 14, cy + 34); c.stroke(); }); c.beginPath(); c.moveTo(cx - 12, cy - 38); c.lineTo(cx + 12, cy - 38); c.stroke(); }
   }
   function beard(c, f, cx, cy, fw, fh) {
-    c.fillStyle = Art.hexA(shade(f.hair, 0.8), 0.92);
+    c.fillStyle = Art.hexA(shade(beardHair(f), 0.8), 0.92);
     c.beginPath(); c.moveTo(cx - fw * 0.85, cy + 8);
     c.bezierCurveTo(cx - fw * 0.8, cy + fh * 0.9, cx + fw * 0.8, cy + fh * 0.9, cx + fw * 0.85, cy + 8);
     c.lineTo(cx + 12, cy + 24); c.quadraticCurveTo(cx, cy + 20, cx - 12, cy + 24); c.closePath(); c.fill();
