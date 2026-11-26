@@ -62,7 +62,7 @@ const Portrait = (() => {
     };
     if (saint) { out.saint = true; out.skin = '#fff1e8'; out.eye = '#4a86d8'; out.style = 'long'; out.lip = '#e8909a'; out.col2 = '#e8d49a'; }
     out.granny = old && S.female;
-    out.gap = ({ freya: 1.5, mina: 1.5 })[key] || null;
+    out.gap = null;   // 人物ごとに目の間隔を変えたい時はここで
     // 精悍な武人（赤髭のハンセンなど）：短く刈った赤茶の髪・日焼けした肌
     if (S.tags.includes('rugged')) { out.rugged = true; out.style = 'short'; out.hair = '#8c3c20'; out.skin = '#c89068'; out.jaw = 1.04; }
     if (out.granny && STYLE === 'anime') { out.style = 'long'; out.lip = null; out.eye = '#6a4026'; out.hood = S.tags.includes('hood'); }
@@ -391,7 +391,7 @@ const Portrait = (() => {
     // 目の大きさと間隔（描き方の講座の図から）：目と目の間は目1つ分、顔の幅はおよそ目尻から目尻まで
     //  女性は目を少し大きく、間を目0.7個分に詰める（見比べて、離れすぎず大きすぎない所）
     const W = (fem ? 11.5 : 11.5) * f.eyeS * (f.granny ? 0.82 : old ? 0.92 : 1), H = (fem ? 11.5 : 7) * f.eyeS * (f.granny ? 0.72 : f.rugged ? 0.82 : old ? 0.85 : f.saint ? 1.05 : 1) * (expr === 'shock' ? 1.15 : 1);
-    const ey = cy + (fem ? 4 : -2), ex = fem ? W * (f.gap || 1.68) : 17.5;
+    const ey = cy + (fem ? 4 : -2), ex = fem ? W * (f.gap || 1.5) : 17.5;   // 女性は目幅の 1.5 倍の位置（目と目の間を詰める）
     const LC = lineCol(f), lash = '#1a0e12';
     const E = { ey, ex, W, H };
     [-1, 1].forEach(s => {
