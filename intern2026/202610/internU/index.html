@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#02030a">
+<title>星霜戦記 ―ECLIPSE CHRONICLE―</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=59">
+</head>
+<body>
+<div id="app">
+  <!-- 起動（音を鳴らすために最初のタップが必要） -->
+  <section id="tap" class="screen show">
+    <div class="tap-inner">
+      <div class="tap-title" data-title>星霜戦記</div>
+      <div class="tap-sub" data-sub>ECLIPSE CHRONICLE</div>
+      <div class="tap-hint">画面をタップしてください</div>
+      <div class="tap-note">音が鳴ります</div>
+    </div>
+  </section>
+
+  <section id="opening" class="screen"><canvas id="opcv"></canvas><div class="cine-cap"></div><button class="skip">スキップ ▶</button></section>
+
+  <section id="title" class="screen">
+    <canvas id="titlecv"></canvas>
+    <div class="title-wrap">
+      <h1 class="logo" data-title>星霜戦記</h1>
+      <div class="logo-sub">― <span data-sub>ECLIPSE CHRONICLE</span> ―</div>
+      <div class="title-menu">
+        <button class="btn big primary" data-act="new">新しく始める</button>
+        <button class="btn big" data-act="load">続きから</button>
+        <button class="btn" data-act="howto">遊び方</button>
+        <button class="btn" data-act="opening">オープニング</button>
+        <button class="btn" data-act="records">記録</button>
+        <button class="btn" data-act="mute">音：オン</button>
+      </div>
+      <div class="title-foot">intern2026 / internU</div>
+    </div>
+  </section>
+
+  <section id="select" class="screen">
+    <header class="hdr"><button class="back">‹ 戻る</button><h2>国を選ぶ</h2></header>
+    <div class="scroll" id="selList"></div>
+  </section>
+
+  <section id="main" class="screen">
+    <header class="topbar">
+      <div class="tb-l"><div class="tb-date" id="tbDate"></div><div class="tb-fac" id="tbFac"></div></div>
+      <div class="tb-res" id="tbRes"></div>
+      <div class="tb-ecl" id="tbEcl"></div>
+      <button class="tb-staff" id="btnStaff">参謀</button>
+      <button class="tb-menu" id="btnMenu">☰</button>
+    </header>
+    <div class="mapwrap"><canvas id="mapcv"></canvas><div id="quick" class="quick"></div><div id="autobar" class="autobar"></div><div id="raid" class="raid"></div><div id="warroom" class="warroom"><div class="wr-head"></div><div class="wr-list"></div></div></div>
+    <nav class="bottombar">
+      <button data-nav="planets"><i>◉</i>惑星</button>
+      <button data-nav="fleets"><i>▲</i>艦隊</button>
+      <button data-nav="tech"><i>⚙</i>技術</button>
+      <button data-nav="people"><i>☺</i>人事</button>
+      <button data-nav="diplo"><i>✦</i>外交</button>
+      <button data-nav="gov"><i>☰</i>国政</button>
+      <button data-nav="end" class="end"><i>▶</i>月を進める</button>
+    </nav>
+  </section>
+
+  <section id="battle" class="screen"></section>
+  <section id="ending" class="screen"><canvas id="endcv"></canvas><div class="cine-cap"></div><button class="skip">スキップ ▶</button></section>
+
+  <!-- 下から出るシート -->
+  <div id="sheet" class="sheet"><div class="sh-bg"></div><div class="sh-panel"><div class="sh-head"><button class="sh-back">‹</button><b class="sh-title"></b><button class="sh-close">✕</button></div><div class="sh-body"></div></div></div>
+  <div id="talk" class="talk"></div>
+  <div id="modal" class="modal"></div>
+  <div id="busy" class="busy"></div>
+  <div id="toast" class="toast"></div>
+</div>
+
+<script src="js/config.js?v=59"></script>
+<script src="js/data_world.js?v=59"></script>
+<script src="js/data_factions.js?v=59"></script>
+<script src="js/data_ships.js?v=59"></script>
+<script src="js/data_officers.js?v=59"></script>
+<script src="js/art.js?v=59"></script>
+<script src="js/shipart.js?v=59"></script>
+<script src="js/gloss.js?v=59"></script>
+<script src="js/game.js?v=59"></script>
+<script src="js/data_events.js?v=59"></script>
+<script src="js/people.js?v=59"></script>
+<script src="js/people/p0.js?v=59"></script>
+<script src="js/people/p1.js?v=59"></script>
+<script src="js/people/p2.js?v=59"></script>
+<script src="js/people/p3.js?v=59"></script>
+<script src="js/people/p4.js?v=59"></script>
+<script src="js/people/p5.js?v=59"></script>
+<script src="js/people/p_free.js?v=59"></script>
+<script src="js/people/nations.js?v=59"></script>
+<script src="js/people/minors.js?v=59"></script>
+<script src="js/people/main0.js?v=59"></script>
+<script src="js/people/main1.js?v=59"></script>
+<script src="js/people/main2.js?v=59"></script>
+<script src="js/people/main3.js?v=59"></script>
+<script src="js/people/main4.js?v=59"></script>
+<script src="js/people/main5.js?v=59"></script>
+<script src="js/people/omen.js?v=59"></script>
+<script src="js/people/crisis.js?v=59"></script>
+<script src="js/people/aftermath.js?v=59"></script>
+<script src="js/people/echoes.js?v=59"></script>
+<script src="js/people/rivals.js?v=59"></script>
+<script src="js/people/sequels.js?v=59"></script>
+<script src="js/people/alliance.js?v=59"></script>
+<script src="js/people/newyear.js?v=59"></script>
+<script src="js/audio.js?v=59"></script>
+<script src="js/wake.js?v=59"></script>
+<script src="js/portrait.js?v=59"></script>
+<script src="js/designer.js?v=59"></script>
+<script src="js/diplomacy.js?v=59"></script>
+<script src="js/eclipse.js?v=59"></script>
+<script src="js/ai.js?v=59"></script>
+<script src="js/battle.js?v=59"></script>
+<script src="js/starmap.js?v=59"></script>
+<script src="js/story.js?v=59"></script>
+<script src="js/warroom.js?v=59"></script>
+<script src="js/incidents.js?v=59"></script>
+<script src="js/staff.js?v=59"></script>
+<script src="js/turn.js?v=59"></script>
+<script src="js/cinema.js?v=59"></script>
+<script src="js/epilogue.js?v=59"></script>
+<script src="js/talkfx.js?v=59"></script>
+<script src="js/planetart.js?v=59"></script>
+<script src="js/memory.js?v=59"></script>
+<script src="js/typeset.js?v=59"></script>
+<script src="js/ui.js?v=59"></script>
+<script>UI.boot();</script>
+</body>
+</html>

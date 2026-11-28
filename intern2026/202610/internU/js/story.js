@@ -1,0 +1,75 @@
+// ============================================================
+//  会話イベントを起こし、見せる
+// ============================================================
+const Story = (() => {
+  // 話し手を決める（@leader など）
+  function resolve(who) {
+    const me = G.player;
+    const mine = Game.officersOf(me);
+    const by = st => mine.slice().sort((a, b) => OFF[b][st] - OFF[a][st])[0];
+    const leader = G.facs[me].leader;
+    if (who === '@leader') return isMine(leader) ? leader : by('ldr');
+    if (who === '@mil') return mine.filter(k => k !== leader).sort((a, b) => (OFF[b].ldr + OFF[b].tac) - (OFF[a].ldr + OFF[a].tac))[0] || leader;
+    if (who === '@pol') return mine.filter(k => k !== leader).sort((a, b) => OFF[b].pol - OFF[a].pol)[0] || leader;
+    if (who === '@staff') return G.staff && G.staff.on && isMine(G.staff.key) ? G.staff.key : resolve('@pol');
+    if (who === '@sci') return mine.filter(k => k !== leader).sort((a, b) => OFF[b].sci - OFF[a].sci)[0] || leader;
+    return who;
+  }
+  function eligible(ev) {
+    if (ev.fac !== undefined && ev.fac !== G.player) return false;
+    const done = G.evDone[ev.id];
+    if (done && ev.once !== false) return false;
+    if (done && ev.cool && G.turn - done < ev.cool) return false;
+    try { return !!ev.cond(); } catch (e) { return false; }
+  }
+  // 関係・個人の物語・幕間・国家間の出来事は People が用意する（js/people.js）
+  function dynamic() { return typeof People !== 'undefined' ? People.pending() : []; }
+
+  async function run() {
+    const list = EVENTS.filter(eligible).concat(dynamic().filter(e => !G.evDone[e.id]));
+    // 一度に見せるのは3つまで（勢力の物語を先に）
+    // 蝕の襲来はいちばん先に。その次に勢力の物語
+    //  優先：蝕 > 国の章 > 死別 > 国家間・捕縛 > 幕間 > 個人の物語 > 関係 > その他
+    const pr = e => e.id === 'c_eclipse' ? 10 : e.fac !== undefined ? 6 : (e.pr || 0);
+    list.sort((x, y) => pr(y) - pr(x));
+    let n = 0;
+    for (const ev of list) {
+      if (n >= 3) break;
+      if (G.evDone[ev.id]) continue;
+      const still = EVENTS.includes(ev) ? eligible(ev) : dynamic().some(e => e.id === ev.id);
+      if (!still) continue;
+      n++;
+      try { await play(ev); } catch (e) { console.error('出来事', ev.id, e); if (typeof People !== 'undefined') People.takeActs(); }
+    }
+  }
+  // 自国の物語で、寝返った・捕まった自国の人物の台詞は飛ばす（他国の人物はそのまま）
+  const away = (ev, w) => ev.home !== undefined && OFF[w].fac0 === ev.home && (G.officers[w].st !== 'act' || G.officers[w].fac !== ev.home);
+  async function play(ev) {
+    G.evDone[ev.id] = G.turn;
+    if (ev.valid && !ev.valid()) return;   // 前の出来事で、もう片づいた（取り戻した捕虜など）
+    const scenes = ev.scenes().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead' && !away(ev, w))));
+    if (!scenes.length) {
+      G.evDone[ev.id] = G.turn;
+      if (ev.fx) ev.fx();
+      if (ev.choices && ev.choices.length) ev.choices[0].fx();
+      if (typeof People !== 'undefined') People.takeActs();
+      return;
+    }
+    const shown = ev.choices && typeof People !== 'undefined' && !ev.wrapped ? ev.choices.map(c => Object.assign({}, c, { t: People.fixNations(c.t) })) : ev.choices;
+    // 既存の章で、選択肢に滅んだ国が出るなら、場面の台詞のその国も置き換える
+    const deadN = ev.choices && typeof People !== 'undefined' && !ev.wrapped ? People.deadIn(ev.choices.map(c => c.t)) : [];
+    if (deadN.length) scenes.forEach(l => { l[2] = People.fixNations(l[2], {}, deadN); });
+    const choice = await UI.talk(ev.title, scenes, shown, ev.bg);
+    if (ev.fx) ev.fx();
+    if (ev.choices && choice !== null && choice !== undefined) {
+      const c = ev.choices[choice];
+      c.fx();
+      if (c.after) { const s2 = c.after().map(([w, e, t]) => [w === 'narr' ? 'narr' : resolve(w), e, deadN.length ? People.fixNations(t, {}, deadN) : t]).filter(([w, , t]) => t && (w === 'narr' || (OFF[w] && G.officers[w] && G.officers[w].st !== 'dead'))); if (s2.length) await UI.talk(null, s2, null, ev.bg, true); }
+    }
+    // 選んだことが、実際に動いた（艦隊の出撃・宣戦・造艦など）
+    const acts = typeof People !== 'undefined' ? People.takeActs() : [];
+    if (acts.length) { await UI.talk('実行', acts.map(t => ['narr', 'normal', '▶ ' + t]), null, ev.bg, true); if (typeof WarRoom !== 'undefined' && WarRoom.say) acts.forEach(t => { try { WarRoom.order('出来事の決定：' + t); } catch (e) { } }); UI.refresh && UI.refresh(); }
+    Game.save();
+  }
+  return { run, play, resolve };
+})();

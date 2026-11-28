@@ -1,0 +1,676 @@
+// ============================================================
+//  人物・関係・物語のエンジン
+//  データは js/people/*.js が PEOPLE.add / PEOPLE.ties / PEOPLE.events / NATIONS.add で登録する
+//  - 人物：一人称・経歴・場面ごとの返事（voice）・個人の物語（arc）
+//  - 関係：同じ国の時の会話（3段階）、敵・戦場・参謀・捕縛・死・追憶の一言、能力への効き目
+//  - 国の幕間・国家間の出来事
+// ============================================================
+const PEOPLE = (() => {
+  const P = {}, TIES = [], EVS = [], MAIN = [];
+  return {
+    P, TIES, EVS, MAIN,
+    // メインストーリー：連なる出来事の列（chain ごと）。前の出来事を終えると次が起こる
+    main: (chain, list) => list.forEach((ev, i) => MAIN.push(Object.assign({ chain, idx: i }, ev))),
+    add: o => Object.assign(P, o),
+    ties: a => TIES.push(...a),
+    events: a => EVS.push(...a),
+  };
+})();
+const NATIONS = (() => { const L = []; return { L, add: a => L.push(...a) }; })();
+
+const People = (() => {
+  const HONOR = { 0: '陛下', 1: '首相閣下', 2: '総裁', 3: '聖女様', 4: '盟主', 5: '統括知性' };
+  const STATS = ['ldr', 'tac', 'pol', 'dip', 'sci'];
+  const KIND_NAME = { bond: '絆', love: '想い人', family: '家族', mentor: '師弟', rival: '好敵手', grudge: '遺恨' };
+  const WARM = new Set(['bond', 'love', 'family', 'mentor']);
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const pk = (a, b) => [a, b].sort().join('|');
+  const st = k => G.officers[k] ? G.officers[k].st : null;
+  const mine = k => typeof isMine === 'function' && isMine(k);
+  const foe = k => { const o = G.officers[k]; return !!o && o.st === 'act' && Game.isMajor(o.fac) && o.fac !== G.player; };
+
+  // ---------- 関係の一覧（PEOPLE の関係に、昔の OFFICER_TIES のうち書かれていない組を足す） ----------
+  let ALL = null;
+  function all() {
+    if (ALL) return ALL;
+    const seen = new Set();
+    ALL = [];
+    for (const t of PEOPLE.TIES) { if (!OFF[t.a] || !OFF[t.b]) continue; const k = pk(t.a, t.b); if (seen.has(k)) continue; seen.add(k); ALL.push(t); }
+    for (const [a, b, kind, desc] of OFFICER_TIES) {
+      if (seen.has(pk(a, b))) continue; seen.add(pk(a, b));
+      ALL.push({ a, b, kind, label: kind === 'bond' ? '絆' : '宿敵', desc, talk: null, lines: null });
+    }
+    return ALL;
+  }
+  const tiesOf = k => all().filter(t => t.a === k || t.b === k);
+  const tie = (a, b) => all().find(t => (t.a === a && t.b === b) || (t.a === b && t.b === a)) || null;
+  const other = (t, k) => t.a === k ? t.b : t.a;
+  const side = (t, k) => t.a === k ? 'a' : 'b';
+  function state(t) {
+    G.ties = G.ties || {};
+    const k = pk(t.a, t.b);
+    return G.ties[k] || (G.ties[k] = { stage: 0, last: -99, met: false, mem: 0, memT: 0, mourned: false, cap: 0 });
+  }
+  // 場面ごとの一言（無ければ、関係の種類ごとの言葉）
+  const GEN = {
+    enemy: { warm: '{o}が、敵の旗の下に……。できれば、戦いたくはない。', rival: '{o}が出てきたか。……面白い。', grudge: '{o}……。あいつだけは、許さない。' },
+    battle: { warm: '{o}、すまない。ここは退けないんだ。', rival: '来い、{o}！ 決着をつけよう！', grudge: '{o}！ 今日こそ、借りを返す！' },
+    ally: { warm: '{o}が一緒なら、心強い。', rival: '{o}に後れを取るわけにはいかないな。', grudge: '{o}と肩を並べるとはな。……足を引っ張るなよ。' },
+    staff: { warm: '{o}、頼りにしている。', rival: '{o}、お前の腕を見せてもらおう。', grudge: '{o}、私情は挟まない。命令だ。' },
+    order: { warm: '任せて。あなたの頼みなら。', rival: 'ふん、言われなくてもやってやる。', grudge: '……命令なら、従う。' },
+    capture: { warm: '{o}が捕らわれた……！ 必ず、取り戻す。', rival: '{o}が捕まっただと？ 決着もつけずに……。', grudge: '{o}が捕らわれたか。……知ったことではない。' },
+    death: { warm: '{o}……。どうして、あなたが。', rival: '{o}が死んだ……？ 勝ち逃げは許さないと言ったはずだ。', grudge: '{o}が死んだか。……これで、何もかも終わったのか。' },
+    recruit: { warm: '{o}、こちらへ来てくれないか。また一緒に。', rival: '{o}、敵として戦うより、同じ旗の下で競わないか。', grudge: '{o}。過去はともかく、今はお前の力が要る。' },
+    reunion: { warm: 'また会えたね、{o}。', rival: '{o}と同じ旗の下か。悪くない。', grudge: '……{o}か。' },
+    memory: { warm: '{o}がいれば、何と言っただろう。', rival: '{o}なら、ここでどう攻めたか……。', grudge: '{o}のことを、時々思い出す。妙なものだ。' },
+  };
+  function line(t, kind, speaker) {
+    const s = side(t, speaker), o = OFF[other(t, speaker)];
+    const L = t.lines && t.lines[kind] && t.lines[kind][s];
+    const g = GEN[kind] && GEN[kind][WARM.has(t.kind) ? 'warm' : t.kind];
+    return sub(L || g || '', { o: o ? shortName(o) : '' });
+  }
+
+  // ---------- 文の置き換え ----------
+  function sub(text, x = {}) {
+    if (!text) return text;
+    const me = G.player, lead = G.facs && G.facs[me] ? G.facs[me].leader : null;
+    return text.replace(/\{honor\}/g, HONOR[me] || '閣下').replace(/\{faction\}/g, FACTIONS[me] ? FACTIONS[me].name : '')
+      .replace(/\{leader\}/g, lead && OFF[lead] ? shortName(OFF[lead]) : '')
+      .replace(/\{target\}/g, x.target !== undefined && x.target !== null ? x.target : 'そこ').replace(/\{o\}/g, x.o || '');
+  }
+
+  // ---------- 滅んだ国の名を、いまの相手に置き換える ----------
+  //  選択肢に滅んだ国の名が出たら：その国を滅ぼした国（生きていて自国でなければ）、なければ、いちばん仲の悪い生きている国。
+  //  選択の効き目（信頼・宣戦など）も、同じ国に向け直す
+  function liveFid(fid, ctx = {}) {
+    if (typeof fid !== 'number' || !G.facs[fid] || G.facs[fid].alive) return fid;
+    if (ctx.other === fid) return fid;   // その国そのものの出来事（滅亡の報など）はそのまま
+    const me = G.player, f = G.facs[fid];
+    let k = f.killedBy;
+    for (let i = 0; i < 6 && typeof k === 'number' && G.facs[k] && !G.facs[k].alive; i++) k = G.facs[k].killedBy;   // 滅ぼした国も滅んでいれば、さらにその先
+    if (typeof k === 'number' && k !== me && G.facs[k] && G.facs[k].alive && Game.rel(me, k).s !== 'ally') return k;
+    let alive = [0, 1, 2, 3, 4, 5].filter(i => i !== me && G.facs[i].alive);
+    if (alive.some(i => Game.rel(me, i).s !== 'ally')) alive = alive.filter(i => Game.rel(me, i).s !== 'ally');
+    if (!alive.length) return null;
+    return alive.sort((a, b) => Game.rel(me, a).t - Game.rel(me, b).t)[0];
+  }
+  // 選択肢に出てくる、滅んだ国（場面の台詞も、その国だけ置き換えて筋をそろえる）
+  function deadIn(texts, ctx = {}) { if (typeof G === 'undefined' || !G || !G.facs) return []; return FACTIONS.filter(F => !G.facs[F.id].alive && ctx.other !== F.id && texts.some(t => t && (t.includes(F.name) || t.includes(F.short)))).map(F => F.id); }
+  function fixNations(text, ctx = {}, only = null) {
+    if (!text || typeof G === 'undefined' || !G || !G.facs) return text;
+    let t = text;
+    for (const F of FACTIONS) {
+      if (only && !only.includes(F.id)) continue;
+      if (G.facs[F.id].alive || ctx.other === F.id || (!t.includes(F.name) && !t.includes(F.short))) continue;
+      const to = liveFid(F.id, ctx);
+      const nm = to === null ? '残る敵' : FACTIONS[to].name, sh = to === null ? '敵' : FACTIONS[to].short;
+      t = t.split(F.name).join('\u0000' + to + 'N');   // 長い名前を先に
+      t = t.split(F.short).join('\u0000' + to + 'S');
+      t = t.replace(/\u0000(null|\d)N/g, () => nm).replace(/\u0000(null|\d)S/g, () => sh);
+    }
+    return t;
+  }
+  // ---------- 人物の言葉（コマンドへの返事など） ----------
+  const prof = k => PEOPLE.P[k] || null;
+  function voice(k, kind, target) {
+    const p = prof(k);
+    const list = p && p.voice && p.voice[kind];
+    return list && list.length ? sub(pick(list), { target }) : null;
+  }
+  // 命令への返事：忠誠が低いとしぶしぶ、絆や遺恨のある参謀からの命令には関係の言葉
+  function reply(kind, k, target) {
+    const o = G.officers[k];
+    if (o && o.loyal < 35 && !Game.isLeader(k)) { const v = voice(k, 'lowloyal', target); if (v) return v; }
+    const s = G.staff && G.staff.on ? G.staff.key : null;
+    if (s && s !== k && Math.random() < 0.35) { const t = tie(s, k); if (t) return line(t, 'order', k); }
+    if (Math.random() < 0.8) { const v = voice(k, kind, target); if (v) return v; }
+    return null;
+  }
+  // 参謀が命令を出す時の、関係を踏まえた呼びかけ（無ければ null）
+  function staffLine(staff, k) {
+    if (!staff || staff === k || Math.random() > 0.5) return null;
+    const t = tie(staff, k); return t ? line(t, 'staff', staff) : null;
+  }
+
+  // ---------- 能力の上乗せ（出来事で変わった分） ----------
+  function applyStats() {
+    for (const k in OFF) {
+      const S = OFF[k];
+      if (!S._base) S._base = Object.fromEntries(STATS.map(s => [s, S[s]]));
+      const b = (G && G.officers[k] && G.officers[k].bonus) || {};
+      STATS.forEach(s => { S[s] = clamp(Math.round(S._base[s] + (b[s] || 0)), 1, 120); });
+    }
+  }
+  function addStat(k, s, n) {
+    const o = G.officers[k]; if (!o || !STATS.includes(s)) return;
+    o.bonus = o.bonus || {}; o.bonus[s] = (o.bonus[s] || 0) + n;
+    applyStats();
+  }
+  // 新しいゲーム・読み込みの後
+  function init() {
+    applyStats();
+    const fresh = !G.ties;
+    G.ties = G.ties || {};
+    // 最初から同じ国にいる組（古いセーブを読んだ時は、いま同じ国にいる組）は「もう知り合い」
+    for (const t of all()) { const s = state(t); if ((G.turn <= 1 || fresh) && mine(t.a) && mine(t.b)) { s.met = true; s.last = G.turn; } }
+    G.natSnap = G.natSnap || null;
+    G.natDone = G.natDone || {};
+  }
+
+  // ---------- 条件と効果（宣言的なデータを読む） ----------
+  function cond(c, ctx = {}) {
+    if (!c) return true;
+    const me = G.player, f = G.facs[me];
+    if (c.fac !== undefined && c.fac !== me) return false;
+    if (c.turn !== undefined && G.turn < c.turn) return false;
+    if (c.with && !c.with.every(mine)) return false;
+    if (c.notWith && c.notWith.some(mine)) return false;
+    if (c.foe && !c.foe.every(foe)) return false;
+    if (c.foe && typeof c.war === 'number' && !c.foe.every(k => G.officers[k] && G.officers[k].fac === c.war)) return false;
+    if (c.dead && !c.dead.every(k => st(k) === 'dead')) return false;
+    if (c.alive && !c.alive.every(k => st(k) && st(k) !== 'dead')) return false;
+    if (c.rank && !Object.entries(c.rank).every(([k, n]) => G.officers[k] && Game.rankIdx(k) >= n)) return false;
+    if (c.wins !== undefined && f.stats.wins < c.wins) return false;
+    if (c.planets !== undefined && G.planets.filter(p => p.owner === me).length < c.planets) return false;
+    if (c.flag && !G.flags[c.flag]) return false;
+    if (c.noFlag && G.flags[c.noFlag]) return false;
+    if (c.after && !G.evDone[c.after]) return false;
+    const relS = x => (x === me || !G.facs[x] || !G.facs[x].alive) ? null : Game.rel(me, x).s;
+    if (c.war !== undefined && relS(c.war) !== 'war') return false;
+    if (c.ally !== undefined && relS(c.ally) !== 'ally') return false;
+    if (c.peace !== undefined && (relS(c.peace) === null || relS(c.peace) === 'war')) return false;
+    if (c.omen !== undefined && !((G.eclipse.omen || 0) >= c.omen || G.eclipse.arrived)) return false;
+    if (c.eclipse === true && !G.eclipse.arrived) return false;
+    if (c.eclipse === false && G.eclipse.arrived) return false;
+    // 国内の派閥：主導する派閥・支持の強さ
+    if (c.ruling && f.ruling !== c.ruling) return false;
+    if (c.notRuling && f.ruling === c.notRuling) return false;
+    if (c.partyMin && !Object.entries(c.partyMin).every(([p, n]) => (f.parties[p] || 0) >= n)) return false;
+    if (c.partyMax && !Object.entries(c.partyMax).every(([p, n]) => (f.parties[p] || 0) <= n)) return false;
+    // 蝕の段階（そこまで進んだら）
+    if (c.ecl) {
+      const fl = G.flags, done = { omen1: fl.omen1, omen2: fl.omen2, first: fl.eclipse, lull: fl.eclipseLull, great: fl.eclipseGreat, recede: fl.eclipseRecede, ret: fl.eclipseRet, key: fl.myKey || fl.towerKey, seal: f.sealed, abyss: fl.abyss, solved: fl.eclipseDown };
+      // 段階は飛ぶことがある：後の段階まで来ていれば、前の段階は済んだものとする。根絶したら、どの段階も済み
+      const ORD = ['omen1', 'omen2', 'first', 'lull', 'great', 'recede', 'ret'];
+      const i = ORD.indexOf(c.ecl);
+      // 欠片・封印は、ほかの国が深淵を見つけた（封印を修めた）なら、筋の上では済んだものとして先へ進む（自国が手に入れられないまま止まらないように）
+      const ok = done[c.ecl] || done.solved || (i >= 0 && ORD.slice(i + 1).some(k => done[k])) || (['key', 'seal'].includes(c.ecl) && done.abyss);
+      if (!ok) return false;
+    }
+    // 小勢力
+    if (c.minorAlly && !(G.minors[c.minorAlly] && G.minors[c.minorAlly].ally === me)) return false;
+    if (c.minorOther && !(G.minors[c.minorOther] && G.minors[c.minorOther].ally !== null && G.minors[c.minorOther].ally !== me)) return false;
+    if (c.minorFree && !(G.minors[c.minorFree] && G.minors[c.minorFree].ally === null && G.planets[MINORS.find(m => m.id === c.minorFree).planet].owner === c.minorFree)) return false;
+    if (c.minorGone && G.planets[MINORS.find(m => m.id === c.minorGone).planet].owner === c.minorGone) return false;
+    if (c.anyFlag && !c.anyFlag.some(x => G.flags[x])) return false;
+    if (c.month !== undefined && (G.turn - 1) % 12 + 1 !== c.month) return false;   // 何月か（年の初め＝1 など）
+    if (c.chance !== undefined && Math.random() > c.chance) return false;
+    return true;
+  }
+
+  // ---------- 選択を、実際のゲームの動きにする（act） ----------
+  //  fx.act = [ {...}, ... ]。書き方は spec/ACT_FORMAT.md
+  let ACTS = [];
+  const takeActs = () => { const a = ACTS; ACTS = []; return a; };
+  const note = t => { ACTS.push(t); Game.log(t, 'big', G.player); };
+  const BUFF_NAME = { dmg: '艦の火力', eclDmg: '蝕への火力', def: '艦の守り', speed: '艦の速さ', income: '収入', research: '研究', build: '造艦の費用（安く）', stab: '民心（毎月）' };
+  // 相手の国を決める：数字・'other'（国家間の出来事の相手）・'rival'（いちばん仲の悪い国）・'strongest'・'weakest'・'all'
+  function facTarget(t, ctx) {
+    const me = G.player, alive = [0, 1, 2, 3, 4, 5].filter(i => i !== me && G.facs[i].alive);
+    if (t === 'all') return alive;
+    if (t === 'other') return ctx.other !== undefined && ctx.other !== null && G.facs[ctx.other] && G.facs[ctx.other].alive ? [ctx.other] : [];
+    if (typeof t === 'number') { const u = liveFid(t, ctx); return typeof u === 'number' && G.facs[u] && G.facs[u].alive && u !== me ? [u] : []; }
+    const pw = i => G.fleets.filter(f => f.fac === i).reduce((a, f) => a + Game.fleetPower(f), 0) + G.planets.filter(p => p.owner === i).length * 50;
+    if (t === 'rival') return alive.filter(i => Game.rel(me, i).s !== 'ally').sort((a, b) => Game.rel(me, a).t - Game.rel(me, b).t).slice(0, 1);
+    if (t === 'strongest') return alive.sort((a, b) => pw(b) - pw(a)).slice(0, 1);
+    if (t === 'weakest') return alive.sort((a, b) => pw(a) - pw(b)).slice(0, 1);
+    return [];
+  }
+  const mineP = () => G.planets.filter(p => p.owner === G.player);
+  const capOf = () => G.planets[G.facs[G.player].capital];
+  // 自国の星からの近さ
+  const nearMine = pid => Math.min(99, ...mineP().map(p => Game.hops(p.id, pid)));
+  function borderP() {   // 外の星にいちばん多く接している自国の星
+    const me = G.player;
+    return mineP().map(p => ({ p, n: Game.ADJ[p.id].filter(n => !Game.friendly(me, G.planets[n].owner)).length })).sort((a, b) => b.n - a.n)[0]?.p || capOf();
+  }
+  // 艦隊の行き先
+  function fleetTarget(kind, ctx, to) {
+    const me = G.player;
+    const rifts = G.planets.filter(p => p.owner === 'E' && Game.canEnter(me, p.id));
+    if (kind === 'home') return { p: capOf(), why: '首都の守り' };
+    if (kind === 'border' || kind === 'fort') return { p: borderP(), why: '国境の守り' };
+    if (kind === 'rift' || kind === 'abyss') {
+      const ab = rifts.filter(p => p.abyss);
+      const list = kind === 'abyss' && ab.length ? ab : rifts.filter(p => !p.abyss).length ? rifts.filter(p => !p.abyss) : ab;
+      if (list.length) return { p: list.sort((a, b) => nearMine(a.id) - nearMine(b.id))[0], why: kind === 'abyss' && list[0].abyss ? '深淵へ' : '裂け目を討つ' };
+      return { p: borderP(), why: '国境で備える', fb: true };
+    }
+    if (kind === 'aid') {
+      const f = facTarget(to ?? 'other', ctx)[0];
+      if (f === undefined) return { p: borderP(), why: '国境で備える', fb: true };
+      const theirs = G.planets.filter(p => p.owner === f);
+      const near = pid => Math.min(99, ...theirs.map(p => Game.hops(p.id, pid)));
+      // その国を脅かす裂け目か、その国の敵の星。なければ、その国にいちばん近い自国の星
+      const thr = rifts.filter(p => near(p.id) <= 2).sort((a, b) => near(a.id) - near(b.id))[0];
+      if (thr) return { p: thr, why: `${Game.ownerShort(f)}を救いに` };
+      const mp = mineP().sort((a, b) => near(a.id) - near(b.id))[0];
+      return { p: mp || capOf(), why: `${Game.ownerShort(f)}の近くへ` };
+    }
+    if (kind === 'front') {
+      const foes = G.planets.filter(p => Game.isMajor(p.owner) && p.owner !== me && Game.rel(me, p.owner).s === 'war' && nearMine(p.id) === 1);
+      const pick = to !== undefined ? foes.filter(p => facTarget(to, ctx).includes(p.owner)) : foes;
+      if (pick.length) return { p: pick.sort((a, b) => Game.planetDefense(a) - Game.planetDefense(b))[0], why: '敵の星を攻める' };
+      return { p: borderP(), why: '国境で備える', fb: true };
+    }
+    return null;
+  }
+  function pickFleets(size) {
+    const me = G.player, list = G.fleets.filter(f => f.fac === me && f.ships.length).sort((a, b) => Game.fleetPower(b) - Game.fleetPower(a));
+    if (!list.length) return [];
+    if (size === 'all') return list;
+    if (size === 'half') return list.slice(0, Math.max(1, Math.ceil(list.length / 2)));
+    return list.slice(0, 1);
+  }
+  function bestDesign() {
+    const f = G.facs[G.player];
+    return f.designs.map(id => G.designs[id]).filter(x => Game.designUnlocked(x, G.player)).sort((a, b) => Game.designStats(b, G.player).cost - Game.designStats(a, G.player).cost)[0];
+  }
+  function act(list, ctx = {}) {
+    if (!list || typeof G === 'undefined' || !G) return;
+    const me = G.player, f = G.facs[me];
+    for (const a of [].concat(list)) {
+      try {
+        // 艦隊を出す
+        if (a.fleet) {
+          const tg = fleetTarget(a.fleet, ctx, a.to), fls = pickFleets(a.size || 'main');
+          if (!tg || !fls.length) { note('動かせる艦隊がなかった。'); continue; }
+          const months = a.months || 8;
+          fls.forEach(fl => { fl.route = tg.p.id === fl.at ? null : tg.p.id; fl.dest = null; fl.mission = { kind: a.fleet, at: tg.p.id, until: G.turn + months, why: tg.why }; });
+          note(`${fls.map(x => Game.fleetName(x)).join('・')}が、${tg.p.name}へ向かう（${tg.why}${tg.fb ? '・向かう先がまだないため' : ''}。${months}か月のあいだ、参謀もこの命を守る）`);
+          if (typeof StarMap !== 'undefined' && StarMap.focus) try { StarMap.focus(tg.p.id); } catch (e) { }
+        }
+        // 艦を造る（首都の港に届く）
+        if (a.ships) {
+          const d = bestDesign(); if (!d) continue;
+          for (let i = 0; i < a.ships; i++) capOf().dock.push(Game.newShip(d.id));
+          note(`${capOf().name}の港に、${d.name}が${a.ships}隻届いた。`);
+        }
+        // 防衛衛星（砦）
+        if (a.fort) {
+          const where = a.where === 'capital' ? [capOf()] : a.where === 'all' ? mineP() : [borderP()];
+          where.forEach(p => p.def = Math.min(20, p.def + a.fort));
+          note(`${where.length > 2 ? '全ての星' : where.map(p => p.name).join('・')}の防衛衛星 +${a.fort}`);
+        }
+        // 宣戦・停戦・条約
+        if (a.war !== undefined) {
+          for (const t of facTarget(a.war, ctx)) { if (Game.rel(me, t).s === 'war') continue; Diplo.declareWar(me, t, a.why || ''); note(`${FACTIONS[t].name}に宣戦した。`); }
+        }
+        if (a.peace !== undefined) {
+          for (const t of facTarget(a.peace, ctx)) { if (Game.rel(me, t).s !== 'war') continue; Diplo.setRel(me, t, 'neutral'); Game.rel(me, t).t = Math.min(100, Game.rel(me, t).t + 10); note(`${FACTIONS[t].name}と停戦した。`); }
+        }
+        if (a.treaty) {
+          const lv = { neutral: 0, nap: 1, trade: 2, ally: 3 }, s = a.treaty.s || 'nap';
+          for (const t of facTarget(a.treaty.to ?? 'other', ctx)) {
+            const r = Game.rel(me, t);
+            if (r.s === 'war' || lv[r.s] >= lv[s]) continue;
+            Diplo.setRel(me, t, s); note(`${FACTIONS[t].name}と${({ nap: '不可侵', trade: '通商', ally: '同盟' })[s]}を結んだ。`);
+          }
+        }
+        // 贈り物（資金を相手に渡す）
+        if (a.gift) {
+          for (const t of facTarget(a.gift.to ?? 'other', ctx)) { if (Diplo.gift(me, t, a.gift.funds || 100)) note(`${FACTIONS[t].name}へ資金 ${a.gift.funds || 100} を贈った。`); }
+        }
+        // 他国に研究を分ける（解析の記録を渡す など）
+        if (a.share) {
+          const ts = facTarget(a.shareTo ?? 'all', ctx); ts.forEach(t => G.facs[t].rp += a.share);
+          if (ts.length) note(`${ts.length > 1 ? '各国' : FACTIONS[ts[0]].name}に研究 ${a.share} 分の記録を渡した。`);
+        }
+        // 小勢力と盟約を結ぶ／手を切る
+        if (a.minor) {
+          const m = G.minors[a.minor], M = MINORS.find(x => x.id === a.minor);
+          if (!m || G.planets[M.planet].owner !== a.minor) continue;
+          if (a.join === false) { if (m.ally === me) { m.ally = null; note(`${M.name}との盟約を解いた。`); } }
+          else if (m.ally === null) { Game.minorJoin(a.minor, me); note(`${M.name}と盟約を結んだ（お礼：${M.reward}）。`); }
+        }
+        // 民を受け入れる（避難民）
+        if (a.refugees) { const p = capOf(); p.pop = Math.min(p.maxPop + 20, p.pop + a.refugees); p.maxPop += Math.round(a.refugees / 2); note(`${p.name}に避難民を迎え入れた（人口 +${a.refugees}）。`); }
+        // 研究の向きを変える
+        if (a.research) { const b = a.research; if (['wep', 'eng', 'def', 'eco'].includes(b)) { f.researching = b; note(`研究の重点を「${TECH_BRANCH[b].name}」に切り替えた。`); } }
+        // 国の力（しばらく続く）
+        if (a.buff) {
+          f.buffs = (f.buffs || []).filter(x => x.until >= G.turn);
+          const months = a.months || 12;
+          f.buffs.push({ k: a.buff, v: a.v || 0.1, until: G.turn + months, name: a.name || '' });
+          note(`${a.name ? a.name + '：' : ''}${a.buff === 'stab' ? `民心 毎月 +${Math.round((a.v || 0.1) * 10)}` : `${BUFF_NAME[a.buff] || a.buff} ${a.buff === 'build' ? '−' : '+'}${Math.round((a.v || 0.1) * 100)}%`}（${months}か月）`);
+        }
+        // 人を動かす
+        if (a.officer) {
+          const k = a.officer === '@leader' ? FACTIONS[me].leader : a.officer, o = G.officers[k];
+          if (!o || o.st !== 'act' || o.fac !== me) continue;
+          const nm = OFF[k].name;
+          if (a.do === 'command') {
+            const fl = G.fleets.filter(x => x.fac === me && x.ships.length).sort((a2, b2) => Game.fleetPower(b2) - Game.fleetPower(a2)).find(x => x.cmd !== k) ;
+            if (fl && !(o.role || '').startsWith('cmd:')) { Game.freeOfficer(k); Game.setCmd(fl, k); note(`${nm}が${Game.fleetName(fl)}の司令になった。`); }
+          } else if (a.do === 'govern') {
+            const p = a.where === 'border' ? borderP() : capOf();
+            Game.freeOfficer(k); Game.setGov(p.id, k); note(`${nm}を${p.name}の総督にした。`);
+          } else if (a.do === 'dismiss') {
+            if (o.role) { Game.freeOfficer(k); note(`${nm}の任を解いた。`); }
+          } else if (a.do === 'exile') {
+            Game.freeOfficer(k); o.st = 'free'; o.fac = null; o.loc = R.pick(G.planets.filter(p => p.owner !== 'E')).id; note(`${nm}は国を去った。`);
+          }
+        }
+        // 星の開発（首都や国境に資源を注ぐ）
+        if (a.dev) { const p = (a.where || a.dev.where) === 'border' ? borderP() : capOf(); const k = a.dev.k || 'ind'; p[k] = Math.min(10, (p[k] || 0) + (a.dev.n || 1)); note(`${p.name}の${({ ind: '産業', res: '研究', yard: '造船所' })[k] || k} +${a.dev.n || 1}`); }
+      } catch (e) { console.warn('act', a, e); }
+    }
+  }
+  // 続く国の力（buff）の合計
+  function buff(fid, k) { const f = G.facs[fid]; if (!f || !f.buffs) return 0; return f.buffs.reduce((s, x) => s + (x.k === k && x.until >= G.turn ? x.v : 0), 0); }
+  function fx(x, ctx = {}) {
+    if (!x) return;
+    if (x.act) act(x.act, ctx);
+    const okK = k => { const o = G.officers[k]; return !!o && o.st !== 'dead' && !(OFF[k] && OFF[k].fac0 === G.player && (o.st !== 'act' || o.fac !== G.player)); };
+    if (x.loyal) Object.entries(x.loyal).forEach(([k, n]) => { if (okK(k)) FX.loyal(k, n); });
+    if (x.stat) Object.entries(x.stat).forEach(([k, v]) => okK(k) && Object.entries(v).forEach(([s, n]) => addStat(k, s, n)));
+    if (x.merit) Object.entries(x.merit).forEach(([k, n]) => okK(k) && Game.addMerit(k, n));
+    if (x.stab) FX.stab(x.stab);
+    if (x.funds) FX.funds(x.funds);
+    if (x.rp) FX.rp(x.rp);
+    if (x.party) Object.entries(x.party).forEach(([p, n]) => FX.party(p, n));
+    if (x.trust) {
+      const ent = Object.entries(x.trust).map(([f, n]) => [f === 'other' ? ctx.other : +f, n]).filter(([fid]) => typeof fid === 'number' && !isNaN(fid));
+      const named = new Set(ent.filter(([fid]) => G.facs[fid] && G.facs[fid].alive).map(([fid]) => fid)), done = new Set();
+      ent.forEach(([fid, n]) => { if (named.has(fid)) { done.add(fid); FX.trust(fid, n); } });
+      ent.forEach(([fid, n]) => { if (named.has(fid)) return; const u = liveFid(fid, ctx); if (typeof u === 'number' && G.facs[u] && G.facs[u].alive && !done.has(u)) { done.add(u); FX.trust(u, n); } });
+    }
+    if (x.flag) [].concat(x.flag).forEach(f => FX.flag(f));
+  }
+  // 宣言的な出来事を、Story.play が読める形にする
+  function wrap(ev, ctx = {}, extra = {}) {
+    const cs0 = ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices || [];
+    const dead = deadIn(cs0.map(c => c.t), ctx);
+    const lines = sc => (sc || []).map(([w, e, t]) => [w, e, dead.length ? fixNations(sub(t, ctx), ctx, dead) : sub(t, ctx)]);
+    return {
+      id: ev.id, wrapped: true, title: sub(ev.title, ctx), bg: ev.bg || 'space', pr: extra.pr || 0, home: typeof ev.fac === 'number' ? ev.fac : (ev.cond && typeof ev.cond.fac === 'number' ? ev.cond.fac : undefined),
+      scenes: () => lines(ctx.win && ev[ctx.win] ? ev[ctx.win] : ctx.useB && ev.sceneB ? ev.sceneB : (ev.scenesBy && ev.scenesBy[G.facs[G.player].ruling]) || ev.scenes),
+      choices: (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices) ? (ev.choicesBy && ev.choicesBy[G.facs[G.player].ruling] || ev.choices).map(c => ({ t: fixNations(sub(c.t, ctx), ctx), fx: () => { fx(c.fx, ctx); if (extra.onChoice) extra.onChoice(c); }, after: c.after ? () => lines(c.after) : null })) : undefined,
+      fx: () => { fx(ev.fx, ctx); if (extra.onPlay) extra.onPlay(); },
+    };
+  }
+
+  // ---------- 関係の会話の効き目 ----------
+  function stageUp(t) {
+    const s = state(t); s.stage = Math.min(3, s.stage + 1); s.last = G.turn;
+    const a = t.a, b = t.b;
+    if (WARM.has(t.kind)) { FX.loyal(a, 4); FX.loyal(b, 4); if (s.stage === 3) { addStat(a, 'ldr', 1); addStat(b, 'ldr', 1); } }
+    else if (t.kind === 'rival') { Game.addMerit(a, 2); Game.addMerit(b, 2); addStat(s.stage % 2 ? a : b, 'tac', 1); if (s.stage === 3) addStat(s.stage % 2 ? b : a, 'tac', 1); }
+    else if (t.kind === 'grudge') { if (s.stage < 3) { FX.loyal(a, -3); FX.loyal(b, -3); } }
+  }
+  const STAGE_TITLE = { bond: ['語らい', '絆', '誓い'], love: ['ひそかな想い', '近づく心', '告白'], family: ['家族の時間', 'すれ違い', '家族の絆'], mentor: ['師の教え', '弟子の成長', '受け継ぐもの'], rival: ['張り合い', '認め合い', '決着'], grudge: ['衝突', '過去', '和解か決裂か'] };
+
+  // ---------- 今月起こせる出来事（Story から呼ばれる） ----------
+  function pending() {
+    if (!G || G.over) return [];
+    const out = [];
+    const me = G.player;
+    // 0) メインストーリー（自国の章の列・小勢力の列）：前の出来事を終えたものだけ。分岐（group）は一つ選ばれたら他は消える
+    const chains = {};
+    for (const ev of PEOPLE.MAIN) {
+      if (ev.finale || G.evDone[ev.id]) continue;
+      if (ev.fac !== undefined && ev.fac !== me) continue;
+      if (ev.group && PEOPLE.MAIN.some(x => x.group === ev.group && G.evDone[x.id])) continue;
+      const prev = ev.after !== undefined ? [].concat(ev.after) : (ev.idx > 0 ? [PEOPLE.MAIN.filter(x => x.chain === ev.chain && x.idx < ev.idx && !x.finale && (!ev.group || x.group !== ev.group)).sort((a, b) => b.idx - a.idx)[0]].filter(Boolean).map(x => x.group ? '@' + x.group : x.id) : []);
+      const done = id => id.startsWith('@') ? PEOPLE.MAIN.some(x => x.group === id.slice(1) && G.evDone[x.id]) : !!G.evDone[id];
+      // 既存の章（data_events）を待つ時は、ゆるく待つ：その章が起きないまま（君主がいない等）8か月たてば、先へ進む
+      const ext = id => !id.startsWith('@') && typeof EVENTS !== 'undefined' && EVENTS.some(e => e.id === id);
+      if (!prev.filter(id => !ext(id)).every(done)) continue;
+      const lastT = Math.max(0, ...prev.filter(done).map(id => id.startsWith('@') ? Math.max(0, ...PEOPLE.MAIN.filter(x => x.group === id.slice(1)).map(x => G.evDone[x.id] || 0)) : G.evDone[id] || 0));
+      // 筋が遅れている時は、間を詰めて追いつく（蝕が来たのに、まだ蝕の前の話が残っている時など）
+      const ST = ['omen1', 'omen2', 'first', 'lull', 'great', 'recede', 'ret'];
+      const evSt = ev.cond && ev.cond.ecl ? ST.indexOf(ev.cond.ecl) : -1;
+      const curSt = Math.max(-1, ...ST.map((k, i) => (cond({ ecl: k }) ? i : -1)));
+      const behind = (evSt === -1 && !(ev.cond && ev.cond.ecl) && G.flags.eclipse) || (evSt >= 0 && curSt > evSt + 1);
+      if (prev.length && G.turn - lastT < (behind ? 1 : (ev.gap ?? 4))) continue;   // 前の出来事から間をあける
+      if (chains[ev.chain]) continue;
+      const ca = ev.cond && ev.cond.after, cAfterExt = ca && ext(ca);
+      if (!cond(cAfterExt ? Object.assign({}, ev.cond, { after: undefined }) : ev.cond)) continue;
+      if (!prev.filter(ext).every(done) || (cAfterExt && !G.evDone[ca])) {
+        G.mainWait = G.mainWait || {};
+        if (G.mainWait[ev.id] === undefined) G.mainWait[ev.id] = G.turn;
+        if (G.turn - G.mainWait[ev.id] < 8) continue;
+      }
+      chains[ev.chain] = 1;
+      out.push(wrap(ev, {}, { pr: ev.pr ?? 7 }));
+    }
+    // 1) 国の幕間
+    // 大侵攻・再来のさなか（落ち着くまで）は、のんびりした出来事を流さない。蝕に関わる話だけ
+    const crisis = G.eclipse && ['great', 'ret'].includes(G.eclipse.phase);
+    const eclEv = ev => !!(ev.cond && (ev.cond.ecl || ev.cond.eclipse === true));
+    for (const ev of PEOPLE.EVS) {
+      if (G.evDone[ev.id] || !ev.cond || ev.cond.fac !== me) continue;
+      if (crisis && !eclEv(ev)) continue;
+      if (['great', 'ret'].includes(ev.cond.ecl) && !crisis) continue;   // さなかの場面は、さなかにだけ（根絶の後には流さない）
+      if (cond(ev.cond)) out.push(wrap(ev, {}, { pr: 3 }));
+    }
+    // 2) 国家間の出来事（月の変わり目に積んだもの）
+    (G.natQueue || []).forEach(q => { const ev = NATIONS.L.find(e => e.id === q.id); if (ev && !G.evDone[ev.id]) out.push(wrap(ev, { other: q.other, useB: q.useB }, { pr: 4, onPlay: () => { G.natQueue = G.natQueue.filter(x => x.id !== q.id); } })); });
+    // 3) 個人の物語（自国の士官、順に1話ずつ）
+    let arcs = 0;
+    for (const k of Game.officersOf(me)) {
+      const p = prof(k); if (!p || !p.arc || arcs >= 1) continue;
+      const i = p.arc.findIndex(ev => !G.evDone[ev.id]);
+      if (i < 0) continue;
+      const ev = p.arc[i];
+      if (crisis && !eclEv(ev)) continue;
+      if (i > 0 && G.turn - (G.evDone[p.arc[i - 1].id] || 0) < 6) continue;   // 前の話から半年はあける
+      if (!cond(ev.cond) || Math.random() > 0.55) continue;
+      out.push(wrap(ev, {}, { pr: 2 })); arcs++;
+    }
+    // 4) 関係
+    let talks = 0;
+    const mourn = new Map();
+    for (const t of all()) {
+      const s = state(t), A = mine(t.a), B = mine(t.b);
+      // 初めて同じ国に仕えた
+      if (A && B && !s.met) {
+        if (G.turn <= 1) { s.met = true; continue; }
+        if (crisis) continue;
+        out.push({ fx: () => { s.met = true; s.last = G.turn; }, id: `meet_${pk(t.a, t.b)}_${G.turn}`, title: `${KIND_NAME[t.kind] || '因縁'}：${shortName(OFF[t.a])}と${shortName(OFF[t.b])}`, bg: 'bridge', pr: 1,
+          scenes: () => [['narr', '', t.desc], [t.a, WARM.has(t.kind) ? 'happy' : 'normal', line(t, 'reunion', t.a)], [t.b, WARM.has(t.kind) ? 'happy' : 'normal', line(t, 'reunion', t.b)]] });
+        continue;
+      }
+      // 同じ国での会話（3段階）
+      if (!crisis && A && B && t.talk && s.stage < 3 && talks < 1 && G.turn - s.last >= 8 && Math.random() < 0.3) {
+        const n = s.stage, sc = t.talk[n];
+        if (!sc || !sc.length) continue;
+        const fin = n === 2 && t.final && t.final.choices;
+        out.push({ id: `talk_${pk(t.a, t.b)}_${n}`, title: `${t.label}：${STAGE_TITLE[t.kind] ? STAGE_TITLE[t.kind][n] : '語らい'}`, bg: n === 2 ? 'space' : 'bridge', pr: 1,
+          scenes: () => sc.map(([w, e, x]) => [w, e, sub(x)]),
+          choices: fin ? t.final.choices.map(c => ({ t: sub(c.t), fx: () => fx(c.fx), after: c.after ? () => c.after.map(([w, e, x]) => [w, e, sub(x)]) : null })) : undefined,
+          fx: () => stageUp(t) });
+        talks++;
+      }
+      // 死と追憶
+      for (const [d, sv] of [[t.a, t.b], [t.b, t.a]]) {
+        const od = G.officers[d];
+        if (!od || od.st !== 'dead' || !mine(sv)) continue;
+        if (!s.mourned && od.diedAt >= G.turn - 3) {
+          // 星になった者：縁のある者が何人いても、出来事は一つにまとめる（あとで一度に）
+          if (!mourn.has(d)) mourn.set(d, []);
+          mourn.get(d).push({ t, sv, s });
+        } else if (!crisis && s.mourned && s.mem < 3 && G.turn - (od.diedAt || 0) >= 10 && G.turn - s.memT >= 14 && Math.random() < 0.12) {
+          out.push({ id: `mem_${d}_${sv}_${G.turn}`, title: '追憶', bg: 'space', pr: 0,
+            scenes: () => [[sv, 'sad', line(t, 'memory', sv)], ['narr', '', `（${OFF[d].name}が逝ってから、${G.turn - od.diedAt}か月が過ぎた）`]],
+            fx: () => { s.mem++; s.memT = G.turn; FX.loyal(sv, 3); } });
+        }
+      }
+    }
+    // 星になった者：一人の死に一つの出来事。縁の深い順に報せが届き、最期の言葉は最後に一度だけ
+    const KR = { love: 0, family: 1, bond: 2, mentor: 3, rival: 4, grudge: 5 };
+    for (const [d, list] of mourn) {
+      const od = G.officers[d];
+      list.sort((x, y) => (KR[x.t.kind] ?? 9) - (KR[y.t.kind] ?? 9) || y.s.stage - x.s.stage);
+      const L = list.slice(0, 4), last = voice(d, 'death');
+      out.push({ id: `mourn_${d}_${od.diedAt}`, title: '星になった者', bg: 'crisis', pr: 5,
+        scenes: () => [['narr', '', `${OFF[d].name}、${od.diedWhere || '宇宙'}にて没す。${L.map(x => `${x.t.label}であった${OFF[x.sv].name}`).join('、')}のもとに、その報せが届いた。`],
+          ...L.map(x => [x.sv, WARM.has(x.t.kind) ? 'sad' : x.t.kind === 'rival' ? 'shock' : 'normal', line(x.t, 'death', x.sv)]),
+          ...(last ? [['narr', '', `――最期の言葉は「${last}」だったという。`]] : [])],
+        fx: () => list.forEach(({ t, sv, s }) => {
+          s.mourned = true;
+          if (WARM.has(t.kind)) { addStat(sv, 'tac', 2); FX.loyal(sv, 10); G.officers[sv].avenge = { fac: od.killedBy, until: G.turn + 36 }; }
+          else if (t.kind === 'rival') { Game.addMerit(sv, 3); addStat(sv, 'tac', 1); }
+        }) });
+    }
+    // 捕らわれた人物：一人につき一つの出来事にまとめる（縁のある者が何人いても、身代金は一度だけ）
+    G.capDone = G.capDone || {};
+    const captives = new Map();
+    for (const t of all()) {
+      if (!WARM.has(t.kind) && t.kind !== 'rival') continue;
+      for (const [c, sv] of [[t.a, t.b], [t.b, t.a]]) {
+        const oc = G.officers[c];
+        if (!oc || oc.st !== 'cap' || oc.capBy === me || !mine(sv) || !Game.isMajor(oc.capBy)) continue;
+        if (G.capDone[c] === (oc.capAt || 0)) continue;
+        if (!captives.has(c)) captives.set(c, []);
+        captives.get(c).push({ sv, t });
+      }
+    }
+    for (const [c, list] of captives) {
+      const oc = G.officers[c], by = oc.capBy, capAt = oc.capAt || 0;
+      list.sort((x, y) => (WARM.has(y.t.kind) ? 1 : 0) - (WARM.has(x.t.kind) ? 1 : 0));
+      const main = list[0].sv;
+      const still = () => G.officers[c].st === 'cap' && G.officers[c].capBy === by;
+      out.push({ id: `cap_${c}_${capAt}`, title: '囚われの身', bg: 'crisis', pr: 4,
+        valid: still,
+        fx: () => { G.capDone[c] = capAt; },
+        scenes: () => [['narr', '', `${OFF[c].name}が、${FACTIONS[by].name}に捕らわれている。`], ...list.slice(0, 3).map(({ sv, t }, i) => [sv, i ? 'sad' : 'angry', line(t, 'capture', sv)])],
+        choices: [
+          { t: `身代金を払って取り戻す（資金 −400・${FACTIONS[by].short}の信頼 +5）`, fx: () => { if (still() && G.facs[me].funds >= 400) { G.facs[me].funds -= 400; free(c); FX.trust(by, 5); } },
+            after: () => G.officers[c].st === 'act' ? [[c, 'happy', voice(c, 'join') || '……迎えに来てくれたのか。']] : [[main, 'sad', '……資金が足りない。すまない。']] },
+          { t: `救い出す作戦を許す（成功は五分。失敗すると${OFF[main].name}の忠誠が下がる）`, fx: () => { if (!still()) return; if (Math.random() < 0.5 + (OFF[main].tac - 60) / 200) { free(c); G.flags.rescued = G.turn; } else FX.loyal(main, -6); },
+            after: () => G.officers[c].st === 'act' ? [[main, 'happy', '取り戻したぞ！'], [c, 'happy', voice(c, 'join') || '……ありがとう。']] : [[main, 'sad', '……失敗した。すまない。']] },
+          { t: '今は動けない（何もしない）', fx: () => list.forEach(({ sv }) => FX.loyal(sv, -3)), after: () => [[main, 'sad', '……わかった。今は、待つ。']] },
+        ] });
+    }
+    return out;
+  }
+  function free(k) { const o = G.officers[k]; o.st = 'act'; o.fac = G.player; o.capBy = null; o.loyal = Math.max(o.loyal, 70); o.loc = G.facs[G.player].capital; }
+
+  // ---------- 月の変わり目 ----------
+  function monthTick() {
+    // 出来事の命：期限が来たら解く。民心の buff は毎月効く
+    G.fleets.forEach(fl => { if (fl.mission && fl.mission.until < G.turn) { fl.mission = null; if (fl.fac === G.player && Staff.active()) fl.route = null; } });
+    for (const fct of G.facs) if (fct.alive && fct.buffs) { fct.buffs = fct.buffs.filter(x => x.until >= G.turn); const sb = buff(fct.id, 'stab'); if (sb) G.planets.forEach(p => { if (p.owner === fct.id) p.stab = Math.min(100, p.stab + sb * 10); }); }
+    if (!G) return;
+    // 関係による忠誠の揺れ
+    for (const t of all()) {
+      if (!mine(t.a) || !mine(t.b)) continue;
+      const s = state(t);
+      if (WARM.has(t.kind)) { FX.loyal(t.a, 0.3); FX.loyal(t.b, 0.3); }
+      if (t.kind === 'grudge' && s.stage < 3) { FX.loyal(t.a, -0.4); FX.loyal(t.b, -0.4); }
+    }
+    for (const p of G.planets) if (p.gov && Game.isMajor(p.owner)) addStat(p.gov, p.focus === 'res' ? 'sci' : 'pol', p.focus === 'res' ? 0.03 : 0.02);
+    nations();
+  }
+  // 国家間の出来事：関係・星・首都の変化を見て積む
+  function nations() {
+    const snap = { rel: {}, own: G.planets.map(p => p.owner), cap: G.facs.map(f => f.capital) };
+    for (let a = 0; a < 6; a++) for (let b = a + 1; b < 6; b++) snap.rel[a + '-' + b] = G.facs[a].alive && G.facs[b].alive ? Game.rel(a, b).s : null;
+    const prev = G.natSnap; G.natSnap = snap;
+    if (!prev) return;
+    const fire = [];
+    for (const ev of NATIONS.L) {
+      if (G.natDone[ev.id]) continue;
+      const [a, b] = ev.pair; if (!G.facs[a] || !G.facs[b] || !G.facs[a].alive || !G.facs[b].alive) continue;
+      if (ev.turn && G.turn < ev.turn) continue;
+      const key = Math.min(a, b) + '-' + Math.max(a, b), now = snap.rel[key], was = prev.rel[key];
+      let ok = false;
+      if (ev.on === 'war') ok = now === 'war' && was !== 'war';
+      else if (ev.on === 'peace') ok = was === 'war' && now && now !== 'war';
+      else if (ev.on === 'ally') ok = now === 'ally' && was !== 'ally';
+      else if (ev.on === 'trade') ok = now === 'trade' && was !== 'trade' && was !== 'ally';
+      else if (ev.on === 'capture') ok = snap.own.some((o, i) => o === a && prev.own[i] === b);
+      else if (ev.on === 'capital') ok = G.planets[FACTIONS[b].capital].owner === a && prev.own[FACTIONS[b].capital] !== a;
+      else if (ev.on === 'time') ok = G.turn >= (ev.turn || 0);
+      if (!ok) continue;
+      const c = Object.assign({}, ev.cond || {}); delete c.fac;
+      // 当事者でない時は、条件の「自国」の部分は見ない（eclipse・omen・turn だけ）
+      const me = G.player, inv = me === a || me === b;
+      const cc = inv ? c : { eclipse: c.eclipse, omen: c.omen, turn: c.turn };
+      if (!cond(cc)) continue;
+      fire.push(ev);
+    }
+    // ひと月に、当事者の出来事は1つ・銀河の報は2つまで
+    let mineN = 0, newsN = 0;
+    for (const ev of fire) {
+      const [a, b] = ev.pair, me = G.player;
+      if (me === a || me === b) {
+        if (mineN++ >= 1) continue;
+        G.natDone[ev.id] = G.turn;
+        G.natQueue = (G.natQueue || []).concat([{ id: ev.id, other: me === a ? b : a, useB: me === b }]);
+      } else {
+        if (newsN++ >= 2) continue;
+        G.natDone[ev.id] = G.turn;
+        Game.log(`【${FACTIONS[a].short}と${FACTIONS[b].short}】${ev.news}`, 'info', null);
+      }
+    }
+  }
+
+  // ---------- 戦場：司令どうしの関係 ----------
+  function battleTie(ka, kb) {
+    if (!ka || !kb) return null;
+    const t = tie(ka, kb); if (!t) return null;
+    const mul = t.kind === 'rival' ? 1.08 : t.kind === 'grudge' ? 1.12 : 0.93;   // 宿敵には燃え、遺恨には怒り、絆のある相手にはためらう
+    return { t, mul, la: line(t, 'battle', ka), lb: line(t, 'battle', kb) };
+  }
+  // 同じ艦隊の司令と副官の関係：絆が深いほど強い
+  function fleetMul(fl) {
+    if (!fl || !fl.cmd || !fl.sub) return 1;
+    const t = tie(fl.cmd, fl.sub); if (!t) return 1;
+    const s = state(t).stage;
+    if (WARM.has(t.kind)) return 1 + 0.03 * (1 + s);
+    if (t.kind === 'rival') return 1.03;
+    if (t.kind === 'grudge') return s >= 3 ? 1.04 : 0.95;
+    return 1;
+  }
+  // 仇討ち：絆のある人を殺した国の艦隊には、火力が上がる
+  function avengeMul(k, foeFac) {
+    const o = k && G.officers[k]; const a = o && o.avenge;
+    return a && a.until >= G.turn && a.fac === foeFac ? 1.1 : 1;
+  }
+
+  // ---------- 登用：関係のある人が自国にいると、誘いが通りやすい ----------
+  function recruitBonus(k) {
+    let v = 0, who = null;
+    for (const t of tiesOf(k)) {
+      const o = other(t, k); if (!mine(o)) continue;
+      const d = WARM.has(t.kind) ? 0.2 : t.kind === 'rival' ? 0.05 : -0.15;
+      if (Math.abs(d) > Math.abs(v)) { v = d; who = { k: o, line: line(t, 'recruit', o) }; }
+    }
+    return { v, who };
+  }
+  // 自国の士官のうち、敵将 k と関係のある者（作戦室で一言）
+  function enemyComment(k) {
+    for (const t of tiesOf(k)) { const o = other(t, k); if (mine(o)) return { who: o, text: line(t, 'enemy', o) }; }
+    return null;
+  }
+  // 同じ戦場にいる味方どうしの一言
+  function allyComment(list) {
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) { const t = tie(list[i], list[j]); if (t) return { who: list[i], text: line(t, 'ally', list[i]) }; }
+    return null;
+  }
+
+  // 自国のメインストーリーの進み（見た話の題）
+  function mainProgress() {
+    const me = G.player, list = PEOPLE.MAIN.filter(x => x.fac === me && !x.finale);
+    return { done: list.filter(x => G.evDone[x.id]).sort((a, b) => G.evDone[a.id] - G.evDone[b.id]).map(x => ({ title: x.title, t: G.evDone[x.id] })), total: new Set(list.map(x => x.group || x.id)).size };
+  }
+  function finale(win) {
+    const me = G.player;
+    const ev = PEOPLE.MAIN.find(x => x.finale && (x.fac === undefined || x.fac === me) && (!x.win || x.win === win) && cond(Object.assign({}, x.cond || {}, { chance: undefined })));
+    return ev ? wrap(ev, { win }, { pr: 99 }) : null;
+  }
+  return { fixNations, deadIn, liveFid, act, takeActs, buff, BUFF_NAME, init, finale, mainProgress, applyStats, addStat, voice, reply, staffLine, cond, fx, wrap, pending, monthTick, battleTie, fleetMul, avengeMul, recruitBonus, enemyComment, allyComment, tiesOf, tie, state, line, other, prof, KIND_NAME, WARM, HONOR, sub, all: () => all() };
+})();
