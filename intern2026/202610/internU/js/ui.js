@@ -990,15 +990,20 @@ const UI = (() => {
     // 人物たちのその後
     try { if (typeof Epilogue !== 'undefined') { const sc = Epilogue.scenes(type); if (sc && sc.length) await talk('その後', sc, null, 'space'); } } catch (e) { console.error(e); }
     const rec = Ending.record(type);
+    const before = Laps.tier(); Laps.record(G.player, type);
     Game.clearSave();
     await Cinema.ending(rec);
+    // 周回が進んだ知らせ
+    const after = Laps.tier();
+    if (after > before) await modal(`<div class="center"><h2>星霜は巡る</h2><p>${FACTIONS[G.player].name}の物語を終えた（${after} / 6 か国）。</p><p>${after >= 6 ? 'すべての国の物語を見届けた。次からは、長い年月とすべての物語が流れる「星霜の全史」となる。' : '次の周では、蝕の訪れはすこし遅く、人々の物語と会話は、すこし増える。'}</p></div>`, [{ t: 'タイトルへ', v: null, cls: 'primary' }]);
     toTitle();
   }
 
   // ---------- 遊び方 ----------
   function howto() {
     modal(`<div class="howto"><h2>遊び方</h2>
-      <h3>目的</h3><p>星を奪って銀河を統一するか、残るすべての国と同盟を結んで和平を成せば勝ち。首都を失っても、星が一つでも残れば国は続きます。</p>
+      <h3>目的</h3><p>やがて来る「蝕」を根から絶てば、諸国が盟約を結び、物語は終幕を迎えます。首都を失っても、星が一つでも残れば国は続きます。</p>
+      <h3>周回</h3><p>ひとつの国の物語を終えるたびに、次の周は蝕の訪れがすこし遅くなり、人物の物語や会話が増えていきます。6か国すべてを終えると「星霜の全史」――長い年月とすべての物語が流れ、蝕を絶ったうえで、銀河の統一か、すべての国との盟約が終幕の条件になります。</p>
       <h3>ひと月の流れ</h3><p>星図で星や艦隊をタップして命令し、右下の「月を進める」で次の月へ。各国が動き、艦隊が進み、戦いが起き、収入と研究が入ります。</p>
       <h3>星（内政）</h3><p>星ごとに開発の向き（産業・研究・防衛衛星・造船所・民生）を選びます。総督の政治が高いほど早く進みます。民心が低いと蜂起されます。</p>
       <h3>艦隊</h3><p>造船所で艦を造ると、星に「駐留艦」として置かれます。士官を司令にして艦隊を作り、「移動」で行き先の星をタップ。敵の星に入ると艦隊戦になります。</p>
@@ -1019,6 +1024,9 @@ const UI = (() => {
     Cinema.title();
     Sound.bgm('title');
     $('#title [data-act=load]').disabled = !Game.hasSave();
+    // 周回の表示（クリアした国の数）
+    const t = Laps.tier(), ft = $('#title .title-foot');
+    if (ft) ft.innerHTML = t >= 6 ? '星霜の全史 ― すべての物語が流れます' : `周回 ${t} / 6 か国クリア${t ? '' : '　―　まずはどれかひとつの国で、蝕を絶ってください'}`;
   }
   function factionSelect() {
     show('select');

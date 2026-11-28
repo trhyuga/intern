@@ -8,8 +8,7 @@
 // ============================================================
 const Eclipse = (() => {
   const E = () => G.eclipse;
-  const KEYS_NEEDED = 3;
-  const SEAL = { name: '封印の理論', cost: 900, desc: '核の欠片から、蝕の源への道を割り出す。研究を終えた国だけが「深淵」へ進める。' };
+  const SEAL = { name: '封印の理論', get cost() { return Math.round(900 * Laps.seal() / 10) * 10; }, desc: '核の欠片から、蝕の源への道を割り出す。研究を終えた国だけが「深淵」へ進める。' };
   const PHASE_NAME = { none: '', omen: '予兆', first: '先触れ', lull: '小康', great: '大侵攻', receded: '退潮', ret: '再来', solved: '根絶' };
 
   // 何年も前から、少しずつ匂わせる（正体には触れない）
@@ -47,7 +46,7 @@ const Eclipse = (() => {
     G.facs.forEach(f => { if (f.id !== fid && f.alive && Game.rel(fid, f.id).s === 'ally') n += f.ekeys || 0; });
     return n;
   }
-  const canSeal = fid => Game.isMajor(fid) && !G.facs[fid].sealed && keysOf(fid) >= KEYS_NEEDED && E().phase !== 'solved';
+  const canSeal = fid => Game.isMajor(fid) && !G.facs[fid].sealed && keysOf(fid) >= Laps.keys() && E().phase !== 'solved';
 
   // ---------- 毎月 ----------
   function turn() {
@@ -55,12 +54,12 @@ const Eclipse = (() => {
     if (e.phase === 'solved') return out;
     // 1) 来る前：匂わせ → 予兆
     if (!e.arrived) {
-      if (G.turn >= 30 && G.turn < e.eta - 30 && G.turn - e.hintAt >= 9 + Math.floor(Math.random() * 5) && e.hintN < HINTS.length) {
+      if (G.turn >= Laps.T(30, 6) && G.turn < e.eta - Laps.T(30, 8) && G.turn - e.hintAt >= Laps.T(9 + Math.floor(Math.random() * 5), 3) && e.hintN < HINTS.length) {
         Game.log('【噂】' + HINTS[e.hintN], 'info'); e.hintN++; e.hintAt = G.turn; G.flags['hint' + e.hintN] = G.turn;
       }
-      if (e.omen < 1 && G.turn >= e.eta - 30) { e.omen = 1; e.phase = 'omen'; G.flags.omen1 = G.turn; Game.log('遠い星がひとつ、音もなく消えた。天文台は観測の誤りだと発表した。', 'warn'); }
-      if (e.omen < 2 && G.turn >= e.eta - 12) { e.omen = 2; G.flags.omen2 = G.turn; Game.log('辺境の観測所が「星を覆う影」を報告したのち、通信を絶った。', 'warn'); }
-      if (e.omen < 3 && G.turn >= e.eta - 4) { e.omen = 3; G.flags.omen3 = G.turn; Game.log('夜空の一角から、星がまとめて消えた。人々は空を見上げ、口をつぐんだ。', 'warn'); }
+      if (e.omen < 1 && G.turn >= e.eta - Laps.T(30, 8)) { e.omen = 1; e.phase = 'omen'; G.flags.omen1 = G.turn; Game.log('遠い星がひとつ、音もなく消えた。天文台は観測の誤りだと発表した。', 'warn'); }
+      if (e.omen < 2 && G.turn >= e.eta - Laps.T(12, 4)) { e.omen = 2; G.flags.omen2 = G.turn; Game.log('辺境の観測所が「星を覆う影」を報告したのち、通信を絶った。', 'warn'); }
+      if (e.omen < 3 && G.turn >= e.eta - Laps.T(4, 2)) { e.omen = 3; G.flags.omen3 = G.turn; Game.log('夜空の一角から、星がまとめて消えた。人々は空を見上げ、口をつぐんだ。', 'warn'); }
       triggers();
       if (G.turn >= e.eta) { arrive(); out.push('first'); }
       return out;
@@ -140,7 +139,7 @@ const Eclipse = (() => {
   function arrive() {
     const e = E();
     e.arrived = true; e.arrivedAt = G.turn; e.phase = 'first'; e.cycle = 1;
-    e.greatAt = G.turn + 18 + R.i(0, 6);
+    e.greatAt = G.turn + Laps.T(18 + R.i(0, 6), 6);
     const r = openRift(Math.floor(Math.random() * RIFT_SITES.length));
     for (const k in G.rel) G.rel[k].t = Math.min(100, G.rel[k].t + 8);
     G.flags.eclipse = G.turn;
@@ -153,14 +152,14 @@ const Eclipse = (() => {
   function great() {
     const e = E();
     e.phase = 'great'; e.greatStarted = G.turn;
-    const want = 3 - openRifts().length;
+    const want = (Laps.pace() < 0.5 ? 2 : 3) - openRifts().length;   // 一周目・二周目は裂け目2つ
     const sites = freeSites().sort(() => Math.random() - 0.5);
     for (let i = 0; i < want && i < sites.length; i++) { const r = openRift(sites[i]); G.planets[r.id].def = 10; spawn(r, true); }
     openRifts().forEach(r => { G.planets[r.id].def = Math.max(G.planets[r.id].def, 10); garrison(r); });
     for (const k in G.rel) G.rel[k].t = Math.min(100, G.rel[k].t + 25);
     G.flags.eclipseGreat = G.turn;
     if (typeof Sound !== 'undefined') Sound.se('eclipse');
-    Game.log(`銀河の三方で、同時に虚空が裂けた。蝕の大侵攻――もはや、どの国も他人事ではない。`, 'big');
+    Game.log(`銀河の${openRifts().length >= 3 ? "三方" : "あちこち"}で、同時に虚空が裂けた。蝕の大侵攻――もはや、どの国も他人事ではない。`, 'big');
   }
   // 再来：退いた数年後、もっと強くなって
   function comeBack() {
@@ -193,8 +192,10 @@ const Eclipse = (() => {
   }
   // 銀河の国々を合わせた艦隊の力（蝕の群れ全体の上限に使う）
   function allPower() { let S = 0; G.facs.forEach(f => { if (f.alive) S += G.fleets.filter(x => x.fac === f.id).reduce((a, x) => a + Game.fleetPower(x), 0); }); return Math.max(2000, S); }
+  // 周回の早い段階では、群れと守りをすこし弱く（国々が育つ前に蝕が来るため）
+  const LK = () => 0.6 + 0.4 * Laps.pace();
   function capShare() { const e = E(); return e.phase === 'first' ? 0.25 : e.phase === 'great' ? 0.4 : Math.min(0.6, 0.32 + 0.07 * e.cycle); }
-  function share() { const e = E(); return e.phase === 'first' ? 0.12 : e.phase === 'great' ? 0.075 : Math.min(0.11, 0.06 + 0.015 * e.cycle); }
+  function share() { const e = E(); return LK() * (e.phase === 'first' ? 0.12 : e.phase === 'great' ? 0.075 : Math.min(0.11, 0.06 + 0.015 * e.cycle)); }
   const ship = k => ({ ecl: k, hp: ECLIPSE_SHIPS[k].hp, xp: 0, m: 1 });
   // 群れの艦の数はそのままに、一体ごとの強さ m を合わせて、狙った強さにする
   function scaleTo(fl, target) {
@@ -219,7 +220,7 @@ const Eclipse = (() => {
   }
   // 裂け目の守り：核のまわりに群れが居座る（減ると毎月補う）
   function garrison(r) {
-    const e = E(), cap = topPower() * (e.phase === 'first' ? 0.12 : 0.15 + 0.03 * e.cycle);
+    const e = E(), cap = topPower() * LK() * (e.phase === 'first' ? 0.12 : 0.15 + 0.03 * e.cycle);
     if ((G.turn - (r.openedAt || 0)) % 3 !== 0 && G.turn !== r.openedAt) return;   // 守りは3か月ごとに補う
     const here = G.fleets.filter(f => f.fac === 'E' && f.at === r.id && f.guard).reduce((a, f) => a + Game.fleetPower(f), 0);
     if (here >= cap * 0.9) return;
@@ -233,7 +234,7 @@ const Eclipse = (() => {
   function guard() {
     // 深淵の守りは、封印の理論を修めた国々の力に合わせる（いちばん強い国でなくても、届くように）
     const sp = Math.max(0, ...G.facs.filter(f => f.alive && f.sealed).map(f => G.fleets.filter(x => x.fac === f.id).reduce((a, x) => a + Game.fleetPower(x), 0)));
-    const e = E(), cap = (sp ? Math.max(1500, sp) : topPower()) * 0.55;
+    const e = E(), cap = (sp ? Math.max(1500, sp) : topPower()) * 0.55 * (0.35 + 0.65 * Laps.pace());
     const here = G.fleets.filter(f => f.fac === 'E' && f.at === e.abyss).reduce((a, f) => a + Game.fleetPower(f), 0);
     if (here >= cap * 0.9) return;
     const fl = mkFleet(e.abyss, true, 'circle');
@@ -278,7 +279,7 @@ const Eclipse = (() => {
     }
     e.phase = 'receded'; e.recededAt = G.turn;
     const forb = G.facs.reduce((a, f) => a + (f.forb ? f.forb.length : 0), 0);
-    e.returnAt = G.turn + 40 + R.i(0, 14) - Math.min(12, forb * 3);
+    e.returnAt = G.turn + Laps.T(40 + R.i(0, 14) - Math.min(12, forb * 3), 10);
     G.flags.eclipseRecede = G.turn; G.flags['recede' + e.cycle] = G.turn;
     Game.log(`最後の裂け目が閉じ、蝕は退いた。……だが、これで終わりではない。根を断たねば、蝕はまた来る。`, 'big');
   }
@@ -288,7 +289,7 @@ const Eclipse = (() => {
     G.facs[fid].sealed = true;
     if (e.abyss === undefined || e.abyss === null) {
       const id = G.planets.length;
-      G.planets.push({ id, name: '深淵', sys: 2, x: 500, y: 1020, type: 'rift', abyss: true, desc: '蝕の源。銀河の底に口を開けた、すべての裂け目の根。', owner: 'E', pop: 0, maxPop: 0, ind: 0, res: 0, def: 16, yard: 0, stab: 0, focus: 'def', prog: 0, gov: null, build: [], dock: [], cap: false, seed: 999 });
+      G.planets.push({ id, name: '深淵', sys: 2, x: 500, y: 1020, type: 'rift', abyss: true, desc: '蝕の源。銀河の底に口を開けた、すべての裂け目の根。', owner: 'E', pop: 0, maxPop: 0, ind: 0, res: 0, def: Math.max(4, Math.round(16 * Laps.pace())), yard: 0, stab: 0, focus: 'def', prog: 0, gov: null, build: [], dock: [], cap: false, seed: 999 });
       e.abyss = id;
       Game.buildLanes();
       guard(); guard(); guard();
@@ -318,7 +319,8 @@ const Eclipse = (() => {
     }
   }
   // 封印の理論を修めた国だけが深淵に入れる
-  const canEnterAbyss = fid => Game.isMajor(fid) && !!G.facs[fid].sealed;
+  // 深淵へ入れる国：封印の理論を修めた国。全部入りの前の周は、どこかの国が場所を突き止めれば、どの国も入れる
+  const canEnterAbyss = fid => Game.isMajor(fid) && (!!G.facs[fid].sealed || (!Laps.full() && E().abyss !== undefined && E().abyss !== null));
   // 画面に出す一言
   function status() {
     const e = E();
@@ -338,7 +340,7 @@ const Eclipse = (() => {
     if (why === 'unite') e.hastened = true;
     const before = e.eta;
     // 出来事ひとつで、先触れが months か月早まる（ただし、どんなに早まっても6年目より前・知らせから1年より前には来ない）
-    e.eta = why === 'unite' ? Math.min(e.eta, G.turn + months) : Math.max(72, G.turn + 12, e.eta - months);
+    e.eta = why === 'unite' ? Math.min(e.eta, G.turn + Laps.T(months, 4)) : Math.max(Laps.T(72, 18), G.turn + Laps.T(12, 4), e.eta - Laps.T(months, 3));
     G.flags['early_' + why] = G.turn;
     Game.log(text, 'warn');
     return e.eta < before;
@@ -364,7 +366,7 @@ const Eclipse = (() => {
   }
   const mainRift = () => { const r = openRifts()[0] || E().rifts[0]; return r ? r.id : 0; };
   // 禁忌：先触れを早めるだけ（遅らせない）
-  const forbHit = () => { const e = E(); if (!e.arrived) { if (e.eta - G.turn > 14) e.eta = Math.max(Math.min(e.eta, 104), G.turn + 14, e.eta - 4); } else if (e.phase === 'receded') e.returnAt = Math.max(G.turn + 12, e.returnAt - 4); };
+  const forbHit = () => { const e = E(); if (!e.arrived) { if (e.eta - G.turn > Laps.T(14, 4)) e.eta = Math.max(Math.min(e.eta, Laps.T(104, 24)), G.turn + Laps.T(14, 4), e.eta - Laps.T(4, 1)); } else if (e.phase === 'receded') e.returnAt = Math.max(G.turn + Laps.T(12, 4), e.returnAt - Laps.T(4, 1)); };
 
-  return { turn, arrive, hasten, early, spawn, onRiftTaken, sealDone, lanes, canEnterAbyss, keysOf, canSeal, active, openRifts, status, mainRift, forbHit, norm, SEAL, KEYS_NEEDED, PHASE_NAME, get RIFT_ID() { return mainRift(); } };
+  return { turn, arrive, hasten, early, spawn, onRiftTaken, sealDone, lanes, canEnterAbyss, keysOf, canSeal, active, openRifts, status, mainRift, forbHit, norm, SEAL, get KEYS_NEEDED() { return Laps.keys(); }, PHASE_NAME, get RIFT_ID() { return mainRift(); } };
 })();

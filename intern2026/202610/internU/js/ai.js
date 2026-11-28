@@ -165,7 +165,7 @@ const AI = (() => {
     // 1.5 蝕との戦い：近くに裂け目（封印の理論があれば深淵）があれば、隣の自国の星に艦隊を集め、そろったら一斉に攻める
     if (G.eclipse && G.eclipse.arrived && G.eclipse.phase !== 'solved') {
       const mine = G.planets.filter(p => p.owner === fid);
-      const targets = G.planets.filter(p => p.owner === 'E' && p.type === 'rift' && (!p.abyss || G.facs[fid].sealed));
+      const targets = G.planets.filter(p => p.owner === 'E' && p.type === 'rift' && (!p.abyss || Eclipse.canEnterAbyss(fid)));
       let plan = null;
       // 蝕への熱意：国の気風（預言の聖教国・古の勅書の帝国・記録を継ぐ機巧院は熱心、企業連合は損得次第）と、主導する派閥で変わる
       const ZEAL = [0.75, 0.6, 0.4, 1.0, 0.55, 0.85];

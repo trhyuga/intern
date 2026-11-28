@@ -213,10 +213,13 @@ const Game = (() => {
     G = {
       v: 1, turn: 1, player: playerFid, nextId: 1, over: null,
       facs: [], designs: {}, rel: {}, planets: [], minors: {}, officers: {}, fleets: [],
-      eclipse: { eta: CONFIG.eclipseBase + R.i(-6, 8), arrived: false, rift: null, site: null, defeated: false, wave: 0, omen: 0, phase: 'none', cycle: 1, rifts: [], hintN: 0, hintAt: 0, eaten: 0, etaFixed: true },
+      eclipse: { eta: 0, arrived: false, rift: null, site: null, defeated: false, wave: 0, omen: 0, phase: 'none', cycle: 1, rifts: [], hintN: 0, hintAt: 0, eaten: 0, etaFixed: true },
       log: [], flags: {}, evDone: {}, pending: [], demands: {},
       rec: { battles: 0, won: 0, lost: 0, sunk: 0, lostShips: 0, big: [], captured: 0, allies: 0 },
     };
+    // 周回：クリアした国の数で、蝕の時期と物語の厚みが決まる
+    Laps.stamp(G);
+    G.eclipse.eta = Math.round((CONFIG.eclipseBase + R.i(-6, 8)) * Laps.pace());
     // 惑星
     PLANET_SRC.forEach(([id, name, sys, dx, dy, type, pop, owner, desc]) => {
       const S = SYSTEMS[sys], pt = PTYPES[type];
@@ -753,6 +756,13 @@ const Game = (() => {
     const peace = otherMajors.length && minorsOk && otherMajors.every(f => rel(me, f.id).s === 'ally');
     const allMine = G.planets.every(p => p.owner === me || friendly(me, p.owner) || (p.type === 'rift' && p.owner !== 'E'));
     if (!eclipseOk) { if ((peace || allMine) && !G.eclipse.arrived) Eclipse.hasten(); return null; }
+    if (!Laps.full() && !peace && !allMine) {
+      if (G.turn <= (G.eclipse.defeatedAt || 0)) return null;   // 根絶した月の物語（夜明け）を見てから、翌月に終幕へ
+      otherMajors.forEach(f => { const r = rel(me, f.id); r.s = 'ally'; r.t = Math.max(r.t || 0, 60); });
+      MINORS.forEach(M => { if (G.planets[M.planet].owner === M.id) G.minors[M.id].ally = me; });
+      log('蝕を根から絶った――その報せに、諸国は剣を収め、ひとつの盟約のもとに集った。', 'big', me);
+      return { type: otherMajors.length ? 'peace' : 'conquest' };
+    }
     if (peace) return { type: 'peace' };
     if (allMine) return { type: otherMajors.length ? 'peace' : 'conquest' };
     return null;

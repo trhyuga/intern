@@ -30,7 +30,7 @@ const EVENTS = [
       { t: 'まず国を固める（民心 +6・首都の防衛衛星 +1・融和派が伸びる）', fx: () => { People.act([{ fort: 1, where: 'capital' }]); FX.stab(6); FX.party('peace', 6); FX.loyal('gerhard', 8); }, after: () => [['gerhard', 'happy', '賢明なご判断です。根の深い木こそ、嵐に倒れませぬ。']] },
       { t: '共和国を討ち、武威を示す（共和国に宣戦・主力艦隊が出撃・資金 +250・主戦派が伸びる）', fx: () => { People.act([{ war: 1, why: '武威を示すため' }, { fleet: 'front', to: 1 }]); FX.funds(250); FX.party('war', 8); FX.loyal('viktor', 10); }, after: () => [['viktor', 'happy', 'そう来なくては！ 帝国の紅き艦隊、陛下に勝利を捧げます！']] },
     ] },
-  { id: 'e0_2', fac: 0, cond: () => G.turn >= 9 && allMine('alexis', 'gerhard', 'mathilde'), bg: 'palace', title: '第二章　宮廷の毒',
+  { id: 'e0_2', fac: 0, cond: () => G.turn >= Laps.T(9) && allMine('alexis', 'gerhard', 'mathilde'), bg: 'palace', title: '第二章　宮廷の毒',
     scenes: () => [
       ['mathilde', 'normal', '陛下……お耳に入れたいことが。摂政閣下が、陛下の玉璽を勝手にお使いになっているとか。'],
       ['alexis', 'shock', '……ゲルハルトが？'],
@@ -42,7 +42,7 @@ const EVENTS = [
       { t: '摂政を信じる（ゲルハルトの忠誠が最大に・民心 +4）', fx: () => { FX.loyal('gerhard', 100); FX.stab(4); FX.loyal('mathilde', -15); FX.flag('e0_trust'); }, after: () => [['gerhard', 'sad', '……もったいなきお言葉。この老骨、最後の一息まで陛下のために。'], ['alexis', 'normal', '記録は余が自ら読む。これからは、余の目で確かめる。']] },
       { t: '摂政の権を取り上げる（ゲルハルトの役を解く・研究 +120・ゲルハルトの忠誠が下がる）', fx: () => { People.act([{ officer: 'gerhard', do: 'dismiss' }]); FX.loyal('gerhard', -25); FX.rp(120); FX.loyal('mathilde', 10); FX.flag('e0_alone'); }, after: () => [['gerhard', 'sad', '……御意に。陛下が自ら立たれる日が、思いのほか早く来たのですな。'], ['mathilde', 'happy', '（ふふ……これで宮廷は、わたくしのもの）']] },
     ] },
-  { id: 'e0_3', fac: 0, cond: () => G.turn >= 18 && G.facs[0].stats.wins >= 2 && allMine('alexis', 'sieg'), bg: 'bridge', title: '第三章　黒騎士の誓い',
+  { id: 'e0_3', fac: 0, cond: () => G.turn >= Laps.T(18) && G.facs[0].stats.wins >= 2 && allMine('alexis', 'sieg'), bg: 'bridge', title: '第三章　黒騎士の誓い',
     scenes: () => [
       ['sieg', 'normal', '陛下。先の戦い、敵将の中に……ユリウス・クレインの名がありました。'],
       ['alexis', 'normal', '共和国の英雄か。卿は、あの男を知っているのか。'],
@@ -59,7 +59,7 @@ const EVENTS = [
       ['alexis', 'normal', '帝国は、ただ広がるために在るのではない、か。……初代は、何を見たのだ。'],
     ],
     fx: () => { FX.rp(200); FX.flag('e0_oath'); } },
-  { id: 'e0_5', fac: 0, cond: () => (G.flags.eclipse || G.turn >= 132) && isMine('alexis'), bg: 'palace', title: '第五章　獅子の決意',
+  { id: 'e0_5', fac: 0, cond: () => (G.flags.eclipse || G.turn >= Laps.T(132)) && isMine('alexis'), bg: 'palace', title: '第五章　獅子の決意',
     scenes: () => isMine('gerhard') ? [
       ['gerhard', 'sad', '陛下……この老いぼれ、どうやら長くはないようです。'],
       ['alexis', 'shock', '何を言う。余はまだ、卿に教わることが山ほどある。'],
@@ -85,7 +85,7 @@ const EVENTS = [
       { t: '大権を与える（ユリウスが主力艦隊の司令に・艦の火力 +5%（1年）・資金 +200・主戦派が伸びる・ユリウスの忠誠 +）', fx: () => { People.act([{ officer: 'julius', do: 'command' }, { buff: 'dmg', v: 0.05, months: 12, name: '提督の大権' }]); FX.funds(200); FX.party('war', 8); FX.loyal('julius', 15); FX.flag('e1_power'); }, after: () => [['julius', 'happy', '必ず、勝利で応えます。'], ['leo', 'sad', '（……本当に、これでいいのか）']] },
       { t: '議会に従う（民心 +6・融和派が伸びる・ユリウスの忠誠 −）', fx: () => { FX.stab(6); FX.party('peace', 6); FX.loyal('julius', -10); }, after: () => [['julius', 'normal', '……承知しました。私は軍人です。命じられたことをするだけです。'], ['eliza', 'normal', 'ありがとう、ユリウス。この国は、まだ議会のものよ。']] },
     ] },
-  { id: 'e1_2', fac: 1, cond: () => G.turn >= 10 && allMine('eliza', 'sophia', 'marcus'), bg: 'palace', title: '第二章　白い議事堂の影',
+  { id: 'e1_2', fac: 1, cond: () => G.turn >= Laps.T(10) && allMine('eliza', 'sophia', 'marcus'), bg: 'palace', title: '第二章　白い議事堂の影',
     scenes: () => [
       ['sophia', 'angry', '首相、これを見てください。グレイ議長の口座に、企業連合から多額の献金が。'],
       ['marcus', 'normal', 'ウェルズ君、政治とは清い水だけでは回らんのだよ。その金で、どれだけの法案が通ったと思う。'],
@@ -96,7 +96,7 @@ const EVENTS = [
       { t: '公表する（民心 −4、のち融和派・ソフィアの忠誠 +）', fx: () => { FX.stab(-4); FX.party('peace', 8); FX.loyal('sophia', 20); FX.loyal('marcus', -30); FX.flag('e1_clean'); }, after: () => [['sophia', 'happy', 'ありがとうございます。……この国は、まだ正しくあれる。']] },
       { t: '握りつぶす（資金 +350・通商派が伸びる・ソフィアの忠誠 −）', fx: () => { FX.funds(350); FX.party('trade', 8); FX.loyal('sophia', -20); FX.loyal('marcus', 10); }, after: () => [['sophia', 'sad', '……首相。私は、あなたを信じていました。'], ['marcus', 'normal', 'よい判断だ。……少なくとも、今のところは。']] },
     ] },
-  { id: 'e1_3', fac: 1, cond: () => G.turn >= 22 && allMine('eliza', 'julius', 'leo'), bg: 'bridge', title: '第三章　英雄の影',
+  { id: 'e1_3', fac: 1, cond: () => G.turn >= Laps.T(22) && allMine('eliza', 'julius', 'leo'), bg: 'bridge', title: '第三章　英雄の影',
     scenes: () => [
       ['leo', 'normal', '姉さん。街じゃ、クレイン提督を次の首相にって声が上がってる。'],
       ['eliza', 'normal', '知ってる。……人々は、勝利をくれる人を好きになるものよ。'],
@@ -115,7 +115,7 @@ const EVENTS = [
       ['eliza', 'normal', '星が消えるのなら、敵も味方もないわ。'],
     ],
     fx: () => { for (let b = 0; b < 6; b++) FX.trust(b, 10); FX.party('peace', 6); } },
-  { id: 'e1_5', fac: 1, cond: () => (G.flags.eclipse || G.turn >= 132) && isMine('eliza'), bg: 'palace', title: '第五章　自由の旗のもとに',
+  { id: 'e1_5', fac: 1, cond: () => (G.flags.eclipse || G.turn >= Laps.T(132)) && isMine('eliza'), bg: 'palace', title: '第五章　自由の旗のもとに',
     scenes: () => [
       ['eliza', 'normal', '二百年前、私たちは帝国から自由を勝ち取った。'],
       ['eliza', 'normal', 'でも自由とは、誰かと離れることではなかった。誰かと手を取り合うことを、自分で選べることだった。'],
@@ -137,7 +137,7 @@ const EVENTS = [
       { t: '軍備に投資する（資金 −150・兵器技術 +1・艦 +2・主戦派が伸びる）', fx: () => { People.act([{ ships: 2 }]); FX.funds(-150); FX.party('war', 8); G.facs[G.player].tech.wep++; }, after: () => [['magnus', 'happy', '兵器部門の新型だ。……兵器技術が一段上がった。']] },
       { t: '研究に投資する（研究 +220・研究 +10%（1年）・技術派が伸びる）', fx: () => { People.act([{ buff: 'research', v: 0.1, months: 12, name: '研究への投資' }]); FX.rp(220); FX.party('tech', 8); FX.loyal('yuki', 15); }, after: () => [['yuki', 'happy', 'ありがとうございます。必ず、利益にしてみせます。']] },
     ] },
-  { id: 'e2_2', fac: 2, cond: () => G.turn >= 10 && allMine('magnus', 'lin'), bg: 'palace', title: '第二章　取締役会の亀裂',
+  { id: 'e2_2', fac: 2, cond: () => G.turn >= Laps.T(10) && allMine('magnus', 'lin'), bg: 'palace', title: '第二章　取締役会の亀裂',
     scenes: () => [
       ['lin', 'normal', '総裁。株主たちは、あなたの戦争に飽き始めています。'],
       ['magnus', 'angry', '若造が。お前を拾い上げてやったのは誰だと思っている。'],
@@ -148,7 +148,7 @@ const EVENTS = [
       { t: 'リンを重く用いる（リンを首都の総督に・リンの忠誠 +25・通商派が伸びる）', fx: () => { People.act([{ officer: 'lin', do: 'govern' }]); FX.loyal('lin', 25); FX.party('trade', 6); FX.flag('e2_lin'); }, after: () => [['magnus', 'normal', 'いいだろう。席が欲しければ、まず数字で示せ。'], ['lin', 'happy', '望むところです。']] },
       { t: 'リンを抑えつける（資金 +200・リンの忠誠 −25）', fx: () => { FX.funds(200); FX.loyal('lin', -25); }, after: () => [['lin', 'angry', '……覚えておきますよ、総裁。']] },
     ] },
-  { id: 'e2_3', fac: 2, cond: () => G.turn >= 16 && isMine('kane'), bg: 'bridge', title: '第三章　傭兵の矜持',
+  { id: 'e2_3', fac: 2, cond: () => G.turn >= Laps.T(16) && isMine('kane'), bg: 'bridge', title: '第三章　傭兵の矜持',
     scenes: () => [
       ['kane', 'normal', '黒鴉傭兵団、か。……懐かしい名前を聞いた。'],
       ['@pol', 'normal', 'マーロウ提督は、昔あの傭兵団にいたとか。'],
@@ -164,7 +164,7 @@ const EVENTS = [
       ['magnus', 'angry', '冗談ではない。この銀河は、わしが値をつけた品物だ。何者にも喰わせはせん。'],
     ],
     fx: () => { FX.rp(150); FX.funds(150); } },
-  { id: 'e2_5', fac: 2, cond: () => (G.flags.eclipse || G.turn >= 132) && isMine('magnus'), bg: 'palace', title: '第五章　黄金の遺言',
+  { id: 'e2_5', fac: 2, cond: () => (G.flags.eclipse || G.turn >= Laps.T(132)) && isMine('magnus'), bg: 'palace', title: '第五章　黄金の遺言',
     scenes: () => [
       ['magnus', 'normal', 'リン。……いや、皆も聞け。'],
       ['magnus', 'normal', 'わしは金で何でも買えると思ってきた。艦も、人も、正義もな。'],
@@ -186,7 +186,7 @@ const EVENTS = [
       { t: '祈りと備えを（全ての星の防衛衛星 +1・民心 +6・融和派が伸びる）', fx: () => { People.act([{ fort: 1, where: 'all' }]); FX.stab(6); FX.party('peace', 6); FX.loyal('aurelio', 10); }, after: () => [['aurelio', 'happy', '聖女様のお心のままに。我が剣は、守るためにあります。']] },
       { t: '聖戦を宣する（いちばん仲の悪い国に宣戦・主力艦隊が出撃・資金 +200・主戦派が伸びる）', fx: () => { People.act([{ war: 'rival', why: '聖戦を宣して' }, { fleet: 'front' }]); FX.funds(200); FX.party('war', 8); FX.loyal('benedetto', 15); }, after: () => [['benedetto', 'happy', '光あれ。……さあ、忙しくなりますぞ。'], ['celestina', 'sad', '（本当に、これでよかったのでしょうか）']] },
     ] },
-  { id: 'e3_2', fac: 3, cond: () => G.turn >= 9 && allMine('celestina', 'benedetto', 'aurelio'), bg: 'palace', title: '第二章　枢機卿の影',
+  { id: 'e3_2', fac: 3, cond: () => G.turn >= Laps.T(9) && allMine('celestina', 'benedetto', 'aurelio'), bg: 'palace', title: '第二章　枢機卿の影',
     scenes: () => [
       ['dante', 'normal', '団長殿。枢機卿が、聖女様の夢を「心の病」と書いた書状を、諸侯に回しております。'],
       ['aurelio', 'angry', '……聖女の座を、空けさせるつもりか。'],
@@ -197,7 +197,7 @@ const EVENTS = [
       { t: '枢機卿を退ける（ベネデットの役を解く・ベネデットの忠誠 −30・民心 +5）', fx: () => { People.act([{ officer: 'benedetto', do: 'dismiss' }]); FX.loyal('benedetto', -30); FX.stab(5); FX.loyal('aurelio', 10); }, after: () => [['benedetto', 'angry', '……若い聖女に、何が分かる。']] },
       { t: '枢機卿と語り合う（ベネデットの忠誠 +15・政治の助け：研究 +100）', fx: () => { FX.loyal('benedetto', 15); FX.rp(100); FX.flag('e3_bene'); }, after: () => [['benedetto', 'sad', '……あなたは、本当に逃げないのですな。前の聖女様も、そうでした。']] },
     ] },
-  { id: 'e3_3', fac: 3, cond: () => G.turn >= 16 && allMine('celestina', 'serena'), bg: 'space', title: '第三章　星詠み',
+  { id: 'e3_3', fac: 3, cond: () => G.turn >= Laps.T(16) && allMine('celestina', 'serena'), bg: 'space', title: '第三章　星詠み',
     scenes: () => [
       ['serena', 'normal', '聖女様。星の並びに、乱れが出ております。'],
       ['serena', 'shock', '禁じられた術――虚数の炉や、意識を写す業。それらが行われるたび、黒い太陽が近づくのです。'],
@@ -213,7 +213,7 @@ const EVENTS = [
       ['celestina', 'normal', '民に告げてください。恐れるなと。光は、分け合うほど強くなるのだと。'],
     ],
     fx: () => { FX.stab(6); FX.loyal('benedetto', 20); } },
-  { id: 'e3_5', fac: 3, cond: () => (G.flags.eclipse || G.turn >= 132) && isMine('celestina'), bg: 'palace', title: '第五章　光の巡礼',
+  { id: 'e3_5', fac: 3, cond: () => (G.flags.eclipse || G.turn >= Laps.T(132)) && isMine('celestina'), bg: 'palace', title: '第五章　光の巡礼',
     scenes: () => [
       ['celestina', 'normal', '私はこれから、すべての国へ巡礼に出ます。帝国にも、共和国にも、機巧院にも。'],
       ['aurelio', 'shock', '危険です！ 敵国の真ん中に聖女様が――'],
@@ -235,7 +235,7 @@ const EVENTS = [
       { t: '力で束ねる（艦の火力 +8%（1年）・資金 +120・主戦派が伸びる・ビョルンの忠誠 +）', fx: () => { People.act([{ buff: 'dmg', v: 0.08, months: 12, name: '拳の盟' }]); FX.party('war', 8); FX.loyal('bjorn', 20); FX.funds(120); }, after: () => [['gard', 'angry', '文句がある奴は、俺を殴り倒してから言え！'], ['bjorn', 'happy', 'がはは！ いいぜ盟主、その心意気に乗った！']] },
       { t: '盟約で束ねる（民心 +6・民心 毎月 +1（1年）・融和派が伸びる・ラグナルの忠誠 +）', fx: () => { People.act([{ buff: 'stab', v: 0.1, months: 12, name: '酒杯の盟約' }]); FX.party('peace', 6); FX.stab(6); FX.loyal('ragnar', 20); }, after: () => [['ragnar', 'happy', '酒を酌み交わして誓う。辺境のやり方じゃな。'], ['gard', 'happy', '……ああ。跪かず、並んで立つ。それが同盟だ。']] },
     ] },
-  { id: 'e4_2', fac: 4, cond: () => G.turn >= 8 && allMine('gard', 'freya'), bg: 'bridge', title: '第二章　風読みの娘',
+  { id: 'e4_2', fac: 4, cond: () => G.turn >= Laps.T(8) && allMine('gard', 'freya'), bg: 'bridge', title: '第二章　風読みの娘',
     scenes: () => [
       ['freya', 'normal', '父さん、私に艦隊をちょうだい。'],
       ['gard', 'angry', 'まだ早え。お前は戦の恐ろしさを知らねえ。'],
@@ -244,7 +244,7 @@ const EVENTS = [
       ['gard', 'normal', '分かった。ただし、帰って来い。それだけが命令だ。'],
     ],
     fx: () => { FX.loyal('freya', 20); Game.addMerit('freya', 5); } },
-  { id: 'e4_3', fac: 4, cond: () => G.turn >= 15 && allMine('kai', 'mira'), bg: 'space', title: '第三章　星渡りの古道',
+  { id: 'e4_3', fac: 4, cond: () => G.turn >= Laps.T(15) && allMine('kai', 'mira'), bg: 'space', title: '第三章　星渡りの古道',
     scenes: () => [
       ['mira', 'happy', 'カイ、見て！ 古い航路図だよ。航路門ができる前の、星渡りたちの道！'],
       ['kai', 'normal', '……本物か？ ここに書かれた座標、今の星図とずれてるぞ。'],
@@ -259,7 +259,7 @@ const EVENTS = [
       ['gard', 'angry', '大国どもに知らせろ。笑われたって構わねえ。――辺境は、いつだって最初に燃えるんだ。'],
     ],
     fx: () => { for (let b = 0; b < 6; b++) FX.trust(b, 8); } },
-  { id: 'e4_5', fac: 4, cond: () => (G.flags.eclipse || G.turn >= 132) && isMine('gard'), bg: 'bridge', title: '第五章　跪かぬ者たち',
+  { id: 'e4_5', fac: 4, cond: () => (G.flags.eclipse || G.turn >= Laps.T(132)) && isMine('gard'), bg: 'bridge', title: '第五章　跪かぬ者たち',
     scenes: () => [
       ['gard', 'normal', '聞け、辺境の野郎ども。'],
       ['gard', 'angry', '俺たちは誰の旗にも跪かねえ。だが、肩を並べる相手を選ぶことはできる。'],
@@ -281,7 +281,7 @@ const EVENTS = [
       { t: '演算を戦に向ける（兵器技術 +1・主戦派が伸びる）', fx: () => { G.facs[G.player].tech.wep++; FX.party('war', 8); FX.loyal('theta', 10); }, after: () => [['theta', 'normal', '了解。最適化を開始します。']] },
       { t: '演算を備えに向ける（研究 +250・研究 +10%（1年）・技術派が伸びる）', fx: () => { People.act([{ buff: 'research', v: 0.1, months: 12, name: '演算塔の備え' }]); FX.rp(250); FX.party('tech', 8); FX.loyal('kronos', 15); }, after: () => [['idea', 'happy', '記録の解読を急ぎます。……何かが、私たちに急げと言っている気がするのです。']] },
     ] },
-  { id: 'e5_2', fac: 5, cond: () => G.turn >= 9 && allMine('silas', 'theta'), bg: 'space', title: '第二章　人と機械',
+  { id: 'e5_2', fac: 5, cond: () => G.turn >= Laps.T(9) && allMine('silas', 'theta'), bg: 'space', title: '第二章　人と機械',
     scenes: () => [
       ['silas', 'angry', 'シータ、君の作戦案には人間の兵の損耗が計算に入っていない。'],
       ['theta', 'normal', '入っています。許容範囲内です。'],
@@ -290,7 +290,7 @@ const EVENTS = [
       ['theta', 'sad', '……再計算します。姉さま。'],
     ],
     fx: () => { FX.stab(5); FX.loyal('silas', 15); } },
-  { id: 'e5_3', fac: 5, cond: () => G.turn >= 16 && allMine('idea', 'kronos'), bg: 'space', title: '第三章　記録保管者',
+  { id: 'e5_3', fac: 5, cond: () => G.turn >= Laps.T(16) && allMine('idea', 'kronos'), bg: 'space', title: '第三章　記録保管者',
     scenes: () => [
       ['kronos', 'normal', '統括知性。古代記録の、最も古い層が開きました。'],
       ['kronos', 'sad', '一万二千年前。この銀河の文明は、外から来た「喰らう闇」に滅ぼされています。演算塔は、その生き残りが遺したもの。'],
@@ -299,7 +299,7 @@ const EVENTS = [
       ['idea', 'normal', '核を、砕く。……その日のために、私たちは在ったのですね。'],
     ],
     fx: () => { FX.rp(200); FX.flag('knowCore'); } },
-  { id: 'e5_4', fac: 5, cond: () => G.turn >= 24 && isMine('idea'), bg: 'space', title: '第四章　もう一つの声',
+  { id: 'e5_4', fac: 5, cond: () => G.turn >= Laps.T(24) && isMine('idea'), bg: 'space', title: '第四章　もう一つの声',
     scenes: () => isMine('eve') ? [
       ['eve', 'normal', '……あなたが、イデア。同じ塔の、別の階で眠っていた者です。'],
       ['idea', 'shock', 'あなたも……古代の遺した知性なのですね。'],
@@ -309,7 +309,7 @@ const EVENTS = [
       ['theta', 'normal', '在野の者として目覚めた機体があるのかもしれません。アムネシアや遺跡の星を探すべきです。'],
     ],
     fx: () => { FX.rp(80); } },
-  { id: 'e5_5', fac: 5, cond: () => (G.flags.eclipse || G.turn >= 132) && isMine('idea'), bg: 'space', title: '第五章　我らは記憶を継ぐ',
+  { id: 'e5_5', fac: 5, cond: () => (G.flags.eclipse || G.turn >= Laps.T(132)) && isMine('idea'), bg: 'space', title: '第五章　我らは記憶を継ぐ',
     scenes: () => [
       ['idea', 'normal', '全院に告げます。'],
       ['idea', 'normal', '一万二千年前、私たちの祖は闇に敗れました。けれど、記憶を遺した。'],

@@ -163,7 +163,7 @@ const People = (() => {
     if (!c) return true;
     const me = G.player, f = G.facs[me];
     if (c.fac !== undefined && c.fac !== me) return false;
-    if (c.turn !== undefined && G.turn < c.turn) return false;
+    if (c.turn !== undefined && G.turn < Laps.T(c.turn)) return false;   // 周回の長さに合わせて縮める
     if (c.with && !c.with.every(mine)) return false;
     if (c.notWith && c.notWith.some(mine)) return false;
     if (c.foe && !c.foe.every(foe)) return false;
@@ -451,6 +451,8 @@ const People = (() => {
     const eclEv = ev => !!(ev.cond && (ev.cond.ecl || ev.cond.eclipse === true));
     for (const ev of PEOPLE.EVS) {
       if (G.evDone[ev.id] || !ev.cond || ev.cond.fac !== me) continue;
+      if (!Laps.packOn(ev.id)) continue;
+      if (!eclEv(ev) && Math.random() > Laps.content()) continue;
       if (crisis && !eclEv(ev)) continue;
       if (['great', 'ret'].includes(ev.cond.ecl) && !crisis) continue;   // さなかの場面は、さなかにだけ（根絶の後には流さない）
       if (cond(ev.cond)) out.push(wrap(ev, {}, { pr: 3 }));
@@ -465,8 +467,8 @@ const People = (() => {
       if (i < 0) continue;
       const ev = p.arc[i];
       if (crisis && !eclEv(ev)) continue;
-      if (i > 0 && G.turn - (G.evDone[p.arc[i - 1].id] || 0) < 6) continue;   // 前の話から半年はあける
-      if (!cond(ev.cond) || Math.random() > 0.55) continue;
+      if (i > 0 && G.turn - (G.evDone[p.arc[i - 1].id] || 0) < Laps.T(6, 3)) continue;   // 前の話から半年はあける（周回の長さに合わせて）
+      if (!cond(ev.cond) || Math.random() > 0.55 * Laps.content()) continue;
       out.push(wrap(ev, {}, { pr: 2 })); arcs++;
     }
     // 4) 関係
@@ -483,7 +485,7 @@ const People = (() => {
         continue;
       }
       // 同じ国での会話（3段階）
-      if (!crisis && A && B && t.talk && s.stage < 3 && talks < 1 && G.turn - s.last >= 8 && Math.random() < 0.3) {
+      if (!crisis && A && B && t.talk && s.stage < 3 && talks < 1 && G.turn - s.last >= Laps.T(8, 4) && Math.random() < 0.3 * Laps.content()) {
         const n = s.stage, sc = t.talk[n];
         if (!sc || !sc.length) continue;
         const fin = n === 2 && t.final && t.final.choices;
@@ -609,7 +611,7 @@ const People = (() => {
       if (me === a || me === b) {
         if (mineN++ >= 1) continue;
         G.natDone[ev.id] = G.turn;
-        G.natQueue = (G.natQueue || []).concat([{ id: ev.id, other: me === a ? b : a, useB: me === b }]);
+        if (Laps.packOn(ev.id) && Math.random() < Laps.content() + 0.2) G.natQueue = (G.natQueue || []).concat([{ id: ev.id, other: me === a ? b : a, useB: me === b }]);
       } else {
         if (newsN++ >= 2) continue;
         G.natDone[ev.id] = G.turn;

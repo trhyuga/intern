@@ -84,7 +84,7 @@ const Staff = (() => {
       economy: poor || stab < 50 ? 1.7 : 1,
       research: 1,
       diplomacy: wars && f.warWeary > 3 ? 1.7 : unsigned ? 0.9 : 0.4,
-      eclipse: Eclipse.active() && G.planets.some(p => p.owner === 'E' && (!p.abyss || G.facs[G.player].sealed)) ? 3 : 0,
+      eclipse: Eclipse.active() && G.planets.some(p => p.owner === 'E' && (!p.abyss || Eclipse.canEnterAbyss(G.player))) ? 3 : 0,
     };
     // 国内の派閥の声：支持が多い派閥の望む方針ほど選ばれやすい（主導派閥はさらに）
     const P0 = f.parties, rul = f.ruling;
@@ -183,7 +183,7 @@ const Staff = (() => {
       WarRoom.say(s.key, `今月も方針どおり、${P.name}を進めます。`, 'normal');
     }
     // 蝕が退いたら対蝕作戦はおしまい
-    if (s.policy === 'eclipse' && !G.planets.some(p => p.owner === 'E' && (!p.abyss || G.facs[G.player].sealed))) { s.month.push('対蝕作戦の相手がいません。'); return; }
+    if (s.policy === 'eclipse' && !G.planets.some(p => p.owner === 'E' && (!p.abyss || Eclipse.canEnterAbyss(G.player)))) { s.month.push('対蝕作戦の相手がいません。'); return; }
     // 動く前の様子
     const mine = G.planets.filter(p => p.owner === me);
     const before = new Map(mine.map(p => [p.id, { focus: p.focus, prog: p.prog, build: p.build.length }]));
@@ -408,7 +408,7 @@ const Staff = (() => {
       WarRoom.say(s.key, `${ph}。方針は${POLICIES[s.policy].name}のまま、艦隊を裂け目へ回します。守りの手薄な星にも艦を置きます。`, 'angry');
     }
     if (info.capitalLost) return '首都が陥落しました。';
-    if (s.policy === 'eclipse' && !G.planets.some(p => p.owner === 'E' && (!p.abyss || G.facs[G.player].sealed))) return G.eclipse.defeated ? '蝕を根から絶ちました。対蝕作戦はここまでです。' : '蝕は退きました。いまは攻める相手がいません。';
+    if (s.policy === 'eclipse' && !G.planets.some(p => p.owner === 'E' && (!p.abyss || Eclipse.canEnterAbyss(G.player)))) return G.eclipse.defeated ? '蝕を根から絶ちました。対蝕作戦はここまでです。' : '蝕は退きました。いまは攻める相手がいません。';
     const lost = s.base.planets - G.planets.filter(p => p.owner === G.player).length;
     if (lost >= 3) return `星を ${lost} つ失いました。ご判断を。`;
     return null;
