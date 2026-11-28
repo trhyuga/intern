@@ -159,16 +159,16 @@ const App = {
     { s: 0.6, e: 8.8, pos: 'vert', lines: [['後漢の末', 0, 26]] },
     { s: 1.6, e: 5.7, pos: 'top', lines: [['蒼天、已に死す。', 0, 26], ['黄天、当に立つべし。', 1.0, 26], ['歳は甲子に在り　天下大吉', 2.0, 15]] },
     { s: 6.1, e: 9.3, pos: 'top', lines: [['黄巾の炎は漢土を焼き、', 0, 20], ['洛陽は暴君の手に落ちた。', 0.9, 20]] },
-    { s: 10.0, e: 14.7, pos: 'top', lines: [['天下の大勢、', 0, 20], ['分かれて久しければ必ず合し、', 1.0, 20], ['合して久しければ必ず分かる。', 2.0, 20]] },
-    { s: 15.1, e: 19.3, pos: 'bottom', lines: [['群雄、天下に割拠す。', 0, 22], ['天下を一つにするは、誰か――。', 1.2, 19]] },
+    { s: 10.0, e: 15.6, pos: 'top', lines: [['天下の大勢、', 0, 20], ['分かれて久しければ必ず合し、', 1.0, 20], ['合して久しければ必ず分かる。', 2.0, 20]] },
+    { s: 19.6, e: 25.6, pos: 'top', lines: [['群雄、天下に割拠す。', 0, 22], ['天下を一つにするは、誰か――。', 1.4, 19]] },
   ],
   async opVideo() {
     const r = await new Promise(resolve => {
       const sc = $('#opening'), cv = $('#opcv'), skip = $('#opening .skip');
       const box = document.createElement('div'); box.className = 'op-vid';
-      box.innerHTML = `<video playsinline webkit-playsinline preload="auto" poster="media/opening_poster.jpg?v=2"></video>` + App.OP_CUES.map(c => `<div class="op-cap ${c.pos}">${c.lines.map(([t, , fs]) => `<span style="font-size:${fs}px">${t}</span>`).join('')}</div>`).join('');
+      box.innerHTML = `<video playsinline webkit-playsinline preload="auto" poster="media/opening_poster.jpg?v=3"></video>` + App.OP_CUES.map(c => `<div class="op-cap ${c.pos}">${c.lines.map(([t, , fs]) => `<span style="font-size:${fs}px">${t}</span>`).join('')}</div>`).join('');
       const v = box.querySelector('video'), caps = [...box.querySelectorAll('.op-cap')];
-      v.src = 'media/opening.mp4?v=2';
+      v.src = 'media/opening.mp4?v=3';
       v.muted = Sound.muted;
       cv.style.visibility = 'hidden';
       sc.insertBefore(box, skip);
